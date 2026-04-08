@@ -1,0 +1,17 @@
+package com.agent.orchestrator;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Application {
+    
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+        System.out.println("\n" +
+            "╔══════════════════════════════════════╗\n" +
+            "║   Axolotl Orchestrator запущен!     ║\n" +
+            "║   http://localhost:8080/api/agents   ║\n" +
+            "╚══════════════════════════════════════╝\n");
+    }
+}

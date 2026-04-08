@@ -1,0 +1,45 @@
+server:
+  port: 8080
+  # Таймауты для долгих запросов к агентам
+  tomcat:
+    connection-timeout: 60s
+    keep-alive-timeout: 60s
+
+spring:
+  # Настройки для статики (если объединим)
+  web:
+    resources:
+      static-locations: classpath:/static/
+      cache:
+        period: 86400  # кэш на сутки в production
+
+# Кастомные настройки приложения
+app:
+  # Агенты по умолчанию (можно переопределить через переменные окружения)
+  agents:
+    default:
+      timeout: 30
+      retry-count: 3
+    
+  # Настройки подключений
+  connection:
+    local:
+      url: ${OPENCLAW_LOCAL_URL:http://localhost:18789}
+    remote:
+      url: ${OPENCLAW_REMOTE_URL:https://your-server.com:18789}
+      api-key: ${OPENCLAW_API_KEY:}
+  
+  # Логирование взаимодействия с агентами
+  logging:
+    enabled: true
+    level: INFO
+
+# Настройки для разработки
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always

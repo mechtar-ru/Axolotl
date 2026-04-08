@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Canvas - Прототип</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            overflow: hidden;
+        }
+        
+        /* Контейнер для канваса */
+        #canvas-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            cursor: grab;
+        }
+        
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+        
+        /* Само поле канваса */
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+            transition: transform 0.05s ease-out;
+        }
+        
+        /* Карточка агента */
+        .agent-card {
+            position: absolute;
+            width: 200px;
+            background: #2d2d44;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid #3d3d5c;
+        }
+        
+        .agent-card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+            border-color: #6c63ff;
+        }
+        
+        .agent-card.selected {
+            border-color: #6c63ff;
+            background: #36365c;
+            box-shadow: 0 0 15px rgba(108,99,255,0.3);
+        }
+        
+        .agent-emoji {
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+        
+        .agent-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+        
+        .agent-status {
+            font-size: 12px;
+            color: #888;
+        }
+        
+        /* Панель чата (временно справа) */
+        .chat-panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            width: 350px;
+            height: 100vh;
+            background: #2d2d44;
+            border-left: 1px solid #3d3d5c;
+            display: flex;
+            flex-direction: column;
+            transform: translateX(0);
+            transition: transform 0.3s;
+            z-index: 100;
+        }
+        
+        .chat-panel.collapsed {
+            transform: translateX(100%);
+        }
+        
+        .chat-header {
+            padding: 15px;
+            background: #25253a;
+            border-bottom: 1px solid #3d3d5c;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        
+        .message {
+            margin-bottom: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 85%;
+        }
+        
+        .message.user {
+            background: #6c63ff;
+            margin-left: auto;
+            text-align: right;
+        }
+        
+        .message.agent {
+            background: #3d3d5c;
+        }
+        
+        .chat-input-area {
+            padding: 15px;
+            border-top: 1px solid #3d3d5c;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            padding: 8px;
+            background: #1a1a2e;
+            border: 1px solid #3d3d5c;
+            color: white;
+            border-radius: 6px;
+        }
+        
+        button {
+            background: #6c63ff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #5a52d9;
+        }
+        
+        /* Кнопка управления чатом */
+        .toggle-chat {
+            position: fixed;
+            right: 10px;
+            bottom: 20px;
+            background: #6c63ff;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 101;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        /* Элементы управления канвасом */
+        .canvas-controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: #2d2d44;
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        
+        .coord-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <div id="canvas"></div>
+    </div>
+    
+    <div class="canvas-controls">
+        <button id="zoom-in">➕ Приблизить</button>
+        <button id="zoom-out">➖ Отдалить</button>
+        <button id="reset-view">🔄 Сброс</button>
+        <button id="add-agent">➕ Добавить агента</button>
+    </div>
+    
+    <div class="coord-info" id="coord-info">
+        Координаты: x:0, y:0 | Масштаб: 1.00
+    </div>
+    
+    <div class="toggle-chat" id="toggle-chat">
+        💬
+    </div>
+    
+    <div class="chat-panel collapsed" id="chat-panel">
+        <div class="chat-header">
+            <strong id="chat-agent-name">Выберите агента</strong>
+            <button id="close-chat">✕</button>
+        </div>
+        <div class="chat-messages" id="chat-messages">
+            <div class="message agent">Нажмите на карточку агента, чтобы начать диалог</div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" class="chat-input" id="chat-input" placeholder="Сообщение агенту..." disabled>
+            <button id="send-message" disabled>Отправить</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Конфигурация OpenClaw ---
+        const OPENCLAW_URL = 'http://127.0.0.1:18789';
+        
+        // --- Состояние канваса ---
+        let scale = 1;
+        let panX = 0, panY = 0;
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        
+        // --- Данные ---
+        let agents = [];
+        let selectedAgentId = null;
+        let currentSessionKey = null;
+        
+        // --- Элементы DOM ---
+        const canvas = document.getElementById('canvas');
+        const container = document.getElementById('canvas-container');
+        
+        // --- Инициализация канваса ---
+        function updateCanvasTransform() {
+            canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+            document.getElementById('coord-info').textContent = 
+                `Координаты: x:${Math.round(-panX/scale)}, y:${Math.round(-panY/scale)} | Масштаб: ${scale.toFixed(2)}`;
+        }
+        
+        // Обработчики панорамирования
+        container.addEventListener('mousedown', (e) => {
+            if (e.target === container || e.target === canvas || e.target.classList?.contains('agent-card') === false) {
+                isDragging = true;
+                dragStart = { x: e.clientX - panX, y: e.clientY - panY };
+                container.style.cursor = 'grabbing';
+            }
+        });
+        
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            panX = e.clientX - dragStart.x;
+            panY = e.clientY - dragStart.y;
+            updateCanvasTransform();
+        });
+        
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            container.style.cursor = 'grab';
+        });
+        
+        // Управление масштабом
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            scale = Math.min(scale + 0.2, 3);
+            updateCanvasTransform();
+        });
+        
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            scale = Math.max(scale - 0.2, 0.3);
+            updateCanvasTransform();
+        });
+        
+        document.getElementById('reset-view').addEventListener('click', () => {
+            scale = 1;
+            panX = 0;
+            panY = 0;
+            updateCanvasTransform();
+        });
+        
+        // --- Функции работы с OpenClaw API ---
+        
+        // --- Конфигурация (теперь указываем Java бэкенд) ---
+        const BACKEND_URL = 'http://localhost:8080/api';  // ваш Java сервер
+
+        // Загрузка агентов с бэкенда
+        async function loadAgents() {
+            try {
+                const response = await fetch(`${BACKEND_URL}/agents`);
+                if (response.ok) {
+                    const backendAgents = await response.json();
+                    // Конвертируем в формат для канваса
+                    agents = backendAgents.map((agent, idx) => ({
+                        id: agent.id,
+                        name: agent.name,
+                        emoji: agent.emoji || '🤖',
+                        x: 100 + (idx % 3) * 250,
+                        y: 100 + Math.floor(idx / 3) * 200,
+                        status: 'active',
+                        connection: agent.connection
+                    }));
+                } else {
+                    throw new Error('Backend not available');
+                }
+            } catch (error) {
+                console.warn('Бэкенд недоступен, использую тестовых агентов', error);
+                // Фоллбек на тестовых агентов
+                agents = [
+                    { id: 'local', name: 'Главный ассистент', emoji: '🦀', x: 100, y: 100, status: 'active' },
+                    { id: 'coder', name: 'Кодер', emoji: '💻', x: 350, y: 100, status: 'active' }
+                ];
+            }
+            renderAgents();
+        }
+
+        // Отправка сообщения через Java бэкенд
+        async function sendMessageToAgent(agentId, message, sessionKey) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/agents/${agentId}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message, sessionKey })
+                });
+                
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const data = await response.json();
+                
+                return {
+                    success: true,
+                    reply: data.reply,
+                    sessionKey: data.sessionKey
+                };
+            } catch (error) {
+                console.error('Ошибка отправки:', error);
+                return {
+                    success: false,
+                    reply: `Ошибка: ${error.message}. Убедитесь, что Java бэкенд запущен на порту 8080.`,
+                    sessionKey: null
+                };
+            }
+        }
+        
+        // --- Рендеринг агентов на канвасе ---
+        function renderAgents() {
+            canvas.innerHTML = '';
+            agents.forEach(agent => {
+                const card = document.createElement('div');
+                card.className = `agent-card ${selectedAgentId === agent.id ? 'selected' : ''}`;
+                card.style.left = `${agent.x}px`;
+                card.style.top = `${agent.y}px`;
+                card.setAttribute('data-agent-id', agent.id);
+                card.innerHTML = `
+                    <div class="agent-emoji">${agent.emoji}</div>
+                    <div class="agent-name">${agent.name}</div>
+                    <div class="agent-status">${agent.status === 'active' ? '🟢 Онлайн' : '⚫ Офлайн'}</div>
+                `;
+                
+                card.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    selectAgent(agent.id);
+                });
+                
+                // Drag & drop для карточек
+                makeDraggable(card, agent);
+                
+                canvas.appendChild(card);
+            });
+        }
+        
+        // Drag & drop для перемещения карточек
+        function makeDraggable(element, agent) {
+            let isDraggingCard = false;
+            let startX, startY;
+            
+            element.addEventListener('mousedown', (e) => {
+                if (e.target === element || element.contains(e.target)) {
+                    e.stopPropagation();
+                    isDraggingCard = true;
+                    startX = e.clientX / scale - agent.x;
+                    startY = e.clientY / scale - agent.y;
+                    element.style.cursor = 'grabbing';
+                }
+            });
+            
+            window.addEventListener('mousemove', (e) => {
+                if (!isDraggingCard) return;
+                const newX = e.clientX / scale - startX;
+                const newY = e.clientY / scale - startY;
+                agent.x = newX;
+                agent.y = newY;
+                element.style.left = `${agent.x}px`;
+                element.style.top = `${agent.y}px`;
+            });
+            
+            window.addEventListener('mouseup', () => {
+                isDraggingCard = false;
+                element.style.cursor = 'grab';
+            });
+        }
+        
+        // Выбор агента
+        function selectAgent(agentId) {
+            selectedAgentId = agentId;
+            renderAgents();
+            
+            const agent = agents.find(a => a.id === agentId);
+            document.getElementById('chat-agent-name').textContent = agent ? agent.name : 'Агент';
+            
+            // Очищаем чат
+            const messagesContainer = document.getElementById('chat-messages');
+            messagesContainer.innerHTML = '<div class="message agent">Начните диалог. Напишите сообщение ниже.</div>';
+            
+            // Активируем ввод
+            document.getElementById('chat-input').disabled = false;
+            document.getElementById('send-message').disabled = false;
+            
+            // Сбрасываем сессию для нового агента
+            currentSessionKey = null;
+            
+            // Показываем панель чата
+            document.getElementById('chat-panel').classList.remove('collapsed');
+        }
+        
+        // Добавление нового агента
+        document.getElementById('add-agent').addEventListener('click', () => {
+            const newId = `agent_${Date.now()}`;
+            agents.push({
+                id: newId,
+                name: `Новый агент ${agents.length + 1}`,
+                emoji: '🤖',
+                x: Math.random() * 800 + 100,
+                y: Math.random() * 600 + 100,
+                status: 'active'
+            });
+            renderAgents();
+        });
+        
+        // Отправка сообщения
+        document.getElementById('send-message').addEventListener('click', async () => {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message || !selectedAgentId) return;
+            
+            // Добавляем сообщение пользователя в чат
+            const messagesContainer = document.getElementById('chat-messages');
+            const userMsgDiv = document.createElement('div');
+            userMsgDiv.className = 'message user';
+            userMsgDiv.textContent = message;
+            messagesContainer.appendChild(userMsgDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Очищаем инпут и показываем индикатор загрузки
+            input.value = '';
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message agent';
+            loadingDiv.textContent = '✍️ Печатает...';
+            messagesContainer.appendChild(loadingDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Отправляем запрос
+            const response = await sendMessageToAgent(selectedAgentId, message, currentSessionKey);
+            
+            // Убираем индикатор загрузки
+            loadingDiv.remove();
+            
+            // Добавляем ответ агента
+            const agentMsgDiv = document.createElement('div');
+            agentMsgDiv.className = 'message agent';
+            agentMsgDiv.textContent = response.reply;
+            messagesContainer.appendChild(agentMsgDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            
+            // Сохраняем ключ сессии для продолжения диалога
+            if (response.sessionKey) {
+                currentSessionKey = response.sessionKey;
+            }
+        });
+        
+        // Enter для отправки
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                document.getElementById('send-message').click();
+            }
+        });
+        
+        // Управление панелью чата
+        document.getElementById('toggle-chat').addEventListener('click', () => {
+            const panel = document.getElementById('chat-panel');
+            panel.classList.toggle('collapsed');
+        });
+        
+        document.getElementById('close-chat').addEventListener('click', () => {
+            document.getElementById('chat-panel').classList.add('collapsed');
+        });
+        
+        // Запуск
+        loadAgents();
+
+        updateCanvasTransform();
+        // --- Масштабирование колесом мыши ---
+        container.addEventListener('wheel', (e) => {
+            // Получаем позицию курсора относительно контейнера
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Текущая позиция канваса в мировых координатах
+            const worldX = (mouseX - panX) / scale;
+            const worldY = (mouseY - panY) / scale;
+            
+            // Изменяем масштаб (колёсико вверх — приближаем)
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            let newScale = scale + delta;
+            newScale = Math.min(Math.max(newScale, 0.3), 3); // ограничиваем от 0.3 до 3
+            
+            // Если масштаб изменился, пересчитываем панорамирование,
+            // чтобы точка под курсором осталась на месте
+            if (newScale !== scale) {
+                panX = mouseX - (worldX * newScale);
+                panY = mouseY - (worldY * newScale);
+                scale = newScale;
+                updateCanvasTransform();
+            }
+            
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
