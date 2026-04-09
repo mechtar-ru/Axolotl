@@ -14,6 +14,7 @@
       </ul>
       <button @click="createNewSchema">+ Новая схема</button>
       <button @click="showImport = true" class="import-btn">📥 Импорт</button>
+      <button @click="goToSettings" class="settings-btn">⚙️ Настройки</button>
     </div>
 
     <div class="main-content">
@@ -95,6 +96,10 @@ function selectSchema(schema: WorkflowSchema) {
 async function createNewSchema() {
   const created = await schemaStore.createSchema('Новая схема');
   router.push({ name: 'schema', params: { id: created.id } });
+}
+
+function goToSettings() {
+  router.push({ name: 'settings' });
 }
 
 async function handleSave() {
@@ -310,6 +315,15 @@ body {
 
 .import-btn:hover {
   background: #16213e;
+}
+
+.settings-btn {
+  background: #2d2d44 !important;
+  margin-top: auto;
+}
+
+.settings-btn:hover {
+  background: #3d3d5c !important;
 }
 
 .main-content {

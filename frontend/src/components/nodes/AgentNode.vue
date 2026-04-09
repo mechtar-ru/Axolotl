@@ -1,5 +1,5 @@
 <template>
-  <div class="node agent-node" :class="{ selected: isSelected }" :style="{ borderColor: statusColor, position: 'relative' }">
+  <div class="node agent-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" :style="{ position: 'relative' }">
     <button 
       v-if="isSelected" 
       class="delete-btn" 
@@ -45,10 +45,10 @@
         v-model="localModel"
         class="model-select"
       >
-        <option value="local">local (Ollama)</option>
-        <option value="openai">openai (GPT-4)</option>
-        <option value="anthropic">anthropic (Claude)</option>
-        <option value="deepseek">deepseek</option>
+        <option value="ollama">Ollama (local)</option>
+        <option value="openai">OpenAI (GPT-4)</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="deepseek">DeepSeek</option>
       </select>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
@@ -93,7 +93,7 @@ const expanded = ref(false);
 const editingName = ref(false);
 const localName = ref(props.data.name);
 const localPrompt = ref(props.data.userPrompt || '');
-const localModel = ref(props.data.model || 'local');
+const localModel = ref(props.data.model || 'ollama');
 const nameInput = ref<HTMLInputElement | null>(null);
 
 const isSelected = computed(() => props.selected === true);
@@ -167,6 +167,28 @@ function handleDelete() {
 }
 .agent-node {
   border-color: #6c63ff;
+  transition: box-shadow 0.3s ease;
+}
+.node-running {
+  animation: pulse-running 1.5s ease-in-out infinite;
+}
+.node-completed {
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.5);
+}
+.node-failed {
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.5);
+  animation: shake 0.4s ease-in-out;
+}
+@keyframes pulse-running {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 165, 0, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(255, 165, 0, 0.7); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
 }
 .agent-node.selected {
   border-color: #ff6b6b;

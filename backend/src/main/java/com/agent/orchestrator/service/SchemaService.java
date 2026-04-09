@@ -2,8 +2,11 @@ package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.repository.SchemaRepository;
+import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.springframework.stereotype.Service;
+import org.graalvm.polyglot.Context;
+import org.graalvm.polyglot.Value;
 
 import java.time.Instant;
 import java.util.*;
@@ -16,17 +19,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SchemaService {
 
     private final SchemaRepository schemaRepository;
-    private final OpenClawClient openClawClient;
+    private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
+    private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
 
-    // Единый конструктор для Spring
     public SchemaService(SchemaRepository schemaRepository,
-            OpenClawClient openClawClient,
+            LlmService llmService,
             ExecutionWebSocketHandler webSocketHandler) {
         this.schemaRepository = schemaRepository;
-        this.openClawClient = openClawClient;
+        this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         initDemoSchema();
     }
@@ -135,64 +138,83 @@ public class SchemaService {
         System.out.println("▶️ Выполнение схемы: " + schema.getName());
         long startTime = System.currentTimeMillis();
 
-        // Начало выполнения схемы
+        conditionResults.keySet().removeIf(k -> k.startsWith(schema.getId() + ":"));
+
         if (webSocketHandler != null) {
-            webSocketHandler.sendProgress(schema.getId(), "system", "STARTED", 0, "Выполнение начано");
+            webSocketHandler.sendProgress(schema.getId(), "system", "STARTED", 0, "Выполнение начато");
             webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName(), null);
         }
 
-        // Получить упорядоченный список узлов (топологическая сортировка)
-        List<Node> sortedNodes = getExecutionOrder(schema);
+        // Получить уровни выполнения (узлы на одном уровне можно запускать параллельно)
+        List<List<Node>> levels = getExecutionLevels(schema);
+        Set<String> skippedNodes = computeSkippedNodes(schema);
 
-        // Выполнение узлов в правильном порядке
-        if (sortedNodes != null && !sortedNodes.isEmpty()) {
-            int completedCount = 0;
-            for (Node node : sortedNodes) {
-                if (cancelFlag.get()) {
-                    break;
+        int totalNodes = levels.stream().mapToInt(List::size).sum();
+        int completedCount = 0;
+
+        for (List<Node> level : levels) {
+            if (cancelFlag.get()) break;
+
+            List<Node> executable = level.stream()
+                    .filter(node -> !skippedNodes.contains(node.getId()))
+                    .filter(node -> !cancelFlag.get())
+                    .toList();
+
+            // Логирование пропущенных узлов
+            for (Node node : level) {
+                if (skippedNodes.contains(node.getId())) {
+                    System.out.println("⏭ Пропуск узла (невыполненная ветка условия): " + node.getId());
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schema.getId(), "info",
+                                "Пропуск узла (невыполненная ветка): " + node.getName(), node.getId());
+                    }
                 }
-                long nodeStartTime = System.currentTimeMillis();
+            }
+
+            if (executable.isEmpty()) continue;
+
+            // Параллельное выполнение узлов одного уровня
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+            for (Node node : executable) {
                 System.out.println("⏸ Начало выполнения узла: " + node.getId() + " (" + node.getName() + ")");
-
-                // Отправка лога о начале выполнения узла
                 if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schema.getId(), "info", "Начало выполнения узла: " + node.getName(), node.getId());
+                    webSocketHandler.sendLog(schema.getId(), "info",
+                            "Начало выполнения узла: " + node.getName(), node.getId());
                 }
 
-                executeNode(node, schema.getId(), cancelFlag);
+                final long nodeStartTime = System.currentTimeMillis();
+                futures.add(CompletableFuture.runAsync(() -> {
+                    executeNode(node, schema.getId(), cancelFlag);
+                    long nodeTime = System.currentTimeMillis() - nodeStartTime;
+                    System.out.println("✅ Узел завершен: " + node.getId() + " (" + node.getName() + ") - " + nodeTime + "мс");
+                }));
+            }
 
-                long nodeTime = System.currentTimeMillis() - nodeStartTime;
-                completedCount++;
+            // Дождаться завершения всех узлов уровня
+            try {
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            } catch (Exception e) {
+                System.err.println("❌ Ошибка при параллельном выполнении уровня: " + e.getMessage());
+            }
 
-                // Отправка метрик после каждого узла
-                long currentTime = System.currentTimeMillis() - startTime;
-                double nodesPerSecond = currentTime > 0 ? (double) completedCount / (currentTime / 1000.0) : 0;
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendMetrics(schema.getId(), sortedNodes.size(), completedCount, currentTime, nodesPerSecond);
-                    webSocketHandler.sendLog(schema.getId(), "success", "Узел завершен: " + node.getName() + " (" + nodeTime + "мс)", node.getId());
-                }
+            completedCount += executable.size();
 
-                System.out.println("✅ Узел завершен: " + node.getId() + " (" + node.getName() + ") - " + nodeTime + "мс");
-
-                // Гарантированное ожидание завершения узла перед следующим
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
+            // Метрики после каждого уровня
+            long currentTime = System.currentTimeMillis() - startTime;
+            double nodesPerSecond = currentTime > 0 ? (double) completedCount / (currentTime / 1000.0) : 0;
+            if (webSocketHandler != null) {
+                webSocketHandler.sendMetrics(schema.getId(), totalNodes, completedCount, currentTime, nodesPerSecond);
+                for (Node node : executable) {
+                    webSocketHandler.sendLog(schema.getId(), "success",
+                            "Узел завершен: " + node.getName(), node.getId());
                 }
             }
         }
 
-        // Подсчет завершенных узлов
-        int nodesCompleted = sortedNodes != null ? sortedNodes.size() : 0;
-        if (cancelFlag.get()) {
-            // Если выполнение было отменено, считаем только завершенные узлы
-            nodesCompleted = (int) sortedNodes.stream()
-                    .filter(n -> n.getStatus() == Node.NodeStatus.COMPLETED)
-                    .count();
-        }
-
+        // Итоговый подсчёт
+        int nodesCompleted = (int) schema.getNodes().stream()
+                .filter(n -> n.getStatus() == Node.NodeStatus.COMPLETED)
+                .count();
         long totalTime = System.currentTimeMillis() - startTime;
 
         if (cancelFlag.get()) {
@@ -206,31 +228,71 @@ public class SchemaService {
                 webSocketHandler.sendComplete(schema.getId(), totalTime, nodesCompleted);
                 double finalNodesPerSecond = totalTime > 0 ? (double) nodesCompleted / (totalTime / 1000.0) : 0;
                 webSocketHandler.sendMetrics(schema.getId(), nodesCompleted, nodesCompleted, totalTime, finalNodesPerSecond);
-                webSocketHandler.sendLog(schema.getId(), "success", "Выполнение схемы завершено: " + totalTime + "мс, узлов: " + nodesCompleted, null);
+                webSocketHandler.sendLog(schema.getId(), "success",
+                        "Выполнение схемы завершено: " + totalTime + "мс, узлов: " + nodesCompleted, null);
             }
             System.out.println("✅ Выполнение схемы завершено: " + schema.getName() +
-                    " (" + totalTime + "мс, " + nodesCompleted + "/" +
-                    (sortedNodes != null ? sortedNodes.size() : 0) + " узлов)");
+                    " (" + totalTime + "мс, " + nodesCompleted + "/" + totalNodes + " узлов)");
         }
     }
 
-    private List<Node> getExecutionOrder(WorkflowSchema schema) {
+    /**
+     * Определяет узлы, которые нужно пропустить из-за ветвления условий.
+     * Если узел условия дал результат "true", пропускаем узлы, подключённые к порту "false", и наоборот.
+     */
+    private Set<String> computeSkippedNodes(WorkflowSchema schema) {
+        Set<String> skipped = new HashSet<>();
+        if (schema.getEdges() == null || schema.getNodes() == null) {
+            return skipped;
+        }
+        for (Edge edge : schema.getEdges()) {
+            if (edge.getSourcePort() == null || edge.getSourcePort().isEmpty()) {
+                continue;
+            }
+            String key = schema.getId() + ":" + edge.getSource();
+            String conditionResult = conditionResults.get(key);
+            if (conditionResult == null) {
+                continue;
+            }
+            // Если условие = true, пропускаем узлы на ветке "false", и наоборот
+            if (!conditionResult.equals(edge.getSourcePort())) {
+                skipped.add(edge.getTarget());
+            }
+        }
+        // Рекурсивно распространяем пропуск на потомков пропущенных узлов
+        Set<String> toAdd = new HashSet<>();
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (Edge edge : schema.getEdges()) {
+                if (skipped.contains(edge.getSource()) && !skipped.contains(edge.getTarget())) {
+                    toAdd.add(edge.getTarget());
+                    changed = true;
+                }
+            }
+            skipped.addAll(toAdd);
+            toAdd.clear();
+        }
+        return skipped;
+    }
+
+    /**
+     * Возвращает узлы сгруппированные по уровням (уровни выполнения).
+     * Узлы на одном уровне не имеют зависимостей друг от друга и могут выполняться параллельно.
+     */
+    private List<List<Node>> getExecutionLevels(WorkflowSchema schema) {
         if (schema.getNodes() == null || schema.getNodes().isEmpty()) {
             return new ArrayList<>();
         }
 
-        List<Node> result = new ArrayList<>();
-        Set<String> visited = new HashSet<>();
         Map<String, Node> nodeMap = new HashMap<>();
         Map<String, Set<String>> incomingEdges = new HashMap<>();
 
-        // Инициализация
         for (Node node : schema.getNodes()) {
             nodeMap.put(node.getId(), node);
             incomingEdges.put(node.getId(), new HashSet<>());
         }
 
-        // Построение графа входящих зависимостей
         if (schema.getEdges() != null) {
             for (Edge edge : schema.getEdges()) {
                 if (incomingEdges.containsKey(edge.getTarget())) {
@@ -239,55 +301,103 @@ public class SchemaService {
             }
         }
 
-        // Топологическая сортировка (Kahn's algorithm)
-        Queue<String> queue = new LinkedList<>();
+        // Kahn's algorithm с группировкой по уровням
+        // Каждый уровень — все узлы, чьи зависимости уже выполнены на предыдущих уровнях
+        List<List<Node>> levels = new ArrayList<>();
+        Set<String> visited = new HashSet<>();
 
-        // Найти все узлы ohne входящих зависимостей
-        for (Node node : schema.getNodes()) {
-            if (incomingEdges.get(node.getId()).isEmpty()) {
-                queue.add(node.getId());
-                System.out.println("📍 Узел без входящих зависимостей (можно начать): " + node.getId());
+        // Копия incoming edges для мутации
+        Map<String, Set<String>> remainingDeps = new HashMap<>();
+        incomingEdges.forEach((k, v) -> remainingDeps.put(k, new HashSet<>(v)));
+
+        while (visited.size() < schema.getNodes().size()) {
+            List<Node> currentLevel = new ArrayList<>();
+
+            for (Node node : schema.getNodes()) {
+                if (!visited.contains(node.getId()) && remainingDeps.get(node.getId()).isEmpty()) {
+                    currentLevel.add(node);
+                }
             }
+
+            if (currentLevel.isEmpty()) {
+                // Остались только узлы с циклическими зависимостями
+                System.out.println("⚠️ Обнаружены циклические зависимости!");
+                List<Node> cyclic = new ArrayList<>();
+                for (Node node : schema.getNodes()) {
+                    if (!visited.contains(node.getId())) {
+                        cyclic.add(node);
+                        visited.add(node.getId());
+                    }
+                }
+                if (!cyclic.isEmpty()) levels.add(cyclic);
+                break;
+            }
+
+            for (Node node : currentLevel) {
+                visited.add(node.getId());
+                // Убрать зависимости от этого узла у потомков
+                for (String depNodeId : nodeMap.keySet()) {
+                    remainingDeps.get(depNodeId).remove(node.getId());
+                }
+            }
+
+            levels.add(currentLevel);
         }
 
-        while (!queue.isEmpty()) {
-            String nodeId = queue.poll();
-            Node node = nodeMap.get(nodeId);
-            if (node != null) {
-                result.add(node);
-                visited.add(nodeId);
+        System.out.println("📊 Уровни выполнения:");
+        for (int i = 0; i < levels.size(); i++) {
+            System.out.println("  Уровень " + i + ": " +
+                    levels.get(i).stream().map(n -> n.getName()).reduce((a, b) -> a + ", " + b).orElse(""));
+        }
 
-                // Найти все зависимые узлы
-                for (String depNodeId : nodeMap.keySet()) {
-                    Set<String> deps = incomingEdges.get(depNodeId);
-                    if (deps != null && deps.contains(nodeId)) {
-                        deps.remove(nodeId);
-                        if (deps.isEmpty()) {
-                            queue.add(depNodeId);
-                            System.out.println("📍 Зависимости выполнены для: " + depNodeId);
-                        }
+        return levels;
+    }
+
+    private boolean evaluateCondition(String expression, java.util.Map<String, Object> context) {
+        if (expression == null || expression.isBlank()) {
+            return false;
+        }
+        try (Context ctx = Context.newBuilder("js")
+                .allowAllAccess(false)
+                .build()) {
+            Value bindings = ctx.getBindings("js");
+            context.forEach(bindings::putMember);
+            Value result = ctx.eval("js", "Boolean(" + expression + ")");
+            return result.asBoolean();
+        } catch (Exception e) {
+            System.err.println("Ошибка вычисления условия '" + expression + "': " + e.getMessage());
+            return false;
+        }
+    }
+
+    private java.util.Map<String, Object> collectPredecessorResults(WorkflowSchema schema, String nodeId) {
+        java.util.Map<String, Object> results = new java.util.HashMap<>();
+        if (schema.getEdges() == null || schema.getNodes() == null) {
+            return results;
+        }
+        for (Edge edge : schema.getEdges()) {
+            if (nodeId.equals(edge.getTarget())) {
+                String sourceId = edge.getSource();
+                for (Node n : schema.getNodes()) {
+                    if (sourceId.equals(n.getId()) && n.getData() != null && n.getData().getResult() != null) {
+                        results.put(n.getName().replaceAll("\\s+", "_"), n.getData().getResult());
                     }
                 }
             }
         }
+        return results;
+    }
 
-        // Если есть узлы, которые не были добавлены (циклическая зависимость)
-        if (result.size() < schema.getNodes().size()) {
-            System.out.println("⚠️ ВНИМАНИЕ: Обнаружены циклические зависимости или несвязанные узлы!");
-            for (Node node : schema.getNodes()) {
-                if (!visited.contains(node.getId())) {
-                    result.add(node);
-                    System.out.println("⚠️ Добавлен узел с циклической зависимостью: " + node.getId());
-                }
-            }
-        }
-
-        System.out.println("📊 Порядок выполнения узлов:");
-        for (int i = 0; i < result.size(); i++) {
-            System.out.println("  " + (i + 1) + ". " + result.get(i).getId() + " (" + result.get(i).getName() + ")");
-        }
-
-        return result;
+    /**
+     * Формирует текстовый блок контекста из результатов предшествующих узлов.
+     */
+    private String buildContextBlock(Map<String, Object> predecessorResults) {
+        if (predecessorResults.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        predecessorResults.forEach((name, value) -> {
+            sb.append("[").append(name).append("]: ").append(value).append("\n");
+        });
+        return sb.toString().trim();
     }
 
     private void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag) {
@@ -318,32 +428,101 @@ public class SchemaService {
             String result = "";
 
             if ("agent".equals(node.getType())) {
-                // 50%: Отправка запроса
+                // 50%: Отправка запроса к LLM
                 if (webSocketHandler != null) {
-                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Отправка запроса");
-                    webSocketHandler.sendLog(schemaId, "info", "Отправка запроса к AI", node.getId());
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Отправка запроса к AI");
+                    webSocketHandler.sendLog(schemaId, "info", "Отправка запроса к LLM", node.getId());
                 }
-                if (!sleepWithCancel(500, cancelFlag))
-                    return;
 
-                // Имитация вызова AI
                 String prompt = node.getData() != null && node.getData().getUserPrompt() != null
                         ? node.getData().getUserPrompt()
                         : "Анализируй данные";
-                result = "AI анализ: " + prompt.substring(0, Math.min(50, prompt.length())) + "...";
+                String model = node.getData() != null ? node.getData().getModel() : null;
+                String systemPrompt = node.getData() != null ? node.getData().getSystemPrompt() : null;
 
-                // 70%: Обработка ответа
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Обработка ответа");
-                    webSocketHandler.sendLog(schemaId, "info", "Обработка ответа от AI", node.getId());
+                // Подставить результаты предшественников в промпт
+                Map<String, Object> predecessorResults = collectPredecessorResults(
+                        schemaRepository.findById(schemaId), node.getId());
+                String contextBlock = buildContextBlock(predecessorResults);
+                if (!contextBlock.isEmpty()) {
+                    String effectiveSystem = (systemPrompt != null ? systemPrompt + "\n\n" : "") +
+                            "Контекст от предыдущих узлов:\n" + contextBlock;
+                    systemPrompt = effectiveSystem;
                 }
-                if (!sleepWithCancel(400, cancelFlag))
-                    return;
+
+                result = llmService.chat(model, systemPrompt, prompt, null);
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Ответ получен");
+                    webSocketHandler.sendLog(schemaId, "info", "Ответ от LLM получен", node.getId());
+                }
 
             } else if ("source".equals(node.getType())) {
-                result = "Данные из источника: " + node.getName();
+                // Используем реальные данные из SourceNode или дефолт
+                if (node.getData() != null && node.getData().getSourceData() != null && !node.getData().getSourceData().isEmpty()) {
+                    result = node.getData().getSourceData();
+                } else {
+                    result = "Данные из источника: " + node.getName();
+                }
                 if (!sleepWithCancel(300, cancelFlag))
                     return;
+
+            } else if ("condition".equals(node.getType())) {
+                String conditionExpr = node.getData() != null && node.getData().getCondition() != null
+                        ? node.getData().getCondition()
+                        : "true";
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Вычисление условия");
+                    webSocketHandler.sendLog(schemaId, "info", "Вычисление условия: " + conditionExpr, node.getId());
+                }
+                if (!sleepWithCancel(200, cancelFlag))
+                    return;
+
+                java.util.Map<String, Object> context = collectPredecessorResults(
+                        schemaRepository.findById(schemaId), node.getId());
+                boolean conditionResult = evaluateCondition(conditionExpr, context);
+                result = String.valueOf(conditionResult);
+                conditionResults.put(schemaId + ":" + node.getId(), result);
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Условие '" + conditionExpr + "' = " + conditionResult, node.getId());
+                }
+                if (!sleepWithCancel(200, cancelFlag))
+                    return;
+
+            } else if ("loop".equals(node.getType())) {
+                String loopCond = node.getData() != null && node.getData().getLoopCondition() != null
+                        ? node.getData().getLoopCondition()
+                        : "iterations < 10";
+                int maxIter = node.getData() != null ? node.getData().getMaxIterations() : 10;
+                if (maxIter <= 0) maxIter = 10;
+
+                int iterations = 0;
+                boolean shouldContinue = true;
+
+                while (shouldContinue && iterations < maxIter && !cancelFlag.get()) {
+                    iterations++;
+                    java.util.Map<String, Object> ctx = new java.util.HashMap<>();
+                    ctx.put("iterations", iterations);
+                    ctx.put("maxIterations", maxIter);
+                    // Добавить результаты предшественников
+                    ctx.putAll(collectPredecessorResults(schemaRepository.findById(schemaId), node.getId()));
+
+                    if (webSocketHandler != null) {
+                        int pct = (int) ((iterations / (double) maxIter) * 90);
+                        webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", pct,
+                                "Итерация " + iterations + "/" + maxIter);
+                        webSocketHandler.sendLog(schemaId, "info",
+                                "Итерация " + iterations + ": " + loopCond, node.getId());
+                    }
+
+                    shouldContinue = evaluateCondition(loopCond, ctx);
+                    if (!sleepWithCancel(200, cancelFlag)) return;
+                }
+
+                result = "Завершено за " + iterations + " итераций";
 
             } else if ("output".equals(node.getType())) {
                 result = "Результат сохранен: " + node.getName();

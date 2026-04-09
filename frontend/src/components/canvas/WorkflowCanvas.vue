@@ -24,10 +24,23 @@
       <Background />
       <Controls />
       <MiniMap />
-      
+
+      <div v-if="showSearch" class="search-panel">
+        <input
+          ref="searchInput"
+          v-model="searchQuery"
+          placeholder="Поиск узлов..."
+          class="search-input"
+          @keydown.escape="showSearch = false; searchQuery = ''"
+        />
+        <button class="search-close" @click="showSearch = false; searchQuery = ''">✕</button>
+      </div>
+
       <div class="toolbar-panel">
         <button @click="addNode('source')">📥 Source</button>
         <button @click="addNode('agent')">🤖 Agent</button>
+        <button @click="addNode('condition')">⚖️ Condition</button>
+        <button @click="addNode('loop')">🔄 Loop</button>
         <button @click="addNode('output')">📤 Output</button>
       </div>
     </VueFlow>
@@ -68,6 +81,8 @@ import type { WorkflowSchema, FlowNode, FlowEdge } from '../../types';
 import AgentNode from '../nodes/AgentNode.vue';
 import SourceNode from '../nodes/SourceNode.vue';
 import OutputNode from '../nodes/OutputNode.vue';
+import ConditionNode from '../nodes/ConditionNode.vue';
+import LoopNode from '../nodes/LoopNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
 import ExecutionPanel from '../execution/ExecutionPanel.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
@@ -89,6 +104,8 @@ const nodeTypes = {
   agent: AgentNode,
   source: SourceNode,
   output: OutputNode,
+  condition: ConditionNode,
+  loop: LoopNode,
 } as any;
 
 const edgeTypes = {
@@ -100,7 +117,52 @@ const selectedNodeId = ref<string | null>(null);
 const selectedEdgeId = ref<string | null>(null);
 const showDeleteConfirm = ref(false);
 const showExecutionPanel = ref(false);
+const showSearch = ref(false);
+const searchQuery = ref('');
 let nextNodeOffset = 0;
+const copiedNode = ref<FlowNode | null>(null);
+const searchInput = ref<HTMLInputElement | null>(null);
+
+// Undo/Redo
+const undoStack = ref<string[]>([]);
+const redoStack = ref<string[]>([]);
+const MAX_HISTORY = 50;
+let lastSnapshot = '';
+
+function snapshotState() {
+  const state = JSON.stringify({
+    nodes: props.schema.nodes || [],
+    edges: props.schema.edges || [],
+  });
+  return state;
+}
+
+function pushUndo() {
+  const snap = snapshotState();
+  if (snap === lastSnapshot) return;
+  undoStack.value.push(lastSnapshot || snap);
+  if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
+  redoStack.value = [];
+  lastSnapshot = snap;
+}
+
+function undo() {
+  if (undoStack.value.length === 0) return;
+  redoStack.value.push(snapshotState());
+  const prev = undoStack.value.pop()!;
+  const state = JSON.parse(prev);
+  lastSnapshot = JSON.stringify(state);
+  emit('update', { ...props.schema, nodes: state.nodes, edges: state.edges });
+}
+
+function redo() {
+  if (redoStack.value.length === 0) return;
+  undoStack.value.push(snapshotState());
+  const next = redoStack.value.pop()!;
+  const state = JSON.parse(next);
+  lastSnapshot = JSON.stringify(state);
+  emit('update', { ...props.schema, nodes: state.nodes, edges: state.edges });
+}
 
 const schemaStore = useSchemaStore();
 const { connect, disconnect, isConnected } = useWebSocket();
@@ -158,12 +220,19 @@ function resetExecutionPanel() {
   stopTimer();
 }
 
+function isSearchMatch(nodeName: string, nodeType: string): boolean {
+  if (!searchQuery.value) return false;
+  const q = searchQuery.value.toLowerCase();
+  return nodeName.toLowerCase().includes(q) || nodeType.toLowerCase().includes(q);
+}
+
 function convertToFlowElements() {
   const nodes: Node[] = (props.schema.nodes || []).map(node => ({
     id: node.id,
     type: node.type,
     position: node.position || { x: 100, y: 100 },
     selected: selectedNodeId.value === node.id,
+    class: isSearchMatch(node.name, node.type) ? 'search-match' : undefined,
     data: {
       ...node.data,
       name: node.name,
@@ -193,6 +262,8 @@ function convertToFlowElements() {
     source: edge.source,
     target: edge.target,
     type: 'custom',
+    sourceHandle: edge.sourcePort || undefined,
+    targetHandle: edge.targetPort || undefined,
     markerEnd: { type: MarkerType.ArrowClosed },
     selected: selectedEdgeId.value === edge.id,
     data: {
@@ -207,6 +278,7 @@ function convertToFlowElements() {
 }
 
 function deleteNode(nodeId: string) {
+  pushUndo();
   const updatedNodes = (props.schema.nodes || []).filter(n => n.id !== nodeId);
   const updatedEdges = (props.schema.edges || []).filter(e => 
     e.source !== nodeId && e.target !== nodeId
@@ -218,6 +290,7 @@ function deleteNode(nodeId: string) {
 }
 
 function deleteEdge(edgeId: string) {
+  pushUndo();
   console.log('Deleting edge:', edgeId);
   const updatedEdges = (props.schema.edges || []).filter(e => e.id !== edgeId);
   emit('update', { ...props.schema, edges: updatedEdges });
@@ -267,11 +340,85 @@ function deleteSchema() {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (event.key === 'Delete' || event.key === 'Del' || event.key === 'Backspace') {
+  const mod = event.metaKey || event.ctrlKey;
+
+  if (event.key === 'Delete' || event.key === 'Del' || (event.key === 'Backspace' && !mod)) {
     if (event.key === 'Backspace') {
       event.preventDefault();
     }
     deleteSelected();
+    return;
+  }
+
+  // Cmd/Ctrl + S — сохранить
+  if (mod && event.key === 's') {
+    event.preventDefault();
+    saveSchema();
+    return;
+  }
+
+  // Cmd/Ctrl + Z — undo
+  if (mod && event.key === 'z' && !event.shiftKey) {
+    event.preventDefault();
+    undo();
+    return;
+  }
+
+  // Cmd/Ctrl + Shift + Z — redo
+  if (mod && event.key === 'z' && event.shiftKey) {
+    event.preventDefault();
+    redo();
+    return;
+  }
+
+  // Cmd/Ctrl + F — поиск
+  if (mod && event.key === 'f') {
+    event.preventDefault();
+    showSearch.value = !showSearch.value;
+    if (!showSearch.value) searchQuery.value = '';
+    return;
+  }
+
+  // Escape — закрыть поиск
+  if (event.key === 'Escape' && showSearch.value) {
+    showSearch.value = false;
+    searchQuery.value = '';
+    return;
+  }
+
+  // Cmd/Ctrl + Enter — выполнить
+  if (mod && event.key === 'Enter') {
+    event.preventDefault();
+    executeSchema();
+    return;
+  }
+
+  // Cmd/Ctrl + C — копировать узел
+  if (mod && event.key === 'c' && selectedNodeId.value) {
+    event.preventDefault();
+    const node = (props.schema.nodes || []).find(n => n.id === selectedNodeId.value);
+    if (node) {
+      copiedNode.value = { ...node, data: { ...node.data } };
+    }
+    return;
+  }
+
+  // Cmd/Ctrl + V — вставить узел
+  if (mod && event.key === 'v' && copiedNode.value) {
+    event.preventDefault();
+    pasteNode();
+    return;
+  }
+
+  // Cmd/Ctrl + D — дублировать (аналог C+V за один шаг)
+  if (mod && event.key === 'd' && selectedNodeId.value) {
+    event.preventDefault();
+    const node = (props.schema.nodes || []).find(n => n.id === selectedNodeId.value);
+    if (node) {
+      copiedNode.value = { ...node, data: { ...node.data } };
+      pasteNode();
+    }
+    return;
   }
 }
 
@@ -288,7 +435,13 @@ onUnmounted(() => {
 
 watch(() => props.schema, () => {
   convertToFlowElements();
+  const snap = snapshotState();
+  if (!lastSnapshot) lastSnapshot = snap;
 }, { deep: true, immediate: true });
+
+watch(searchQuery, () => {
+  convertToFlowElements();
+});
 
 function generateUniqueName(baseName: string): string {
   const names = (props.schema.nodes || []).map(n => n.name);
@@ -302,6 +455,8 @@ function addNode(type: string) {
   const nameMap = {
     source: 'Входные данные',
     agent: 'Аналитик',
+    condition: 'Условие',
+    loop: 'Цикл',
     output: 'Результат'
   };
   const baseName = nameMap[type as keyof typeof nameMap] || 'Новый узел';
@@ -319,17 +474,45 @@ function addNode(type: string) {
   
   if (type === 'agent') newNode.data.userPrompt = '';
   if (type === 'source') newNode.data.sourceData = '';
-  
+  if (type === 'condition') newNode.data.condition = '';
+  if (type === 'loop') { newNode.data.loopCondition = ''; newNode.data.maxIterations = 10; }
+
   nextNodeOffset++;
+  pushUndo();
   const updatedNodes = [...(props.schema.nodes || []), newNode];
   emit('update', { ...props.schema, nodes: updatedNodes });
 }
 
+function pasteNode() {
+  if (!copiedNode.value) return;
+  const source = copiedNode.value;
+  const uniqueName = generateUniqueName(source.name);
+  const pasted: FlowNode = {
+    ...source,
+    id: `node-${Date.now()}-${Math.random()}`,
+    name: uniqueName,
+    position: {
+      x: (source.position?.x || 250) + 40,
+      y: (source.position?.y || 250) + 40,
+    },
+    data: { ...source.data },
+    status: 'idle',
+  };
+  delete pasted.progress;
+  delete pasted.executionStatus;
+  nextNodeOffset++;
+  const updatedNodes = [...(props.schema.nodes || []), pasted];
+  emit('update', { ...props.schema, nodes: updatedNodes });
+}
+
 function onConnect(connection: Connection) {
+  pushUndo();
   const newEdge: FlowEdge = {
     id: `edge-${Date.now()}`,
     source: connection.source || '',
     target: connection.target || '',
+    sourcePort: connection.sourceHandle || undefined,
+    targetPort: connection.targetHandle || undefined,
     type: 'data',
   };
   const updatedEdges = [...(props.schema.edges || []), newEdge];
@@ -525,7 +708,8 @@ function updateNodeStatus(nodeId: string, status: 'idle' | 'running' | 'complete
 function onNodeDragStop(event: NodeDragEvent) {
   const node = event.node;
   if (!node || !node.id) return;
-  
+
+  pushUndo();
   const currentNodes = props.schema.nodes || [];
   const updatedNodes = currentNodes.map(n => {
     if (n.id === node.id) {
@@ -539,10 +723,19 @@ function onNodeDragStop(event: NodeDragEvent) {
 function editSchemaName() {
   const newName = prompt('Введите новое имя схемы:', props.schema.name);
   if (newName && newName.trim()) {
+    pushUndo();
     emit('update', { ...props.schema, name: newName.trim() });
   }
 }
 </script>
+
+<style>
+/* Глобальный стиль для подсветки найденных узлов (scoped не работает внутри Vue Flow) */
+.vue-flow .search-match {
+  box-shadow: 0 0 0 3px #6c63ff, 0 0 20px rgba(108, 99, 255, 0.4) !important;
+  z-index: 100;
+}
+</style>
 
 <style scoped>
 .canvas-container {
@@ -753,5 +946,36 @@ function editSchemaName() {
     box-shadow: 0 0 0 0 rgba(108, 99, 255, 0);
     transform: scale(1);
   }
+}
+.search-panel {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1100;
+  display: flex;
+  gap: 4px;
+}
+.search-input {
+  width: 280px;
+  padding: 8px 12px;
+  background: #2d2d44;
+  border: 1px solid #6c63ff;
+  border-radius: 8px;
+  color: #eee;
+  font-size: 14px;
+  outline: none;
+}
+.search-input:focus {
+  border-color: #8b83ff;
+}
+.search-close {
+  background: #dc3545;
+  border: none;
+  color: white;
+  border-radius: 8px;
+  width: 36px;
+  cursor: pointer;
+  font-size: 14px;
 }
 </style>

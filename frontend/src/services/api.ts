@@ -55,9 +55,28 @@ export const agentApi = {
     const response = await api.get('/agents');
     return response.data;
   },
-  
+
   async sendMessage(agentId: string, message: string, sessionKey?: string): Promise<{ reply: string; sessionKey: string }> {
     const response = await api.post(`/agents/${agentId}/chat`, { message, sessionKey });
+    return response.data;
+  },
+};
+
+export interface ProviderInfo {
+  name: string;
+  available: boolean;
+  baseUrl: string;
+  models: string[];
+}
+
+export const settingsApi = {
+  async getProviders(): Promise<ProviderInfo[]> {
+    const response = await api.get('/settings/providers');
+    return response.data;
+  },
+
+  async getProviderModels(providerName: string): Promise<string[]> {
+    const response = await api.get(`/settings/providers/${providerName}/models`);
     return response.data;
   },
 };

@@ -18,6 +18,9 @@ export interface NodeData {
   config?: Record<string, any>;
   messages?: Message[];
   result?: string;
+  condition?: string;
+  loopCondition?: string;
+  maxIterations?: number;
 }
 
 export interface SourceItem {
@@ -29,7 +32,7 @@ export interface SourceItem {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule';
   name: string;
   position: Position;
   data: NodeData;

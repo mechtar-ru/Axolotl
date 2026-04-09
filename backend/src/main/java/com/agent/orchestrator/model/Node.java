@@ -74,29 +74,46 @@ public class Node {
     public static class NodeData {
         private String systemPrompt;
         private String userPrompt;
+        private String sourceData;
         private String model;
         private Map<String, Object> config;
         private List<Message> messages;
         private String result;
-        
+        private String condition;
+
         // Геттеры и сеттеры
         public String getSystemPrompt() { return systemPrompt; }
         public void setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; }
-        
+
         public String getUserPrompt() { return userPrompt; }
         public void setUserPrompt(String userPrompt) { this.userPrompt = userPrompt; }
-        
+
+        public String getSourceData() { return sourceData; }
+        public void setSourceData(String sourceData) { this.sourceData = sourceData; }
+
         public String getModel() { return model; }
         public void setModel(String model) { this.model = model; }
-        
+
         public Map<String, Object> getConfig() { return config; }
         public void setConfig(Map<String, Object> config) { this.config = config; }
-        
+
         public List<Message> getMessages() { return messages; }
         public void setMessages(List<Message> messages) { this.messages = messages; }
-        
+
         public String getResult() { return result; }
         public void setResult(String result) { this.result = result; }
+
+        public String getCondition() { return condition; }
+        public void setCondition(String condition) { this.condition = condition; }
+
+        private String loopCondition;
+        private int maxIterations;
+
+        public String getLoopCondition() { return loopCondition; }
+        public void setLoopCondition(String loopCondition) { this.loopCondition = loopCondition; }
+
+        public int getMaxIterations() { return maxIterations; }
+        public void setMaxIterations(int maxIterations) { this.maxIterations = maxIterations; }
     }
     
     public static class Message {

@@ -1,5 +1,5 @@
 <template>
-  <div class="node output-node" :class="{ selected: isSelected }" style="position: relative">
+  <div class="node output-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
     <button 
       v-if="isSelected" 
       class="delete-btn" 
@@ -26,6 +26,7 @@
         @blur="finishEditName"
         @keyup.enter="finishEditName"
       />
+      <span class="node-status" :style="{ background: statusColor }"></span>
       <span class="execution-icon">{{ executionIcon }}</span>
     </div>
     <div v-if="props.data.result" class="node-content">
@@ -65,6 +66,14 @@ const localName = ref(props.data.name);
 const nameInput = ref<HTMLInputElement | null>(null);
 
 const isSelected = computed(() => props.selected === true);
+const statusColor = computed(() => {
+  switch (props.data.executionStatus) {
+    case 'running': return '#ffa500';
+    case 'completed': return '#00ff00';
+    case 'failed': return '#ff0000';
+    default: return '#888';
+  }
+});
 const executionIcon = computed(() => {
   switch (props.data.executionStatus) {
     case 'running': return '⏳';
@@ -104,6 +113,28 @@ function handleDelete() {
   border-color: #ff9800;
   position: relative;
   background: #2d2d44;
+  transition: box-shadow 0.3s ease;
+}
+.node-running {
+  animation: pulse-running 1.5s ease-in-out infinite;
+}
+.node-completed {
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.5);
+}
+.node-failed {
+  box-shadow: 0 0 12px rgba(255, 0, 0, 0.5);
+  animation: shake 0.4s ease-in-out;
+}
+@keyframes pulse-running {
+  0%, 100% { box-shadow: 0 0 4px rgba(255, 165, 0, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(255, 165, 0, 0.7); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
 }
 .output-node.selected {
   border-color: #6c63ff;
@@ -169,6 +200,11 @@ function handleDelete() {
 .execution-icon {
   font-size: 14px;
   margin-left: 4px;
+}
+.node-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 .node-content {
   padding: 10px;

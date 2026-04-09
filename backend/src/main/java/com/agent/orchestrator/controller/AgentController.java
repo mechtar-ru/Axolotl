@@ -2,6 +2,7 @@ package com.agent.orchestrator.controller;
 
 import com.agent.orchestrator.model.Agent;
 import com.agent.orchestrator.model.WorkflowSchema;
+import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.service.AgentService;
 import com.agent.orchestrator.service.SchemaService;
 import org.springframework.web.bind.annotation.*;
@@ -17,10 +18,12 @@ public class AgentController {
 
     private final AgentService agentService;
     private final SchemaService schemaService;
+    private final LlmService llmService;
 
-    public AgentController(AgentService agentService, SchemaService schemaService) {
+    public AgentController(AgentService agentService, SchemaService schemaService, LlmService llmService) {
         this.agentService = agentService;
         this.schemaService = schemaService;
+        this.llmService = llmService;
     }
 
     @GetMapping("/agents")
@@ -89,7 +92,23 @@ public class AgentController {
     }
 
     @GetMapping("/health")
-    public Map<String, String> health() {
-        return Map.of("status", "ok", "message", "Axolotl работает!");
+    public Map<String, Object> health() {
+        Map<String, Object> result = new HashMap<>();
+        result.put("status", "ok");
+        result.put("message", "Axolotl работает!");
+        result.put("ollama", llmService.isProviderAvailable("ollama"));
+        return result;
+    }
+
+    // === Settings ===
+
+    @GetMapping("/settings/providers")
+    public List<Map<String, Object>> getProviders() {
+        return llmService.getProvidersInfo();
+    }
+
+    @GetMapping("/settings/providers/{name}/models")
+    public List<String> getProviderModels(@PathVariable String name) {
+        return llmService.listModels(name);
     }
 }

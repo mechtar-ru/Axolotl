@@ -5,7 +5,13 @@ spring:
   main:
     allow-circular-references: true
 
-# Логирование
+axolotl:
+  llm:
+    ollama:
+      base-url: http://localhost:11434
+      default-model: gemma4:e2b
+      timeout: 120
+
 logging:
   level:
     com.agent.orchestrator: DEBUG
