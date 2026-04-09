@@ -1,63 +1,59 @@
-import { WorkflowSchema, Agent } from '../types';
+import axios from 'axios';
+import type { WorkflowSchema, Agent } from '../types';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
-export const api = {
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const schemaApi = {
   // Схемы
   async getSchemas(): Promise<WorkflowSchema[]> {
-    const response = await fetch(`${API_BASE_URL}/schemas`);
-    return response.json();
+    const response = await api.get('/schemas');
+    return response.data;
   },
   
   async getSchema(id: string): Promise<WorkflowSchema> {
-    const response = await fetch(`${API_BASE_URL}/schemas/${id}`);
-    return response.json();
+    const response = await api.get(`/schemas/${id}`);
+    return response.data;
   },
   
   async createSchema(schema: WorkflowSchema): Promise<WorkflowSchema> {
-    const response = await fetch(`${API_BASE_URL}/schemas`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(schema),
-    });
-    return response.json();
+    const response = await api.post('/schemas', schema);
+    return response.data;
   },
   
   async updateSchema(id: string, schema: WorkflowSchema): Promise<WorkflowSchema> {
-    const response = await fetch(`${API_BASE_URL}/schemas/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(schema),
-    });
-    return response.json();
+    const response = await api.put(`/schemas/${id}`, schema);
+    return response.data;
   },
   
   async deleteSchema(id: string): Promise<void> {
-    await fetch(`${API_BASE_URL}/schemas/${id}`, { method: 'DELETE' });
+    await api.delete(`/schemas/${id}`);
   },
   
   async executeSchema(id: string): Promise<void> {
-    await fetch(`${API_BASE_URL}/schemas/${id}/execute`, { method: 'POST' });
+    await api.post(`/schemas/${id}/execute`);
   },
   
   async exportToMermaid(id: string): Promise<string> {
-    const response = await fetch(`${API_BASE_URL}/schemas/${id}/export/mermaid`);
-    const data = await response.json();
-    return data.mermaid;
+    const response = await api.get(`/schemas/${id}/export/mermaid`);
+    return response.data.mermaid;
   },
-  
-  // Агенты
+};
+
+export const agentApi = {
   async getAgents(): Promise<Agent[]> {
-    const response = await fetch(`${API_BASE_URL}/agents`);
-    return response.json();
+    const response = await api.get('/agents');
+    return response.data;
   },
   
   async sendMessage(agentId: string, message: string, sessionKey?: string): Promise<{ reply: string; sessionKey: string }> {
-    const response = await fetch(`${API_BASE_URL}/agents/${agentId}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, sessionKey }),
-    });
-    return response.json();
+    const response = await api.post(`/agents/${agentId}/chat`, { message, sessionKey });
+    return response.data;
   },
 };

@@ -12,14 +12,22 @@ export interface Message {
 export interface NodeData {
   systemPrompt?: string;
   userPrompt?: string;
-  sourceData?: string;  // Добавляем sourceData
+  sourceData?: string;
+  sources?: SourceItem[];
   model?: string;
   config?: Record<string, any>;
   messages?: Message[];
   result?: string;
 }
 
-export interface Node {
+export interface SourceItem {
+  id: string;
+  type: 'file' | 'database' | 'text';
+  name: string;
+  content: string;
+}
+
+export interface FlowNode {
   id: string;
   type: 'source' | 'agent' | 'output' | 'condition';
   name: string;
@@ -28,7 +36,7 @@ export interface Node {
   status?: 'idle' | 'running' | 'completed' | 'failed';
 }
 
-export interface Edge {
+export interface FlowEdge {
   id: string;
   source: string;
   target: string;
@@ -42,8 +50,8 @@ export interface WorkflowSchema {
   name: string;
   description: string;
   version: string;
-  nodes: Node[];
-  edges: Edge[];
+  nodes: FlowNode[];
+  edges: FlowEdge[];
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;

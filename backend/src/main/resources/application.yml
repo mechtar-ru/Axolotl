@@ -1,0 +1,12 @@
+server:
+  port: 8080
+
+spring:
+  main:
+    allow-circular-references: true
+
+# Логирование
+logging:
+  level:
+    com.agent.orchestrator: DEBUG
+    org.springframework.web: INFO

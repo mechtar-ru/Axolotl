@@ -1,49 +1,30 @@
-# Java
-target/
-*.class
-*.jar
-*.war
-*.ear
-*.log
-
-# Maven
-log/
-.pm/
-.m2/
-
 # IDE
 .idea/
 *.iml
-.project
-.classpath
-.settings/
 .vscode/
 .DS_Store
 
-# Node / Frontend
+# Backend
+backend/target/
+backend/.mvn/
+*.log
+
+# Frontend
 frontend/node_modules/
-frontend/build/
+frontend_old_backup/
+frontend/dist/
 frontend/.env
 frontend/.env.local
 
-# Database
+# Docker
 *.db
 *.db-shm
 *.db-wal
 
+# Environment
+.env
+!.env.example
+
 # OS
 Thumbs.db
 .DS_Store
-
-# Logs
-logs/
-*.log
-
-# Temp files
-*.tmp
-*.swp
-*~
-
-# Environment
-.env
-.env.*
