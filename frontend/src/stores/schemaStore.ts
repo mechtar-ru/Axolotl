@@ -14,7 +14,7 @@ export const useSchemaStore = defineStore('schema', () => {
       const data = await schemaApi.getSchemas();
       schemas.value = data;
       if (schemas.value.length > 0 && !currentSchema.value) {
-        currentSchema.value = schemas.value[0];
+        currentSchema.value = schemas.value[0]!;
       }
     } catch (error) {
       console.error('Ошибка загрузки схем:', error);
@@ -24,7 +24,7 @@ export const useSchemaStore = defineStore('schema', () => {
   }
   
   async function createSchema(name: string) {
-    const newSchema: WorkflowSchema = {
+    const newSchema = {
       id: `new-${Date.now()}`,
       name,
       description: '',
@@ -32,7 +32,7 @@ export const useSchemaStore = defineStore('schema', () => {
       nodes: [],
       edges: [],
       createdAt: new Date().toISOString(),
-    };
+    } as WorkflowSchema;
     try {
       const created = await schemaApi.createSchema(newSchema);
       schemas.value.push(created);

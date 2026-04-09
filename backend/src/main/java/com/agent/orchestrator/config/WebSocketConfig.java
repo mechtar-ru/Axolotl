@@ -18,7 +18,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
     
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        System.out.println("🔧 Регистрация WebSocket endpoint: /ws/execution");
         registry.addHandler(webSocketHandler, "/ws/execution")
-                .setAllowedOrigins("*");
+                .setAllowedOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:5175");
     }
 }

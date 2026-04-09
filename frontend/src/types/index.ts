@@ -34,6 +34,8 @@ export interface FlowNode {
   position: Position;
   data: NodeData;
   status?: 'idle' | 'running' | 'completed' | 'failed';
+  progress?: number;
+  executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
 }
 
 export interface FlowEdge {

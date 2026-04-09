@@ -26,9 +26,14 @@
         @blur="finishEditName"
         @keyup.enter="finishEditName"
       />
+      <span class="execution-icon">{{ executionIcon }}</span>
     </div>
     <div v-if="props.data.result" class="node-content">
       <div class="node-result">{{ props.data.result }}</div>
+      <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
+        <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
+        <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
+      </div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -44,6 +49,8 @@ const props = defineProps<{
   data: {
     name: string;
     result?: string;
+    progress?: number;
+    executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
     onRename?: (name: string) => void;
     onDelete?: () => void;
   };
@@ -58,6 +65,14 @@ const localName = ref(props.data.name);
 const nameInput = ref<HTMLInputElement | null>(null);
 
 const isSelected = computed(() => props.selected === true);
+const executionIcon = computed(() => {
+  switch (props.data.executionStatus) {
+    case 'running': return '⏳';
+    case 'completed': return '✅';
+    case 'failed': return '❌';
+    default: return '';
+  }
+});
 
 function startEditName() {
   editingName.value = true;
@@ -151,6 +166,10 @@ function handleDelete() {
   font-size: 14px;
   font-weight: bold;
 }
+.execution-icon {
+  font-size: 14px;
+  margin-left: 4px;
+}
 .node-content {
   padding: 10px;
 }
@@ -161,5 +180,29 @@ function handleDelete() {
   border-radius: 4px;
   font-size: 12px;
   word-break: break-word;
+}
+.progress-bar {
+  width: 100%;
+  height: 20px;
+  background: #1a1a2e;
+  border: 1px solid #4a4a6a;
+  border-radius: 4px;
+  margin-top: 8px;
+  position: relative;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: #ff9800;
+  transition: width 0.3s ease;
+}
+.progress-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #eee;
+  font-size: 12px;
+  font-weight: bold;
 }
 </style>

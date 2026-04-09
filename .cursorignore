@@ -1,0 +1,95 @@
+# Зависимости (огромные, не нужны AI)
+node_modules/
+frontend/node_modules/
+backend/target/
+backend/.mvn/
+
+# Логи и временные файлы
+*.log
+*.tmp
+*.swp
+*.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.project
+.classpath
+.settings/
+
+# Сборки и дистрибутивы
+dist/
+build/
+*.jar
+*.war
+*.ear
+*.class
+
+# Environment (секреты)
+.env
+.env.local
+.env.*.local
+
+# Документация (опционально, если не нужна AI)
+*.md
+!README.md
+docs/
+
+# Тесты (опционально)
+**/test/**/*.java
+**/tests/**/*.ts
+**/*.test.ts
+**/*.spec.ts
+**/*.test.java
+
+# Графика (AI не нужна)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+
+# Шрифты
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Архивы
+*.zip
+*.tar
+*.gz
+*.7z
+
+# Видео/аудио
+*.mp4
+*.mp3
+*.wav
+
+# Кэш Vite
+frontend/.vite/
+frontend/node_modules/.vite/
+
+# Java специфичное
+hs_err_pid.log
+replay_pid.log
+
+# OS specific
+.vs/
+.vscode-test/
+
+# Временные файлы редакторов
+*~
+*.swp
+*.swo
+*.*~

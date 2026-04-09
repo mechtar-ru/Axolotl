@@ -1,0 +1,29 @@
+# Axolotl Project Context
+
+## Project Structure
+- Backend: Spring Boot 3.2 + Java 21 + SQLite
+- Frontend: Vue 3 + TypeScript + Vue Flow
+- WebSocket: для реального времени
+
+## Key Files
+- Backend: 
+  - SchemaService.java (логика выполнения)
+  - ExecutionWebSocketHandler.java (WebSocket)
+- Frontend:
+  - WorkflowCanvas.vue (канвас)
+  - useWebSocket.ts (WebSocket клиент)
+  - AgentNode.vue, SourceNode.vue, OutputNode.vue
+
+## Current Focus
+- Исправление очередности выполнения узлов (топологическая сортировка)
+- Улучшение WebSocket прогресса
+
+## Conventions
+- Java: camelCase, classes в PascalCase
+- Vue: Composition API, TypeScript
+- Коммиты: на русском с эмодзи
+- Ответы давай на русском
+
+## Common Commands
+- Запуск бэкенда: cd backend && mvn spring-boot:run
+- Запуск фронтенда: cd frontend && npm run dev

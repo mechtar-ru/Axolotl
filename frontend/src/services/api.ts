@@ -39,6 +39,10 @@ export const schemaApi = {
   async executeSchema(id: string): Promise<void> {
     await api.post(`/schemas/${id}/execute`);
   },
+
+  async stopSchema(id: string): Promise<void> {
+    await api.post(`/schemas/${id}/stop`);
+  },
   
   async exportToMermaid(id: string): Promise<string> {
     const response = await api.get(`/schemas/${id}/export/mermaid`);
