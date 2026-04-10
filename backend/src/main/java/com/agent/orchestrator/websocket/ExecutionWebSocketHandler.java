@@ -147,4 +147,14 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         sendMessage(schemaId, json);
         System.out.println("📝 Лог [" + schemaId + "][" + level + "]: " + message + (nodeId != null ? " (узел: " + nodeId + ")" : ""));
     }
+
+    public void sendNodeTime(String schemaId, String nodeId, long durationMs) {
+        String json = String.format(
+            "{\"type\":\"nodeTime\",\"schemaId\":\"%s\",\"nodeId\":\"%s\",\"durationMs\":%d}",
+            escapeJson(schemaId),
+            escapeJson(nodeId),
+            durationMs
+        );
+        sendMessage(schemaId, json);
+    }
 }

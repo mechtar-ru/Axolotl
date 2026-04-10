@@ -80,3 +80,34 @@ export const settingsApi = {
     return response.data;
   },
 };
+
+export interface ExecutionRecord {
+  id: string;
+  schemaId: string;
+  schemaName: string;
+  startTime: number;
+  endTime: number;
+  totalTimeMs: number;
+  totalNodes: number;
+  completedNodes: number;
+  status: string;
+  nodeResults?: Record<string, {
+    nodeId: string;
+    nodeName: string;
+    result: string | null;
+    durationMs: number;
+    status: string;
+  }>;
+}
+
+export const historyApi = {
+  async getSchemaHistory(schemaId: string): Promise<ExecutionRecord[]> {
+    const response = await api.get(`/schemas/${schemaId}/history`);
+    return response.data;
+  },
+
+  async getAllHistory(): Promise<ExecutionRecord[]> {
+    const response = await api.get('/history');
+    return response.data;
+  },
+};

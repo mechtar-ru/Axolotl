@@ -31,6 +31,9 @@
       <button class="node-expand" @click="toggleExpand">
         {{ expanded ? '▼' : '▶' }}
       </button>
+      <button v-if="expanded" class="prompt-editor-btn" @click="openFullEditor" title="Полный редактор (Ctrl+E)">
+        ✏️
+      </button>
     </div>
     
     <div v-if="expanded" class="node-content">
@@ -45,10 +48,8 @@
         v-model="localModel"
         class="model-select"
       >
-        <option value="ollama">Ollama (local)</option>
-        <option value="openai">OpenAI (GPT-4)</option>
-        <option value="anthropic">Anthropic (Claude)</option>
-        <option value="deepseek">DeepSeek</option>
+        <option value="">По умолчанию</option>
+        <option v-for="opt in providerOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
@@ -58,6 +59,7 @@
         <strong>Результат:</strong>
         <div>{{ props.data.result }}</div>
       </div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
     </div>
     
     <Handle type="source" :position="Position.Bottom" />
@@ -65,8 +67,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { settingsApi } from '../../services/api';
 
 const props = defineProps<{
   id: string;
@@ -79,9 +82,11 @@ const props = defineProps<{
     progress?: number;
     executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
     model?: string;
+    nodeTimeMs?: number;
     onUpdate?: (updates: any) => void;
     onRename?: (name: string) => void;
     onDelete?: () => void;
+    onOpenPromptEditor?: () => void;
   };
 }>();
 
@@ -95,6 +100,26 @@ const localName = ref(props.data.name);
 const localPrompt = ref(props.data.userPrompt || '');
 const localModel = ref(props.data.model || 'ollama');
 const nameInput = ref<HTMLInputElement | null>(null);
+const providerOptions = ref<{ value: string; label: string }[]>([]);
+
+onMounted(async () => {
+  try {
+    const providers = await settingsApi.getProviders();
+    const opts: { value: string; label: string }[] = [];
+    for (const p of providers) {
+      opts.push({ value: p.name, label: `${p.name}${p.available ? '' : ' (недоступен)'}` });
+    }
+    providerOptions.value = opts;
+  } catch (e) {
+    // Fallback to hardcoded options
+    providerOptions.value = [
+      { value: 'ollama', label: 'Ollama (local)' },
+      { value: 'openai', label: 'OpenAI (GPT-4)' },
+      { value: 'anthropic', label: 'Anthropic (Claude)' },
+      { value: 'deepseek', label: 'DeepSeek' },
+    ];
+  }
+});
 
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
@@ -128,6 +153,12 @@ watch(localModel, (newVal) => {
 
 function toggleExpand() {
   expanded.value = !expanded.value;
+}
+
+function openFullEditor() {
+  if (props.data.onOpenPromptEditor) {
+    props.data.onOpenPromptEditor();
+  }
 }
 
 function startEditName() {
@@ -259,6 +290,16 @@ function handleDelete() {
   cursor: pointer;
   font-size: 12px;
 }
+.prompt-editor-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+.prompt-editor-btn:hover {
+  filter: brightness(1.3);
+}
 .node-content {
   padding: 10px;
 }
@@ -313,5 +354,11 @@ function handleDelete() {
   border-radius: 4px;
   font-size: 12px;
   word-break: break-word;
+}
+.node-time {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #888;
+  text-align: right;
 }
 </style>

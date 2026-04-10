@@ -11,9 +11,9 @@
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">📥</span>
-      <span 
-        v-if="!editingName" 
-        class="node-name" 
+      <span
+        v-if="!editingName"
+        class="node-name"
         @dblclick="startEditName"
       >
         {{ props.data.name }}
@@ -27,11 +27,17 @@
         @keyup.enter="finishEditName"
       />
       <span class="execution-icon">{{ executionIcon }}</span>
+      <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
     </div>
-    <div class="node-content">
+    <div v-if="expanded" class="node-content"
+      @dragover.prevent="isDragging = true"
+      @dragleave="isDragging = false"
+      @drop.prevent="handleDrop"
+      :class="{ 'drop-zone': isDragging }"
+    >
       <textarea
         v-model="localSourceData"
-        placeholder="Введите данные для источника..."
+        placeholder="Введите данные или перетащите файл..."
         rows="4"
       />
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
@@ -42,6 +48,7 @@
         <strong>Результат:</strong>
         <div>{{ props.data.result }}</div>
       </div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -63,6 +70,7 @@ const props = defineProps<{
     onUpdate?: (updates: any) => void;
     onRename?: (name: string) => void;
     onDelete?: () => void;
+    nodeTimeMs?: number;
   };
 }>();
 
@@ -74,6 +82,22 @@ const editingName = ref(false);
 const localName = ref(props.data.name);
 const localSourceData = ref(props.data.sourceData || '');
 const nameInput = ref<HTMLInputElement | null>(null);
+const expanded = ref(true);
+const isDragging = ref(false);
+
+function handleDrop(event: DragEvent) {
+  isDragging.value = false;
+  const files = event.dataTransfer?.files;
+  if (!files || files.length === 0) return;
+  const file = files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const text = e.target?.result as string;
+    localSourceData.value = text;
+  };
+  reader.readAsText(file as Blob);
+}
 
 const isSelected = computed(() => props.selected === true);
 const executionIcon = computed(() => {
@@ -208,8 +232,20 @@ function handleDelete() {
   font-size: 14px;
   margin-left: 4px;
 }
+.node-expand {
+  background: none;
+  border: none;
+  color: #eee;
+  cursor: pointer;
+  font-size: 12px;
+}
 .node-content {
   padding: 10px;
+}
+.node-content.drop-zone {
+  background: rgba(76, 175, 80, 0.15);
+  border: 2px dashed #4caf50;
+  border-radius: 6px;
 }
 .node-content textarea {
   width: 100%;
@@ -252,5 +288,11 @@ function handleDelete() {
   border-radius: 4px;
   font-size: 12px;
   word-break: break-word;
+}
+.node-time {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #888;
+  text-align: right;
 }
 </style>

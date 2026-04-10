@@ -21,6 +21,7 @@ export interface NodeData {
   condition?: string;
   loopCondition?: string;
   maxIterations?: number;
+  nodeTimeMs?: number;
 }
 
 export interface SourceItem {
@@ -32,7 +33,9 @@ export interface SourceItem {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule';
+  parentId?: string;
+  collapsed?: boolean;
   name: string;
   position: Position;
   data: NodeData;

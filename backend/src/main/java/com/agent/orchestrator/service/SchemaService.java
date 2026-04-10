@@ -14,6 +14,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 @Service
 public class SchemaService {
@@ -24,6 +25,8 @@ public class SchemaService {
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
+    private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
+    private static final int MAX_HISTORY = 100;
 
     public SchemaService(SchemaRepository schemaRepository,
             LlmService llmService,
@@ -134,9 +137,57 @@ public class SchemaService {
         System.out.println("🛑 Остановка выполнения схемы запрошена: " + id);
     }
 
+    public List<ExecutionRecord> getExecutionHistory(String schemaId) {
+        return executionHistory.stream()
+                .filter(r -> schemaId.equals(r.getSchemaId()))
+                .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
+                .limit(50)
+                .collect(Collectors.toList());
+    }
+
+    public List<ExecutionRecord> getAllExecutionHistory() {
+        return executionHistory.stream()
+                .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
+                .limit(50)
+                .collect(Collectors.toList());
+    }
+
+    private void recordExecution(WorkflowSchema schema, long startTime, long totalTimeMs,
+                                  int totalNodes, int completedNodes, String status) {
+        ExecutionRecord record = new ExecutionRecord();
+        record.setId("exec-" + UUID.randomUUID());
+        record.setSchemaId(schema.getId());
+        record.setSchemaName(schema.getName());
+        record.setStartTime(startTime);
+        record.setEndTime(startTime + totalTimeMs);
+        record.setTotalTimeMs(totalTimeMs);
+        record.setTotalNodes(totalNodes);
+        record.setCompletedNodes(completedNodes);
+        record.setStatus(status);
+
+        Map<String, ExecutionRecord.NodeResult> nodeResults = new HashMap<>();
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                ExecutionRecord.NodeResult nr = new ExecutionRecord.NodeResult();
+                nr.setNodeId(node.getId());
+                nr.setNodeName(node.getName());
+                nr.setResult(node.getData() != null ? node.getData().getResult() : null);
+                nr.setStatus(node.getStatus() != null ? node.getStatus().name().toLowerCase() : "idle");
+                nodeResults.put(node.getId(), nr);
+            }
+        }
+        record.setNodeResults(nodeResults);
+
+        executionHistory.add(record);
+        if (executionHistory.size() > MAX_HISTORY) {
+            executionHistory.subList(0, executionHistory.size() - MAX_HISTORY).clear();
+        }
+    }
+
     private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag) {
         System.out.println("▶️ Выполнение схемы: " + schema.getName());
         long startTime = System.currentTimeMillis();
+        long workflowStartTime = startTime;
 
         conditionResults.keySet().removeIf(k -> k.startsWith(schema.getId() + ":"));
 
@@ -187,6 +238,9 @@ public class SchemaService {
                     executeNode(node, schema.getId(), cancelFlag);
                     long nodeTime = System.currentTimeMillis() - nodeStartTime;
                     System.out.println("✅ Узел завершен: " + node.getId() + " (" + node.getName() + ") - " + nodeTime + "мс");
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendNodeTime(schema.getId(), node.getId(), nodeTime);
+                    }
                 }));
             }
 
@@ -223,6 +277,7 @@ public class SchemaService {
                 webSocketHandler.sendLog(schema.getId(), "warning", "Выполнение схемы остановлено пользователем", null);
             }
             System.out.println("⚠️ Выполнение схемы отменено: " + schema.getName());
+            recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
         } else {
             if (webSocketHandler != null) {
                 webSocketHandler.sendComplete(schema.getId(), totalTime, nodesCompleted);
@@ -233,6 +288,7 @@ public class SchemaService {
             }
             System.out.println("✅ Выполнение схемы завершено: " + schema.getName() +
                     " (" + totalTime + "мс, " + nodesCompleted + "/" + totalNodes + " узлов)");
+            recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
         }
     }
 
@@ -400,6 +456,40 @@ public class SchemaService {
         return sb.toString().trim();
     }
 
+    /**
+     * Resolves {{variable}} placeholders in prompts.
+     * Supported: {{input}} (first predecessor), {{prev_result}} (immediate predecessor),
+     * {{node:Name}} (specific node by name), {{schema_name}}
+     */
+    private String interpolateVariables(String text, WorkflowSchema schema, Map<String, Object> predecessorResults) {
+        if (text == null || !text.contains("{{")) return text;
+
+        // {{input}} — first predecessor result
+        String input = predecessorResults.values().stream().findFirst().map(Object::toString).orElse("");
+        text = text.replace("{{input}}", input);
+
+        // {{prev_result}} — last predecessor result
+        String prevResult = predecessorResults.values().stream()
+                .reduce((first, second) -> second).map(Object::toString).orElse("");
+        text = text.replace("{{prev_result}}", prevResult);
+
+        // {{node:Name}} — specific node result by name
+        if (text.contains("{{node:")) {
+            if (schema.getNodes() != null) {
+                for (Node n : schema.getNodes()) {
+                    String result = n.getData() != null && n.getData().getResult() != null ? n.getData().getResult() : "";
+                    String key = "{{node:" + n.getName() + "}}";
+                    text = text.replace(key, result);
+                }
+            }
+        }
+
+        // {{schema_name}}
+        text = text.replace("{{schema_name}}", schema.getName() != null ? schema.getName() : "");
+
+        return text;
+    }
+
     private void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag) {
         try {
             if (cancelFlag.get()) {
@@ -441,13 +531,19 @@ public class SchemaService {
                 String systemPrompt = node.getData() != null ? node.getData().getSystemPrompt() : null;
 
                 // Подставить результаты предшественников в промпт
-                Map<String, Object> predecessorResults = collectPredecessorResults(
-                        schemaRepository.findById(schemaId), node.getId());
+                WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
+                Map<String, Object> predecessorResults = collectPredecessorResults(currentSchema, node.getId());
                 String contextBlock = buildContextBlock(predecessorResults);
                 if (!contextBlock.isEmpty()) {
                     String effectiveSystem = (systemPrompt != null ? systemPrompt + "\n\n" : "") +
                             "Контекст от предыдущих узлов:\n" + contextBlock;
                     systemPrompt = effectiveSystem;
+                }
+
+                // Variable interpolation: {{input}}, {{prev_result}}, {{node:Name}}
+                prompt = interpolateVariables(prompt, currentSchema, predecessorResults);
+                if (systemPrompt != null) {
+                    systemPrompt = interpolateVariables(systemPrompt, currentSchema, predecessorResults);
                 }
 
                 result = llmService.chat(model, systemPrompt, prompt, null);

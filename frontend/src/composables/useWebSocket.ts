@@ -7,6 +7,7 @@ export interface WebSocketCallbacks {
   onComplete: (data: { schemaId: string; totalTime: number; nodesCompleted: number }) => void;
   onMetrics?: (data: { schemaId: string; totalNodes: number; completedNodes: number; elapsedTime: number; nodesPerSecond: number }) => void;
   onLog?: (message: string) => void;
+  onNodeTime?: (data: { schemaId: string; nodeId: string; durationMs: number }) => void;
 }
 
 export function useWebSocket() {
@@ -64,6 +65,9 @@ export function useWebSocket() {
               break;
             case 'log':
               callbacks?.onLog?.(JSON.stringify(data));
+              break;
+            case 'nodeTime':
+              callbacks?.onNodeTime?.(data);
               break;
             default:
               console.warn('Unknown message type:', data.type);

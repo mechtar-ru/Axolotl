@@ -15,11 +15,13 @@
       :node-types="nodeTypes"
       :edge-types="edgeTypes"
       :fit-view-on-init="true"
+      :multi-select-on-click="true"
       @connect="onConnect"
       @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick"
       @edge-click="onEdgeClick"
       @pane-click="onPaneClick"
+      @node-double-click="onNodeDoubleClick"
     >
       <Background />
       <Controls />
@@ -42,6 +44,10 @@
         <button @click="addNode('condition')">⚖️ Condition</button>
         <button @click="addNode('loop')">🔄 Loop</button>
         <button @click="addNode('output')">📤 Output</button>
+        <button @click="addNode('comment')">📝 Заметка</button>
+        <button @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
+        <button @click="ungroupSelectedNode" :disabled="!selectedNodeId || !(props.schema.nodes||[]).find(n => n.id === selectedNodeId)?.parentId" title="Разгруппировать">📤 Разгрупп.</button>
+        <button @click="showHistory = !showHistory" title="История выполнений">📜 История</button>
       </div>
     </VueFlow>
 
@@ -56,6 +62,21 @@
       @stop="stopExecution"
       @close="closeExecutionPanel"
       @highlight-node="highlightNode"
+    />
+
+    <PromptEditorModal
+      :visible="showPromptEditor"
+      :node-name="promptEditorNodeName"
+      :user-prompt="promptEditorUserPrompt"
+      :system-prompt="promptEditorSystemPrompt"
+      @close="showPromptEditor = false"
+      @save="onPromptEditorSave"
+    />
+
+    <ExecutionHistory
+      :visible="showHistory"
+      :schema-id="schema.id"
+      @close="showHistory = false"
     />
     
     <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
@@ -72,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, markRaw, onUnmounted } from 'vue';
+import { ref, watch, markRaw, onUnmounted, computed } from 'vue';
 import { VueFlow, type Node, type Edge, type Connection, type NodeDragEvent, type NodeMouseEvent, type EdgeMouseEvent, MarkerType } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
@@ -83,8 +104,12 @@ import SourceNode from '../nodes/SourceNode.vue';
 import OutputNode from '../nodes/OutputNode.vue';
 import ConditionNode from '../nodes/ConditionNode.vue';
 import LoopNode from '../nodes/LoopNode.vue';
+import GroupNode from '../nodes/GroupNode.vue';
+import CommentNode from '../nodes/CommentNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
 import ExecutionPanel from '../execution/ExecutionPanel.vue';
+import PromptEditorModal from '../editor/PromptEditorModal.vue';
+import ExecutionHistory from '../execution/ExecutionHistory.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { schemaApi } from '../../services/api';
@@ -106,6 +131,8 @@ const nodeTypes = {
   output: OutputNode,
   condition: ConditionNode,
   loop: LoopNode,
+  group: GroupNode,
+  comment: CommentNode,
 } as any;
 
 const edgeTypes = {
@@ -115,6 +142,7 @@ const edgeTypes = {
 const elements = ref<(Node | Edge)[]>([]);
 const selectedNodeId = ref<string | null>(null);
 const selectedEdgeId = ref<string | null>(null);
+const selectedNodeIds = ref<Set<string>>(new Set());
 const showDeleteConfirm = ref(false);
 const showExecutionPanel = ref(false);
 const showSearch = ref(false);
@@ -122,6 +150,9 @@ const searchQuery = ref('');
 let nextNodeOffset = 0;
 const copiedNode = ref<FlowNode | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
+const showPromptEditor = ref(false);
+const promptEditorNodeId = ref<string | null>(null);
+const showHistory = ref(false);
 
 // Undo/Redo
 const undoStack = ref<string[]>([]);
@@ -172,6 +203,7 @@ const totalNodes = ref(0);
 const completedNodes = ref(0);
 const executionLogs = ref<LogEntry[]>([]);
 const nodeProgress = ref<Record<string, number>>({});
+const nodeTimes = ref<Record<string, number>>({});
 const executionStartTime = ref(0);
 const elapsedSeconds = ref(0);
 let timerInterval: number | null = null;
@@ -231,6 +263,7 @@ function convertToFlowElements() {
     id: node.id,
     type: node.type,
     position: node.position || { x: 100, y: 100 },
+    parentId: node.parentId || undefined,
     selected: selectedNodeId.value === node.id,
     class: isSearchMatch(node.name, node.type) ? 'search-match' : undefined,
     data: {
@@ -239,6 +272,8 @@ function convertToFlowElements() {
       status: node.status,
       progress: node.progress,
       executionStatus: node.executionStatus,
+      collapsed: node.collapsed,
+      nodeTimeMs: node.data?.nodeTimeMs,
       onUpdate: (updates: any) => {
         const updatedNodes = (props.schema.nodes || []).map(n =>
           n.id === node.id ? { ...n, ...updates, data: { ...n.data, ...updates } } : n
@@ -254,6 +289,7 @@ function convertToFlowElements() {
       onDelete: () => {
         deleteNode(node.id);
       },
+      onOpenPromptEditor: node.type === 'agent' ? () => openPromptEditor(node.id) : undefined,
     },
   }));
 
@@ -301,7 +337,17 @@ function deleteEdge(edgeId: string) {
 
 function onNodeClick(event: NodeMouseEvent) {
   console.log('Node clicked:', event.node.id);
-  selectedNodeId.value = event.node.id;
+  const nodeId = event.node.id;
+  if (event.event?.shiftKey) {
+    // Multi-select with Shift+click
+    const newSet = new Set(selectedNodeIds.value);
+    if (newSet.has(nodeId)) newSet.delete(nodeId);
+    else newSet.add(nodeId);
+    selectedNodeIds.value = newSet;
+  } else {
+    selectedNodeIds.value = new Set([nodeId]);
+  }
+  selectedNodeId.value = nodeId;
   selectedEdgeId.value = null;
   convertToFlowElements();
 }
@@ -417,6 +463,30 @@ function handleKeyDown(event: KeyboardEvent) {
     if (node) {
       copiedNode.value = { ...node, data: { ...node.data } };
       pasteNode();
+    }
+    return;
+  }
+
+  // Cmd/Ctrl + G — группировать выделенные узлы
+  if (mod && event.key === 'g' && !event.shiftKey) {
+    event.preventDefault();
+    groupSelectedNodes();
+    return;
+  }
+
+  // Cmd/Ctrl + Shift + G — разгруппировать
+  if (mod && event.key === 'g' && event.shiftKey) {
+    event.preventDefault();
+    ungroupSelectedNode();
+    return;
+  }
+
+  // Cmd/Ctrl + E — открыть редактор промпта
+  if (mod && event.key === 'e' && selectedNodeId.value) {
+    event.preventDefault();
+    const node = (props.schema.nodes || []).find(n => n.id === selectedNodeId.value);
+    if (node?.type === 'agent') {
+      openPromptEditor(node.id);
     }
     return;
   }
@@ -581,6 +651,15 @@ async function executeSchema() {
         elapsedSeconds.value = data.elapsedTime / 1000; // конвертируем в секунды
         executionProgress.value = data.totalNodes > 0 ? (data.completedNodes / data.totalNodes) * 100 : 100;
       },
+      onNodeTime: (data) => {
+        console.log('⏱ Node time:', data);
+        nodeTimes.value[data.nodeId] = data.durationMs;
+        const updatedNodes = (props.schema.nodes || []).map(n =>
+          n.id === data.nodeId ? { ...n, data: { ...n.data, nodeTimeMs: data.durationMs } } : n
+        );
+        emit('update', { ...props.schema, nodes: updatedNodes });
+        pushLog(`Время: ${data.durationMs}мс`, 'info', data.nodeId);
+      },
       onLog: (message) => {
         try {
           const logData = JSON.parse(message);
@@ -726,6 +805,123 @@ function editSchemaName() {
     pushUndo();
     emit('update', { ...props.schema, name: newName.trim() });
   }
+}
+
+// === Zoom to node (double-click) ===
+function onNodeDoubleClick(event: any) {
+  const nodeId = event.node?.id;
+  if (!nodeId) return;
+  const node = (props.schema.nodes || []).find(n => n.id === nodeId);
+  if (node?.type === 'agent') {
+    openPromptEditor(nodeId);
+  }
+}
+
+// === Prompt Editor ===
+const promptEditorNodeName = computed(() => {
+  if (!promptEditorNodeId.value) return '';
+  return (props.schema.nodes || []).find(n => n.id === promptEditorNodeId.value)?.name || '';
+});
+const promptEditorUserPrompt = computed(() => {
+  if (!promptEditorNodeId.value) return '';
+  return (props.schema.nodes || []).find(n => n.id === promptEditorNodeId.value)?.data?.userPrompt || '';
+});
+const promptEditorSystemPrompt = computed(() => {
+  if (!promptEditorNodeId.value) return undefined;
+  return (props.schema.nodes || []).find(n => n.id === promptEditorNodeId.value)?.data?.systemPrompt;
+});
+
+function openPromptEditor(nodeId: string) {
+  promptEditorNodeId.value = nodeId;
+  showPromptEditor.value = true;
+}
+
+function onPromptEditorSave(data: { userPrompt: string; systemPrompt?: string }) {
+  if (!promptEditorNodeId.value) return;
+  const updatedNodes = (props.schema.nodes || []).map(n =>
+    n.id === promptEditorNodeId.value
+      ? { ...n, data: { ...n.data, userPrompt: data.userPrompt, ...(data.systemPrompt !== undefined ? { systemPrompt: data.systemPrompt } : {}) } }
+      : n
+  );
+  emit('update', { ...props.schema, nodes: updatedNodes });
+  showPromptEditor.value = false;
+}
+
+// === Node Grouping ===
+function groupSelectedNodes() {
+  const ids = Array.from(selectedNodeIds.value);
+  if (ids.length < 2) return;
+  pushUndo();
+
+  const childNodes = (props.schema.nodes || []).filter(n => ids.includes(n.id));
+  if (childNodes.length === 0) return;
+
+  // Calculate bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const cn of childNodes) {
+    const x = cn.position?.x || 0;
+    const y = cn.position?.y || 0;
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + 250);
+    maxY = Math.max(maxY, y + 150);
+  }
+
+  const groupId = `group-${Date.now()}`;
+  const groupNode: FlowNode = {
+    id: groupId,
+    type: 'group',
+    name: 'Группа',
+    position: { x: minX - 30, y: minY - 40 },
+    data: {},
+    status: 'idle',
+  };
+
+  // Set parentId on children, adjust positions relative to group
+  const updatedNodes = (props.schema.nodes || []).map(n => {
+    if (ids.includes(n.id)) {
+      return {
+        ...n,
+        parentId: groupId,
+        position: {
+          x: (n.position?.x || 0) - (minX - 30),
+          y: (n.position?.y || 0) - (minY - 40),
+        },
+      };
+    }
+    return n;
+  });
+
+  emit('update', { ...props.schema, nodes: [groupNode, ...updatedNodes] });
+  selectedNodeIds.value = new Set();
+}
+
+function ungroupSelectedNode() {
+  if (!selectedNodeId.value) return;
+  const groupId = selectedNodeId.value;
+  const groupNode = (props.schema.nodes || []).find(n => n.id === groupId);
+  if (!groupNode) return;
+
+  pushUndo();
+
+  const updatedNodes = (props.schema.nodes || [])
+    .filter(n => n.id !== groupId)
+    .map(n => {
+      if (n.parentId === groupId) {
+        return {
+          ...n,
+          parentId: undefined,
+          position: {
+            x: (n.position?.x || 0) + (groupNode.position?.x || 0),
+            y: (n.position?.y || 0) + (groupNode.position?.y || 0),
+          },
+        };
+      }
+      return n;
+    });
+
+  emit('update', { ...props.schema, nodes: updatedNodes });
+  selectedNodeIds.value = new Set();
 }
 </script>
 

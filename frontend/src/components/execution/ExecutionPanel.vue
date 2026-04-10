@@ -22,6 +22,7 @@
     <div class="execution-panel__stats">
       <div>Узлов: {{ completedNodes }}/{{ totalNodes }}</div>
       <div>Скорость: {{ nodesPerSecond.toFixed(1) }} уз/с</div>
+      <div v-if="completedNodes > 0">Ср: {{ avgNodeTime }}мс/уз</div>
     </div>
 
     <div class="execution-panel__logs" ref="logsContainer">
@@ -40,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue';
+import { ref, watch, nextTick, onMounted, onUnmounted, computed } from 'vue';
 
 interface LogEntry {
   timestamp: number;
@@ -69,6 +70,10 @@ const logsContainer = ref<HTMLElement>();
 let autoScroll = true;
 
 const nodesPerSecond = ref(0);
+const avgNodeTime = computed(() => {
+  if (props.completedNodes <= 0 || props.elapsedSeconds <= 0) return '—';
+  return Math.round((props.elapsedSeconds * 1000) / props.completedNodes);
+});
 
 watch(() => props.elapsedSeconds, (newVal) => {
   if (newVal > 0) {

@@ -28,13 +28,15 @@
       />
       <span class="node-status" :style="{ background: statusColor }"></span>
       <span class="execution-icon">{{ executionIcon }}</span>
+      <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
     </div>
-    <div v-if="props.data.result" class="node-content">
+    <div v-if="expanded && props.data.result" class="node-content">
       <div class="node-result">{{ props.data.result }}</div>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
       </div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -54,6 +56,7 @@ const props = defineProps<{
     executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
     onRename?: (name: string) => void;
     onDelete?: () => void;
+    nodeTimeMs?: number;
   };
 }>();
 
@@ -64,6 +67,7 @@ const emit = defineEmits<{
 const editingName = ref(false);
 const localName = ref(props.data.name);
 const nameInput = ref<HTMLInputElement | null>(null);
+const expanded = ref(true);
 
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
@@ -201,6 +205,13 @@ function handleDelete() {
   font-size: 14px;
   margin-left: 4px;
 }
+.node-expand {
+  background: none;
+  border: none;
+  color: #eee;
+  cursor: pointer;
+  font-size: 12px;
+}
 .node-status {
   width: 10px;
   height: 10px;
@@ -216,6 +227,12 @@ function handleDelete() {
   border-radius: 4px;
   font-size: 12px;
   word-break: break-word;
+}
+.node-time {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #888;
+  text-align: right;
 }
 .progress-bar {
   width: 100%;

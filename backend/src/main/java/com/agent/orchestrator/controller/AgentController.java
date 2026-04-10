@@ -1,6 +1,7 @@
 package com.agent.orchestrator.controller;
 
 import com.agent.orchestrator.model.Agent;
+import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.service.AgentService;
@@ -110,5 +111,15 @@ public class AgentController {
     @GetMapping("/settings/providers/{name}/models")
     public List<String> getProviderModels(@PathVariable String name) {
         return llmService.listModels(name);
+    }
+
+    @GetMapping("/schemas/{id}/history")
+    public List<ExecutionRecord> getExecutionHistory(@PathVariable String id) {
+        return schemaService.getExecutionHistory(id);
+    }
+
+    @GetMapping("/history")
+    public List<ExecutionRecord> getAllExecutionHistory() {
+        return schemaService.getAllExecutionHistory();
     }
 }
