@@ -3,6 +3,8 @@ package com.agent.orchestrator.repository;
 import com.agent.orchestrator.model.Plan;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -13,6 +15,7 @@ import java.util.List;
 @Repository
 public class PlanRepository {
 
+    private static final Logger log = LoggerFactory.getLogger(PlanRepository.class);
     private final String dbUrl;
     private final ObjectMapper mapper;
 
@@ -45,9 +48,9 @@ public class PlanRepository {
         try (Connection conn = DriverManager.getConnection(dbUrl);
              Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
-            System.out.println("✅ Таблица plans создана/проверена");
+            log.info("Таблица plans создана/проверена");
         } catch (SQLException e) {
-            System.err.println("Ошибка создания таблицы plans: " + e.getMessage());
+            log.error("Ошибка создания таблицы plans: {}", e.getMessage());
         }
     }
 
@@ -91,7 +94,7 @@ public class PlanRepository {
             }
 
         } catch (Exception e) {
-            System.err.println("Ошибка чтения плана: " + e.getMessage());
+            log.error("Ошибка чтения плана: {}", e.getMessage());
             e.printStackTrace();
         }
 
@@ -113,7 +116,7 @@ public class PlanRepository {
             }
 
         } catch (Exception e) {
-            System.err.println("Ошибка чтения планов: " + e.getMessage());
+            log.error("Ошибка чтения планов: {}", e.getMessage());
         }
 
         return plans;

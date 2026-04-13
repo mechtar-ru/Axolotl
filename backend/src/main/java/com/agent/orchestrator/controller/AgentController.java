@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.Agent;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
 import com.agent.orchestrator.service.SchemaService;
 import org.springframework.web.bind.annotation.*;
@@ -14,17 +15,18 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*")
 public class AgentController {
 
     private final AgentService agentService;
     private final SchemaService schemaService;
     private final LlmService llmService;
+    private final MemPalaceClient memPalaceClient;
 
-    public AgentController(AgentService agentService, SchemaService schemaService, LlmService llmService) {
+    public AgentController(AgentService agentService, SchemaService schemaService, LlmService llmService, MemPalaceClient memPalaceClient) {
         this.agentService = agentService;
         this.schemaService = schemaService;
         this.llmService = llmService;
+        this.memPalaceClient = memPalaceClient;
     }
 
     @GetMapping("/agents")
@@ -121,5 +123,47 @@ public class AgentController {
     @GetMapping("/history")
     public List<ExecutionRecord> getAllExecutionHistory() {
         return schemaService.getAllExecutionHistory();
+    }
+
+    // === Memory (MemPalace) ===
+
+    @GetMapping("/memory/search")
+    public List<Map<String, Object>> searchMemory(
+            @RequestParam String query,
+            @RequestParam(required = false) String wing,
+            @RequestParam(required = false) String room,
+            @RequestParam(defaultValue = "5") int limit) {
+        return memPalaceClient.search(query, wing, room, limit);
+    }
+
+    @GetMapping("/memory/taxonomy")
+    public Map<String, Map<String, Integer>> getMemoryTaxonomy() {
+        if (!memPalaceClient.isEnabled()) return Map.of();
+        // Fetch all drawers and build wing → room → count taxonomy
+        return memPalaceClient.getTaxonomy();
+    }
+
+    @GetMapping("/memory/drawers")
+    public List<Map<String, Object>> listDrawers(
+            @RequestParam String wing,
+            @RequestParam String room) {
+        if (!memPalaceClient.isEnabled()) return List.of();
+        return memPalaceClient.listDrawers(wing, room);
+    }
+
+    @GetMapping("/memory/tunnels")
+    public Map<String, Object> getTunnels(
+            @RequestParam String wing_a) {
+        if (!memPalaceClient.isEnabled()) return Map.of("tunnels", List.of());
+        return memPalaceClient.findTunnels(wing_a);
+    }
+
+    @GetMapping("/outputs/{schemaId}/{nodeId}")
+    public Map<String, String> getOutputFile(@PathVariable String schemaId, @PathVariable String nodeId) {
+        String content = schemaService.getOutputFileContent(schemaId, nodeId);
+        if (content == null) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+        }
+        return Map.of("content", content);
     }
 }

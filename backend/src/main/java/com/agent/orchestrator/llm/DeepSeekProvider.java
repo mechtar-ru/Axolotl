@@ -3,6 +3,8 @@ package com.agent.orchestrator.llm;
 import com.agent.orchestrator.service.SettingsService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -17,6 +19,8 @@ import java.util.Map;
 
 @Component
 public class DeepSeekProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(DeepSeekProvider.class);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -77,7 +81,7 @@ public class DeepSeekProvider implements LlmProvider {
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            System.out.println("🔍 DeepSeek запрос: model=" + effectiveModel);
+            log.info("DeepSeek запрос: model={}", effectiveModel);
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -85,17 +89,17 @@ public class DeepSeekProvider implements LlmProvider {
                 JsonNode root = objectMapper.readTree(response.body());
                 String content = root.path("choices").path(0).path("message").path("content").asText("");
                 int tokens = root.path("usage").path("total_tokens").asInt(0);
-                System.out.println("🔍 DeepSeek ответ (" + tokens + " токенов): " +
-                        content.substring(0, Math.min(100, content.length())) + "...");
+                log.info("DeepSeek ответ ({} токенов): {}...", tokens,
+                        content.substring(0, Math.min(100, content.length())));
                 return content;
             } else {
                 String error = "DeepSeek ошибка (HTTP " + response.statusCode() + "): " + response.body();
-                System.err.println("❌ " + error);
+                log.error(error);
                 return error;
             }
         } catch (Exception e) {
             String error = "DeepSeek недоступен: " + e.getMessage();
-            System.err.println("❌ " + error);
+            log.error(error);
             return error;
         }
     }

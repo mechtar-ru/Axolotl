@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.sql.*;
@@ -11,6 +13,8 @@ import java.util.*;
  */
 @Service
 public class SettingsService {
+
+    private static final Logger log = LoggerFactory.getLogger(SettingsService.class);
 
     private final String dbUrl;
 
@@ -38,7 +42,7 @@ public class SettingsService {
              Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         } catch (SQLException e) {
-            System.err.println("Ошибка создания таблицы provider_settings: " + e.getMessage());
+            log.error("Ошибка создания таблицы provider_settings: {}", e.getMessage());
         }
     }
 
@@ -58,7 +62,7 @@ public class SettingsService {
                 return settings;
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка чтения настроек: " + e.getMessage());
+            log.error("Ошибка чтения настроек: {}", e.getMessage());
         }
         return null;
     }
@@ -81,7 +85,7 @@ public class SettingsService {
             pstmt.setString(4, defaultModel);
             pstmt.setString(5, java.time.Instant.now().toString());
             pstmt.executeUpdate();
-            System.out.println("✅ Настройки провайдера " + providerName + " обновлены");
+            log.info("Настройки провайдера {} обновлены", providerName);
         } catch (SQLException e) {
             throw new RuntimeException("Ошибка сохранения настроек: " + e.getMessage(), e);
         }
@@ -100,7 +104,7 @@ public class SettingsService {
                     return rs.getString("api_key");
                 }
             } catch (SQLException e) {
-                System.err.println("Ошибка чтения API ключа: " + e.getMessage());
+                log.error("Ошибка чтения API ключа: {}", e.getMessage());
             }
         }
         // Fallback: переменные окружения
@@ -144,7 +148,7 @@ public class SettingsService {
                 result.add(settings);
             }
         } catch (SQLException e) {
-            System.err.println("Ошибка чтения всех настрое: " + e.getMessage());
+            log.error("Ошибка чтения всех настроек: {}", e.getMessage());
         }
         return result;
     }

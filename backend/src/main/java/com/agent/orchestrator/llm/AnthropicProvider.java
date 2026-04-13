@@ -3,6 +3,8 @@ package com.agent.orchestrator.llm;
 import com.agent.orchestrator.service.SettingsService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -20,6 +22,8 @@ import java.util.function.Consumer;
 
 @Component
 public class AnthropicProvider implements LlmProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -83,7 +87,7 @@ public class AnthropicProvider implements LlmProvider {
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            System.out.println("🎨 Anthropic запрос: model=" + effectiveModel);
+            log.info("Anthropic запрос: model={}", effectiveModel);
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -98,17 +102,17 @@ public class AnthropicProvider implements LlmProvider {
                 }
                 int inputTokens = root.path("usage").path("input_tokens").asInt(0);
                 int outputTokens = root.path("usage").path("output_tokens").asInt(0);
-                System.out.println("🎨 Anthropic ответ (" + inputTokens + "+" + outputTokens + " токенов): " +
-                        sb.substring(0, Math.min(100, sb.length())) + "...");
+                log.info("Anthropic ответ ({}+{} токенов): {}...", inputTokens, outputTokens,
+                        sb.substring(0, Math.min(100, sb.length())));
                 return sb.toString();
             } else {
                 String error = "Anthropic ошибка (HTTP " + response.statusCode() + "): " + response.body();
-                System.err.println("❌ " + error);
+                log.error(error);
                 return error;
             }
         } catch (Exception e) {
             String error = "Anthropic недоступен: " + e.getMessage();
-            System.err.println("❌ " + error);
+            log.error(error);
             return error;
         }
     }
@@ -182,7 +186,7 @@ public class AnthropicProvider implements LlmProvider {
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            System.out.println("🎨 Anthropic streaming запрос: model=" + effectiveModel);
+            log.info("Anthropic streaming запрос: model={}", effectiveModel);
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             StringBuilder fullResponse = new StringBuilder();
@@ -211,7 +215,7 @@ public class AnthropicProvider implements LlmProvider {
             return fullResponse.toString();
         } catch (Exception e) {
             String error = "Anthropic streaming недоступен: " + e.getMessage();
-            System.err.println("❌ " + error);
+            log.error(error);
             onToken.accept(error);
             return error;
         }

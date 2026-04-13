@@ -3,6 +3,8 @@ package com.agent.orchestrator.repository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.agent.orchestrator.model.WorkflowSchema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.sql.*;
@@ -11,11 +13,19 @@ import java.util.List;
 
 @Repository
 public class SchemaRepository {
-    
-    private final String dbUrl = "jdbc:sqlite:schema.db";
+
+    private static final Logger log = LoggerFactory.getLogger(SchemaRepository.class);
+
+    private final String dbUrl;
     private final ObjectMapper mapper = new ObjectMapper();
-    
+
     public SchemaRepository() {
+        String projectDir = System.getProperty("user.dir");
+        if (projectDir.endsWith("backend")) {
+            dbUrl = "jdbc:sqlite:schema.db";
+        } else {
+            dbUrl = "jdbc:sqlite:backend/schema.db";
+        }
         createTable();
     }
     
@@ -33,9 +43,9 @@ public class SchemaRepository {
         try (Connection conn = DriverManager.getConnection(dbUrl);
              Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
-            System.out.println("✅ Таблица schemas создана/проверена");
+            log.info("Таблица schemas создана/проверена");
         } catch (SQLException e) {
-            System.err.println("Ошибка создания таблицы: " + e.getMessage());
+            log.error("Ошибка создания таблицы: {}", e.getMessage());
         }
     }
     
@@ -53,7 +63,7 @@ public class SchemaRepository {
             pstmt.executeUpdate();
             
         } catch (Exception e) {
-            System.err.println("Ошибка сохранения: " + e.getMessage());
+            log.error("Ошибка сохранения: {}", e.getMessage());
         }
     }
     
@@ -71,7 +81,7 @@ public class SchemaRepository {
             }
             
         } catch (Exception e) {
-            System.err.println("Ошибка чтения: " + e.getMessage());
+            log.error("Ошибка чтения: {}", e.getMessage());
         }
         
         return null;
@@ -90,7 +100,7 @@ public class SchemaRepository {
             }
             
         } catch (Exception e) {
-            System.err.println("Ошибка чтения: " + e.getMessage());
+            log.error("Ошибка чтения: {}", e.getMessage());
         }
         
         return schemas;
@@ -106,7 +116,7 @@ public class SchemaRepository {
             pstmt.executeUpdate();
             
         } catch (SQLException e) {
-            System.err.println("Ошибка удаления: " + e.getMessage());
+            log.error("Ошибка удаления: {}", e.getMessage());
         }
     }
 }

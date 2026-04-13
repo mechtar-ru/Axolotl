@@ -1,5 +1,7 @@
 package com.agent.orchestrator.llm;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -17,6 +19,8 @@ import java.util.Map;
 @Service
 public class LlmService {
 
+    private static final Logger log = LoggerFactory.getLogger(LlmService.class);
+
     private final Map<String, LlmProvider> providers;
 
     public LlmService(List<LlmProvider> providerList) {
@@ -24,7 +28,7 @@ public class LlmService {
         for (LlmProvider provider : providerList) {
             providers.put(provider.getName(), provider);
         }
-        System.out.println("🧠 LLM провайдеры: " + providers.keySet());
+        log.info("LLM провайдеры: {}", providers.keySet());
     }
 
     /**
@@ -42,7 +46,7 @@ public class LlmService {
 
         if (provider == null) {
             String error = "Провайдер LLM не найден: " + providerName + " (доступны: " + providers.keySet() + ")";
-            System.err.println("❌ " + error);
+            log.error(error);
             return error;
         }
 
@@ -50,15 +54,43 @@ public class LlmService {
     }
 
     /**
+     * Stream LLM response via token callback.
+     */
+    public String streamingChat(String model, String systemPrompt, String userPrompt,
+                                 Map<String, Object> config, java.util.function.Consumer<String> onToken) {
+        String providerName = resolveProvider(model);
+        LlmProvider provider = providers.get(providerName);
+
+        if (provider == null) {
+            String error = "Провайдер LLM не найден: " + providerName;
+            onToken.accept(error);
+            return error;
+        }
+
+        return provider.streamingChat(model, systemPrompt, userPrompt, config, onToken);
+    }
+
+    /**
      * Определить провайдера по имени модели.
-     * "local" и "ollama" → ollama, "openai" → openai и т.д.
+     * "local"/"ollama" → ollama, "gpt-*" → openai, "claude-*" → anthropic,
+     * "deepseek-*" → deepseek, exact provider name match, fallback → ollama.
      */
     private String resolveProvider(String model) {
         if (model == null || model.isBlank()) return "ollama";
-        return switch (model.toLowerCase()) {
-            case "local", "ollama" -> "ollama";
+        String lower = model.toLowerCase();
+        // Direct provider name
+        if (providers.containsKey(lower)) return lower;
+        return switch (lower) {
+            case "local" -> "ollama";
+            case "gpt" -> "openai";
+            case "claude" -> "anthropic";
             default -> {
-                // Если имя модели не совпадает с провайдером, пробуем ollama
+                // Match by model name prefix
+                if (lower.startsWith("gpt-") || lower.startsWith("o1-") || lower.startsWith("o3-")) yield "openai";
+                if (lower.startsWith("claude-")) yield "anthropic";
+                if (lower.startsWith("deepseek-")) yield "deepseek";
+                if (lower.startsWith("llama") || lower.startsWith("gemma") || lower.startsWith("mistral") || lower.startsWith("qwen")) yield "ollama";
+                // Fallback to ollama
                 yield "ollama";
             }
         };

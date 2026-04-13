@@ -1,5 +1,7 @@
 package com.agent.orchestrator.websocket;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -7,36 +9,39 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class ExecutionWebSocketHandler extends TextWebSocketHandler {
-    
+
+    private static final Logger log = LoggerFactory.getLogger(ExecutionWebSocketHandler.class);
+
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
-    
+
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         String schemaId = getSchemaIdFromSession(session);
         if (schemaId != null) {
             sessions.put(schemaId, session);
-            System.out.println("🔌 WebSocket подключен для схемы: " + schemaId + " (session: " + session.getId() + ", URI: " + session.getUri() + ")");
+            log.info("WebSocket подключен для схемы: {} (session: {}, URI: {})", schemaId, session.getId(), session.getUri());
         } else {
-            System.out.println("❌ WebSocket подключен без schemaId: " + session.getId() + ", URI: " + session.getUri());
+            log.error("WebSocket подключен без schemaId: {}, URI: {}", session.getId(), session.getUri());
         }
     }
-    
+
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        System.out.println("📨 WebSocket сообщение: " + message.getPayload());
+        log.debug("WebSocket сообщение: {}", message.getPayload());
     }
-    
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String schemaId = getSchemaIdFromSession(session);
         if (schemaId != null) {
             sessions.remove(schemaId);
-            System.out.println("🔌 WebSocket отключен для схемы: " + schemaId);
+            log.info("WebSocket отключен для схемы: {}", schemaId);
         }
     }
     
@@ -53,12 +58,12 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         if (session != null && session.isOpen()) {
             try {
                 session.sendMessage(new TextMessage(jsonMessage));
-                System.out.println("📤 Отправлено WS сообщение для схемы " + schemaId + ": " + jsonMessage);
+                log.debug("Отправлено WS сообщение для схемы {}: {}", schemaId, jsonMessage);
             } catch (IOException e) {
-                System.err.println("Ошибка отправки WebSocket сообщения: " + e.getMessage());
+                log.error("Ошибка отправки WebSocket сообщения: {}", e.getMessage());
             }
         } else {
-            System.out.println("⚠️ Нет активной WS сессии для схемы " + schemaId);
+            log.warn("Нет активной WS сессии для схемы {}", schemaId);
         }
     }
 
@@ -75,6 +80,9 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
                 .replace("\b", "\\b")
                 .replace("\f", "\\f");
     }
+
+    /** Package-private accessor for testing */
+    String escapeJsonPublic(String value) { return escapeJson(value); }
     
     public void sendProgress(String schemaId, String nodeId, String status, int progress, String message) {
         String json = String.format(
@@ -86,7 +94,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             escapeJson(message)
         );
         sendMessage(schemaId, json);
-        System.out.println("📊 Прогресс [" + schemaId + "/" + nodeId + "]: " + status + " - " + progress + "% - " + message);
+        log.info("Прогресс [{}/{}]: {} - {}% - {}", schemaId, nodeId, status, progress, message);
     }
 
     public void sendResult(String schemaId, String nodeId, String result) {
@@ -97,7 +105,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             escapeJson(result)
         );
         sendMessage(schemaId, json);
-        System.out.println("📊 Результат [" + schemaId + "/" + nodeId + "]: " + result);
+        log.info("Результат [{}/{}]: {}", schemaId, nodeId, result);
     }
 
     public void sendError(String schemaId, String nodeId, String error) {
@@ -108,7 +116,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             escapeJson(error)
         );
         sendMessage(schemaId, json);
-        System.out.println("❌ Ошибка [" + schemaId + "/" + nodeId + "]: " + error);
+        log.error("Ошибка [{}/{}]: {}", schemaId, nodeId, error);
     }
     
     public void sendComplete(String schemaId, long totalTime, int nodesCompleted) {
@@ -119,7 +127,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             nodesCompleted
         );
         sendMessage(schemaId, json);
-        System.out.println("✅ Выполнение завершено [" + schemaId + "]: " + totalTime + "мс, узлов: " + nodesCompleted);
+        log.info("Выполнение завершено [{}]: {}мс, узлов: {}", schemaId, totalTime, nodesCompleted);
     }
 
     public void sendMetrics(String schemaId, int totalNodes, int completedNodes, long elapsedTime, double nodesPerSecond) {
@@ -132,7 +140,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             nodesPerSecond
         );
         sendMessage(schemaId, json);
-        System.out.println("📊 Метрики [" + schemaId + "]: " + completedNodes + "/" + totalNodes + " узлов, " + elapsedTime + "мс, " + String.format("%.2f", nodesPerSecond) + " уз/с");
+        log.info("Метрики [{}]: {}/{} узлов, {}мс, {} уз/с", schemaId, completedNodes, totalNodes, elapsedTime, String.format("%.2f", nodesPerSecond));
     }
 
     public void sendLog(String schemaId, String level, String message, String nodeId) {
@@ -145,7 +153,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             System.currentTimeMillis()
         );
         sendMessage(schemaId, json);
-        System.out.println("📝 Лог [" + schemaId + "][" + level + "]: " + message + (nodeId != null ? " (узел: " + nodeId + ")" : ""));
+        log.debug("Лог [{}][{}]: {}{}", schemaId, level, message, nodeId != null ? " (узел: " + nodeId + ")" : "");
     }
 
     public void sendNodeTime(String schemaId, String nodeId, long durationMs) {
@@ -156,5 +164,67 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             durationMs
         );
         sendMessage(schemaId, json);
+    }
+
+    public void sendNodeBlocked(String schemaId, String nodeId, int attemptCount, String message) {
+        String json = String.format(
+            "{\"type\":\"nodeBlocked\",\"schemaId\":\"%s\",\"nodeId\":\"%s\",\"attemptCount\":%d,\"message\":\"%s\"}",
+            escapeJson(schemaId),
+            escapeJson(nodeId),
+            attemptCount,
+            escapeJson(message)
+        );
+        sendMessage(schemaId, json);
+    }
+
+    public void sendToken(String schemaId, String nodeId, String token) {
+        String json = String.format(
+            "{\"type\":\"token\",\"schemaId\":\"%s\",\"nodeId\":\"%s\",\"token\":\"%s\"}",
+            escapeJson(schemaId),
+            escapeJson(nodeId),
+            escapeJson(token)
+        );
+        sendMessage(schemaId, json);
+    }
+
+    public void sendPlanUpdated(String workspaceId, Object plan) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper planMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            planMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+            String planJson = planMapper.writeValueAsString(plan);
+            String json = String.format(
+                "{\"type\":\"plan_updated\",\"workspaceId\":\"%s\",\"plan\":%s}",
+                escapeJson(workspaceId),
+                planJson
+            );
+            // Broadcast to all sessions (plan is workspace-wide)
+            for (var entry : sessions.entrySet()) {
+                WebSocketSession session = entry.getValue();
+                if (session != null && session.isOpen()) {
+                    session.sendMessage(new TextMessage(json));
+                }
+            }
+            log.info("План обновлён для workspace: {}", workspaceId);
+        } catch (Exception e) {
+            log.error("Ошибка отправки plan_updated: {}", e.getMessage());
+        }
+    }
+
+    public void sendWaveUpdate(String schemaId, int waveNumber, List<String> nodeIds, String status) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String nodesJson = mapper.writeValueAsString(nodeIds);
+            String json = String.format(
+                "{\"type\":\"wave\",\"schemaId\":\"%s\",\"waveNumber\":%d,\"nodeIds\":%s,\"status\":\"%s\"}",
+                escapeJson(schemaId),
+                waveNumber,
+                nodesJson,
+                escapeJson(status)
+            );
+            sendMessage(schemaId, json);
+            log.info("Волна {} [{}]: {} ({} узлов)", waveNumber, schemaId, status, nodeIds.size());
+        } catch (Exception e) {
+            log.error("Ошибка отправки wave: {}", e.getMessage());
+        }
     }
 }

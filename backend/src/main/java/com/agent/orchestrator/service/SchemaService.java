@@ -3,7 +3,10 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.repository.SchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.Value;
@@ -19,21 +22,30 @@ import java.util.stream.Collectors;
 @Service
 public class SchemaService {
 
+    private static final Logger log = LoggerFactory.getLogger(SchemaService.class);
+
     private final SchemaRepository schemaRepository;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
+    private final MemPalaceClient memPalaceClient;
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
     private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
     private static final int MAX_HISTORY = 100;
+    private static final int MAX_NODE_RESTARTS = 3;
+
+    // Convergence monitoring: track consecutive failures per node per execution
+    private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
 
     public SchemaService(SchemaRepository schemaRepository,
             LlmService llmService,
-            ExecutionWebSocketHandler webSocketHandler) {
+            ExecutionWebSocketHandler webSocketHandler,
+            MemPalaceClient memPalaceClient) {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
+        this.memPalaceClient = memPalaceClient;
         initDemoSchema();
     }
 
@@ -51,7 +63,7 @@ public class SchemaService {
         schema.setCreatedAt(Instant.now().toString());
         schema.setUpdatedAt(Instant.now().toString());
         schemaRepository.save(schema);
-        System.out.println("✅ Создана схема: " + schema.getName() + " (ID: " + id + ")");
+        log.info("Создана схема: {} (ID: {})", schema.getName(), id);
         return schema;
     }
 
@@ -59,15 +71,32 @@ public class SchemaService {
         schema.setId(id);
         schema.setUpdatedAt(Instant.now().toString());
         schemaRepository.save(schema);
-        System.out.println("✅ Обновлена схема: " + schema.getName() + " (ID: " + id + ")");
-        System.out.println("   - Узлов: " + (schema.getNodes() != null ? schema.getNodes().size() : 0));
-        System.out.println("   - Связей: " + (schema.getEdges() != null ? schema.getEdges().size() : 0));
+
+        // Schema versioning: save each change to MemPalace
+        if (memPalaceClient.isEnabled()) {
+            int nodeCount = schema.getNodes() != null ? schema.getNodes().size() : 0;
+            int edgeCount = schema.getEdges() != null ? schema.getEdges().size() : 0;
+            String nodeTypes = schema.getNodes() != null
+                    ? schema.getNodes().stream()
+                        .map(n -> n.getType() + "(" + n.getName() + ")")
+                        .reduce((a, b) -> a + ", " + b).orElse("")
+                    : "";
+            String versionInfo = String.format(
+                    "Версия схемы '%s' (обновлено: %s)\nУзлов: %d, Связей: %d\nУзлы: [%s]",
+                    schema.getName(), schema.getUpdatedAt(), nodeCount, edgeCount, nodeTypes);
+            memPalaceClient.addDrawer("axolotl", "schema-versions",
+                    versionInfo, "schema:" + id);
+        }
+
+        log.info("Обновлена схема: {} (ID: {})", schema.getName(), id);
+        log.info("   - Узлов: {}", schema.getNodes() != null ? schema.getNodes().size() : 0);
+        log.info("   - Связей: {}", schema.getEdges() != null ? schema.getEdges().size() : 0);
         return schema;
     }
 
     public void deleteSchema(String id) {
         schemaRepository.delete(id);
-        System.out.println("🗑 Удалена схема: " + id);
+        log.info("Удалена схема: {}", id);
     }
 
     public String exportToMermaid(String id) {
@@ -102,7 +131,7 @@ public class SchemaService {
         if (schema == null)
             return;
         if (runningExecutions.containsKey(id)) {
-            System.out.println("⚠️ Схема уже выполняется: " + id);
+            log.warn("Схема уже выполняется: {}", id);
             return;
         }
 
@@ -120,7 +149,7 @@ public class SchemaService {
             runningExecutions.remove(id);
             cancelFlags.remove(id);
             if (ex != null && !(ex instanceof CancellationException)) {
-                System.err.println("❌ Ошибка выполнения схемы " + id + ": " + ex.getMessage());
+                log.error("Ошибка выполнения схемы {}: {}", id, ex.getMessage());
             }
         });
     }
@@ -134,7 +163,7 @@ public class SchemaService {
         if (future != null) {
             future.cancel(true);
         }
-        System.out.println("🛑 Остановка выполнения схемы запрошена: " + id);
+        log.info("Остановка выполнения схемы запрошена: {}", id);
     }
 
     public List<ExecutionRecord> getExecutionHistory(String schemaId) {
@@ -185,11 +214,12 @@ public class SchemaService {
     }
 
     private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag) {
-        System.out.println("▶️ Выполнение схемы: " + schema.getName());
+        log.info("Выполнение схемы: {}", schema.getName());
         long startTime = System.currentTimeMillis();
         long workflowStartTime = startTime;
 
         conditionResults.keySet().removeIf(k -> k.startsWith(schema.getId() + ":"));
+        nodeFailureCounts.put(schema.getId(), new ConcurrentHashMap<>());
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schema.getId(), "system", "STARTED", 0, "Выполнение начато");
@@ -202,19 +232,27 @@ public class SchemaService {
 
         int totalNodes = levels.stream().mapToInt(List::size).sum();
         int completedCount = 0;
+        int waveNum = 0;
 
         for (List<Node> level : levels) {
+            // Send wave update
+            if (webSocketHandler != null) {
+                List<String> nodeIds = level.stream().map(Node::getId).toList();
+                webSocketHandler.sendWaveUpdate(schema.getId(), waveNum++, nodeIds, "pending");
+            }
+
             if (cancelFlag.get()) break;
 
             List<Node> executable = level.stream()
                     .filter(node -> !skippedNodes.contains(node.getId()))
+                    .filter(node -> node.getStatus() != Node.NodeStatus.BLOCKED)
                     .filter(node -> !cancelFlag.get())
                     .toList();
 
             // Логирование пропущенных узлов
             for (Node node : level) {
                 if (skippedNodes.contains(node.getId())) {
-                    System.out.println("⏭ Пропуск узла (невыполненная ветка условия): " + node.getId());
+                    log.info("Пропуск узла (невыполненная ветка условия): {}", node.getId());
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schema.getId(), "info",
                                 "Пропуск узла (невыполненная ветка): " + node.getName(), node.getId());
@@ -224,10 +262,16 @@ public class SchemaService {
 
             if (executable.isEmpty()) continue;
 
+            // Mark wave as running
+            if (webSocketHandler != null) {
+                List<String> execIds = executable.stream().map(Node::getId).toList();
+                webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "running");
+            }
+
             // Параллельное выполнение узлов одного уровня
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (Node node : executable) {
-                System.out.println("⏸ Начало выполнения узла: " + node.getId() + " (" + node.getName() + ")");
+                log.info("Начало выполнения узла: {} ({})", node.getId(), node.getName());
                 if (webSocketHandler != null) {
                     webSocketHandler.sendLog(schema.getId(), "info",
                             "Начало выполнения узла: " + node.getName(), node.getId());
@@ -237,7 +281,7 @@ public class SchemaService {
                 futures.add(CompletableFuture.runAsync(() -> {
                     executeNode(node, schema.getId(), cancelFlag);
                     long nodeTime = System.currentTimeMillis() - nodeStartTime;
-                    System.out.println("✅ Узел завершен: " + node.getId() + " (" + node.getName() + ") - " + nodeTime + "мс");
+                    log.info("Узел завершен: {} ({}) - {}мс", node.getId(), node.getName(), nodeTime);
                     if (webSocketHandler != null) {
                         webSocketHandler.sendNodeTime(schema.getId(), node.getId(), nodeTime);
                     }
@@ -247,8 +291,13 @@ public class SchemaService {
             // Дождаться завершения всех узлов уровня
             try {
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                // Mark wave as completed
+                if (webSocketHandler != null) {
+                    List<String> execIds = executable.stream().map(Node::getId).toList();
+                    webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "completed");
+                }
             } catch (Exception e) {
-                System.err.println("❌ Ошибка при параллельном выполнении уровня: " + e.getMessage());
+                log.error("Ошибка при параллельном выполнении уровня: {}", e.getMessage());
             }
 
             completedCount += executable.size();
@@ -276,7 +325,7 @@ public class SchemaService {
                 webSocketHandler.sendError(schema.getId(), "system", "Выполнение остановлено");
                 webSocketHandler.sendLog(schema.getId(), "warning", "Выполнение схемы остановлено пользователем", null);
             }
-            System.out.println("⚠️ Выполнение схемы отменено: " + schema.getName());
+            log.warn("Выполнение схемы отменено: {}", schema.getName());
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
         } else {
             if (webSocketHandler != null) {
@@ -286,8 +335,7 @@ public class SchemaService {
                 webSocketHandler.sendLog(schema.getId(), "success",
                         "Выполнение схемы завершено: " + totalTime + "мс, узлов: " + nodesCompleted, null);
             }
-            System.out.println("✅ Выполнение схемы завершено: " + schema.getName() +
-                    " (" + totalTime + "мс, " + nodesCompleted + "/" + totalNodes + " узлов)");
+            log.info("Выполнение схемы завершено: {} ({}мс, {}/{} узлов)", schema.getName(), totalTime, nodesCompleted, totalNodes);
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
         }
     }
@@ -377,7 +425,7 @@ public class SchemaService {
 
             if (currentLevel.isEmpty()) {
                 // Остались только узлы с циклическими зависимостями
-                System.out.println("⚠️ Обнаружены циклические зависимости!");
+                log.warn("Обнаружены циклические зависимости!");
                 List<Node> cyclic = new ArrayList<>();
                 for (Node node : schema.getNodes()) {
                     if (!visited.contains(node.getId())) {
@@ -400,9 +448,9 @@ public class SchemaService {
             levels.add(currentLevel);
         }
 
-        System.out.println("📊 Уровни выполнения:");
+        log.info("Уровни выполнения:");
         for (int i = 0; i < levels.size(); i++) {
-            System.out.println("  Уровень " + i + ": " +
+            log.info("  Уровень {}: {}", i,
                     levels.get(i).stream().map(n -> n.getName()).reduce((a, b) -> a + ", " + b).orElse(""));
         }
 
@@ -421,7 +469,7 @@ public class SchemaService {
             Value result = ctx.eval("js", "Boolean(" + expression + ")");
             return result.asBoolean();
         } catch (Exception e) {
-            System.err.println("Ошибка вычисления условия '" + expression + "': " + e.getMessage());
+            log.error("Ошибка вычисления условия '{}': {}", expression, e.getMessage());
             return false;
         }
     }
@@ -446,14 +494,34 @@ public class SchemaService {
 
     /**
      * Формирует текстовый блок контекста из результатов предшествующих узлов.
+     * Если контекст превышает MAX_CONTEXT_CHARS, сжимает его через LLM.
      */
+    private static final int MAX_CONTEXT_CHARS = 4000;
+
     private String buildContextBlock(Map<String, Object> predecessorResults) {
         if (predecessorResults.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         predecessorResults.forEach((name, value) -> {
             sb.append("[").append(name).append("]: ").append(value).append("\n");
         });
-        return sb.toString().trim();
+        String context = sb.toString().trim();
+
+        // Context compression: if too long, summarize via LLM
+        if (context.length() > MAX_CONTEXT_CHARS) {
+            log.info("Сжатие контекста: {} символов → суммаризация", context.length());
+            try {
+                String summary = llmService.chat("ollama",
+                        "Ты компрессор контекста. Сжато передай суть, сохранив ключевые факты, числа, имена.",
+                        "Сожми следующий контекст, сохранив ключевые факты:\n\n" + context,
+                        null);
+                return "[СЖАТЫЙ КОНТЕКСТ]:\n" + summary;
+            } catch (Exception e) {
+                // Fallback: truncate
+                return context.substring(0, MAX_CONTEXT_CHARS) + "\n... [контекст обрезан]";
+            }
+        }
+
+        return context;
     }
 
     /**
@@ -499,21 +567,10 @@ public class SchemaService {
 
             node.setStatus(Node.NodeStatus.RUNNING);
 
-            // 0%: Начало выполнения
             if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 0, "Начало выполнения");
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Начало выполнения");
                 webSocketHandler.sendLog(schemaId, "info", "Начало выполнения узла", node.getId());
             }
-            if (!sleepWithCancel(200, cancelFlag))
-                return;
-
-            // 30%: Подготовка данных
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 30, "Подготовка данных");
-                webSocketHandler.sendLog(schemaId, "info", "Подготовка данных", node.getId());
-            }
-            if (!sleepWithCancel(300, cancelFlag))
-                return;
 
             String result = "";
 
@@ -546,22 +603,39 @@ public class SchemaService {
                     systemPrompt = interpolateVariables(systemPrompt, currentSchema, predecessorResults);
                 }
 
-                result = llmService.chat(model, systemPrompt, prompt, null);
+                // Memory injection: search MemPalace for graph-structured context
+                if (memPalaceClient.isEnabled()) {
+                    String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
+                    if (!memoryContext.isEmpty()) {
+                        systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + memoryContext;
+                    }
+                }
+
+                result = llmService.streamingChat(model, systemPrompt, prompt, null,
+                        token -> {
+                            if (webSocketHandler != null) {
+                                webSocketHandler.sendToken(schemaId, node.getId(), token);
+                            }
+                        });
 
                 if (webSocketHandler != null) {
                     webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Ответ получен");
                     webSocketHandler.sendLog(schemaId, "info", "Ответ от LLM получен", node.getId());
                 }
 
+                // Auto-save result to MemPalace
+                if (memPalaceClient.isEnabled() && result != null && !result.isBlank()) {
+                    memPalaceClient.addDrawer("axolotl", "agent-results",
+                            node.getName() + ": " + result.substring(0, Math.min(500, result.length())),
+                            "schema:" + schemaId);
+                }
+
             } else if ("source".equals(node.getType())) {
-                // Используем реальные данные из SourceNode или дефолт
                 if (node.getData() != null && node.getData().getSourceData() != null && !node.getData().getSourceData().isEmpty()) {
                     result = node.getData().getSourceData();
                 } else {
                     result = "Данные из источника: " + node.getName();
                 }
-                if (!sleepWithCancel(300, cancelFlag))
-                    return;
 
             } else if ("condition".equals(node.getType())) {
                 String conditionExpr = node.getData() != null && node.getData().getCondition() != null
@@ -572,8 +646,6 @@ public class SchemaService {
                     webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Вычисление условия");
                     webSocketHandler.sendLog(schemaId, "info", "Вычисление условия: " + conditionExpr, node.getId());
                 }
-                if (!sleepWithCancel(200, cancelFlag))
-                    return;
 
                 java.util.Map<String, Object> context = collectPredecessorResults(
                         schemaRepository.findById(schemaId), node.getId());
@@ -585,8 +657,6 @@ public class SchemaService {
                     webSocketHandler.sendLog(schemaId, "info",
                             "Условие '" + conditionExpr + "' = " + conditionResult, node.getId());
                 }
-                if (!sleepWithCancel(200, cancelFlag))
-                    return;
 
             } else if ("loop".equals(node.getType())) {
                 String loopCond = node.getData() != null && node.getData().getLoopCondition() != null
@@ -615,15 +685,124 @@ public class SchemaService {
                     }
 
                     shouldContinue = evaluateCondition(loopCond, ctx);
-                    if (!sleepWithCancel(200, cancelFlag)) return;
+                    if (cancelFlag.get()) return;
                 }
 
                 result = "Завершено за " + iterations + " итераций";
 
             } else if ("output".equals(node.getType())) {
-                result = "Результат сохранен: " + node.getName();
-                if (!sleepWithCancel(200, cancelFlag))
-                    return;
+                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+                String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
+                String outputType = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("outputType", "log") : "log";
+                String filePath = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
+                String fileFormat = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("fileFormat", "text") : "text";
+                result = writeOutput(outputType, filePath, fileFormat, input);
+                // Register file for retrieval via API
+                if ("file".equals(outputType) && filePath != null && !filePath.isBlank()) {
+                    outputFileRegistry.put(schemaId + ":" + node.getId(), filePath);
+                }
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info", "Output: " + result, node.getId());
+                }
+
+            } else if ("memory".equals(node.getType())) {
+                // Memory node: search MemPalace and return results
+                String searchQuery = node.getData() != null && node.getData().getSourceData() != null
+                        ? node.getData().getSourceData() : node.getName();
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Поиск в памяти");
+                    webSocketHandler.sendLog(schemaId, "info", "Поиск в памяти: " + searchQuery, node.getId());
+                }
+                if (memPalaceClient.isEnabled()) {
+                    var memResults = memPalaceClient.search(searchQuery, null, null, 5);
+                    if (memResults.isEmpty()) {
+                        result = "Ничего не найдено по запросу: " + searchQuery;
+                    } else {
+                        StringBuilder sb = new StringBuilder();
+                        for (var r : memResults) {
+                            sb.append("- ").append(r.get("content")).append("\n");
+                        }
+                        result = sb.toString().trim();
+                    }
+                } else {
+                    result = "Память недоступна (MemPalace не подключен)";
+                }
+
+            } else if ("guardrail".equals(node.getType())) {
+                // Guardrail: validate/transform predecessor result
+                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+                String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
+                String rules = node.getData() != null && node.getData().getUserPrompt() != null
+                        ? node.getData().getUserPrompt() : "";
+                String mode = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("mode", "validate") : "validate";
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Валидация");
+                    webSocketHandler.sendLog(schemaId, "info", "Guardrail mode=" + mode, node.getId());
+                }
+
+                if ("validate".equals(mode)) {
+                    // Use LLM to validate against rules
+                    String validationPrompt = "Проверь, соответствует ли следующий текст правилам.\n" +
+                            "Правила:\n" + rules + "\n\nТекст:\n" + input +
+                            "\n\nОтветь только 'ДА' или 'НЕТ: [причина]'";
+                    result = llmService.chat(null, null, validationPrompt, null);
+                } else if ("transform".equals(mode)) {
+                    String transformPrompt = "Примени следующие правила трансформации к тексту.\n" +
+                            "Правила:\n" + rules + "\n\nТекст:\n" + input;
+                    result = llmService.chat(null, null, transformPrompt, null);
+                } else {
+                    result = input; // filter mode: pass through
+                }
+
+            } else if ("human".equals(node.getType())) {
+                // Human node: wait for human approval (simulated — in real app would wait for WebSocket message)
+                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+                String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
+                String question = node.getData() != null && node.getData().getUserPrompt() != null
+                        ? node.getData().getUserPrompt() : "Подтвердите результат";
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Ожидание подтверждения");
+                    webSocketHandler.sendLog(schemaId, "warning", "⏸ Требуется подтверждение: " + question, node.getId());
+                }
+                // Auto-approve after a short wait (in production this would wait for real human input)
+                if (!sleepWithCancel(1000, cancelFlag)) return;
+                result = "Подтверждено: " + input;
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "success", "Авто-подтверждение", node.getId());
+                }
+
+            } else if ("fallback".equals(node.getType())) {
+                // Fallback: execute only if predecessor failed
+                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+                // Check if any predecessor failed
+                boolean predecessorFailed = false;
+                if (schemaRepository.findById(schemaId).getNodes() != null) {
+                    for (Edge edge : schemaRepository.findById(schemaId).getEdges()) {
+                        if (node.getId().equals(edge.getTarget())) {
+                            for (Node n : schemaRepository.findById(schemaId).getNodes()) {
+                                if (n.getId().equals(edge.getSource()) && n.getStatus() == Node.NodeStatus.FAILED) {
+                                    predecessorFailed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (predecessorFailed) {
+                    String fallbackPrompt = node.getData() != null && node.getData().getUserPrompt() != null
+                            ? node.getData().getUserPrompt() : "Резервная обработка ошибки";
+                    result = llmService.chat(null, null, fallbackPrompt, null);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "warning", "Fallback активирован: " + node.getName(), node.getId());
+                    }
+                } else {
+                    result = "Пропущен (предшественник успешен)";
+                }
             }
 
             // 90%: Формирование результата
@@ -631,8 +810,6 @@ public class SchemaService {
                 webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 90, "Формирование результата");
                 webSocketHandler.sendLog(schemaId, "info", "Формирование результата", node.getId());
             }
-            if (!sleepWithCancel(200, cancelFlag))
-                return;
 
             // Отправка результата
             if (webSocketHandler != null) {
@@ -646,18 +823,43 @@ public class SchemaService {
             }
 
             node.setStatus(Node.NodeStatus.COMPLETED);
+            // Reset failure count on success
+            Map<String, Integer> counts = nodeFailureCounts.get(schemaId);
+            if (counts != null) counts.remove(node.getId());
 
         } catch (Exception e) {
             if (cancelFlag.get()) {
                 node.setStatus(Node.NodeStatus.FAILED);
                 return;
             }
-            node.setStatus(Node.NodeStatus.FAILED);
-            if (webSocketHandler != null) {
-                webSocketHandler.sendError(schemaId, node.getId(), "Ошибка выполнения: " + e.getMessage());
-                webSocketHandler.sendLog(schemaId, "error", "Ошибка выполнения: " + e.getMessage(), node.getId());
+
+            // Convergence monitoring: track failures per node
+            String execKey = schemaId;
+            nodeFailureCounts.computeIfAbsent(execKey, k -> new ConcurrentHashMap<>());
+            Map<String, Integer> counts = nodeFailureCounts.get(execKey);
+            int failCount = counts.merge(node.getId(), 1, Integer::sum);
+
+            if (failCount >= MAX_NODE_RESTARTS) {
+                node.setStatus(Node.NodeStatus.BLOCKED);
+                String msg = String.format("Узел заблокирован после %d неудачных попыток: %s",
+                        failCount, e.getMessage());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendNodeBlocked(schemaId, node.getId(), failCount, e.getMessage());
+                    webSocketHandler.sendLog(schemaId, "warning",
+                            "⛔ Зацикливание: узел '" + node.getName() + "' заблокирован (" + failCount + " попыток). Рекомендуется: пропустить узел или остановить выполнение.",
+                            node.getId());
+                }
+                log.error("Узел заблокирован после {} неудачных попыток: {}", failCount, e.getMessage());
+            } else {
+                node.setStatus(Node.NodeStatus.FAILED);
+                String retryMsg = String.format("Ошибка (%d/%d): %s", failCount, MAX_NODE_RESTARTS, e.getMessage());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendError(schemaId, node.getId(), retryMsg);
+                    webSocketHandler.sendLog(schemaId, "error",
+                            "⚠️ Попытка " + failCount + "/" + MAX_NODE_RESTARTS + ": " + e.getMessage(), node.getId());
+                }
+                log.error("Ошибка выполнения узла {} ({}/{}): {}", node.getId(), failCount, MAX_NODE_RESTARTS, e.getMessage());
             }
-            System.err.println("❌ Ошибка выполнения узла " + node.getId() + ": " + e.getMessage());
         }
     }
 
@@ -761,6 +963,51 @@ public class SchemaService {
         demo.setEdges(edges);
 
         schemaRepository.save(demo);
-        System.out.println("✅ Добавлена демо-схема: " + demo.getName());
+        log.info("Добавлена демо-схема: {}", demo.getName());
+    }
+
+    // Package-private accessors for testing
+    List<List<Node>> getExecutionLevelsPublic(WorkflowSchema schema) { return getExecutionLevels(schema); }
+    Set<String> computeSkippedNodesPublic(WorkflowSchema schema) { return computeSkippedNodes(schema); }
+    String interpolateVariablesPublic(String text, WorkflowSchema schema, Map<String, Object> preds) { return interpolateVariables(text, schema, preds); }
+    String buildContextBlockPublic(Map<String, Object> preds) { return buildContextBlock(preds); }
+    boolean sleepWithCancelPublic(long millis, AtomicBoolean cancelFlag) { return sleepWithCancel(millis, cancelFlag); }
+    void setConditionResult(String key, String value) { conditionResults.put(key, value); }
+    void setId(String id) { /* for test setup */ }
+    String writeOutputPublic(String outputType, String filePath, String fileFormat, String content) { return writeOutput(outputType, filePath, fileFormat, content); }
+
+    private final Map<String, String> outputFileRegistry = new ConcurrentHashMap<>();
+
+    public String getOutputFileContent(String schemaId, String nodeId) {
+        String key = schemaId + ":" + nodeId;
+        String filePath = outputFileRegistry.get(key);
+        if (filePath == null) return null;
+        try {
+            return java.nio.file.Files.readString(java.nio.file.Path.of(filePath));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String writeOutput(String outputType, String filePath, String fileFormat, String content) {
+        if (content == null || content.isBlank()) {
+            return "Нет данных для вывода";
+        }
+        if ("file".equals(outputType) && filePath != null && !filePath.isBlank()) {
+            try {
+                java.nio.file.Path path = java.nio.file.Path.of(filePath);
+                java.nio.file.Files.createDirectories(path.getParent());
+                String dataToWrite = content;
+                if ("json".equals(fileFormat)) {
+                    dataToWrite = "{\n  \"result\": " + new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(content) + ",\n  \"timestamp\": " + System.currentTimeMillis() + "\n}";
+                }
+                java.nio.file.Files.writeString(path, dataToWrite);
+                return "Сохранено в файл: " + filePath;
+            } catch (Exception e) {
+                return "Ошибка записи файла: " + e.getMessage();
+            }
+        }
+        // "log" or null — just return content
+        return content;
     }
 }

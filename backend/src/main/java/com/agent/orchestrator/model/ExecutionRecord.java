@@ -12,6 +12,8 @@ public class ExecutionRecord {
     private int totalNodes;
     private int completedNodes;
     private String status; // "completed", "failed", "cancelled"
+    private int totalTokens;
+    private double estimatedCost;
     private Map<String, NodeResult> nodeResults;
 
     public static class NodeResult {
@@ -51,6 +53,10 @@ public class ExecutionRecord {
     public void setCompletedNodes(int completedNodes) { this.completedNodes = completedNodes; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public int getTotalTokens() { return totalTokens; }
+    public void setTotalTokens(int totalTokens) { this.totalTokens = totalTokens; }
+    public double getEstimatedCost() { return estimatedCost; }
+    public void setEstimatedCost(double estimatedCost) { this.estimatedCost = estimatedCost; }
     public Map<String, NodeResult> getNodeResults() { return nodeResults; }
     public void setNodeResults(Map<String, NodeResult> nodeResults) { this.nodeResults = nodeResults; }
 }

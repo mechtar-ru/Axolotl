@@ -4,12 +4,16 @@ import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.repository.PlanRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class PlanService {
+
+    private static final Logger log = LoggerFactory.getLogger(PlanService.class);
 
     private static final String DEFAULT_WORKSPACE = "default";
 
@@ -137,7 +141,7 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Добавлена задача: " + title + " (ID: " + task.getId() + ")");
+        log.info("Добавлена задача: {} (ID: {})", title, task.getId());
         return task;
     }
 
@@ -158,7 +162,7 @@ public class PlanService {
 
             plan.getTasks().add(task);
             created.add(task);
-            System.out.println("✅ [batch] Добавлена задача: " + task.getTitle() + " (ID: " + task.getId() + ")");
+            log.info("[batch] Добавлена задача: {} (ID: {})", task.getTitle(), task.getId());
         }
 
         plan.touch();
@@ -193,8 +197,8 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Статус задачи " + taskId + " изменён на " + status +
-                (reason != null ? " (причина: " + reason + ")" : ""));
+        log.info("Статус задачи {} изменён на {}{}", taskId, status,
+                reason != null ? " (причина: " + reason + ")" : "");
         return task;
     }
 
@@ -238,7 +242,7 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Задача " + taskId + " перемещена на позицию " + targetIndex);
+        log.info("Задача {} перемещена на позицию {}", taskId, targetIndex);
     }
 
     public void deleteTask(String workspaceId, String taskId, boolean cascade) {
@@ -283,7 +287,7 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Удалена задача: " + taskId + (cascade ? " (cascade)" : ""));
+        log.info("Удалена задача: {}{}", taskId, cascade ? " (cascade)" : "");
     }
 
     public Task updateTaskPriority(String workspaceId, String taskId, Priority priority) {
@@ -299,7 +303,7 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Приоритет задачи " + taskId + " изменён на " + priority);
+        log.info("Приоритет задачи {} изменён на {}", taskId, priority);
         return task;
     }
 
@@ -316,8 +320,8 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Задача " + taskId + " связана с узлом " +
-                (nodeId != null ? nodeId : "разорвана"));
+        log.info("Задача {} связана с узлом {}", taskId,
+                nodeId != null ? nodeId : "разорвана");
         return task;
     }
 
@@ -350,8 +354,8 @@ public class PlanService {
         planRepository.save(plan);
         notifyPlanUpdated(plan);
 
-        System.out.println("✅ Критерии приёмки задачи " + taskId + " обновлены: " +
-                task.getCriteriaMetCount() + "/" + task.getAcceptanceCriteria().size());
+        log.info("Критерии приёмки задачи {} обновлены: {}/{}", taskId,
+                task.getCriteriaMetCount(), task.getAcceptanceCriteria().size());
         return task;
     }
 
@@ -399,7 +403,7 @@ public class PlanService {
     private Plan createDefaultPlan(String workspaceId) {
         Plan plan = new Plan(workspaceId, "План");
         planRepository.save(plan);
-        System.out.println("✅ Создан план по умолчанию для workspace: " + workspaceId);
+        log.info("Создан план по умолчанию для workspace: {}", workspaceId);
         return plan;
     }
 
@@ -408,14 +412,13 @@ public class PlanService {
             Plan existing = planRepository.findByWorkspaceId(DEFAULT_WORKSPACE);
             if (existing == null) {
                 createDefaultPlan(DEFAULT_WORKSPACE);
-                System.out.println("✅ Создан новый план для workspace: " + DEFAULT_WORKSPACE);
+                log.info("Создан новый план для workspace: {}", DEFAULT_WORKSPACE);
             } else {
-                System.out.println("✅ Загружен существующий план для workspace: " + DEFAULT_WORKSPACE +
-                        " (" + existing.getTasks().size() + " задач)");
+                log.info("Загружен существующий план для workspace: {} ({} задач)",
+                        DEFAULT_WORKSPACE, existing.getTasks().size());
             }
         } catch (Exception e) {
-            System.err.println("⚠️ Ошибка инициализации плана: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Ошибка инициализации плана: {}", e.getMessage());
             createDefaultPlan(DEFAULT_WORKSPACE);
         }
     }

@@ -2,6 +2,8 @@ package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.Agent;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import jakarta.annotation.PostConstruct;
 import java.util.ArrayList;
@@ -11,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AgentService {
+    private static final Logger log = LoggerFactory.getLogger(AgentService.class);
     
     private final OpenClawClient openClawClient;
     private final Map<String, Agent> agents = new ConcurrentHashMap<>();
@@ -33,8 +36,8 @@ public class AgentService {
         conn.setTimeout(30);
         defaultAgent.setConnection(conn);
         agents.put("local", defaultAgent);
-        System.out.println("✅ Добавлен агент: " + defaultAgent.getName());
-        
+        log.info("Добавлен агент: {}", defaultAgent.getName());
+
         // Добавляем удалённого агента
         Agent remoteAgent = new Agent();
         remoteAgent.setId("remote");
@@ -46,7 +49,7 @@ public class AgentService {
         remoteConn.setTimeout(60);
         remoteAgent.setConnection(remoteConn);
         agents.put("remote", remoteAgent);
-        System.out.println("✅ Добавлен агент: " + remoteAgent.getName());
+        log.info("Добавлен агент: {}", remoteAgent.getName());
     }
     
     public List<Agent> getAllAgents() {
