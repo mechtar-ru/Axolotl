@@ -1,5 +1,6 @@
 package com.agent.orchestrator.llm;
 
+import com.agent.orchestrator.service.SettingsService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ public class AnthropicProvider implements LlmProvider {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final SettingsService settingsService;
 
     @Value("${axolotl.llm.anthropic.base-url:https://api.anthropic.com}")
     private String baseUrl;
@@ -35,17 +37,25 @@ public class AnthropicProvider implements LlmProvider {
     @Value("${axolotl.llm.anthropic.timeout:120}")
     private int timeoutSeconds;
 
-    public AnthropicProvider() {
+    public AnthropicProvider(SettingsService settingsService) {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.objectMapper = new ObjectMapper();
+        this.settingsService = settingsService;
+    }
+
+    private String getEffectiveApiKey() {
+        String key = settingsService.getApiKey("anthropic");
+        if (key != null && !key.isBlank()) return key;
+        return apiKey;
     }
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String effectiveModel = resolveModel(model);
-        if (apiKey == null || apiKey.isBlank()) {
+        String effectiveKey = getEffectiveApiKey();
+        if (effectiveKey == null || effectiveKey.isBlank()) {
             return "Anthropic: API ключ не настроен. Установите axolotl.llm.anthropic.api-key в application.properties";
         }
 
@@ -67,7 +77,7 @@ public class AnthropicProvider implements LlmProvider {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/v1/messages"))
                     .header("Content-Type", "application/json")
-                    .header("x-api-key", apiKey)
+                    .header("x-api-key", getEffectiveApiKey())
                     .header("anthropic-version", "2023-06-01")
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
@@ -105,7 +115,7 @@ public class AnthropicProvider implements LlmProvider {
 
     @Override
     public boolean isAvailable() {
-        return apiKey != null && !apiKey.isBlank();
+        return getEffectiveApiKey() != null && !getEffectiveApiKey().isBlank();
     }
 
     @Override
@@ -141,7 +151,7 @@ public class AnthropicProvider implements LlmProvider {
     public String streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
-        if (apiKey == null || apiKey.isBlank()) {
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             String error = "Anthropic: API ключ не настроен";
             onToken.accept(error);
             return error;
@@ -166,7 +176,7 @@ public class AnthropicProvider implements LlmProvider {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/v1/messages"))
                     .header("Content-Type", "application/json")
-                    .header("x-api-key", apiKey)
+                    .header("x-api-key", getEffectiveApiKey())
                     .header("anthropic-version", "2023-06-01")
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .timeout(Duration.ofSeconds(timeoutSeconds))

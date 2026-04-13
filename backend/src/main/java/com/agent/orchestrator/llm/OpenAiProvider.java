@@ -1,5 +1,6 @@
 package com.agent.orchestrator.llm;
 
+import com.agent.orchestrator.service.SettingsService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ public class OpenAiProvider implements LlmProvider {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final SettingsService settingsService;
 
     @Value("${axolotl.llm.openai.base-url:https://api.openai.com/v1}")
     private String baseUrl;
@@ -35,17 +37,25 @@ public class OpenAiProvider implements LlmProvider {
     @Value("${axolotl.llm.openai.timeout:120}")
     private int timeoutSeconds;
 
-    public OpenAiProvider() {
+    public OpenAiProvider(SettingsService settingsService) {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
         this.objectMapper = new ObjectMapper();
+        this.settingsService = settingsService;
+    }
+
+    private String getEffectiveApiKey() {
+        String key = settingsService.getApiKey("openai");
+        if (key != null && !key.isBlank()) return key;
+        return apiKey;
     }
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String effectiveModel = resolveModel(model);
-        if (apiKey == null || apiKey.isBlank()) {
+        String effectiveKey = getEffectiveApiKey();
+        if (effectiveKey == null || effectiveKey.isBlank()) {
             return "OpenAI: API ключ не настроен. Установите axolotl.llm.openai.api-key в application.properties";
         }
 
@@ -66,7 +76,7 @@ public class OpenAiProvider implements LlmProvider {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/chat/completions"))
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + getEffectiveApiKey())
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
@@ -100,7 +110,7 @@ public class OpenAiProvider implements LlmProvider {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + getEffectiveApiKey())
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
@@ -122,7 +132,7 @@ public class OpenAiProvider implements LlmProvider {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + getEffectiveApiKey())
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
@@ -168,7 +178,7 @@ public class OpenAiProvider implements LlmProvider {
     public String streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
-        if (apiKey == null || apiKey.isBlank()) {
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             String error = "OpenAI: API ключ не настроен";
             onToken.accept(error);
             return error;
@@ -191,7 +201,7 @@ public class OpenAiProvider implements LlmProvider {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/chat/completions"))
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + getEffectiveApiKey())
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
