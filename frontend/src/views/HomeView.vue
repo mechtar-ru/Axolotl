@@ -1,6 +1,6 @@
 <template>
   <div class="app">
-    <div class="sidebar">
+    <div class="sidebar" :style="{ width: sidebarWidth + 'px' }">
       <h2>📋 Схемы</h2>
       <ul>
         <li
@@ -23,6 +23,9 @@
         <span class="user-name">👤 {{ authStore.username }}</span>
         <button @click="logout" class="logout-btn">Выйти</button>
       </div>
+
+      <!-- Resize handle -->
+      <div class="sidebar-resize-handle" @mousedown="startResize"></div>
     </div>
 
     <div class="main-content">
@@ -31,6 +34,40 @@
           <div class="empty-state__icon">🧬</div>
           <h1 class="empty-state__title">Axolotl — Визуальная оркестрация AI-агентов</h1>
           <p class="empty-state__subtitle">Создавайте схемы выполнения AI-агентов визуально</p>
+
+          <!-- Templates section -->
+          <div class="templates-section">
+            <h3 class="templates-title">Начать с шаблона</h3>
+            <div class="template-cards">
+              <button class="template-card" @click="createFromTemplate('ai-pipeline')">
+                <span class="template-card__icon">🤖</span>
+                <span class="template-card__title">AI Pipeline</span>
+                <span class="template-card__desc">Source → Agent → Output</span>
+              </button>
+              <button class="template-card" @click="createFromTemplate('rag')">
+                <span class="template-card__icon">🧠</span>
+                <span class="template-card__title">RAG</span>
+                <span class="template-card__desc">Source → Memory → Agent → Output</span>
+              </button>
+              <button class="template-card" @click="createFromTemplate('condition')">
+                <span class="template-card__icon">⚖️</span>
+                <span class="template-card__title">Condition Branch</span>
+                <span class="template-card__desc">Source → Condition → Agent A / Agent B</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Recent schemas -->
+          <div v-if="recentSchemas.length > 0" class="recent-section">
+            <h3 class="recent-title">Недавние схемы</h3>
+            <div class="recent-cards">
+              <button v-for="s in recentSchemas" :key="s.id" class="recent-card" @click="selectSchema(s)">
+                <span class="recent-card__name">{{ s.name }}</span>
+                <span class="recent-card__nodes">{{ (s.nodes || []).length }} узлов</span>
+              </button>
+            </div>
+          </div>
+
           <div class="empty-state__actions">
             <button class="action-card" @click="createNewSchema">
               <span class="action-card__icon">✨</span>
@@ -118,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useAuthStore } from '../stores/authStore';
@@ -143,6 +180,91 @@ const showPlan = ref(false);
 const showCommandPalette = ref(false);
 const showSearch = ref(false);
 const showOnboarding = ref(false);
+
+// Resizable sidebar
+const sidebarWidth = ref(250);
+const MIN_SIDEBAR = 180;
+const MAX_SIDEBAR = 400;
+let isResizing = false;
+
+function startResize() {
+  isResizing = true;
+  document.addEventListener('mousemove', onResize);
+  document.addEventListener('mouseup', stopResize);
+}
+
+function onResize(e: MouseEvent) {
+  if (!isResizing) return;
+  sidebarWidth.value = Math.max(MIN_SIDEBAR, Math.min(MAX_SIDEBAR, e.clientX));
+}
+
+function stopResize() {
+  isResizing = false;
+  document.removeEventListener('mousemove', onResize);
+  document.removeEventListener('mouseup', stopResize);
+}
+
+// Recent schemas (last 5)
+const recentSchemas = computed(() => {
+  return schemaStore.schemas.slice(-5).reverse();
+});
+
+// Templates
+async function createFromTemplate(template: string) {
+  const templates: Record<string, { name: string; nodes: any[]; edges: any[] }> = {
+    'ai-pipeline': {
+      name: '🤖 AI Pipeline',
+      nodes: [
+        { id: 'source-1', type: 'source', name: 'Входные данные', position: { x: 100, y: 200 }, data: { sourceData: 'Введите текст для анализа' } },
+        { id: 'agent-1', type: 'agent', name: 'AI Агент', position: { x: 400, y: 200 }, data: { userPrompt: 'Проанализируйте следующие данные:', provider: 'ollama' } },
+        { id: 'output-1', type: 'output', name: 'Результат', position: { x: 700, y: 200 }, data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'source-1', target: 'agent-1', type: 'data' },
+        { id: 'e2', source: 'agent-1', target: 'output-1', type: 'data' },
+      ],
+    },
+    'rag': {
+      name: '🧠 RAG Pipeline',
+      nodes: [
+        { id: 'source-1', type: 'source', name: 'Запрос', position: { x: 100, y: 200 }, data: { sourceData: 'Ваш вопрос' } },
+        { id: 'memory-1', type: 'memory', name: 'Поиск в памяти', position: { x: 100, y: 400 }, data: { sourceData: 'Контекст по запросу' } },
+        { id: 'agent-1', type: 'agent', name: 'AI Агент', position: { x: 450, y: 300 }, data: { userPrompt: 'Ответьте на вопрос, используя контекст:', provider: 'ollama' } },
+        { id: 'output-1', type: 'output', name: 'Ответ', position: { x: 750, y: 300 }, data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'source-1', target: 'agent-1', type: 'data' },
+        { id: 'e2', source: 'memory-1', target: 'agent-1', type: 'data' },
+        { id: 'e3', source: 'agent-1', target: 'output-1', type: 'data' },
+      ],
+    },
+    'condition': {
+      name: '⚖️ Condition Branch',
+      nodes: [
+        { id: 'source-1', type: 'source', name: 'Вход', position: { x: 100, y: 250 }, data: { sourceData: 'Текст для классификации' } },
+        { id: 'condition-1', type: 'condition', name: 'Классификатор', position: { x: 350, y: 250 }, data: { condition: 'input.length > 50' } },
+        { id: 'agent-a', type: 'agent', name: 'Детальный анализ', position: { x: 650, y: 100 }, data: { userPrompt: 'Выполни детальный анализ:', provider: 'ollama' } },
+        { id: 'agent-b', type: 'agent', name: 'Быстрый ответ', position: { x: 650, y: 400 }, data: { userPrompt: 'Дай краткий ответ:', provider: 'ollama' } },
+        { id: 'output-1', type: 'output', name: 'Результат', position: { x: 950, y: 250 }, data: {} },
+      ],
+      edges: [
+        { id: 'e1', source: 'source-1', target: 'condition-1', type: 'data' },
+        { id: 'e2', source: 'condition-1', target: 'agent-a', type: 'data', label: 'true' },
+        { id: 'e3', source: 'condition-1', target: 'agent-b', type: 'data', label: 'false' },
+        { id: 'e4', source: 'agent-a', target: 'output-1', type: 'data' },
+        { id: 'e5', source: 'agent-b', target: 'output-1', type: 'data' },
+      ],
+    },
+  };
+
+  const t = templates[template];
+  if (!t) return;
+
+  const created = await schemaStore.createSchema(t.name);
+  await schemaApi.updateSchema(created.id, { ...created, nodes: t.nodes, edges: t.edges });
+  await schemaStore.loadSchemas();
+  router.push({ name: 'schema', params: { id: created.id } });
+}
 
 onMounted(() => {
   // schemaStore.loadSchemas(); // Уже вызывается в App.vue
@@ -672,6 +794,113 @@ body {
 .action-card__desc {
   font-size: 12px;
   color: #888;
+}
+
+/* Templates section */
+.templates-section {
+  margin-bottom: 32px;
+}
+.templates-title {
+  font-size: 18px;
+  color: #ccc;
+  margin: 0 0 16px;
+  font-weight: 600;
+}
+.template-cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+.template-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 24px;
+  background: rgba(30, 30, 46, 0.6);
+  border: 1px solid rgba(108, 99, 255, 0.15);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 140px;
+}
+.template-card:hover {
+  border-color: #6c63ff;
+  background: rgba(108, 99, 255, 0.1);
+  transform: translateY(-2px);
+}
+.template-card__icon {
+  font-size: 28px;
+}
+.template-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+}
+.template-card__desc {
+  font-size: 11px;
+  color: #777;
+}
+
+/* Recent schemas section */
+.recent-section {
+  margin-bottom: 32px;
+}
+.recent-title {
+  font-size: 16px;
+  color: #aaa;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+.recent-cards {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+.recent-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 20px;
+  background: rgba(30, 30, 46, 0.4);
+  border: 1px solid rgba(74, 74, 106, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 120px;
+}
+.recent-card:hover {
+  border-color: #6c63ff;
+  background: rgba(108, 99, 255, 0.08);
+}
+.recent-card__name {
+  font-size: 13px;
+  color: #ddd;
+  font-weight: 500;
+}
+.recent-card__nodes {
+  font-size: 11px;
+  color: #666;
+}
+
+/* Sidebar resize handle */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s;
+}
+.sidebar-resize-handle:hover {
+  background: rgba(108, 99, 255, 0.3);
 }
 
 .placeholder {
