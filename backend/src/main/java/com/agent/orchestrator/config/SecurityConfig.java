@@ -38,6 +38,9 @@ public class SecurityConfig {
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/mcp").permitAll()
                 .requestMatchers("/api/plan/**").permitAll()
+                .requestMatchers("/api/schemas/**").permitAll()
+                .requestMatchers("/api/agents/**").permitAll()
+                .requestMatchers("/api/settings/**").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
