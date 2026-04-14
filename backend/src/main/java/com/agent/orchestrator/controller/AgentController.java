@@ -82,6 +82,12 @@ public class AgentController {
         return Map.of("mermaid", mermaid);
     }
 
+    @GetMapping("/schemas/{id}/export/python")
+    public Map<String, String> exportToPython(@PathVariable String id) {
+        String python = schemaService.exportToPython(id);
+        return Map.of("python", python);
+    }
+
     @PostMapping("/schemas/{id}/execute")
     public Map<String, String> executeSchema(@PathVariable String id) {
         schemaService.executeSchema(id);

@@ -68,7 +68,21 @@
         <div class="modal-buttons">
           <button @click="copyToClipboard">📋 Скопировать</button>
           <button @click="saveToFile">💾 Сохранить</button>
+          <button @click="exportPython" class="btn-python">🐍 Python</button>
           <button @click="showMermaid = false">❌ Закрыть</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Модальное окно Python экспорта -->
+    <div v-if="showPython" class="modal">
+      <div class="modal-content modal-large">
+        <h3>🐍 Python скрипт</h3>
+        <pre class="python-code">{{ pythonCode }}</pre>
+        <div class="modal-buttons">
+          <button @click="copyPythonToClipboard">📋 Скопировать</button>
+          <button @click="savePythonToFile">💾 Сохранить .py</button>
+          <button @click="showPython = false">❌ Закрыть</button>
         </div>
       </div>
     </div>
@@ -122,6 +136,8 @@ const authStore = useAuthStore();
 const showMermaid = ref(false);
 const showImport = ref(false);
 const mermaidCode = ref('');
+const showPython = ref(false);
+const pythonCode = ref('');
 const importText = ref('');
 const showPlan = ref(false);
 const showCommandPalette = ref(false);
@@ -223,6 +239,34 @@ async function handleExportMermaid() {
     mermaidCode.value = await schemaApi.exportToMermaid(schemaStore.currentSchema.id);
     showMermaid.value = true;
   }
+}
+
+async function exportPython() {
+  if (!schemaStore.currentSchema) return;
+  try {
+    const res = await fetch(`/api/schemas/${schemaStore.currentSchema.id}/export/python`);
+    const data = await res.json();
+    pythonCode.value = data.python || '';
+    showPython.value = true;
+    showMermaid.value = false;
+  } catch (e) {
+    console.error('Python export failed:', e);
+  }
+}
+
+async function copyPythonToClipboard() {
+  await navigator.clipboard.writeText(pythonCode.value);
+  alert('Скопировано!');
+}
+
+function savePythonToFile() {
+  const blob = new Blob([pythonCode.value], { type: 'text/x-python' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${schemaStore.currentSchema?.name || 'schema'}.py`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function handleSchemaUpdate(updatedSchema: WorkflowSchema) {
@@ -704,5 +748,24 @@ body {
 
 .modal-buttons button:hover {
   background: #d43d51;
+}
+
+.btn-python {
+  background: #4a4a6a !important;
+}
+.btn-python:hover {
+  background: #5a5a7a !important;
+}
+
+.modal-large {
+  max-width: 800px;
+}
+
+.python-code {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+  white-space: pre;
+  max-height: 500px;
+  overflow: auto;
 }
 </style>
