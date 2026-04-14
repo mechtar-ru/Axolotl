@@ -159,6 +159,7 @@ import { ref, onMounted, watch, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useAuthStore } from '../stores/authStore';
+import { useToast } from '../composables/useToast';
 import WorkflowCanvas from '../components/canvas/WorkflowCanvas.vue';
 import PlanPanel from '../components/plan/PlanPanel.vue';
 import CommandPalette from '../components/ui/CommandPalette.vue';
@@ -170,6 +171,7 @@ const router = useRouter();
 const route = useRoute();
 const schemaStore = useSchemaStore();
 const authStore = useAuthStore();
+const toast = useToast();
 const showMermaid = ref(false);
 const showImport = ref(false);
 const mermaidCode = ref('');
@@ -347,7 +349,7 @@ function goToSettings() {
 async function handleSave() {
   if (schemaStore.currentSchema) {
     await schemaStore.updateSchema(schemaStore.currentSchema);
-    alert('Схема сохранена!');
+    toast.success('Схема сохранена');
   }
 }
 

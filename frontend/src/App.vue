@@ -1,10 +1,12 @@
 <template>
   <router-view />
+  <ToastContainer />
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useSchemaStore } from './stores/schemaStore';
+import ToastContainer from './components/ToastContainer.vue';
 
 const schemaStore = useSchemaStore();
 

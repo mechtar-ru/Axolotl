@@ -1,11 +1,11 @@
 {
     "id": "f62aac82-41b9-472f-b5f5-3a53a9e15868",
     "workspaceId": "default",
-    "name": "\u041f\u043b\u0430\u043d",
+    "name": "План",
     "tasks": [
         {
             "id": "d3ab7ab9-ed0d-4787-a6c0-f8f79c64bf22",
-            "title": "Memory Graph View \u2014 graph-as-context \u0434\u043b\u044f AI \u043f\u0440\u043e\u043c\u043f\u0442\u043e\u0432",
+            "title": "Memory Graph View — graph-as-context для AI промптов",
             "description": "",
             "status": "DONE",
             "priority": "HIGH",
@@ -37,7 +37,7 @@
         },
         {
             "id": "4cd70eb6-ff03-477e-a848-d131bccee3d5",
-            "title": "Link tasks to nodes \u2014 \u043f\u043e\u043b\u043d\u0430\u044f \u0438\u043d\u0442\u0435\u0433\u0440\u0430\u0446\u0438\u044f",
+            "title": "Link tasks to nodes — полная интеграция",
             "description": "",
             "status": "DONE",
             "priority": "MEDIUM",
@@ -53,7 +53,7 @@
         },
         {
             "id": "dfea2cee-f4d6-4646-a396-32d30470b705",
-            "title": "Schema versioning \u0432 MemPalace",
+            "title": "Schema versioning в MemPalace",
             "description": "",
             "status": "DONE",
             "priority": "MEDIUM",
@@ -85,7 +85,7 @@
         },
         {
             "id": "46f29c3f-26de-4796-8b8a-db405061bc63",
-            "title": "Acceptance Criteria \u0434\u043b\u044f \u0437\u0430\u0434\u0430\u0447 \u0432 Plan Panel",
+            "title": "Acceptance Criteria для задач в Plan Panel",
             "description": "",
             "status": "DONE",
             "priority": "HIGH",
@@ -101,7 +101,7 @@
         },
         {
             "id": "3c5dfeed-5df3-4a2a-b309-1a032d60dc1b",
-            "title": "\u0412\u0438\u0437\u0443\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0432\u043e\u043b\u043d \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f (Wave visualization)",
+            "title": "Визуализация волн выполнения (Wave visualization)",
             "description": "",
             "status": "DONE",
             "priority": "HIGH",
@@ -117,7 +117,7 @@
         },
         {
             "id": "61951d72-e631-4524-9f99-7828ce2ec092",
-            "title": "\u0414\u0435\u0442\u0435\u043a\u0442\u043e\u0440 \u0437\u0430\u0446\u0438\u043a\u043b\u0438\u0432\u0430\u043d\u0438\u044f (Convergence monitoring)",
+            "title": "Детектор зацикливания (Convergence monitoring)",
             "description": "",
             "status": "DONE",
             "priority": "HIGH",
@@ -133,9 +133,9 @@
         },
         {
             "id": "6b423aa1-5a81-4e09-b405-e7d17fd1f1a1",
-            "title": "Python export \u2014 \u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u0441\u043a\u0440\u0438\u043f\u0442\u0430 \u0438\u0437 \u0441\u0445\u0435\u043c\u044b",
+            "title": "Python export — генерация скрипта из схемы",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "LOW",
             "dependencies": [],
             "nodeId": null,
@@ -144,14 +144,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:33:37.702562Z",
             "criteriaMetCount": 0
         },
         {
             "id": "11c16e5a-da9d-4d4b-b358-a8b19bb60ba3",
-            "title": "Multi-tenancy \u2014 workspace isolation",
+            "title": "Multi-tenancy — workspace isolation",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "LOW",
             "dependencies": [],
             "nodeId": null,
@@ -160,14 +160,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:33:37.702562Z",
             "criteriaMetCount": 0
         },
         {
             "id": "d591cff1-0bee-4ac3-9ef6-a17338b3843b",
-            "title": "Structured logging \u2014 SLF4J",
+            "title": "Structured logging — SLF4J",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "LOW",
             "dependencies": [],
             "nodeId": null,
@@ -176,12 +176,12 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:33:37.702562Z",
             "criteriaMetCount": 0
         },
         {
             "id": "588a7081-0502-4302-a3e3-7426ba74572f",
-            "title": "CI/CD pipeline \u2014 GitHub Actions",
+            "title": "CI/CD pipeline — GitHub Actions",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
@@ -197,7 +197,7 @@
         },
         {
             "id": "2753a823-7477-4e9b-bd6c-63fe4ffc9be3",
-            "title": "Integration tests \u2014 Testcontainers",
+            "title": "Integration tests — Testcontainers",
             "description": "",
             "status": "TODO",
             "priority": "HIGH",
@@ -213,7 +213,7 @@
         },
         {
             "id": "30725aa9-cf9b-4946-ba97-035c513b950f",
-            "title": "E2E tests \u2014 Playwright",
+            "title": "E2E tests — Playwright",
             "description": "",
             "status": "TODO",
             "priority": "HIGH",
@@ -229,7 +229,7 @@
         },
         {
             "id": "131b9d22-ea91-4036-b079-e429fdd57770",
-            "title": "Skills \u2014 auto-learning system",
+            "title": "Skills — auto-learning system",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
@@ -245,7 +245,7 @@
         },
         {
             "id": "acaedc94-2512-4133-8443-c1679af3e6c6",
-            "title": "Invitations \u2014 invite collaborators",
+            "title": "Invitations — invite collaborators",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
@@ -261,7 +261,7 @@
         },
         {
             "id": "2e6e81d5-bc42-4b3a-a997-ed8eee7203dd",
-            "title": "Share link \u2014 read-only view",
+            "title": "Share link — read-only view",
             "description": "",
             "status": "TODO",
             "priority": "LOW",
@@ -309,7 +309,7 @@
         },
         {
             "id": "c676df5b-a1c3-40b2-b8ed-2aebd1e55067",
-            "title": "Empty state / Onboarding \u2014 welcome screen",
+            "title": "Empty state / Onboarding — welcome screen",
             "description": "",
             "status": "DONE",
             "priority": "HIGH",
@@ -343,7 +343,7 @@
             "id": "a972a714-22b7-40c3-996c-a1f3cd15b283",
             "title": "Error feedback improvements",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "HIGH",
             "dependencies": [],
             "nodeId": null,
@@ -352,14 +352,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:37:33.304480Z",
             "criteriaMetCount": 0
         },
         {
             "id": "5d6be8f3-a434-492a-851c-66508a7a1def",
-            "title": "Toolbar reorganization \u2014 emoji-only",
+            "title": "Toolbar reorganization — emoji-only",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "MEDIUM",
             "dependencies": [],
             "nodeId": null,
@@ -368,7 +368,7 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:33:37.702562Z",
             "criteriaMetCount": 0
         },
         {
@@ -391,7 +391,7 @@
             "id": "fa179362-60cf-4054-ab1e-26bbae8bb752",
             "title": "Toast notification system",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "MEDIUM",
             "dependencies": [],
             "nodeId": null,
@@ -400,14 +400,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:37:33.304480Z",
             "criteriaMetCount": 0
         },
         {
             "id": "92e2cf0a-689f-41af-958b-feb7636c37c5",
             "title": "Auto-save indicator",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "LOW",
             "dependencies": [],
             "nodeId": null,
@@ -416,7 +416,7 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-14T19:37:33.304480Z",
             "criteriaMetCount": 0
         },
         {
@@ -437,7 +437,7 @@
         },
         {
             "id": "b717b04c-0f43-4a45-80dd-500ad1efddfb",
-            "title": "\u041f\u0435\u0440\u0435\u043a\u0440\u0451\u0441\u0442\u043d\u0430\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0430 \u0447\u0435\u0440\u0435\u0437 \u0432\u0442\u043e\u0440\u0443\u044e LLM",
+            "title": "Перекрёстная проверка через вторую LLM",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
@@ -453,7 +453,7 @@
         },
         {
             "id": "127f5606-f131-4e58-a49f-0460bc396964",
-            "title": "\u0424\u043e\u043d\u043e\u0432\u044b\u0439 \u0430\u043d\u0430\u043b\u0438\u0437 \u0443\u0440\u043e\u0432\u043d\u044f",
+            "title": "Фоновый анализ уровня",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
@@ -469,7 +469,7 @@
         },
         {
             "id": "738677cd-25d8-4ac0-8691-a77bf87c1a90",
-            "title": "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0432 \u0430\u0433\u0435\u043d\u0442-\u0447\u0438\u0442\u0430\u0435\u043c\u044b\u0439 \u0444\u043e\u0440\u043c\u0430\u0442",
+            "title": "Экспорт в агент-читаемый формат",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
@@ -485,7 +485,7 @@
         },
         {
             "id": "ebd0c8bb-301c-4309-869c-cfc64a99383c",
-            "title": "\u0420\u0435\u0444\u0430\u043a\u0442\u043e\u0440\u0438\u043d\u0433 Vue \u043a\u043e\u0434\u0430",
+            "title": "Рефакторинг Vue кода",
             "description": "",
             "status": "TODO",
             "priority": "MEDIUM",
