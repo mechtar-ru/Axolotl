@@ -3,14 +3,15 @@
     <div class="schema-name" @click="editSchemaName">
       <span class="schema-title" @click="editSchemaName">📝 {{ schema.name }}</span>
       <div class="schema-actions">
-        <button class="run-schema-btn" @click="executeSchema" :disabled="isExecuting">▶️ Выполнить</button>
-        <button class="save-schema-btn" @click="saveSchema">💾 Сохранить</button>
-        <button class="export-schema-btn" @click="exportSchema">📊 Экспорт</button>
+        <button class="run-schema-btn" @click.stop="executeSchema" :disabled="isExecuting">▶️ Выполнить</button>
+        <button class="save-schema-btn" @click.stop="saveSchema">💾 Сохранить</button>
+        <button class="export-schema-btn" @click.stop="exportSchema">📊 Экспорт</button>
         <button class="delete-schema-btn" @click.stop="confirmDeleteSchema" title="Удалить схему">🗑</button>
       </div>
     </div>
     
     <VueFlow
+      ref="vueFlowRef"
       v-model="elements"
       :node-types="nodeTypes"
       :edge-types="edgeTypes"
@@ -44,14 +45,21 @@
         <button @click="addNode('condition')">⚖️ Condition</button>
         <button @click="addNode('loop')">🔄 Loop</button>
         <button @click="addNode('output')">📤 Output</button>
+        <button @click="addNode('memory')">🧠 Memory</button>
+        <button @click="addNode('guardrail')">🛡️ Guardrail</button>
+        <button @click="addNode('human')">👤 Human</button>
+        <button @click="addNode('fallback')">🔄 Fallback</button>
         <button @click="addNode('comment')">📝 Заметка</button>
         <button @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
         <button @click="ungroupSelectedNode" :disabled="!selectedNodeId || !(props.schema.nodes||[]).find(n => n.id === selectedNodeId)?.parentId" title="Разгруппировать">📤 Разгрупп.</button>
         <button @click="showHistory = !showHistory" title="История выполнений">📜 История</button>
+        <button @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠 Граф</button>
+        <button @click="exportAsImage" title="Сохранить как PNG">📷 PNG</button>
       </div>
     </VueFlow>
 
     <ExecutionPanel
+      ref="executionPanelRef"
       :visible="isExecuting || showExecutionPanel"
       :is-executing="isExecuting"
       :progress="executionProgress"
@@ -59,6 +67,8 @@
       :total-nodes="totalNodes"
       :completed-nodes="completedNodes"
       :logs="executionLogs"
+      :total-tokens="executionTotalTokens"
+      :estimated-cost="executionEstimatedCost"
       @stop="stopExecution"
       @close="closeExecutionPanel"
       @highlight-node="highlightNode"
@@ -78,7 +88,22 @@
       :schema-id="schema.id"
       @close="showHistory = false"
     />
-    
+
+    <MemoryGraphView
+      :visible="showMemoryGraph"
+      @close="showMemoryGraph = false"
+    />
+
+    <!-- Floating memory result cards -->
+    <MemoryResultCard
+      v-for="card in memoryResultCards"
+      :key="card.id"
+      :result="{ wing: card.wing, room: card.room, content: card.content, score: card.score }"
+      :initial-position="{ x: card.x, y: card.y }"
+      @close="closeMemoryCard(card.id)"
+      @pin="pinMemoryResult"
+    />
+
     <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
       <div class="modal-content">
         <h3>Удалить схему?</h3>
@@ -93,8 +118,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, markRaw, onUnmounted, computed } from 'vue';
-import { VueFlow, type Node, type Edge, type Connection, type NodeDragEvent, type NodeMouseEvent, type EdgeMouseEvent, MarkerType } from '@vue-flow/core';
+import { ref, watch, markRaw, onMounted, onUnmounted, computed, nextTick } from 'vue';
+import { VueFlow, type Node, type Edge, type Connection, type NodeDragEvent, type NodeMouseEvent, type EdgeMouseEvent, MarkerType, useVueFlow } from '@vue-flow/core';
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
@@ -106,13 +131,20 @@ import ConditionNode from '../nodes/ConditionNode.vue';
 import LoopNode from '../nodes/LoopNode.vue';
 import GroupNode from '../nodes/GroupNode.vue';
 import CommentNode from '../nodes/CommentNode.vue';
+import MemoryNode from '../nodes/MemoryNode.vue';
+import GuardrailNode from '../nodes/GuardrailNode.vue';
+import HumanNode from '../nodes/HumanNode.vue';
+import FallbackNode from '../nodes/FallbackNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
 import ExecutionPanel from '../execution/ExecutionPanel.vue';
 import PromptEditorModal from '../editor/PromptEditorModal.vue';
 import ExecutionHistory from '../execution/ExecutionHistory.vue';
+import MemoryGraphView from '../memory/MemoryGraphView.vue';
+import MemoryResultCard from '../nodes/MemoryResultCard.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { schemaApi } from '../../services/api';
+import { toPng, toSvg } from 'html-to-image';
 
 const props = defineProps<{
   schema: WorkflowSchema;
@@ -133,6 +165,10 @@ const nodeTypes = {
   loop: LoopNode,
   group: GroupNode,
   comment: CommentNode,
+  memory: MemoryNode,
+  guardrail: GuardrailNode,
+  human: HumanNode,
+  fallback: FallbackNode,
 } as any;
 
 const edgeTypes = {
@@ -145,6 +181,7 @@ const selectedEdgeId = ref<string | null>(null);
 const selectedNodeIds = ref<Set<string>>(new Set());
 const showDeleteConfirm = ref(false);
 const showExecutionPanel = ref(false);
+const executionPanelRef = ref<InstanceType<typeof ExecutionPanel> | null>(null);
 const showSearch = ref(false);
 const searchQuery = ref('');
 let nextNodeOffset = 0;
@@ -153,6 +190,8 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const showPromptEditor = ref(false);
 const promptEditorNodeId = ref<string | null>(null);
 const showHistory = ref(false);
+const showMemoryGraph = ref(false);
+const memoryResultCards = ref<Array<{ id: string; wing: string; room: string; content: string; score?: number; x: number; y: number }>>([]);
 
 // Undo/Redo
 const undoStack = ref<string[]>([]);
@@ -204,6 +243,8 @@ const completedNodes = ref(0);
 const executionLogs = ref<LogEntry[]>([]);
 const nodeProgress = ref<Record<string, number>>({});
 const nodeTimes = ref<Record<string, number>>({});
+const executionTotalTokens = ref(0);
+const executionEstimatedCost = ref(0);
 const executionStartTime = ref(0);
 const elapsedSeconds = ref(0);
 let timerInterval: number | null = null;
@@ -263,7 +304,7 @@ function convertToFlowElements() {
     id: node.id,
     type: node.type,
     position: node.position || { x: 100, y: 100 },
-    parentId: node.parentId || undefined,
+    parentNode: node.parentId || undefined,
     selected: selectedNodeId.value === node.id,
     class: isSearchMatch(node.name, node.type) ? 'search-match' : undefined,
     data: {
@@ -290,6 +331,9 @@ function convertToFlowElements() {
         deleteNode(node.id);
       },
       onOpenPromptEditor: node.type === 'agent' ? () => openPromptEditor(node.id) : undefined,
+      onMemoryResults: node.type === 'memory' ? (nodeId: string, results: any[]) => {
+        showMemoryResults(nodeId, results);
+      } : undefined,
     },
   }));
 
@@ -388,10 +432,7 @@ function deleteSchema() {
 function handleKeyDown(event: KeyboardEvent) {
   const mod = event.metaKey || event.ctrlKey;
 
-  if (event.key === 'Delete' || event.key === 'Del' || (event.key === 'Backspace' && !mod)) {
-    if (event.key === 'Backspace') {
-      event.preventDefault();
-    }
+  if (event.key === 'Delete' || event.key === 'Del') {
     deleteSelected();
     return;
   }
@@ -494,14 +535,23 @@ function handleKeyDown(event: KeyboardEvent) {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('axolotl:highlight-node', handleExternalHighlight);
 }
 
 onUnmounted(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', handleKeyDown);
+    window.removeEventListener('axolotl:highlight-node', handleExternalHighlight);
   }
   disconnect();
 });
+
+function handleExternalHighlight(event: Event) {
+  const detail = (event as CustomEvent).detail as { nodeId: string };
+  if (detail?.nodeId) {
+    highlightNode(detail.nodeId);
+  }
+}
 
 watch(() => props.schema, () => {
   convertToFlowElements();
@@ -527,7 +577,12 @@ function addNode(type: string) {
     agent: 'Аналитик',
     condition: 'Условие',
     loop: 'Цикл',
-    output: 'Результат'
+    output: 'Результат',
+    memory: 'Память',
+    guardrail: 'Валидация',
+    human: 'Человек',
+    fallback: 'Резервный путь',
+    comment: 'Заметка',
   };
   const baseName = nameMap[type as keyof typeof nameMap] || 'Новый узел';
   const uniqueName = generateUniqueName(baseName);
@@ -651,6 +706,12 @@ async function executeSchema() {
         elapsedSeconds.value = data.elapsedTime / 1000; // конвертируем в секунды
         executionProgress.value = data.totalNodes > 0 ? (data.completedNodes / data.totalNodes) * 100 : 100;
       },
+      onWave: (data: { waveNumber: number; nodeIds: string[]; status: string }) => {
+        console.log('🌊 Wave callback:', data);
+        const waveStatus = data.status as 'pending' | 'running' | 'completed';
+        executionPanelRef.value?.updateWave(data.waveNumber, data.nodeIds, waveStatus);
+        pushLog(`Волна ${data.waveNumber + 1}: ${data.status}`, 'info', '');
+      },
       onNodeTime: (data) => {
         console.log('⏱ Node time:', data);
         nodeTimes.value[data.nodeId] = data.durationMs;
@@ -659,6 +720,17 @@ async function executeSchema() {
         );
         emit('update', { ...props.schema, nodes: updatedNodes });
         pushLog(`Время: ${data.durationMs}мс`, 'info', data.nodeId);
+      },
+      onToken: (data) => {
+        // Append streaming tokens to node result in real-time, show typing animation
+        const updatedNodes = (props.schema.nodes || []).map(n => {
+          if (n.id === data.nodeId) {
+            const currentResult = n.data?.result || '';
+            return { ...n, data: { ...n.data, result: currentResult + data.token, isStreaming: true } };
+          }
+          return n;
+        });
+        emit('update', { ...props.schema, nodes: updatedNodes });
       },
       onLog: (message) => {
         try {
@@ -764,7 +836,7 @@ function updateNodeProgress(nodeId: string, status: string, progress: number) {
 
 function updateNodeResult(nodeId: string, result: any) {
   const updatedNodes = (props.schema.nodes || []).map(n =>
-    n.id === nodeId ? { ...n, data: { ...n.data, result } } : n
+    n.id === nodeId ? { ...n, data: { ...n.data, result, isStreaming: false } } : n
   );
   emit('update', { ...props.schema, nodes: updatedNodes });
 }
@@ -777,7 +849,7 @@ function updateNodeStatus(nodeId: string, status: 'idle' | 'running' | 'complete
           ...n,
           status: normalizedStatus,
           executionStatus: normalizedStatus,
-          data: { ...n.data, executionStatus: normalizedStatus, status: normalizedStatus },
+          data: { ...n.data, executionStatus: normalizedStatus, status: normalizedStatus, isStreaming: false },
         }
       : n
   );
@@ -807,11 +879,87 @@ function editSchemaName() {
   }
 }
 
+// === PNG/SVG Export ===
+async function exportAsImage() {
+  const el = document.querySelector('.vue-flow');
+  if (!el) return;
+  try {
+    const dataUrl = await toPng(el as HTMLElement, { backgroundColor: '#1a1a2e', pixelRatio: 2 });
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `${props.schema.name || 'schema'}.png`;
+    a.click();
+  } catch (e) {
+    console.error('PNG export failed:', e);
+  }
+}
+
+// === Memory Result Floating Cards ===
+function showMemoryResults(nodeId: string, results: Array<{ wing: string; room: string; content: string; score?: number }>) {
+  // Find the memory node position to place cards nearby
+  const memoryNode = (props.schema.nodes || []).find(n => n.id === nodeId);
+  const baseX = memoryNode?.position?.x ?? 400;
+  const baseY = memoryNode?.position?.y ?? 200;
+
+  memoryResultCards.value = results.map((r, i) => ({
+    id: `mem-card-${nodeId}-${i}`,
+    wing: r.wing,
+    room: r.room,
+    content: r.content,
+    score: r.score,
+    x: baseX + 350 + (i % 3) * 340,
+    y: baseY + Math.floor(i / 3) * 200,
+  }));
+}
+
+function closeMemoryCard(id: string) {
+  memoryResultCards.value = memoryResultCards.value.filter(c => c.id !== id);
+}
+
+function pinMemoryResult(result: { wing: string; room: string; content: string; score?: number }) {
+  // Create a new SourceNode with the pinned memory content
+  const nodeId = `source-memory-${Date.now()}`;
+  const lastNode = (props.schema.nodes || []).slice(-1)[0];
+  const x = (lastNode?.position?.x ?? 100) + 50;
+  const y = (lastNode?.position?.y ?? 100) + 50;
+
+  const memoryNode: FlowNode = {
+    id: nodeId,
+    type: 'source',
+    name: `Memory: ${result.wing}/${result.room}`,
+    position: { x, y },
+    data: {
+      sourceData: result.content,
+      config: { memoryWing: result.wing, memoryRoom: result.room, memoryScore: result.score },
+    },
+    status: 'idle',
+  };
+
+  pushUndo();
+  const updatedNodes = [...(props.schema.nodes || []), memoryNode];
+  emit('update', { ...props.schema, nodes: updatedNodes });
+
+  // Remove the floating card
+  memoryResultCards.value = memoryResultCards.value.filter(c =>
+    !(c.wing === result.wing && c.room === result.room && c.content === result.content)
+  );
+}
+
 // === Zoom to node (double-click) ===
+const vueFlowRef = ref<InstanceType<typeof VueFlow> | null>(null);
+
 function onNodeDoubleClick(event: any) {
   const nodeId = event.node?.id;
   if (!nodeId) return;
   const node = (props.schema.nodes || []).find(n => n.id === nodeId);
+  if (!node) return;
+
+  // Zoom to node
+  nextTick(() => {
+    vueFlowRef.value?.fitView({ nodes: [nodeId], duration: 300, padding: 0.2 });
+  });
+
+  // Agent nodes also open prompt editor
   if (node?.type === 'agent') {
     openPromptEditor(nodeId);
   }

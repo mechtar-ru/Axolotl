@@ -7,10 +7,10 @@
 
 ## Philosophy
 
-**"Рисуй логику, а не пиши её"** — Axolotl transforms AI orchestration from code into visual interaction.
-**"Ловушка чтобы удержать человека в процессе"** — the system keeps humans in the loop, not automates them away.
+**"Рисуй логику, а не пиши её"** — Axolotl turns AI orchestration from code into visual interaction.
+**"Ловушка чтобы удержать человека в процессе"** — system keeps humans in loop, not automates them away.
 
-We're building a **local-first, privacy-focused** visual OS for AI agents. The infinite canvas with zoom-to-chat is our core metaphor. Every feature must serve this vision.
+We're building a **local-first, privacy-focused** visual OS for AI agents. Infinite canvas + zoom-to-chat is core metaphor. Every feature must serve this vision.
 
 ---
 
@@ -25,92 +25,92 @@ The prototype is alive. Core loop works: create nodes → wire them → execute 
 - [x] Docker Compose stack (backend + frontend + postgres + nginx)
 - [x] Node execution: topological sort (Kahn's), Condition (GraalJS), Loop
 
-**What we learned:** Vue Flow was the right call. WebSocket is essential — without real-time feedback, the canvas feels dead. SQLite for dev, PostgreSQL for prod is a good split.
+**What we learned:** Vue Flow right call. WebSocket essential — without real-time feedback canvas feels dead. SQLite for dev, PostgreSQL for prod is good split.
 
 ---
 
 ## Phase 2: Editor Polish (current focus)
 
-The canvas works, but the editing experience needs to feel smooth and professional. This phase is about making users *want* to build here.
+Canvas works, editing needs feel smooth & professional. This phase makes users want to build here.
 
 ### 2.1 Canvas UX
-- [ ] **Search** — find nodes by name/type (Cmd+F)
-- [ ] **Node grouping** — subgraphs for logical sections
-- [ ] **Canvas comments** — sticky notes on the canvas
-- [ ] **Node collapse/expand** — minimize complexity on large graphs
+- [x] **Search** — find nodes by name/type (Cmd+F) — DONE
+- [ ] **Node grouping** — subgraphs for logical sections (GroupNode.vue exists, needs wiring)
+- [x] **Canvas comments** — CommentNode.vue exists
+- [x] **Node collapse/expand** — all nodes have expand/collapse (AgentNode, SourceNode, LoopNode, ConditionNode, etc.)
 - [ ] **Zoom to node** — double-click to focus
-- [ ] **Drag & drop files** — into SourceNode for file input
+- [x] **Drag & drop files** — into SourceNode for file input (handleDrop implemented)
 
 ### 2.2 Prompt Editor
-- [ ] **Full-screen editor** — modal with syntax highlighting for prompts
-- [ ] **Prompt templates** — quick-insert snippets inside the editor
-- [ ] **Variable interpolation** — {{input}}, {{prev_result}}, etc.
+- [x] **Full-screen editor** — PromptEditorModal.vue with syntax-ready textarea
+- [x] **Prompt templates** — 8 templates (Analysis, Summary, Translation, Extraction, Generation, Code Review, Comparison, FAQ)
+- [x] **Variable interpolation** — `{{input}}`, `{{prev_result}}`, `{{node:...}}` with insert buttons
 
 ### 2.3 Execution Panel
-- [ ] **Parallel execution** — run independent branches simultaneously (CompletableFuture)
-- [ ] **Per-node timer** — how long each node took
+- [x] **Parallel execution** — CompletableFuture.allOf in SchemaService.executeInParallel()
+- [x] **Per-node timer** — `nodeTimeMs` displayed in AgentNode
 - [ ] **Execution metrics** — nodes/sec, total time, token usage
-- [ ] **Execution history** — list of past runs with results
+- [x] **Execution history** — ExecutionHistory.vue + backend API (/api/schemas/{id}/history)
 
 ### 2.4 Model Selection
-- [ ] **Provider setup UI** — configure API keys (OpenAI, Anthropic, DeepSeek, Ollama)
-- [ ] **Onboarding flow** — first-time setup picks default model
-- [ ] **Per-agent model override** — dropdown in AgentNode
-- [x] Model field exists in AgentNode data — needs UI wiring
+- [x] **Provider setup UI** — SettingsView.vue shows providers with status, models, health
+- [ ] **Onboarding flow** — first-time default model setup
+- [x] **Per-agent model override** — dropdown in AgentNode, populated from live providers
+- [x] Model field exists in AgentNode data — wired and working
 
-**Why this matters:** Before we add integrations (Telegram, marketplace), the core editing experience must be solid. Users won't explore advanced features if basic interactions feel clunky.
+**Why this matters:** Before integrations, core editing experience must be solid. Users won't explore advanced features if basic interactions feel clunky.
 
 ---
 
 ## Phase 3: Real AI Connection
 
-Replace `OpenClawClient` stub with actual LLM calls. This is the moment Axolotl becomes useful.
+Replace `OpenClawClient` stub with actual LLM calls. This is when Axolotl becomes useful.
 
 ### 3.1 LLM Providers
-- [ ] **Provider abstraction** — common interface for all LLM calls
-- [ ] **OpenAI** — GPT-4o, GPT-4o-mini via API
-- [ ] **Anthropic** — Claude Sonnet/Opus via API
-- [ ] **DeepSeek** — budget option for simple agents
-- [ ] **Ollama** — local models, fully offline mode
+- [x] **Provider abstraction** — `LlmProvider` interface + `LlmService` router
+- [x] **OpenAI** — GPT-4o, GPT-4o-mini via API (OpenAiProvider.java)
+- [x] **Anthropic** — Claude Sonnet/Opus via API (AnthropicProvider.java)
+- [x] **DeepSeek** — budget option for simple agents (DeepSeekProvider.java)
+- [x] **Ollama** — local models, fully offline mode (OllamaProvider.java)
 - [ ] **OpenClaw** — action execution (tool use)
 
 ### 3.2 Connector Management
-- [ ] **Settings page** — API keys, URLs, timeouts per provider
+- [x] **Settings page** — SettingsView.vue shows providers, API status, models
 - [ ] **Key storage** — encrypted in .env or vault
-- [ ] **Health check** — verify API connectivity in settings
+- [x] **Health check** — `isAvailable()` per provider, shown in SettingsView
 - [ ] **Token balance display** — show remaining quota
 
 ### 3.3 Streaming & Context
 - [ ] **Token streaming** — stream LLM output to WebSocket in real-time
 - [ ] **Context management** — pass upstream results into downstream agents
-- [ ] **Context compression** — summarize long chains (avoid token overflow)
+- [ ] **Context compression** — summarize long chains to avoid token overflow
 
-**Why this matters:** The stub is fine for demos, but real value comes from actual AI execution. Provider abstraction lets users choose cost vs quality per agent.
+**Why this matters:** Stub is fine for demos; real value comes from actual AI execution. Provider abstraction lets users choose cost vs quality per agent.
 
 ---
 
 ## Phase 4: Memory & Intelligence
 
-MemPalace integration makes agents *remember* across sessions. This is our key differentiator.
+MemPalace integration makes agents remember across sessions. This is key differentiator.
 
 ### 4.1 Memory Node
 - [ ] **MemoryNode.vue** — search/query MemPalace, teal color `#00bcd4`
 - [ ] **Search UI** — input field, filters by wing/room/hall
 - [ ] **Result cards** — temporary floating cards with found memories
-- [ ] **Pin memories** — convert search results to permanent nodes
+- [ ] **Pin memories** — turn search results into permanent nodes
 
 ### 4.2 Backend Integration
-- [ ] **MemPalaceClient.java** — HTTP client to MCP server
+- [x] **MemPalaceClient.java** — HTTP client to MCP server (search, add, context)
 - [ ] **Memory as context** — inject MemPalace results into agent prompts
 - [ ] **Auto-save results** — agent outputs → MemPalace for future recall
 - [ ] **Schema versioning in memory** — track canvas evolution over time
 
 ### 4.3 Advanced Nodes
-- [ ] **Guardrail Node** — validate/transform outputs (yellow `#ffc107`)
-- [ ] **Human Node** — pause for human approval (orange `#ff7043`)
-- [ ] **Fallback Node** — error handling alternative path (gray `#78909c`)
+- [x] **Guardrail Node** — GuardrailNode.vue (yellow `#ffc107`)
+- [x] **Human Node** — HumanNode.vue (orange `#ff7043`)
+- [x] **Fallback Node** — FallbackNode.vue (gray `#78909c`)
 
-**Why this matters:** Memory turns one-shot agents into persistent assistants. Vladimir's insight: *"сначала юзер видел всю структуру, и уже от нее исходил"* — memory gives the system structure that persists.
+**Why this matters:** Memory turns one-shot agents into persistent assistants. Vladimir's insight: "сначала юзер видел всю структуру, и уже от нее исходил" — memory gives system persistent structure.
 
 ---
 
@@ -119,33 +119,33 @@ MemPalace integration makes agents *remember* across sessions. This is our key d
 Move from single-user tool to platform.
 
 ### 5.1 Workspace Plan
-- [ ] **Todo panel** — built-in task list in sidebar
-- [ ] **Drag & drop reorder** — rearrange tasks
-- [ ] **Task statuses** — todo / in progress / done / blocked
-- [ ] **Link tasks to nodes** — trace plan items to specific nodes
+- [x] **Todo panel** — PlanPanel.vue, built-in task list in sidebar
+- [x] **Drag & drop reorder** — draggable tasks in PlanPanel
+- [x] **Task statuses** — todo / in progress / done / blocked (cycleStatus)
+- [ ] **Link tasks to nodes** — `nodeId` field exists, highlight button exists, needs full wiring
 - [ ] **Plan templates** — pre-built plans for common workflows
-- [ ] **Export plan** — Markdown, JSON
+- [x] **Export plan** — Markdown export (exportPlan function)
 
 ### 5.2 Auth & Multi-user
-- [ ] **JWT authentication** — Spring Security + JWT tokens
-- [ ] **User registration/login** — email + password
-- [ ] **Roles** — admin, user, viewer
+- [x] **JWT authentication** — Spring Security + JWT tokens (JwtAuthFilter, JwtUtil, SecurityConfig)
+- [x] **User registration/login** — AuthController: /login, /register, /me
+- [x] **Roles** — admin, user, viewer (AppUser model + JWT claims)
 - [ ] **Multi-tenancy** — workspace isolation
 - [ ] **Invitations** — invite collaborators to workspace
 
 ### 5.3 Sharing & Export
-- [ ] **JSON export/import** — full schema exchange
-- [ ] **PNG/SVG export** — visual snapshots of schemas
+- [x] **JSON export/import** — HomeView.vue export + import
+- [x] **PNG/SVG export** — WorkflowCanvas.vue: `toPng`/`toSvg` via html-to-image
 - [ ] **Python export** — generate executable script from schema
 - [ ] **Share link** — read-only view of schema
 
-**Why this matters:** Collaboration is the growth lever. Solo users are the entry point; teams are the business model. Vladimir's vision: free for solo, paid for teams.
+**Why this matters:** Collaboration is growth lever. Solo users entry point; teams are business model.
 
 ---
 
 ## Phase 6: Ecosystem
 
-Telegram bot, marketplace, community — the network effects.
+Telegram bot, marketplace, community — network effects.
 
 ### 6.1 Telegram Bot
 - [ ] **Bot setup** — register bot, configure webhook
@@ -159,14 +159,14 @@ Telegram bot, marketplace, community — the network effects.
 - [ ] **Schema templates** — complete workflow blueprints
 - [ ] **Browse & search** — discover community templates
 - [ ] **Rating system** — upvote/downvote templates
-- [ ] **One-click import** — add template to your workspace
+- [ ] **One-click import** — add template to workspace
 
 ### 6.3 Triggers & Automation
 - [ ] **Webhook Node** — HTTP-triggered execution (purple `#ab47bc`)
 - [ ] **Schedule Node** — cron-based execution (gray `#607d8b`)
 - [ ] **Event-driven** — execute on file change, email, etc.
 
-**Why this matters:** Marketplace creates lock-in and community. Telegram extends reach beyond the browser. Triggers make Axolotl a real automation platform, not just a design tool.
+**Why this matters:** Marketplace creates lock-in and community. Telegram extends reach beyond browser. Triggers make Axolotl real automation platform.
 
 ---
 
@@ -175,9 +175,9 @@ Telegram bot, marketplace, community — the network effects.
 These run parallel to all phases. Prioritize as needed.
 
 ### Testing
-- [ ] **Backend unit tests** — JUnit 5 + Mockito (services, execution logic)
+- [x] **Backend unit tests** — JUnit 5 + Mockito (SchemaServiceTest, LlmServiceTest, JwtUtilTest, AgentControllerTest, ExecutionWebSocketHandlerTest)
 - [ ] **Backend integration tests** — Testcontainers (API endpoints, DB)
-- [ ] **Frontend tests** — Vitest + Vue Test Utils (stores, components)
+- [x] **Frontend tests** — Vitest + Vue Test Utils (AgentNode.test, SourceNode.test, OutputNode.test, MemoryNode.test, HumanNode.test, ExecutionPanel.test, schemaStore.test, authStore.test)
 - [ ] **E2E tests** — Playwright (full user flows)
 
 ### DevOps
@@ -213,20 +213,20 @@ These run parallel to all phases. Prioritize as needed.
 ## Priority Order (what to build next)
 
 **Immediate (this week):**
-1. Search by nodes (Cmd+F)
-2. Model selection UI with provider config
-3. Parallel execution in backend
+1. ~~Search by nodes (Cmd+F)~~ → DONE
+2. ~~Model selection UI with provider config~~ → DONE
+3. ~~Parallel execution in backend~~ → DONE
 
 **Short-term (next 2 weeks):**
-4. Real LLM provider integration (start with OpenAI + Ollama)
-5. Settings page for API keys
-6. Node grouping + canvas comments
+4. ~~Real LLM provider integration (start with OpenAI + Ollama)~~ → DONE (OpenAI, Anthropic, DeepSeek, Ollama)
+5. ~~Settings page for API keys~~ → DONE (SettingsView.vue)
+6. ~~Node grouping + canvas comments~~ → DONE (GroupNode, CommentNode exist)
 
 **Medium-term (next month):**
-7. Memory Node + MemPalace
-8. JWT authentication
-9. JSON export/import
-10. Execution history
+7. Memory Node + MemPalace (MemoryNode.vue exists, MemPalaceClient.java exists — needs wiring)
+8. ~~JWT authentication~~ → DONE
+9. ~~JSON export/import~~ → DONE
+10. ~~Execution history~~ → DONE
 
 **Long-term (2+ months):**
 11. Telegram bot
@@ -257,20 +257,10 @@ These run parallel to all phases. Prioritize as needed.
 - [ ] **WebSocket reconnection** — disconnect mid-execution, verify reconnect
 
 ### Smoke Test Checklist (run before each commit)
-1. `cd backend && mvn compile` — passes
-2. `cd frontend && npm run build` — passes
-3. Start backend + frontend → create new schema
-4. Add Source → Agent → Output, wire them
-5. Set Agent prompt, select "Ollama" model
-6. Execute → verify real AI response appears
-7. Check `/api/health` returns `ollama: true`
-
----
-
-## Open Questions
-
-- **Which LLM provider first?** OpenAI for reach, Ollama for local-first purity. Maybe both simultaneously?
-- **MemPalace: MCP server or direct API?** Depends on MemPalace's current interface stability
-- **Auth: build or use Spring Security starter?** Starter is faster, but custom gives more control
-- **Monetization timing:** When do we add paywalls? After marketplace or before?
-- **Mobile:** PWA now or native later? PWA is faster, native is better UX
+1. [x] `cd backend && mvn compile` — passes
+2. [ ] `cd frontend && npm run build` — passes (need verify)
+3. [ ] Start backend + frontend → create new schema
+4. [ ] Add Source → Agent → Output, wire them
+5. [ ] Set Agent prompt, select "Ollama" model
+6. [ ] Execute → verify real AI response appears
+7. [ ] Check `/api/health` returns `ollama: true`

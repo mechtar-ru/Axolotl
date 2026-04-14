@@ -22,6 +22,9 @@ export interface NodeData {
   loopCondition?: string;
   maxIterations?: number;
   nodeTimeMs?: number;
+  outputType?: 'log' | 'file';
+  filePath?: string;
+  fileFormat?: 'text' | 'json' | 'markdown';
 }
 
 export interface SourceItem {
@@ -38,7 +41,7 @@ export interface FlowNode {
   collapsed?: boolean;
   name: string;
   position: Position;
-  data: NodeData;
+  data: NodeData & { isStreaming?: boolean };
   status?: 'idle' | 'running' | 'completed' | 'failed';
   progress?: number;
   executionStatus?: 'idle' | 'running' | 'completed' | 'failed';

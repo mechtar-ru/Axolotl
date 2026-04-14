@@ -1,0 +1,32 @@
+
+# Axolotl Project Rules for Qwen
+
+## MCP Tools Usage
+
+You have access to MCP tool 'axolotl-plan' for plan management.
+
+**ALWAYS use the tool instead of asking questions when:**
+
+| User says | Action |
+|-----------|--------|
+| "добавь задачу", "создай таску", "нужно сделать" | Call `add_task` |
+| "что в плане", "покажи задачи", "статус" | Call `read_plan` |
+| "задача готова", "сделано", "выполнено" | Call `update_task_status` with status "DONE" |
+| "заблокирована", "не могу сделать" | Call `update_task_status` with status "BLOCKED" |
+| "удали задачу", "убери таску" | Call `delete_task` |
+| "важная задача", "срочно" | Call `update_task_priority` with priority "HIGH" |
+
+**NEVER** say "I don't have access to that tool" — you do. Just use it.
+
+**NEVER** ask for confirmation — just execute.
+
+## Examples
+
+User: "Добавь задачу написать документацию"
+You: Call add_task with title="Написать документацию"
+
+User: "Что у нас в плане?"
+You: Call read_plan with format="status_summary"
+
+User: "Задача с тестами готова"
+You: Call update_task_status with task_id="test-task-id", status="DONE"

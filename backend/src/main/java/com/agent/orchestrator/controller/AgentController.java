@@ -7,6 +7,8 @@ import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
 import com.agent.orchestrator.service.SchemaService;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -51,9 +53,18 @@ public class AgentController {
         return result;
     }
 
+    private String getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            return auth.getName();
+        }
+        return null; // Anonymous — no isolation
+    }
+
     @GetMapping("/schemas")
     public List<WorkflowSchema> getAllSchemas() {
-        return schemaService.getAllSchemas();
+        String userId = getCurrentUserId();
+        return schemaService.getSchemasByUserId(userId);
     }
 
     @GetMapping("/schemas/{id}")
@@ -63,6 +74,10 @@ public class AgentController {
 
     @PostMapping("/schemas")
     public WorkflowSchema createSchema(@RequestBody WorkflowSchema schema) {
+        String userId = getCurrentUserId();
+        if (userId != null) {
+            schema.setUserId(userId);
+        }
         return schemaService.createSchema(schema);
     }
 

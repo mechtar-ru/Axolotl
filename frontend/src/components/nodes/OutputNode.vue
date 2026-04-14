@@ -1,8 +1,8 @@
 <template>
   <div class="node output-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button 
-      v-if="isSelected" 
-      class="delete-btn" 
+    <button
+      v-if="isSelected"
+      class="delete-btn"
       @click.stop="handleDelete"
       title="Удалить узел"
     >
@@ -11,9 +11,9 @@
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">📤</span>
-      <span 
-        v-if="!editingName" 
-        class="node-name" 
+      <span
+        v-if="!editingName"
+        class="node-name"
         @dblclick="startEditName"
       >
         {{ props.data.name }}
@@ -30,8 +30,37 @@
       <span class="execution-icon">{{ executionIcon }}</span>
       <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
     </div>
-    <div v-if="expanded && props.data.result" class="node-content">
-      <div class="node-result">{{ props.data.result }}</div>
+    <div v-if="expanded" class="node-content">
+      <div class="output-config">
+        <label class="config-label">Тип вывода:</label>
+        <select v-model="outputType" class="config-select" @change="updateConfig">
+          <option value="log">📋 Лог (панель)</option>
+          <option value="file">💾 Файл</option>
+        </select>
+      </div>
+      <template v-if="outputType === 'file'">
+        <div class="output-config">
+          <label class="config-label">Путь:</label>
+          <input
+            v-model="filePath"
+            class="config-input"
+            placeholder="./output/result.md"
+            @change="updateConfig"
+          />
+        </div>
+        <div class="output-config">
+          <label class="config-label">Формат:</label>
+          <select v-model="fileFormat" class="config-select" @change="updateConfig">
+            <option value="text">Текст</option>
+            <option value="markdown">Markdown</option>
+            <option value="json">JSON</option>
+          </select>
+        </div>
+      </template>
+      <div v-if="props.data.result" class="node-result">
+        <span v-if="outputType === 'file' && props.data.executionStatus === 'completed'" class="file-saved">✅ {{ props.data.result }}</span>
+        <span v-else>{{ props.data.result }}</span>
+      </div>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
@@ -57,6 +86,10 @@ const props = defineProps<{
     onRename?: (name: string) => void;
     onDelete?: () => void;
     nodeTimeMs?: number;
+    outputType?: 'log' | 'file';
+    filePath?: string;
+    fileFormat?: 'text' | 'json' | 'markdown';
+    config?: Record<string, any>;
   };
 }>();
 
@@ -68,6 +101,10 @@ const editingName = ref(false);
 const localName = ref(props.data.name);
 const nameInput = ref<HTMLInputElement | null>(null);
 const expanded = ref(true);
+
+const outputType = ref<'log' | 'file'>(props.data.outputType || 'log');
+const filePath = ref(props.data.filePath || './output/result.md');
+const fileFormat = ref<'text' | 'json' | 'markdown'>(props.data.fileFormat || 'markdown');
 
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
@@ -101,6 +138,18 @@ function finishEditName() {
     localName.value = props.data.name;
   }
   editingName.value = false;
+}
+
+function updateConfig() {
+  if (!props.data.config) {
+    (props.data as any).config = {};
+  }
+  props.data.config!.outputType = outputType.value;
+  props.data.config!.filePath = filePath.value;
+  props.data.config!.fileFormat = fileFormat.value;
+  props.data.outputType = outputType.value;
+  props.data.filePath = filePath.value;
+  props.data.fileFormat = fileFormat.value;
 }
 
 function handleDelete() {
@@ -220,6 +269,35 @@ function handleDelete() {
 .node-content {
   padding: 10px;
 }
+.output-config {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.config-label {
+  font-size: 11px;
+  color: #aaa;
+  min-width: 55px;
+}
+.config-select {
+  flex: 1;
+  background: #1a1a2e;
+  border: 1px solid #4a4a6a;
+  color: #eee;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.config-input {
+  flex: 1;
+  background: #1a1a2e;
+  border: 1px solid #4a4a6a;
+  color: #eee;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
 .node-result {
   margin-top: 10px;
   padding: 8px;
@@ -227,6 +305,9 @@ function handleDelete() {
   border-radius: 4px;
   font-size: 12px;
   word-break: break-word;
+}
+.file-saved {
+  color: #4caf50;
 }
 .node-time {
   margin-top: 6px;

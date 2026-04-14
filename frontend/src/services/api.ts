@@ -10,6 +10,29 @@ const api = axios.create({
   },
 });
 
+// Auto-attach JWT token to all requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('axolotl_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Redirect to login on 401
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('axolotl_token');
+      localStorage.removeItem('axolotl_username');
+      localStorage.removeItem('axolotl_role');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const schemaApi = {
   // Схемы
   async getSchemas(): Promise<WorkflowSchema[]> {
@@ -67,6 +90,7 @@ export interface ProviderInfo {
   available: boolean;
   baseUrl: string;
   models: string[];
+  defaultModel?: string;
 }
 
 export const settingsApi = {

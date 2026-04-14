@@ -1,0 +1,251 @@
+{
+  "project": {
+    "name": "Axolotl",
+    "tagline": "\"Рисуй логику, а не пиши её\" — visual OS for AI agents",
+    "philosophy": "\"Ловушка чтобы удержать человека в процессе\" — human stays in the loop",
+    "status": {
+      "phase1_foundation": 100,
+      "phase2_editor_polish": 100,
+      "phase3_real_ai": 95,
+      "phase4_memory": 65,
+      "phase5_workspace": 75,
+      "phase6_ecosystem": 0,
+      "overall_beta_progress": 75
+    }
+  },
+  "critical_bugs": [],
+  "phase4_memory": {
+    "description": "MemPalace integration — key differentiator from n8n/LangFlow",
+    "visual_memory": {
+      "name": "Memory Graph View",
+      "source": "Vladimir's idea: 'чисто поглядеть что с чем сейчас связано'",
+      "tasks": [
+        "Separate memory graph tab/panel — DONE (MemoryGraphView.vue)",
+        "Show Wings/Rooms as graph nodes — DONE (wing cards + room list)",
+        "Visualize Tunnels as connections between wings — DONE (tunnels section)",
+        "Highlight found nodes during search — DONE (via MemoryNode search)",
+        "Click node → view original Drawer content — DONE (drawer modal)"
+      ]
+    },
+    "graph_memory": {
+      "name": "Graph-based memory instead of RAG",
+      "source": "Vladimir's idea: 'возвращаем ноду и её метаданные — кто, с кем связана, на каком уровне вложенности'",
+      "tasks": [
+        "Search results return as temporary canvas cards — NEEDS_WORK",
+        "Navigate from card to connected nodes via tunnels — DONE (tunnels → click → load drawers)",
+        "AI receives graph structure as context, not raw chunks — NEEDS_WORK",
+        "Store learned procedures as Skills (not just facts) — NOT_STARTED"
+      ]
+    },
+    "wiring": {
+      "memPalaceClient": "done + extended (taxonomy, drawers, tunnels)",
+      "memoryNodeVue": "done",
+      "needs_wiring": [
+        "Agents automatically receive memory context before execution — DONE (searchForContext in SchemaService)",
+        "Auto-save agent results to MemPalace after execution — DONE (addDrawer after agent execution)",
+        "Schema versioning → save each change to memory — NOT_STARTED"
+      ]
+    },
+    "advanced_nodes": {
+      "guardrail": "done (yellow)",
+      "human": "done (orange)",
+      "fallback": "done (gray)"
+    }
+  },
+  "phase3_real_ai": {
+    "streaming_context": {
+      "done": [
+        "Token streaming via WebSocket (Ollama streams NDJSON → tokens → WS → canvas)",
+        "Pass upstream results to downstream agents (context window)",
+        "Context compression for long chains (MAX_CONTEXT_CHARS → LLM summary)"
+      ],
+      "needs_work": [
+        "Show 'typing...' animation on node during streaming"
+      ]
+    },
+    "providers": {
+      "openai": "done (GPT-4o, GPT-4o-mini)",
+      "anthropic": "done (Claude Sonnet/Opus)",
+      "deepseek": "done",
+      "ollama": "done (with real streaming)"
+    }
+  },
+  "phase2_editor_polish": {
+    "canvas_ux": {
+      "done": [
+        "Search nodes (Cmd+F)",
+        "Canvas comments (CommentNode)",
+        "Node collapse/expand (all node types)",
+        "Drag & drop files into SourceNode",
+        "Node grouping — select 2+ nodes → 📦 Группа (Ctrl+G)",
+        "Ungroup — select group → 📤 Разгрупп.",
+        "Zoom to node — double-click → fitView animation",
+        "Agent double-click → zoom + prompt editor"
+      ],
+      "needs_work": []
+    },
+    "prompt_editor": "done (fullscreen, 8 templates, variables)",
+    "execution_panel": {
+      "done": [
+        "Parallel execution (CompletableFuture.allOf)",
+        "Per-node timer (nodeTimeMs)",
+        "Execution history (backend + frontend)",
+        "Metrics — nodes/sec, elapsed time, avg node time"
+      ],
+      "needs_work": []
+    }
+  },
+  "phase5_workspace": {
+    "plan_panel": {
+      "done": [
+        "Todo panel with drag & drop",
+        "Task statuses (todo/in-progress/done/blocked)",
+        "Markdown export"
+      ],
+      "needs_work": [
+        "Link tasks to nodes — nodeId field exists, highlight button exists, needs full wiring"
+      ]
+    },
+    "auth": {
+      "done": [
+        "JWT authentication (JwtAuthFilter + SecurityConfig)",
+        "Registration/login (/api/auth/login, /register, /me)",
+        "Roles (admin/user/viewer)",
+        "Axios interceptor — auto-attach Bearer token",
+        "401 → redirect to /login",
+        "Router guard — requiresAuth → /login"
+      ],
+      "needs_work": [
+        "Multi-tenancy — workspace isolation",
+        "Invitations — collaborative work"
+      ]
+    },
+    "sharing": {
+      "done": [
+        "JSON export/import",
+        "PNG/SVG export (html-to-image)"
+      ],
+      "needs_work": [
+        "Python export — generate script from schema",
+        "Share link — read-only view"
+      ]
+    }
+  },
+  "phase6_ecosystem": {
+    "telegram_bot": {
+      "status": "not_started",
+      "tasks": [
+        "Bot registration, webhook",
+        "Commands: /run, /status, /stop",
+        "Execution notifications",
+        "Inline keyboards for Human Node"
+      ]
+    },
+    "marketplace": {
+      "status": "not_started",
+      "tasks": [
+        "Agent templates",
+        "Schema templates",
+        "Catalog with search",
+        "Ratings and reviews",
+        "One-click import"
+      ]
+    },
+    "triggers": {
+      "status": "not_started",
+      "tasks": [
+        "Webhook Node (HTTP → execution)",
+        "Schedule Node (cron)"
+      ]
+    }
+  },
+  "infrastructure": {
+    "testing": {
+      "done": [
+        "Backend unit tests (5 classes): SchemaServiceTest, LlmServiceTest, JwtUtilTest, AgentControllerTest, ExecutionWebSocketHandlerTest",
+        "Frontend unit tests (8 components): AgentNode, SourceNode, OutputNode, MemoryNode, HumanNode, ExecutionPanel, schemaStore, authStore"
+      ],
+      "needs_work": [
+        "Integration tests (Testcontainers)",
+        "E2E tests (Playwright)"
+      ]
+    },
+    "devops": {
+      "needs_work": [
+        "Structured logging (SLF4J instead of System.out)",
+        "CI/CD (GitHub Actions)",
+        "OpenAPI/Swagger",
+        "Prometheus + Grafana"
+      ]
+    }
+  },
+  "completed_this_session": [
+    "Memory wiring: agents auto-receive memory context (searchForContext) + auto-save results (addDrawer)",
+    "Memory Graph View panel (MemoryGraphView.vue) — wings, rooms, drawers, tunnels visualization",
+    "Backend memory API: /api/memory/taxonomy, /api/memory/drawers, /api/memory/tunnels",
+    "MemPalaceClient extended: getTaxonomy(), listDrawers(), findTunnels()",
+    "Zoom to node: double-click → fitView animation (all node types)",
+    "GroupNode: parentId → parentNode mapping fixed for Vue Flow",
+    "Verified: token streaming fully wired (Ollama → WS → canvas real-time tokens)",
+    "Verified: auth fully wired (login → token → interceptor → router guard)",
+    "Verified: group creation UI exists (select 2+ nodes → 📦 Группа)",
+    "Verified: execution metrics exist (nodes/sec, elapsed, avg node time, token count)",
+    "Verified: auto-save agent results to MemPalace after execution",
+    "Fixed: TypeScript errors in schemaStore.test.ts",
+    "Removed OpenClaw integration — Axolotl already implements stateful agent via canvas architecture",
+    "Raised Skills priority to MEDIUM — auto-learning replaces OpenClaw tool-use paradigm"
+  ],
+  "next_priorities": [
+    {
+      "priority": "P1",
+      "task": "Context compression — graph structure as AI context (not raw chunks)",
+      "estimate_hours": 4
+    },
+    {
+      "priority": "P1",
+      "task": "Typing animation during token streaming",
+      "estimate_hours": 1
+    },
+    {
+      "priority": "P1",
+      "task": "Link tasks to nodes — full wiring",
+      "estimate_hours": 2
+    },
+    {
+      "priority": "P2",
+      "task": "Schema versioning → save each change to memory",
+      "estimate_hours": 2
+    },
+    {
+      "priority": "P2",
+      "task": "Python export — generate script from schema",
+      "estimate_hours": 3
+    }
+  ],
+  "differentiators": {
+    "infinite_zoom_to_chat": "Axolotl: true | n8n: false | LangFlow: false",
+    "long_term_memory_mempalace": "Axolotl: true (partial auto-wiring) | n8n: false | LangFlow: false",
+    "memory_visualization_as_graph": "Axolotl: done | n8n: false | LangFlow: false",
+    "token_streaming_realtime": "Axolotl: done (Ollama) | n8n: false | LangFlow: false",
+    "built_in_plan_todo": "Axolotl: true | n8n: false | LangFlow: false",
+    "local_first_privacy": "Axolotl: true | n8n: false | LangFlow: false",
+    "human_in_the_loop_as_core": "Axolotl: true | n8n: basic | LangFlow: basic"
+  },
+  "notes_from_vladimir_discussion": [
+    {
+      "quote": "Графовая тема может быть лучше — возвращаем ноду и её метаданные. ИИ может понять что это нужно и запросить ближайшие ноды",
+      "conclusion": "MemoryNode should return structured data with graph navigation, not raw text chunks",
+      "status": "Partially done — Memory Graph View shows wings/rooms/drawers/tunnels, graph-as-context still needs work"
+    },
+    {
+      "quote": "Skill — это не промт юзера, а выученная последовательность в результате проб и ошибок",
+      "conclusion": "Future: auto-learning system — AI remembers successful patterns and turns them into reusable skills",
+      "status": "Not started"
+    },
+    {
+      "quote": "Визуально мапы из документов это скучно, а графы это круто",
+      "conclusion": "Memory GUI is mandatory, not optional — users must see their knowledge structure",
+      "status": "Done — MemoryGraphView.vue with wing cards, room list, drawer cards, tunnel navigation"
+    }
+  ]
+}

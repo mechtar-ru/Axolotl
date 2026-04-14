@@ -25,6 +25,32 @@
       <div v-if="completedNodes > 0">Ср: {{ avgNodeTime }}мс/уз</div>
     </div>
 
+    <div class="execution-panel__tokens">
+      <span v-if="(totalTokens ?? 0) > 0">{{ (totalTokens ?? 0).toLocaleString() }} токенов</span>
+      <span v-if="(estimatedCost ?? 0) > 0" class="cost">~${{ (estimatedCost ?? 0).toFixed(4) }}</span>
+    </div>
+
+    <!-- Waves section -->
+    <div v-if="waves.length > 0" class="execution-panel__waves">
+      <div class="waves-header">
+        <span>🌊 Волны</span>
+        <span class="waves-count">{{ waves.length }}</span>
+      </div>
+      <div class="waves-list">
+        <div
+          v-for="(wave, i) in waves"
+          :key="i"
+          class="wave-item"
+          :class="'wave-' + wave.status"
+          @click="$emit('highlight-wave', wave.nodeIds)"
+        >
+          <span class="wave-number">Волна {{ i + 1 }}</span>
+          <span class="wave-status">{{ waveStatusIcon(wave.status) }} {{ waveStatusLabel(wave.status) }}</span>
+          <span class="wave-nodes">{{ wave.nodeIds.length }} узлов</span>
+        </div>
+      </div>
+    </div>
+
     <div class="execution-panel__logs" ref="logsContainer">
       <div
         v-for="(entry, index) in logs"
@@ -58,13 +84,17 @@ const props = defineProps<{
   totalNodes: number;
   completedNodes: number;
   logs: LogEntry[];
+  totalTokens?: number;
+  estimatedCost?: number;
 }>();
-
 const emit = defineEmits<{
   (e: 'stop'): void;
   (e: 'close'): void;
   (e: 'highlight-node', nodeId: string): void;
+  (e: 'highlight-wave', nodeIds: string[]): void;
 }>();
+
+const waves = ref<Array<{ nodeIds: string[]; status: 'pending' | 'running' | 'completed' }>>([]);
 
 const logsContainer = ref<HTMLElement>();
 let autoScroll = true;
@@ -120,6 +150,24 @@ function formatLogTime(timestamp: number): string {
     second: '2-digit'
   });
 }
+
+function waveStatusIcon(status: string): string {
+  return { pending: '⏳', running: '🔄', completed: '✅' }[status] || '❓';
+}
+
+function waveStatusLabel(status: string): string {
+  return { pending: 'ожидает', running: 'выполняется', completed: 'завершена' }[status] || status;
+}
+
+// Called from parent when wave update received via WebSocket
+function updateWave(waveNumber: number, nodeIds: string[], status: 'pending' | 'running' | 'completed') {
+  while (waves.value.length <= waveNumber) {
+    waves.value.push({ nodeIds: [], status: 'pending' });
+  }
+  waves.value[waveNumber] = { nodeIds, status: status as 'pending' | 'running' | 'completed' };
+}
+
+defineExpose({ updateWave });
 
 onMounted(() => {
   if (logsContainer.value) {
@@ -252,6 +300,93 @@ function handleScroll() {
   gap: 12px;
   font-size: 13px;
   color: #cbd5ff;
+}
+
+.execution-panel__tokens {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #888;
+}
+.execution-panel__tokens .cost {
+  color: #51cf66;
+}
+
+.execution-panel__waves {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.waves-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #aaa;
+  margin-bottom: 6px;
+}
+
+.waves-count {
+  background: rgba(108, 99, 255, 0.2);
+  color: #b8b0ff;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.waves-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.wave-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wave-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wave-running {
+  background: rgba(255, 165, 0, 0.15);
+  animation: wave-pulse 1.5s ease-in-out infinite;
+}
+
+.wave-completed {
+  background: rgba(76, 175, 80, 0.1);
+}
+
+@keyframes wave-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.wave-number {
+  color: #ddd;
+  font-weight: 600;
+}
+
+.wave-status {
+  color: #888;
+  margin-left: auto;
+}
+
+.wave-nodes {
+  color: #666;
+  font-size: 10px;
 }
 
 .execution-panel__logs {

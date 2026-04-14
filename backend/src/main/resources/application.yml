@@ -11,6 +11,9 @@ axolotl:
       base-url: http://localhost:11434
       default-model: gemma4:e2b
       timeout: 120
+  mcp:
+    enabled: true
+    path: /mcp
 
 logging:
   level:

@@ -49,7 +49,9 @@
         class="model-select"
       >
         <option value="">По умолчанию</option>
-        <option v-for="opt in providerOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        <optgroup v-for="group in modelGroups" :key="group.name" :label="group.name">
+          <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </optgroup>
       </select>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
@@ -58,6 +60,11 @@
       <div v-if="props.data.result" class="node-result">
         <strong>Результат:</strong>
         <div>{{ props.data.result }}</div>
+      </div>
+      <div v-if="props.data.isStreaming" class="typing-indicator">
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
+        <span class="typing-dot"></span>
       </div>
       <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
     </div>
@@ -83,6 +90,7 @@ const props = defineProps<{
     executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
     model?: string;
     nodeTimeMs?: number;
+    isStreaming?: boolean;
     onUpdate?: (updates: any) => void;
     onRename?: (name: string) => void;
     onDelete?: () => void;
@@ -100,28 +108,44 @@ const localName = ref(props.data.name);
 const localPrompt = ref(props.data.userPrompt || '');
 const localModel = ref(props.data.model || 'ollama');
 const nameInput = ref<HTMLInputElement | null>(null);
-const providerOptions = ref<{ value: string; label: string }[]>([]);
+const providerOptions = ref<{ value: string; label: string; group: string }[]>([]);
 
 onMounted(async () => {
   try {
     const providers = await settingsApi.getProviders();
-    const opts: { value: string; label: string }[] = [];
+    const opts: { value: string; label: string; group: string }[] = [];
     for (const p of providers) {
-      opts.push({ value: p.name, label: `${p.name}${p.available ? '' : ' (недоступен)'}` });
+      const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
+      if (p.models.length > 0) {
+        for (const model of p.models) {
+          opts.push({ value: model, label: model, group });
+        }
+      } else {
+        opts.push({ value: p.name, label: `${group} (по умолчанию)`, group });
+      }
     }
     providerOptions.value = opts;
   } catch (e) {
-    // Fallback to hardcoded options
     providerOptions.value = [
-      { value: 'ollama', label: 'Ollama (local)' },
-      { value: 'openai', label: 'OpenAI (GPT-4)' },
-      { value: 'anthropic', label: 'Anthropic (Claude)' },
-      { value: 'deepseek', label: 'DeepSeek' },
+      { value: 'ollama', label: 'Ollama (local)', group: 'Ollama' },
+      { value: 'openai', label: 'OpenAI (GPT-4)', group: 'OpenAI' },
+      { value: 'anthropic', label: 'Anthropic (Claude)', group: 'Anthropic' },
+      { value: 'deepseek', label: 'DeepSeek', group: 'DeepSeek' },
     ];
   }
 });
 
 const isSelected = computed(() => props.selected === true);
+
+const modelGroups = computed(() => {
+  const groups: Record<string, { value: string; label: string }[]> = {};
+  for (const opt of providerOptions.value) {
+    const g = groups[opt.group];
+    if (!g) groups[opt.group] = [opt];
+    else g.push(opt);
+  }
+  return Object.entries(groups).map(([name, options]) => ({ name, options }));
+});
 const statusColor = computed(() => {
   switch (props.data.status) {
     case 'running': return '#ffa500';
@@ -360,5 +384,38 @@ function handleDelete() {
   font-size: 11px;
   color: #888;
   text-align: right;
+}
+
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(108, 99, 255, 0.15);
+  border-radius: 6px;
+  margin-top: 8px;
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background: #6c63ff;
+  border-radius: 50%;
+  animation: typing-bounce 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing-bounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>
