@@ -8,28 +8,31 @@
 Axolotl/
 ├── backend/                          # Spring Boot 3.2, Java 21
 │   ├── src/main/java/com/agent/orchestrator/
-│   │   ├── controller/               # REST endpoints: AgentController, PlanController, SchemaController
-│   │   ├── service/                  # Business logic: SchemaService, PlanService
-│   │   ├── repository/               # SQLite DAO: SchemaRepository, PlanRepository
-│   │   ├── model/                    # Domain: Node, Edge, WorkflowSchema, Task, Plan
+│   │   ├── controller/               # REST: AgentController, PlanController, AuthController, SettingsController
+│   │   ├── service/                  # Business: SchemaService, PlanService, AgentService, SettingsService
+│   │   ├── repository/               # SQLite DAO: SchemaRepository, PlanRepository, UserRepository
+│   │   ├── model/                    # Domain: Node, Edge, WorkflowSchema, Task, Plan, AppUser, Priority, TaskStatus
 │   │   ├── mcp/                      # MCP Server: PlanMcpServer, PlanTools
-│   │   ├── llm/                      # LLM clients: LlmService, MemPalaceClient
-│   │   ├── config/                   # Security, JWT, WebSocket
+│   │   ├── llm/                      # LLM: LlmService, LlmProvider, OllamaProvider, OpenAiProvider,
+│   │   │   │                         #       AnthropicProvider, DeepSeekProvider, MemPalaceClient
+│   │   ├── config/                   # Security: JwtAuthFilter, JwtUtil, SecurityConfig, WebSocketConfig
 │   │   └── websocket/                # ExecutionWebSocketHandler
-│   ├── src/test/java/                # Unit + integration tests (90 total, 86 pass)
-│   └── schema.db                     # SQLite (таблицы: schemas, plans)
+│   ├── src/test/java/                # Unit + integration tests (90 total, 90 pass ✅)
+│   └── schema.db                     # SQLite (таблицы: schemas, plans, users, provider_settings)
 ├── frontend/                         # Vue 3 + TypeScript + Vite
 │   └── src/
 │       ├── components/
 │       │   ├── canvas/               # WorkflowCanvas.vue (VueFlow)
-│       │   ├── nodes/                # AgentNode, SourceNode, MemoryNode, MemoryResultCard
+│       │   ├── nodes/                # AgentNode, SourceNode, MemoryNode, MemoryResultCard,
+│       │   │   │                     # ConditionNode, LoopNode, OutputNode, GuardrailNode,
+│       │   │   │                     # HumanNode, FallbackNode
 │       │   ├── execution/            # ExecutionPanel.vue
-│       │   ├── plan/                 # PlanPanel.vue (batch textarea, acceptance criteria)
+│       │   ├── plan/                 # PlanPanel.vue (batch textarea, acceptance criteria, node linking)
 │       │   ├── memory/               # MemoryGraphView.vue
-│       │   └── ui/                   # CommandPalette.vue (Cmd+K)
-│       ├── views/                    # HomeView.vue (empty state onboarding)
+│       │   └── ui/                   # CommandPalette.vue (Cmd+K), OnboardingModal.vue
+│       ├── views/                    # HomeView.vue (onboarding), SettingsView.vue, LoginView.vue
 │       ├── stores/                   # Pinia: schemaStore, authStore
-│       ├── composables/              # useWebSocket.ts
+│       ├── composables/              # useWebSocket.ts, useToast.ts
 │       └── services/api.ts           # Axios wrapper
 └── pom.xml                           # Maven parent
 ```
@@ -55,7 +58,7 @@ npm run dev                 # Dev server
 - **Backend**: `http://localhost:8080`
 - **MCP прокси**: `node /Users/evgenijtihomirov/axolotl-mcp-proxy.js` (stdio bridge)
 - **MemPalace MCP**: `python -m mempalace.mcp_server` (порт 5890)
-- **SQLite**: `backend/schema.db` (таблицы: schemas, plans)
+- **SQLite**: `backend/schema.db` (таблицы: schemas, plans, users, provider_settings)
 
 ## Архитектура
 
@@ -65,6 +68,9 @@ npm run dev                 # Dev server
 3. WebSocket события: progress, log, error, nodeTime, token, **wave**, nodeBlocked
 4. **Convergence monitoring**: счётчик ошибок на узел, порог 3 → `BLOCKED`
 5. **Wave events**: WebSocket `{"type":"wave","waveNumber":N,"nodeIds":[...],"status":"pending|running|completed"}`
+6. **Context management**: `collectPredecessorResults` + `buildContextBlock` (LLM-суммаризация при >4000 символов)
+7. **Variable interpolation**: `{{input}}`, `{{prev_result}}`, `{{node:Name}}`, `{{schema_name}}`
+8. **Python export**: `exportToPython()` — генерация исполняемого .py скрипта с топологической сортировкой
 
 ### Plan (PlanService)
 - Хранится в SQLite (таблица plans, поле tasks_json — JSON массив задач)
@@ -74,30 +80,71 @@ npm run dev                 # Dev server
 - **Acceptance criteria**: массив criteria + met, валидация при переходе в DONE
 - **Node linking**: task.nodeId → подсветка на канвасе
 
-### Безопасность
+### LLM провайдеры
+- **Интерфейс**: `LlmProvider` — `chat()`, `streamingChat()`, `supportsStreaming()`, `isAvailable()`, `listModels()`
+- **Ollama**: локальные модели, NDJSON streaming (по умолчанию `gemma4:e2b`)
+- **OpenAI**: GPT-4o/mini, SSE streaming
+- **Anthropic**: Claude Sonnet/Opus/Haiku, SSE streaming
+- **DeepSeek**: бюджетная модель, non-streaming
+- **Key storage**: приоритет — SettingsService DB → env vars → application.yml
+
+### MemPalace Integration
+- **MemPalaceClient**: search, add drawer, taxonomy, tunnels, buildGraphContext
+- **Memory Node**: поиск по памяти, фильтрация по wing/room
+- **Auto-save**: результаты агентов автоматически сохраняются в MemPalace
+- **Memory as context**: graph-structured context injection в systemPrompt
+
+### Безопасность и Multi-tenancy
+- **JWT авторизация**: JwtAuthFilter, JwtUtil, SecurityConfig
+- **Auth endpoints**: `/api/auth/login`, `/api/auth/register`, `/api/auth/me`
+- **UserRepository**: SQLite таблица users
+- **Multi-tenancy**: `WorkflowSchema.userId` — изоляция схем по пользователям
+- **Settings API**: `/api/settings` — CRUD API ключей провайдеров
 - `/mcp` и `/api/plan/**` — без авторизации
 - Остальные endpoints требуют JWT
 
+### Onboarding
+- **OnboardingModal**: 2-step wizard (выбор провайдера → confirmation)
+- Сохраняет выбор в localStorage (`axolotl:onboarding`, `axolotl:default-model`)
+- Показывается при первом визите, есть опция пропуска
+
 ## Правила разработки
 
-1. **Бэкенд**: Java 21, Spring Boot 3.2, SLF4J + System.out (legacy), SQLite
+1. **Бэкенд**: Java 21, Spring Boot 3.2, **SLF4J** logging (все System.out/err заменены), SQLite
 2. **Фронтенд**: Vue 3 Composition API, TypeScript, `<script setup lang="ts">`
 3. **Стиль**: Тёмная тема (#1e1e2e фон, #6c63ff акцент)
 4. **WebSocket**: Execution events — real-time updates
 5. **MCP**: Все изменения плана проходят через MCP tools или REST API
-6. **БД**: `backend/schema.db` — оба репозитория (SchemaRepository, PlanRepository) используют абсолютный путь
+6. **БД**: `backend/schema.db` — все репозитории используют абсолютный путь
+7. **LLM streaming**: все провайдеры поддерживают `streamingChat()` → WebSocket token events
 
 ## Ключевые файлы
 
 | Файл | Назначение |
 |------|-----------|
-| `backend/.../service/SchemaService.java` | Выполнение схем, convergence monitoring, wave events |
+| `backend/.../service/SchemaService.java` | Выполнение схем, context management, Python export, convergence monitoring |
 | `backend/.../service/PlanService.java` | CRUD плана, batch add, acceptance criteria |
-| `backend/.../mcp/PlanTools.java` | MCP инструменты (add_tasks, read_plan со status_filter) |
-| `backend/.../websocket/ExecutionWebSocketHandler.java` | WebSocket события (wave, nodeBlocked) |
+| `backend/.../service/SettingsService.java` | Хранение API ключей провайдеров в SQLite |
+| `backend/.../service/AgentService.java` | Управление агентами, сессии |
+| `backend/.../mcp/PlanTools.java` | MCP инструменты (7 tools: add_tasks, read_plan со status_filter, ...) |
+| `backend/.../mcp/PlanMcpServer.java` | JSON-RPC 2.0 MCP сервер на /mcp |
+| `backend/.../llm/LlmService.java` | Роутинг запросов к провайдерам |
+| `backend/.../llm/OllamaProvider.java` | Ollama: чат + NDJSON streaming |
+| `backend/.../llm/OpenAiProvider.java` | OpenAI: чат + SSE streaming |
+| `backend/.../llm/AnthropicProvider.java` | Anthropic: чат + SSE streaming |
+| `backend/.../llm/DeepSeekProvider.java` | DeepSeek: чат |
+| `backend/.../llm/MemPalaceClient.java` | MemPalace: search, add, taxonomy, tunnels, graph context |
+| `backend/.../websocket/ExecutionWebSocketHandler.java` | WebSocket события (wave, nodeBlocked, token) |
+| `backend/.../controller/AuthController.java` | /api/auth/login, /register, /me |
+| `backend/.../controller/SettingsController.java` | /api/settings — CRUD настроек провайдеров |
+| `backend/.../config/SecurityConfig.java` | Spring Security + JWT |
 | `backend/.../model/Node.java` | NodeStatus: IDLE, RUNNING, COMPLETED, FAILED, **BLOCKED** |
-| `frontend/.../components/plan/PlanPanel.vue` | Batch textarea, acceptance criteria editor, node picker |
-| `frontend/.../components/execution/ExecutionPanel.vue` | Waves section, compact/verbose toggle (TODO) |
-| `frontend/.../components/ui/CommandPalette.vue` | Cmd+K palette (10 команд) |
-| `frontend/.../views/HomeView.vue` | Empty state onboarding, command handler |
-| `frontend/.../composables/useWebSocket.ts` | WebSocket клиент, обработка wave событий |
+| `backend/.../model/WorkflowSchema.java` | userId для multi-tenancy |
+| `frontend/.../components/plan/PlanPanel.vue` | Batch textarea, acceptance criteria, node linking |
+| `frontend/.../components/execution/ExecutionPanel.vue` | Waves, metrics, execution history |
+| `frontend/.../components/nodes/MemoryNode.vue` | Поиск по MemPalace, фильтрация wing/room |
+| `frontend/.../components/ui/OnboardingModal.vue` | 2-step wizard для выбора модели |
+| `frontend/.../components/ui/CommandPalette.vue` | Cmd+K palette |
+| `frontend/.../views/HomeView.vue` | Onboarding, export (Mermaid + Python), import |
+| `frontend/.../views/SettingsView.vue` | Настройки провайдеров (статус, модели) |
+| `frontend/.../composables/useWebSocket.ts` | WebSocket клиент, обработка wave/token событий |
