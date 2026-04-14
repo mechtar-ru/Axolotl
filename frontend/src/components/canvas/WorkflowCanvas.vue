@@ -1,15 +1,151 @@
 <template>
   <div class="canvas-container">
-    <div class="schema-name" @click="editSchemaName">
-      <span class="schema-title" @click="editSchemaName">📝 {{ schema.name }}</span>
-      <div class="schema-actions">
-        <button class="run-schema-btn" @click.stop="executeSchema" :disabled="isExecuting">▶️ Выполнить</button>
-        <button class="save-schema-btn" @click.stop="saveSchema">💾 Сохранить</button>
-        <button class="export-schema-btn" @click.stop="exportSchema">📊 Экспорт</button>
-        <button class="delete-schema-btn" @click.stop="confirmDeleteSchema" title="Удалить схему">🗑</button>
+    <!-- Top execution progress bar -->
+    <div v-if="isExecuting" class="top-progress-bar">
+      <div class="progress-track">
+        <div class="progress-fill" :style="{ width: `${executionProgress}%` }"></div>
+      </div>
+      <div class="progress-info">
+        <span>Волна {{ currentWave }} · {{ completedNodes }}/{{ totalNodes }} узлов</span>
+        <span class="elapsed">⏱ {{ formatElapsed(elapsedSeconds) }}</span>
       </div>
     </div>
-    
+
+    <div class="schema-name" @click="editSchemaName">
+      <span class="schema-title" @click="editSchemaName">
+        <FileText class="icon-sm" />
+        {{ schema.name }}
+      </span>
+      <div class="schema-actions">
+        <button class="run-schema-btn" @click.stop="executeSchema" :disabled="isExecuting" :title="isExecuting ? 'Выполняется...' : 'Запустить схему'">
+          <Play class="icon-sm" />
+          <span v-if="!isExecuting">Выполнить</span>
+          <span v-else>...</span>
+        </button>
+        <button class="save-schema-btn" @click.stop="saveSchema" title="Сохранить (Ctrl+S)">
+          <Save class="icon-sm" />
+        </button>
+        <button class="export-schema-btn" @click.stop="exportSchema" title="Экспорт">
+          <Download class="icon-sm" />
+        </button>
+        <button class="delete-schema-btn" @click.stop="confirmDeleteSchema" title="Удалить схему">
+          <Trash2 class="icon-sm" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Collapsible sidebar -->
+    <div class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+      <button class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed" :title="sidebarCollapsed ? 'Открыть панель' : 'Свернуть панель'">
+        <ChevronRight v-if="!sidebarCollapsed" class="icon-sm" />
+        <ChevronLeft v-else class="icon-sm" />
+      </button>
+
+      <div v-show="!sidebarCollapsed" class="sidebar-content">
+        <!-- Nodes section -->
+        <div class="sidebar-section">
+          <button class="section-header" @click="toggleSection('nodes')">
+            <ChevronDown v-if="sectionsExpanded.nodes" class="icon-xs" />
+            <ChevronRight v-else class="icon-xs" />
+            <span>Узлы</span>
+          </button>
+          <div v-show="sectionsExpanded.nodes" class="section-items">
+            <button @click="addNode('source')" title="Source — входные данные">
+              <ArrowDownCircle class="icon-sm" /><span>Source</span>
+            </button>
+            <button @click="addNode('agent')" title="Agent — AI-агент">
+              <Bot class="icon-sm" /><span>Agent</span>
+            </button>
+            <button @click="addNode('condition')" title="Condition — if/else">
+              <GitBranch class="icon-sm" /><span>Condition</span>
+            </button>
+            <button @click="addNode('loop')" title="Loop — цикл">
+              <Repeat class="icon-sm" /><span>Loop</span>
+            </button>
+            <button @click="addNode('output')" title="Output — результат">
+              <ArrowUpCircle class="icon-sm" /><span>Output</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Advanced section -->
+        <div class="sidebar-section">
+          <button class="section-header" @click="toggleSection('advanced')">
+            <ChevronDown v-if="sectionsExpanded.advanced" class="icon-xs" />
+            <ChevronRight v-else class="icon-xs" />
+            <span>Дополнительно</span>
+          </button>
+          <div v-show="sectionsExpanded.advanced" class="section-items">
+            <button @click="addNode('memory')" title="Memory — поиск в памяти">
+              <Brain class="icon-sm" /><span>Memory</span>
+            </button>
+            <button @click="addNode('guardrail')" title="Guardrail — валидация">
+              <Shield class="icon-sm" /><span>Guardrail</span>
+            </button>
+            <button @click="addNode('human')" title="Human — подтверждение">
+              <User class="icon-sm" /><span>Human</span>
+            </button>
+            <button @click="addNode('fallback')" title="Fallback — обработка ошибок">
+              <RotateCcw class="icon-sm" /><span>Fallback</span>
+            </button>
+            <button @click="addNode('comment')" title="Заметка на канвасе">
+              <MessageSquare class="icon-sm" /><span>Заметка</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Tools section -->
+        <div class="sidebar-section">
+          <button class="section-header" @click="toggleSection('tools')">
+            <ChevronDown v-if="sectionsExpanded.tools" class="icon-xs" />
+            <ChevronRight v-else class="icon-xs" />
+            <span>Инструменты</span>
+          </button>
+          <div v-show="sectionsExpanded.tools" class="section-items">
+            <button @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">
+              <Group class="icon-sm" /><span>Группа</span>
+            </button>
+            <button @click="ungroupSelectedNode" :disabled="!selectedNodeId || !(props.schema.nodes||[]).find(n => n.id === selectedNodeId)?.parentId" title="Разгруппировать">
+              <Ungroup class="icon-sm" /><span>Разгрупп.</span>
+            </button>
+            <button @click="showHistory = !showHistory" title="История выполнений">
+              <ScrollText class="icon-sm" /><span>История</span>
+            </button>
+            <button @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">
+              <Network class="icon-sm" /><span>Граф</span>
+            </button>
+            <button @click="exportAsImage" title="Сохранить как PNG">
+              <ImageIcon class="icon-sm" /><span>PNG</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Keyboard shortcuts hint -->
+        <div class="sidebar-footer">
+          <button @click="showShortcuts = !showShortcuts" title="Горячие клавиши">
+            <Keyboard class="icon-sm" />
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick node-add on hover (when sidebar collapsed) -->
+    <div v-if="sidebarCollapsed" class="quick-add" @mouseenter="showQuickAdd = true" @mouseleave="showQuickAdd = false">
+      <button @click="addNode('agent')" title="Добавить Agent">
+        <Bot class="icon-sm" />
+      </button>
+      <div v-if="showQuickAdd" class="quick-add-menu">
+        <button @click="addNode('source')" title="Source"><ArrowDownCircle class="icon-sm" /></button>
+        <button @click="addNode('agent')" title="Agent"><Bot class="icon-sm" /></button>
+        <button @click="addNode('condition')" title="Condition"><GitBranch class="icon-sm" /></button>
+        <button @click="addNode('loop')" title="Loop"><Repeat class="icon-sm" /></button>
+        <button @click="addNode('output')" title="Output"><ArrowUpCircle class="icon-sm" /></button>
+        <button @click="addNode('memory')" title="Memory"><Brain class="icon-sm" /></button>
+        <button @click="addNode('guardrail')" title="Guardrail"><Shield class="icon-sm" /></button>
+        <button @click="addNode('human')" title="Human"><User class="icon-sm" /></button>
+      </div>
+    </div>
+
     <VueFlow
       ref="vueFlowRef"
       v-model="elements"
@@ -23,10 +159,27 @@
       @edge-click="onEdgeClick"
       @pane-click="onPaneClick"
       @node-double-click="onNodeDoubleClick"
+      @node-mouse-enter="onNodeMouseEnter"
+      @node-mouse-leave="onNodeMouseLeave"
     >
       <Background />
       <Controls />
       <MiniMap />
+
+      <!-- Node quick-actions on hover -->
+      <Teleport to="body">
+        <div v-if="hoveredNodeId && hoveredNodeActions" class="node-quick-actions" :style="quickActionsPosition">
+          <button @click="openPromptEditor(hoveredNodeId)" title="Редактировать промпт">
+            <PenSquare class="icon-xs" />
+          </button>
+          <button @click="duplicateNode(hoveredNodeId)" title="Дублировать">
+            <Copy class="icon-xs" />
+          </button>
+          <button @click="deleteNodeById(hoveredNodeId)" title="Удалить">
+            <Trash2 class="icon-xs" />
+          </button>
+        </div>
+      </Teleport>
 
       <div v-if="showSearch" class="search-panel">
         <input
@@ -36,25 +189,7 @@
           class="search-input"
           @keydown.escape="showSearch = false; searchQuery = ''"
         />
-        <button class="search-close" @click="showSearch = false; searchQuery = ''">✕</button>
-      </div>
-
-      <div class="toolbar-panel">
-        <button @click="addNode('source')">📥 Source</button>
-        <button @click="addNode('agent')">🤖 Agent</button>
-        <button @click="addNode('condition')">⚖️ Condition</button>
-        <button @click="addNode('loop')">🔄 Loop</button>
-        <button @click="addNode('output')">📤 Output</button>
-        <button @click="addNode('memory')">🧠 Memory</button>
-        <button @click="addNode('guardrail')">🛡️ Guardrail</button>
-        <button @click="addNode('human')">👤 Human</button>
-        <button @click="addNode('fallback')">🔄 Fallback</button>
-        <button @click="addNode('comment')">📝 Заметка</button>
-        <button @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
-        <button @click="ungroupSelectedNode" :disabled="!selectedNodeId || !(props.schema.nodes||[]).find(n => n.id === selectedNodeId)?.parentId" title="Разгруппировать">📤 Разгрупп.</button>
-        <button @click="showHistory = !showHistory" title="История выполнений">📜 История</button>
-        <button @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠 Граф</button>
-        <button @click="exportAsImage" title="Сохранить как PNG">📷 PNG</button>
+        <button class="search-close" @click="showSearch = false; searchQuery = ''"><X class="icon-sm" /></button>
       </div>
     </VueFlow>
 
@@ -123,6 +258,8 @@ import { VueFlow, type Node, type Edge, type Connection, type NodeDragEvent, typ
 import { Background } from '@vue-flow/background';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
+// Lucide icons
+import { FileText, Play, Save, Download, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ArrowDownCircle, Bot, GitBranch, Repeat, ArrowUpCircle, Brain, Shield, User, RotateCcw, MessageSquare, Group, Ungroup, ScrollText, Network, Image as ImageIcon, Keyboard, X, PenSquare, Copy } from 'lucide-vue-next';
 import type { WorkflowSchema, FlowNode, FlowEdge } from '../../types';
 import AgentNode from '../nodes/AgentNode.vue';
 import SourceNode from '../nodes/SourceNode.vue';
@@ -193,6 +330,21 @@ const showHistory = ref(false);
 const showMemoryGraph = ref(false);
 const memoryResultCards = ref<Array<{ id: string; wing: string; room: string; content: string; score?: number; x: number; y: number }>>([]);
 
+// Sidebar state
+const sidebarCollapsed = ref(false);
+const sectionsExpanded = ref({ nodes: true, advanced: true, tools: true });
+const showQuickAdd = ref(false);
+const showShortcuts = ref(false);
+
+// Node hover quick-actions
+const hoveredNodeId = ref<string | null>(null);
+const hoveredNodePosition = ref({ x: 0, y: 0 });
+const hoveredNodeActions = computed(() => hoveredNodeId.value);
+const quickActionsPosition = computed(() => ({
+  left: `${hoveredNodePosition.value.x + 120}px`,
+  top: `${hoveredNodePosition.value.y - 10}px`,
+}));
+
 // Undo/Redo
 const undoStack = ref<string[]>([]);
 const redoStack = ref<string[]>([]);
@@ -237,6 +389,7 @@ function redo() {
 const schemaStore = useSchemaStore();
 const { connect, disconnect, isConnected } = useWebSocket();
 const isExecuting = ref(false);
+const currentWave = ref(1);
 const executionProgress = ref(0);
 const totalNodes = ref(0);
 const completedNodes = ref(0);
@@ -248,6 +401,12 @@ const executionEstimatedCost = ref(0);
 const executionStartTime = ref(0);
 const elapsedSeconds = ref(0);
 let timerInterval: number | null = null;
+
+function formatElapsed(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}м ${s}с` : `${s}с`;
+}
 
 interface LogEntry {
   timestamp: number;
@@ -569,6 +728,37 @@ function generateUniqueName(baseName: string): string {
   let counter = 1;
   while (names.includes(`${baseName} (${counter})`)) counter++;
   return `${baseName} (${counter})`;
+}
+
+function toggleSection(section: 'nodes' | 'advanced' | 'tools') {
+  sectionsExpanded.value[section] = !sectionsExpanded.value[section];
+}
+
+// Node quick-actions
+function duplicateNode(nodeId: string) {
+  const node = (props.schema.nodes || []).find(n => n.id === nodeId);
+  if (!node) return;
+  pushUndo();
+  const newNode: FlowNode = {
+    ...JSON.parse(JSON.stringify(node)),
+    id: `${node.type}-${Date.now()}-${nextNodeOffset++}`,
+    position: { x: node.position.x + 50, y: node.position.y + 50 },
+    data: { ...node.data, result: undefined, executionStatus: undefined },
+  };
+  if (!props.schema.nodes) props.schema.nodes = [];
+  props.schema.nodes.push(newNode);
+  pushUndo();
+  emit('update', { ...props.schema });
+}
+
+function deleteNodeById(nodeId: string) {
+  if (!props.schema.nodes) return;
+  props.schema.nodes = props.schema.nodes.filter(n => n.id !== nodeId);
+  if (props.schema.edges) {
+    props.schema.edges = props.schema.edges.filter(e => e.source !== nodeId && e.target !== nodeId);
+  }
+  pushUndo();
+  emit('update', { ...props.schema });
 }
 
 function addNode(type: string) {
@@ -965,6 +1155,21 @@ function onNodeDoubleClick(event: any) {
   }
 }
 
+function onNodeMouseEnter(event: NodeMouseEvent) {
+  const nodeId = event.node.id;
+  hoveredNodeId.value = nodeId;
+  // Get node position on screen
+  const el = document.querySelector(`[data-nodeid="${nodeId}"]`);
+  if (el) {
+    const rect = el.getBoundingClientRect();
+    hoveredNodePosition.value = { x: rect.left, y: rect.top };
+  }
+}
+
+function onNodeMouseLeave() {
+  hoveredNodeId.value = null;
+}
+
 // === Prompt Editor ===
 const promptEditorNodeName = computed(() => {
   if (!promptEditorNodeId.value) return '';
@@ -1142,6 +1347,253 @@ function ungroupSelectedNode() {
 .delete-schema-btn:hover {
   background: #c82333;
 }
+
+/* Icon sizing */
+.icon-sm {
+  width: 16px;
+  height: 16px;
+}
+.icon-xs {
+  width: 14px;
+  height: 14px;
+}
+
+/* Top execution progress bar */
+.top-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  background: rgba(30, 30, 46, 0.95);
+  padding: 6px 16px 8px;
+  border-bottom: 1px solid rgba(108, 99, 255, 0.3);
+  backdrop-filter: blur(8px);
+}
+.progress-track {
+  height: 3px;
+  background: rgba(108, 99, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6c63ff, #4f7cff);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 4px;
+}
+.progress-info .elapsed {
+  font-family: 'JetBrains Mono', monospace;
+  color: #6c63ff;
+}
+
+/* Collapsible sidebar */
+.sidebar {
+  position: absolute;
+  top: 60px;
+  left: 10px;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: all 0.3s ease;
+}
+.sidebar.collapsed {
+  width: auto;
+}
+.sidebar-toggle {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2d2d44;
+  border: 1px solid #4a4a6a;
+  border-radius: 6px;
+  color: #eee;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+.sidebar-toggle:hover {
+  background: #3d3d5c;
+}
+.sidebar-content {
+  background: #1e1e2e;
+  border: 1px solid rgba(74, 74, 106, 0.5);
+  border-radius: 12px;
+  padding: 8px;
+  width: 200px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+}
+.sidebar-section {
+  margin-bottom: 4px;
+}
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.section-header:hover {
+  background: rgba(108, 99, 255, 0.1);
+  color: #ccc;
+}
+.section-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+.section-items button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #ddd;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.section-items button:hover:not(:disabled) {
+  background: rgba(108, 99, 255, 0.15);
+  color: #fff;
+}
+.section-items button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.section-items button span {
+  flex: 1;
+}
+.sidebar-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin-top: 4px;
+}
+.sidebar-footer button {
+  background: transparent;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+.sidebar-footer button:hover {
+  background: rgba(108, 99, 255, 0.15);
+  color: #ccc;
+}
+
+/* Quick-add floating button (when sidebar collapsed) */
+.quick-add {
+  position: absolute;
+  top: 70px;
+  left: 10px;
+  z-index: 1040;
+}
+.quick-add button {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #6c63ff;
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(108, 99, 255, 0.4);
+  transition: all 0.2s;
+}
+.quick-add button:hover {
+  background: #5a52d9;
+  transform: scale(1.05);
+}
+.quick-add-menu {
+  position: absolute;
+  top: 0;
+  left: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #1e1e2e;
+  border: 1px solid #4a4a6a;
+  border-radius: 10px;
+  padding: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1041;
+}
+.quick-add-menu button {
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  box-shadow: none;
+}
+.quick-add-menu button:hover {
+  background: rgba(108, 99, 255, 0.2);
+  transform: none;
+}
+
+/* Node quick-actions */
+.node-quick-actions {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  background: #2d2d44;
+  border: 1px solid #4a4a6a;
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 1200;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.node-quick-actions button {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #ccc;
+  cursor: pointer;
+}
+.node-quick-actions button:hover {
+  background: rgba(108, 99, 255, 0.2);
+  color: #fff;
+}
+
+/* Schema header button improvements */
+.schema-actions button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .toolbar-panel {
   position: absolute;
   top: 50px;
