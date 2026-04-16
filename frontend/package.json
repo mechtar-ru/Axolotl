@@ -1,6 +1,8 @@
 {
   "name": "axolotl",
   "version": "1.0.0",
+  "description": "Visual AI-Agent Orchestration",
+  "author": "Axolotl Team",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,9 +12,12 @@
     "test:unit": "vitest",
     "test:e2e": "playwright test",
     "build-only": "vite build",
+    "build:backend": "cd ../backend && mvn package -DskipTests -q",
+    "build:frontend": "ELECTRON=true npm run build",
+    "download:jre": "node scripts/download-jre.js",
     "type-check": "vue-tsc --build",
     "electron:dev": "vite",
-    "electron:build": "npm run build && electron-builder",
+    "electron:build": "npm run build:backend && npm run build:frontend && electron-builder",
     "electron:preview": "vite build && electron ."
   },
   "dependencies": {
@@ -54,6 +59,7 @@
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   },
+  "main": "dist-electron/main.js",
   "build": {
     "appId": "com.axolotl.app",
     "productName": "Axolotl",
@@ -63,6 +69,16 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/target/axolotl-0.0.1.jar",
+        "to": "backend/axolotl-0.0.1.jar"
+      },
+      {
+        "from": "jre",
+        "to": "jre"
+      }
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -87,6 +103,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "anomalyco",
+      "repo": "axolotl"
     }
   }
 }

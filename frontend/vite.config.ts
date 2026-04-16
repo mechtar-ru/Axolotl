@@ -22,7 +22,7 @@ export default defineConfig({
         },
         vite: {
           build: {
-            outDir: path.join(__dirname, '../dist-electron'),
+            outDir: path.join(__dirname, 'dist-electron'),
             rollupOptions: {
               external: ['electron']
             }
@@ -36,7 +36,7 @@ export default defineConfig({
         },
         vite: {
           build: {
-            outDir: path.join(__dirname, '../dist-electron')
+            outDir: path.join(__dirname, 'dist-electron')
           }
         }
       }
@@ -50,7 +50,7 @@ export default defineConfig({
   },
   base: './',
   build: {
-    outDir: path.join(__dirname, '../dist'),
+    outDir: path.join(__dirname, 'dist'),
     emptyOutDir: true
   }
 })

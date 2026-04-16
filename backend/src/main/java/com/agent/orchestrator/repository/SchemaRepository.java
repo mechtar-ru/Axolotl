@@ -2,6 +2,7 @@
 package com.agent.orchestrator.repository;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.agent.orchestrator.config.DbConfig;
 import com.agent.orchestrator.model.WorkflowSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,13 +20,8 @@ public class SchemaRepository {
     private final String dbUrl;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public SchemaRepository() {
-        String projectDir = System.getProperty("user.dir");
-        if (projectDir.endsWith("backend")) {
-            dbUrl = "jdbc:sqlite:schema.db";
-        } else {
-            dbUrl = "jdbc:sqlite:backend/schema.db";
-        }
+    public SchemaRepository(DbConfig dbConfig) {
+        this.dbUrl = dbConfig.getDbUrl();
         createTable();
     }
     
@@ -131,15 +127,25 @@ public class SchemaRepository {
     
     public void delete(String id) {
         String sql = "DELETE FROM schemas WHERE id = ?";
-        
+
         try (Connection conn = DriverManager.getConnection(dbUrl);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            
+
             pstmt.setString(1, id);
             pstmt.executeUpdate();
-            
+
         } catch (SQLException e) {
             log.error("Ошибка удаления: {}", e.getMessage());
+        }
+    }
+
+    public void deleteAll() {
+        String sql = "DELETE FROM schemas";
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            log.error("Ошибка очистки таблицы: {}", e.getMessage());
         }
     }
 }

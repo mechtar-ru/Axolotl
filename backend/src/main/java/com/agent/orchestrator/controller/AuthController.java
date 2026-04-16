@@ -6,6 +6,8 @@ import com.agent.orchestrator.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -45,7 +47,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public Map<String, Object> login(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, Object>> login(@RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
 
@@ -53,7 +55,7 @@ public class AuthController {
         if (user == null || !passwordEncoder.matches(password, user.getPassword())) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Неверное имя пользователя или пароль");
-            return error;
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
         }
 
         String token = jwtUtil.generateToken(user.getUsername(), user.getRole());
@@ -61,32 +63,31 @@ public class AuthController {
         response.put("token", token);
         response.put("username", user.getUsername());
         response.put("role", user.getRole());
-        return response;
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/register")
-    public Map<String, Object> register(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, Object>> register(@RequestBody Map<String, String> request) {
         String username = request.get("username");
         String password = request.get("password");
-        String role = request.getOrDefault("role", "user");
 
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Имя пользователя и пароль обязательны");
-            return error;
+            return ResponseEntity.badRequest().body(error);
         }
 
         if (userRepository.findByUsername(username) != null) {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "Пользователь уже существует");
-            return error;
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
         }
 
         AppUser user = new AppUser(
                 UUID.randomUUID().toString(),
                 username,
                 passwordEncoder.encode(password),
-                role
+                "user"
         );
         userRepository.save(user);
 
@@ -95,15 +96,22 @@ public class AuthController {
         response.put("token", token);
         response.put("username", user.getUsername());
         response.put("role", user.getRole());
-        return response;
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/me")
-    public Map<String, Object> me(@RequestHeader("Authorization") String authHeader) {
-        String token = authHeader.replace("Bearer ", "");
-        Map<String, Object> response = new HashMap<>();
-        response.put("username", jwtUtil.getUsername(token));
-        response.put("role", jwtUtil.getRole(token));
-        return response;
+    public ResponseEntity<Map<String, Object>> me(@RequestHeader("Authorization") String authHeader) {
+        try {
+            String token = authHeader.replace("Bearer ", "");
+            if (!jwtUtil.isValid(token)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+            }
+            Map<String, Object> response = new HashMap<>();
+            response.put("username", jwtUtil.getUsername(token));
+            response.put("role", jwtUtil.getRole(token));
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
     }
 }

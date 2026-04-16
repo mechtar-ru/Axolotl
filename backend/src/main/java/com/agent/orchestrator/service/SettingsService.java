@@ -4,6 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.agent.orchestrator.config.DbConfig;
+
+import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.sql.*;
 import java.util.*;
 
@@ -15,17 +22,60 @@ import java.util.*;
 public class SettingsService {
 
     private static final Logger log = LoggerFactory.getLogger(SettingsService.class);
+    private static final String ENCRYPTION_ALGORITHM = "AES/GCM/NoPadding";
+    private static final int GCM_TAG_LENGTH = 128;
+    private static final int GCM_IV_LENGTH = 12;
+    private static final String ENCRYPTION_KEY = System.getProperty(
+            "axolotl.encryption.key", "Axolotl2026SecKey!"); // 16+ chars = AES-128
 
     private final String dbUrl;
+    private final SecretKeySpec aesKey;
+    private final SecureRandom secureRandom = new SecureRandom();
 
-    public SettingsService() {
-        String projectDir = System.getProperty("user.dir");
-        if (projectDir.endsWith("backend")) {
-            dbUrl = "jdbc:sqlite:schema.db";
-        } else {
-            dbUrl = "jdbc:sqlite:backend/schema.db";
-        }
+    public SettingsService(DbConfig dbConfig) {
+        this.dbUrl = dbConfig.getDbUrl();
+        byte[] keyBytes = ENCRYPTION_KEY.getBytes(StandardCharsets.UTF_8);
+        byte[] aesKeyBytes = new byte[16];
+        System.arraycopy(keyBytes, 0, aesKeyBytes, 0, Math.min(keyBytes.length, 16));
+        this.aesKey = new SecretKeySpec(aesKeyBytes, "AES");
         createTable();
+    }
+
+    private String encrypt(String plaintext) {
+        if (plaintext == null || plaintext.isBlank()) return plaintext;
+        try {
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            secureRandom.nextBytes(iv);
+            Cipher cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, aesKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            byte[] encrypted = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
+            // Prepend IV to ciphertext
+            byte[] combined = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, combined, 0, iv.length);
+            System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
+            return Base64.getEncoder().encodeToString(combined);
+        } catch (Exception e) {
+            log.error("Encryption failed: {}", e.getMessage());
+            return plaintext;
+        }
+    }
+
+    private String decrypt(String ciphertext) {
+        if (ciphertext == null || ciphertext.isBlank()) return ciphertext;
+        try {
+            byte[] combined = Base64.getDecoder().decode(ciphertext);
+            if (combined.length < GCM_IV_LENGTH) return ciphertext; // Not encrypted
+            byte[] iv = new byte[GCM_IV_LENGTH];
+            byte[] encrypted = new byte[combined.length - GCM_IV_LENGTH];
+            System.arraycopy(combined, 0, iv, 0, GCM_IV_LENGTH);
+            System.arraycopy(combined, GCM_IV_LENGTH, encrypted, 0, encrypted.length);
+            Cipher cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM);
+            cipher.init(Cipher.DECRYPT_MODE, aesKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // Might be plaintext (old data) — return as-is
+            return ciphertext;
+        }
     }
 
     private void createTable() {
@@ -57,8 +107,8 @@ public class SettingsService {
                 settings.put("provider", rs.getString("provider_name"));
                 settings.put("baseUrl", rs.getString("base_url"));
                 settings.put("defaultModel", rs.getString("default_model"));
-                // НЕ возвращаем api_key в списке — только через отдельный запрос
-                settings.put("hasApiKey", rs.getString("api_key") != null && !rs.getString("api_key").isBlank());
+                String storedKey = rs.getString("api_key");
+                settings.put("hasApiKey", storedKey != null && !storedKey.isBlank());
                 return settings;
             }
         } catch (SQLException e) {
@@ -80,7 +130,7 @@ public class SettingsService {
         try (Connection conn = DriverManager.getConnection(dbUrl);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, providerName);
-            pstmt.setString(2, apiKey);
+            pstmt.setString(2, apiKey != null && !apiKey.isBlank() ? encrypt(apiKey) : apiKey);
             pstmt.setString(3, baseUrl);
             pstmt.setString(4, defaultModel);
             pstmt.setString(5, java.time.Instant.now().toString());
@@ -92,22 +142,22 @@ public class SettingsService {
     }
 
     public String getApiKey(String providerName) {
-        // Сначала проверяем БД
-        Map<String, Object> settings = getProviderSettings(providerName);
-        if (settings != null && Boolean.TRUE.equals(settings.get("hasApiKey"))) {
-            String sql = "SELECT api_key FROM provider_settings WHERE provider_name = ?";
-            try (Connection conn = DriverManager.getConnection(dbUrl);
-                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
-                pstmt.setString(1, providerName);
-                ResultSet rs = pstmt.executeQuery();
-                if (rs.next()) {
-                    return rs.getString("api_key");
+        // Check DB first
+        String sql = "SELECT api_key FROM provider_settings WHERE provider_name = ?";
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setString(1, providerName);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String storedKey = rs.getString("api_key");
+                if (storedKey != null && !storedKey.isBlank()) {
+                    return decrypt(storedKey);
                 }
-            } catch (SQLException e) {
-                log.error("Ошибка чтения API ключа: {}", e.getMessage());
             }
+        } catch (SQLException e) {
+            log.error("Ошибка чтения API ключа: {}", e.getMessage());
         }
-        // Fallback: переменные окружения
+        // Fallback: env vars
         String envKey = switch (providerName) {
             case "openai" -> System.getenv("OPENAI_API_KEY");
             case "anthropic" -> System.getenv("ANTHROPIC_API_KEY");
@@ -122,7 +172,7 @@ public class SettingsService {
         if (settings != null && settings.get("baseUrl") != null) {
             return (String) settings.get("baseUrl");
         }
-        return null; // Fallback к application.yml
+        return null;
     }
 
     public String getDefaultModel(String providerName) {
@@ -130,7 +180,7 @@ public class SettingsService {
         if (settings != null && settings.get("defaultModel") != null) {
             return (String) settings.get("defaultModel");
         }
-        return null; // Fallback к application.yml
+        return null;
     }
 
     public List<Map<String, Object>> getAllProviderSettings() {
@@ -142,7 +192,8 @@ public class SettingsService {
             while (rs.next()) {
                 Map<String, Object> settings = new LinkedHashMap<>();
                 settings.put("provider", rs.getString("provider_name"));
-                settings.put("hasApiKey", rs.getString("api_key") != null && !rs.getString("api_key").isBlank());
+                String storedKey = rs.getString("api_key");
+                settings.put("hasApiKey", storedKey != null && !storedKey.isBlank());
                 settings.put("baseUrl", rs.getString("base_url"));
                 settings.put("defaultModel", rs.getString("default_model"));
                 result.add(settings);

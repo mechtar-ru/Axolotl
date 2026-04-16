@@ -13,8 +13,15 @@ backend/.mvn/
 frontend/node_modules/
 frontend_old_backup/
 frontend/dist/
+frontend/dist-electron/
+frontend/release/
+frontend/jre/
 frontend/.env
 frontend/.env.local
+
+# Electron build output
+dist/
+dist-electron/
 
 # Docker
 *.db

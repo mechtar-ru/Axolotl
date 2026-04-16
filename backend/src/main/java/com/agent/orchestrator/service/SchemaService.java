@@ -20,6 +20,8 @@ import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -38,6 +40,8 @@ public class SchemaService {
     private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
     private static final int MAX_HISTORY = 100;
     private static final int MAX_NODE_RESTARTS = 3;
+    private final ExecutorService executionExecutor = Executors.newFixedThreadPool(
+            Runtime.getRuntime().availableProcessors());
 
     // Convergence monitoring: track consecutive failures per node per execution
     private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
@@ -50,6 +54,10 @@ public class SchemaService {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
+    }
+
+    @jakarta.annotation.PostConstruct
+    void init() {
         initDemoSchema();
     }
 
@@ -103,6 +111,7 @@ public class SchemaService {
     }
 
     public void deleteSchema(String id) {
+        cancelExecution(id);
         schemaRepository.delete(id);
         log.info("Удалена схема: {}", id);
     }
@@ -309,7 +318,8 @@ public class SchemaService {
     public void executeSchema(String id, ExecutionMode mode) {
         WorkflowSchema schema = schemaRepository.findById(id);
         if (schema == null)
-            return;
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + id);
         if (runningExecutions.containsKey(id)) {
             log.warn("Схема уже выполняется: {}", id);
             return;
@@ -323,7 +333,8 @@ public class SchemaService {
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(id, cancelFlag);
-        CompletableFuture<?> future = CompletableFuture.runAsync(() -> executeWorkflow(schema, cancelFlag, mode));
+        CompletableFuture<?> future = CompletableFuture.runAsync(
+                () -> executeWorkflow(schema, cancelFlag, mode), executionExecutor);
         runningExecutions.put(id, future);
         future.whenComplete((result, ex) -> {
             runningExecutions.remove(id);
@@ -466,7 +477,7 @@ public class SchemaService {
                     if (webSocketHandler != null) {
                         webSocketHandler.sendNodeTime(schema.getId(), node.getId(), nodeTime);
                     }
-                }));
+                }, executionExecutor));
             }
 
             // Дождаться завершения всех узлов уровня

@@ -1,5 +1,6 @@
 package com.agent.orchestrator.repository;
 
+import com.agent.orchestrator.config.DbConfig;
 import com.agent.orchestrator.model.Plan;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -19,16 +20,10 @@ public class PlanRepository {
     private final String dbUrl;
     private final ObjectMapper mapper;
 
-    public PlanRepository() {
+    public PlanRepository(DbConfig dbConfig) {
         mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
-        // Use absolute path to schema.db in backend directory
-        String projectDir = System.getProperty("user.dir");
-        if (projectDir.endsWith("backend")) {
-            dbUrl = "jdbc:sqlite:schema.db";
-        } else {
-            dbUrl = "jdbc:sqlite:backend/schema.db";
-        }
+        this.dbUrl = dbConfig.getDbUrl();
         createTable();
     }
 

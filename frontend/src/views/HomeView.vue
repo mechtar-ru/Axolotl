@@ -1,6 +1,10 @@
 <template>
   <div class="app">
     <div class="sidebar" :style="{ width: sidebarWidth + 'px' }">
+      <div class="sidebar-header">
+        <img src="../assets/axolotl-symbol.svg" alt="Axolotl" class="sidebar-logo" />
+        <span class="sidebar-brand">Axolotl</span>
+      </div>
       <h2>📋 Схемы</h2>
       <ul>
         <li
@@ -31,8 +35,8 @@
     <div class="main-content">
       <div class="canvas-container">
         <div v-if="!schemaStore.currentSchema" class="empty-state">
-          <div class="empty-state__icon">🧬</div>
-          <h1 class="empty-state__title">Axolotl — Визуальная оркестрация AI-агентов</h1>
+          <img src="../assets/logo.svg" alt="Axolotl" class="empty-state__logo" />
+          <h1 class="empty-state__title">Визуальная оркестрация AI-агентов</h1>
           <p class="empty-state__subtitle">Создавайте схемы выполнения AI-агентов визуально</p>
 
           <!-- Templates section -->
@@ -596,15 +600,40 @@ body {
 
 .sidebar {
   width: 250px;
-  background: #16213e;
+  background: #0b0f2a;
   padding: 20px;
-  border-right: 1px solid #0f3460;
+  border-right: 1px solid rgba(123, 92, 255, 0.2);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(123, 92, 255, 0.2);
+}
+
+.sidebar-logo {
+  width: 32px;
+  height: 32px;
+}
+
+.sidebar-brand {
+  font-size: 18px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #7b5cff, #4facfe);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .sidebar h2 {
   margin-bottom: 20px;
-  color: #e94560;
+  color: #7b5cff;
 }
 
 .sidebar ul {
@@ -615,42 +644,45 @@ body {
 .sidebar li {
   padding: 10px;
   margin-bottom: 5px;
-  background: #0f3460;
-  border-radius: 5px;
+  background: rgba(123, 92, 255, 0.1);
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: all 0.2s;
 }
 
 .sidebar li:hover {
-  background: #e94560;
+  background: rgba(123, 92, 255, 0.2);
 }
 
 .sidebar li.active {
-  background: #e94560;
+  background: linear-gradient(135deg, #7b5cff, #4facfe);
 }
 
 .sidebar button {
   width: 100%;
   padding: 10px;
   margin-bottom: 10px;
-  background: #e94560;
+  background: linear-gradient(135deg, #7b5cff, #4facfe);
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: all 0.2s;
+  font-weight: 500;
 }
 
 .sidebar button:hover {
-  background: #d43d51;
+  opacity: 0.9;
+  transform: translateY(-1px);
 }
 
 .import-btn {
-  background: #0f3460;
+  background: rgba(79, 172, 254, 0.2);
+  color: #4facfe;
 }
 
 .import-btn:hover {
-  background: #16213e;
+  background: rgba(79, 172, 254, 0.3);
 }
 
 .settings-btn {
@@ -731,21 +763,25 @@ body {
   text-align: center;
 }
 
-.empty-state__icon {
-  font-size: 80px;
-  margin-bottom: 16px;
-  animation: float 3s ease-in-out infinite;
+.empty-state__logo {
+  width: 120px;
+  height: 120px;
+  margin-bottom: 24px;
+  animation: pulse 3s ease-in-out infinite;
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 .empty-state__title {
-  font-size: 32px;
-  color: #e0e0e0;
-  margin: 0 0 8px;
+  font-size: 28px;
+  background: linear-gradient(135deg, #7b5cff, #4facfe);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 12px;
   font-weight: 700;
 }
 
@@ -777,10 +813,10 @@ body {
 }
 
 .action-card:hover {
-  border-color: #6c63ff;
-  background: rgba(108, 99, 255, 0.1);
+  border-color: #7b5cff;
+  background: rgba(123, 92, 255, 0.1);
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(108, 99, 255, 0.2);
+  box-shadow: 0 8px 30px rgba(123, 92, 255, 0.2);
 }
 
 .action-card__icon {

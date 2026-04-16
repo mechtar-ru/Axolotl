@@ -33,22 +33,17 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // Public endpoints
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/mcp").permitAll()
-                .requestMatchers("/api/plan/**").permitAll()
-                .requestMatchers("/api/schemas/**").permitAll()
-                .requestMatchers("/api/agents/**").permitAll()
-                .requestMatchers("/api/settings/**").permitAll()
-                .requestMatchers("/api/remote/**").permitAll()
-                .requestMatchers("/api/skills/**").permitAll()
-                .requestMatchers("/api/settings/endpoints/**").permitAll()
-                .requestMatchers("/api/share/**").permitAll()
-                .requestMatchers("/api/crosscheck/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/swagger-ui/**").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
+                // Remote API uses its own X-API-Key auth
+                .requestMatchers("/api/remote/workflows/**").permitAll()
+                // Everything else requires JWT
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

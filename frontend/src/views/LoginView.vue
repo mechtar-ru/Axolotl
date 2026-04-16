@@ -2,7 +2,7 @@
   <div class="login-page">
     <div class="login-card">
       <div class="login-header">
-        <span class="login-logo">🦎</span>
+        <img src="../assets/logo.svg" alt="Axolotl" class="login-logo" />
         <h1>Axolotl</h1>
         <p>Визуальный конструктор AI-агентов</p>
       </div>
@@ -77,7 +77,8 @@ async function login() {
   margin-bottom: 30px;
 }
 .login-logo {
-  font-size: 48px;
+  width: 64px;
+  height: 64px;
 }
 .login-header h1 {
   font-size: 28px;
@@ -114,10 +115,10 @@ async function login() {
   outline: none;
 }
 .field input:focus {
-  border-color: #6c63ff;
+  border-color: #7b5cff;
 }
 .login-btn {
-  background: #4f7cff;
+  background: linear-gradient(135deg, #7b5cff, #4facfe);
   border: none;
   color: white;
   padding: 12px;
@@ -127,7 +128,7 @@ async function login() {
   cursor: pointer;
   margin-top: 4px;
 }
-.login-btn:hover { background: #3d6bef; }
+.login-btn:hover { opacity: 0.9; }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .login-hint {
   text-align: center;

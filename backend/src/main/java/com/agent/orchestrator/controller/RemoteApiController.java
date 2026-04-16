@@ -1,5 +1,6 @@
 package com.agent.orchestrator.controller;
 
+import com.agent.orchestrator.config.JwtUtil;
 import com.agent.orchestrator.model.ApiKey;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.WorkflowSchema;
@@ -25,12 +26,14 @@ public class RemoteApiController {
 
     private final ApiKeyRepository apiKeyRepository;
     private final SchemaService schemaService;
+    private final JwtUtil jwtUtil;
     private final Map<String, AtomicInteger> rateLimitCounts = new ConcurrentHashMap<>();
     private final Map<String, Long> rateLimitWindows = new ConcurrentHashMap<>();
 
-    public RemoteApiController(ApiKeyRepository apiKeyRepository, SchemaService schemaService) {
+    public RemoteApiController(ApiKeyRepository apiKeyRepository, SchemaService schemaService, JwtUtil jwtUtil) {
         this.apiKeyRepository = apiKeyRepository;
         this.schemaService = schemaService;
+        this.jwtUtil = jwtUtil;
     }
 
     @PostMapping("/keys")
@@ -98,9 +101,7 @@ public class RemoteApiController {
                                            @RequestHeader("X-API-Key") String apiKey,
                                            @RequestHeader(value = "X-Execution-Mode", defaultValue = "EXECUTE") String mode,
                                            @RequestBody(required = false) Map<String, Object> input) {
-        checkRateLimit(apiKey);
         ApiKey key = validateApiKey(apiKey, "workflows:execute");
-
         checkRateLimit(key.getId());
 
         ExecutionMode executionMode = ExecutionMode.valueOf(mode);
@@ -205,6 +206,14 @@ public class RemoteApiController {
     }
 
     private String extractUserId(String auth) {
+        if (auth != null && auth.startsWith("Bearer ")) {
+            try {
+                String token = auth.substring(7);
+                if (jwtUtil.isValid(token)) {
+                    return jwtUtil.getUsername(token);
+                }
+            } catch (Exception ignored) {}
+        }
         return "remote-user";
     }
 

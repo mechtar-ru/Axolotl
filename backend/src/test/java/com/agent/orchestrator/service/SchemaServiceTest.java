@@ -30,8 +30,6 @@ class SchemaServiceTest {
 
     @BeforeEach
     void setUp() {
-        // Prevent initDemoSchema from creating a demo — return existing one
-        when(schemaRepository.findById("demo-1")).thenReturn(new WorkflowSchema());
         schemaService = new SchemaService(schemaRepository, llmService, webSocketHandler, memPalaceClient);
     }
 
