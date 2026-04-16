@@ -1,6 +1,7 @@
 package com.agent.orchestrator.controller;
 
 import com.agent.orchestrator.model.Agent;
+import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.llm.LlmService;
@@ -104,9 +105,11 @@ public class AgentController {
     }
 
     @PostMapping("/schemas/{id}/execute")
-    public Map<String, String> executeSchema(@PathVariable String id) {
-        schemaService.executeSchema(id);
-        return Map.of("status", "started", "schemaId", id);
+    public Map<String, String> executeSchema(
+            @PathVariable String id,
+            @RequestParam(defaultValue = "EXECUTE") ExecutionMode mode) {
+        schemaService.executeSchema(id, mode);
+        return Map.of("status", "started", "schemaId", id, "mode", mode.name());
     }
 
     @PostMapping("/schemas/{id}/stop")

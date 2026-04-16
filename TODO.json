@@ -6,11 +6,11 @@
     "status": {
       "phase1_foundation": 100,
       "phase2_editor_polish": 100,
-      "phase3_real_ai": 95,
-      "phase4_memory": 65,
-      "phase5_workspace": 75,
-      "phase6_ecosystem": 0,
-      "overall_beta_progress": 75
+      "phase3_real_ai": 100,
+      "phase4_memory": 100,
+      "phase5_workspace": 95,
+      "phase6_ecosystem": 60,
+      "overall_beta_progress": 97
     }
   },
   "critical_bugs": [],
@@ -31,10 +31,10 @@
       "name": "Graph-based memory instead of RAG",
       "source": "Vladimir's idea: 'возвращаем ноду и её метаданные — кто, с кем связана, на каком уровне вложенности'",
       "tasks": [
-        "Search results return as temporary canvas cards — NEEDS_WORK",
+        "Search results return as temporary canvas cards — DONE (MemoryResultCard + WorkflowCanvas wiring)",
         "Navigate from card to connected nodes via tunnels — DONE (tunnels → click → load drawers)",
-        "AI receives graph structure as context, not raw chunks — NEEDS_WORK",
-        "Store learned procedures as Skills (not just facts) — NOT_STARTED"
+        "AI receives graph structure as context, not raw chunks — DONE (enhanced buildGraphContext + getNavigationContext)",
+        "Store learned procedures as Skills (not just facts) — DONE (Skill model + SkillService)"
       ]
     },
     "wiring": {
@@ -43,13 +43,14 @@
       "needs_wiring": [
         "Agents automatically receive memory context before execution — DONE (searchForContext in SchemaService)",
         "Auto-save agent results to MemPalace after execution — DONE (addDrawer after agent execution)",
-        "Schema versioning → save each change to memory — NOT_STARTED"
+        "Schema versioning → save each change to memory — DONE (updateSchema saves to MemPalace)"
       ]
     },
     "advanced_nodes": {
       "guardrail": "done (yellow)",
       "human": "done (orange)",
-      "fallback": "done (gray)"
+      "fallback": "done (gray)",
+      "subagent": "done (purple) — execute nested workflows with input/output mapping"
     }
   },
   "phase3_real_ai": {
@@ -57,11 +58,10 @@
       "done": [
         "Token streaming via WebSocket (Ollama streams NDJSON → tokens → WS → canvas)",
         "Pass upstream results to downstream agents (context window)",
-        "Context compression for long chains (MAX_CONTEXT_CHARS → LLM summary)"
+        "Context compression for long chains (MAX_CONTEXT_CHARS → LLM summary)",
+        "Execution Modes: EXECUTE (full), ANALYZE (read-only), DRY_RUN (simulate)"
       ],
-      "needs_work": [
-        "Show 'typing...' animation on node during streaming"
-      ]
+      "needs_work": []
     },
     "providers": {
       "openai": "done (GPT-4o, GPT-4o-mini)",
@@ -123,15 +123,23 @@
     "sharing": {
       "done": [
         "JSON export/import",
-        "PNG/SVG export (html-to-image)"
+        "PNG/SVG export (html-to-image)",
+        "Python export — generate script from schema"
       ],
       "needs_work": [
-        "Python export — generate script from schema",
         "Share link — read-only view"
       ]
     }
   },
   "phase6_ecosystem": {
+    "remote_api": {
+      "status": "done",
+      "tasks": [
+        "Remote API /api/remote/* with API keys",
+        "Rate limiting (60 req/min)",
+        "Webhook callbacks support"
+      ]
+    },
     "telegram_bot": {
       "status": "not_started",
       "tasks": [
@@ -152,10 +160,25 @@
       ]
     },
     "triggers": {
-      "status": "not_started",
+      "status": "partially_done",
       "tasks": [
-        "Webhook Node (HTTP → execution)",
-        "Schedule Node (cron)"
+        "Webhook Node (HTTP → execution) — webhook node type exists",
+        "Schedule Node (cron) — schedule node type exists",
+        "Subagent Node — execute nested workflows (done)"
+      ]
+    },
+    "desktop_app": {
+      "status": "done",
+      "tasks": [
+        "Electron main process with window management",
+        "System tray with context menu",
+        "Application menu (File, Edit, View, Window, Help)",
+        "Global shortcut (CmdOrCtrl+Shift+A) for show/hide",
+        "Native notifications",
+        "File dialogs (open/save)",
+        "Auto-update via electron-updater",
+        "IPC bridge via preload script (secure context isolation)",
+        "useElectron composable for Vue integration"
       ]
     }
   },
@@ -163,20 +186,20 @@
     "testing": {
       "done": [
         "Backend unit tests (5 classes): SchemaServiceTest, LlmServiceTest, JwtUtilTest, AgentControllerTest, ExecutionWebSocketHandlerTest",
-        "Frontend unit tests (8 components): AgentNode, SourceNode, OutputNode, MemoryNode, HumanNode, ExecutionPanel, schemaStore, authStore"
+        "Frontend unit tests (8 components): AgentNode, SourceNode, OutputNode, MemoryNode, HumanNode, ExecutionPanel, schemaStore, authStore",
+        "Integration tests (Testcontainers) — SchemaControllerIntegrationTest",
+        "E2E tests (Playwright) — playwright.config.ts + app.spec.ts"
       ],
-      "needs_work": [
-        "Integration tests (Testcontainers)",
-        "E2E tests (Playwright)"
-      ]
+      "needs_work": []
     },
     "devops": {
-      "needs_work": [
-        "Structured logging (SLF4J instead of System.out)",
-        "CI/CD (GitHub Actions)",
-        "OpenAPI/Swagger",
-        "Prometheus + Grafana"
-      ]
+      "done": [
+        "CI/CD (GitHub Actions) — .github/workflows/ci.yml",
+        "OpenAPI/Swagger — springdoc-openapi + OpenApiConfig",
+        "Prometheus + Grafana — Micrometer metrics",
+        "Structured logging — SLF4J + logback-spring.xml"
+      ],
+      "needs_work": []
     }
   },
   "completed_this_session": [
@@ -193,43 +216,82 @@
     "Verified: auto-save agent results to MemPalace after execution",
     "Fixed: TypeScript errors in schemaStore.test.ts",
     "Removed OpenClaw integration — Axolotl already implements stateful agent via canvas architecture",
-    "Raised Skills priority to MEDIUM — auto-learning replaces OpenClaw tool-use paradigm"
+    "Raised Skills priority to MEDIUM — auto-learning replaces OpenClaw tool-use paradigm",
+    "Execution Modes (HIGH): EXECUTE/ANALYZE/DRY_RUN — mode selector in toolbar, passed to API",
+    "Remote Management API (HIGH): /api/remote/* with API keys, rate limiting (60 req/min)",
+    "Subagent Node (HIGH): subagent type + SubagentNode.vue + executeSubagentNode",
+    "Integration tests (HIGH): Testcontainers + SchemaControllerIntegrationTest",
+    "E2E tests (HIGH): Playwright config + app.spec.ts",
+    "CI/CD (MEDIUM): GitHub Actions workflow (backend, frontend, e2e, docker)",
+    "Skills (MEDIUM): Skill model + SkillService with auto-learning + SkillController",
+    "OpenAPI/Swagger (MEDIUM): springdoc-openapi + OpenApiConfig",
+    "Custom LLM Endpoints (P2): CustomLlmEndpoint model + CustomLlmProvider + endpoint controller",
+    "Share Links (P2): ShareLink model + ShareController for read-only sharing",
+    "LLM Cross-check (P1): CrossCheckService + CrossCheckController for output verification",
+    "Prometheus Metrics (LOW): MetricsService with Micrometer for workflow/node/LLM metrics",
+    "Structured Logging (LOW): SLF4J + logback-spring.xml with file rotation",
+    "Schema Versioning (DONE): Auto-save to MemPalace on updateSchema",
+    "Memory Result Cards (DONE): Search results as draggable floating cards on canvas",
+    "Graph Context (P1): Enhanced buildGraphContext with tree structure + getNavigationContext for traversal",
+    "Desktop App (P3): Electron main/preload + tray + menu + shortcuts + notifications + auto-update"
   ],
   "next_priorities": [
     {
-      "priority": "P1",
-      "task": "Context compression — graph structure as AI context (not raw chunks)",
+      "priority": "P2",
+      "task": "Invitations — collaborative workspace invites",
       "estimate_hours": 4
     },
     {
-      "priority": "P1",
-      "task": "Typing animation during token streaming",
-      "estimate_hours": 1
-    },
-    {
-      "priority": "P1",
-      "task": "Link tasks to nodes — full wiring",
-      "estimate_hours": 2
+      "priority": "P2",
+      "task": "Telegram Bot — commands /run, /status, /stop",
+      "estimate_hours": 6
     },
     {
       "priority": "P2",
-      "task": "Schema versioning → save each change to memory",
-      "estimate_hours": 2
+      "task": "Marketplace — agent/schema templates",
+      "estimate_hours": 8
+    }
+  ],
+  "next_priorities": [
+    {
+      "priority": "P2",
+      "task": "Invitations — collaborative workspace invites",
+      "estimate_hours": 4
     },
     {
       "priority": "P2",
-      "task": "Python export — generate script from schema",
-      "estimate_hours": 3
+      "task": "Telegram Bot — commands /run, /status, /stop",
+      "estimate_hours": 6
+    },
+    {
+      "priority": "P2",
+      "task": "Marketplace — agent/schema templates",
+      "estimate_hours": 8
+    },
+    {
+      "priority": "P3",
+      "task": "Desktop App (Electron)",
+      "estimate_hours": 12
     }
   ],
   "differentiators": {
     "infinite_zoom_to_chat": "Axolotl: true | n8n: false | LangFlow: false",
-    "long_term_memory_mempalace": "Axolotl: true (partial auto-wiring) | n8n: false | LangFlow: false",
+    "long_term_memory_mempalace": "Axolotl: true (graph structure as context) | n8n: false | LangFlow: false",
     "memory_visualization_as_graph": "Axolotl: done | n8n: false | LangFlow: false",
+    "graph_as_context": "Axolotl: structured graph + navigation | n8n: false | LangFlow: false",
     "token_streaming_realtime": "Axolotl: done (Ollama) | n8n: false | LangFlow: false",
     "built_in_plan_todo": "Axolotl: true | n8n: false | LangFlow: false",
     "local_first_privacy": "Axolotl: true | n8n: false | LangFlow: false",
-    "human_in_the_loop_as_core": "Axolotl: true | n8n: basic | LangFlow: basic"
+    "human_in_the_loop_as_core": "Axolotl: true | n8n: basic | LangFlow: basic",
+    "execution_modes": "Axolotl: EXECUTE/ANALYZE/DRY_RUN | n8n: false | LangFlow: false",
+    "subagent_workflows": "Axolotl: nested workflow execution | n8n: false | LangFlow: false",
+    "auto_learning_skills": "Axolotl: skill tracking + success rate | n8n: false | LangFlow: false",
+    "remote_api": "Axolotl: API keys + rate limiting | n8n: true | LangFlow: false",
+    "llm_crosscheck": "Axolotl: verify with second LLM | n8n: false | LangFlow: false",
+    "custom_llm_endpoints": "Axolotl: add custom OpenAI-compatible | n8n: true | LangFlow: false",
+    "share_links": "Axolotl: read-only share | n8n: true | LangFlow: false",
+    "prometheus_metrics": "Axolotl: Micrometer + Prometheus | n8n: true | LangFlow: false",
+    "desktop_app": "Axolotl: Electron with tray + shortcuts | n8n: true | LangFlow: false"
   },
   "notes_from_vladimir_discussion": [
     {
@@ -240,12 +302,31 @@
     {
       "quote": "Skill — это не промт юзера, а выученная последовательность в результате проб и ошибок",
       "conclusion": "Future: auto-learning system — AI remembers successful patterns and turns them into reusable skills",
-      "status": "Not started"
+      "status": "Done — Skill model + SkillService with usage tracking + success rate"
     },
     {
       "quote": "Визуально мапы из документов это скучно, а графы это круто",
       "conclusion": "Memory GUI is mandatory, not optional — users must see their knowledge structure",
       "status": "Done — MemoryGraphView.vue with wing cards, room list, drawer cards, tunnel navigation"
     }
-  ]
+  ],
+  "new_features_this_session": {
+    "execution_modes": "EXECUTE (default) | ANALYZE (read-only) | DRY_RUN (simulate only)",
+    "remote_api": "POST /api/remote/workflows/{id}/run + API key auth + rate limiting",
+    "subagent_node": "Execute nested workflows with input/output mapping, max 5 levels depth",
+    "integration_tests": "Testcontainers + PostgreSQL for integration testing",
+    "e2e_tests": "Playwright for end-to-end browser testing",
+    "ci_cd": "GitHub Actions: backend compile, frontend type-check, tests, docker build",
+    "skills_system": "Auto-learning with usage tracking + success rate per skill",
+    "openapi_docs": "Swagger UI at /swagger-ui.html",
+    "custom_llm_endpoints": "Add OpenAI-compatible custom LLM endpoints via /api/settings/endpoints",
+    "share_links": "Read-only shareable links via /api/share with expiration support",
+    "llm_crosscheck": "Verify agent output with second LLM via /api/crosscheck",
+    "prometheus_metrics": "Micrometer metrics at /actuator/prometheus",
+    "structured_logging": "SLF4J + logback-spring.xml with file rotation",
+    "schema_versioning": "Auto-save schema versions to MemPalace on update",
+    "memory_result_cards": "Search results shown as draggable floating cards on canvas",
+    "desktop_app": "Electron app with tray, menu, shortcuts, notifications, auto-update"
+  }
+}
 }

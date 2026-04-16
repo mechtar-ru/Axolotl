@@ -183,7 +183,7 @@
             "id": "588a7081-0502-4302-a3e3-7426ba74572f",
             "title": "CI/CD pipeline — GitHub Actions",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "MEDIUM",
             "dependencies": [],
             "nodeId": null,
@@ -192,14 +192,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
             "criteriaMetCount": 0
         },
         {
             "id": "2753a823-7477-4e9b-bd6c-63fe4ffc9be3",
             "title": "Integration tests — Testcontainers",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "HIGH",
             "dependencies": [],
             "nodeId": null,
@@ -208,14 +208,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
             "criteriaMetCount": 0
         },
         {
             "id": "30725aa9-cf9b-4946-ba97-035c513b950f",
             "title": "E2E tests — Playwright",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "HIGH",
             "dependencies": [],
             "nodeId": null,
@@ -224,14 +224,14 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
             "criteriaMetCount": 0
         },
         {
             "id": "131b9d22-ea91-4036-b079-e429fdd57770",
             "title": "Skills — auto-learning system",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "MEDIUM",
             "dependencies": [],
             "nodeId": null,
@@ -240,7 +240,7 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
             "criteriaMetCount": 0
         },
         {
@@ -279,7 +279,7 @@
             "id": "82b8b003-6fc2-41bc-a65c-c473d3831f38",
             "title": "OpenAPI/Swagger docs",
             "description": "",
-            "status": "TODO",
+            "status": "DONE",
             "priority": "MEDIUM",
             "dependencies": [],
             "nodeId": null,
@@ -288,7 +288,7 @@
             "acceptanceCriteria": [],
             "acceptanceCriteriaMet": [],
             "createdAt": "2026-04-13T22:17:58.472364Z",
-            "updatedAt": "2026-04-13T22:17:58.472364Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
             "criteriaMetCount": 0
         },
         {
@@ -498,8 +498,143 @@
             "createdAt": "2026-04-13T22:17:58.472364Z",
             "updatedAt": "2026-04-13T22:17:58.472364Z",
             "criteriaMetCount": 0
+        },
+        {
+            "id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+            "title": "Execution Modes — Execute/Analyze/Dry-run",
+            "description": "Add read-only execution modes: EXECUTE (full access), ANALYZE (block mutations), DRY_RUN (simulate with logs). Add ExecutionMode enum, update SchemaService, add mode selector in toolbar, show simulation warnings in ExecutionPanel.",
+            "status": "DONE",
+            "priority": "HIGH",
+            "dependencies": [],
+            "nodeId": null,
+            "reason": null,
+            "order": 31,
+            "acceptanceCriteria": [
+                "User can select execution mode before running",
+                "In ANALYZE mode, no persistent changes are made to filesystem or external APIs",
+                "All blocked actions are logged in Execution Panel",
+                "WebSocket sends simulated events for blocked actions",
+                "UI clearly indicates current mode and its implications",
+                "Default mode remains EXECUTE for backward compatibility"
+            ],
+            "acceptanceCriteriaMet": [],
+            "createdAt": "2026-04-16T00:00:00.000000Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
+            "criteriaMetCount": 0
+        },
+        {
+            "id": "b2c3d4e5-f6a7-5b6c-9d0e-1f2a3b4c5d6e",
+            "title": "Remote Management API with API Keys",
+            "description": "Create REST API for remote workflow management with API key auth. Endpoints: POST /workflows/{id}/run, GET /workflows/{id}/status, POST /workflows/{id}/stop, GET /workflows. Add webhook callbacks, rate limiting, audit logging.",
+            "status": "DONE",
+            "priority": "HIGH",
+            "dependencies": [],
+            "nodeId": null,
+            "reason": null,
+            "order": 32,
+            "acceptanceCriteria": [
+                "External systems can trigger workflows via API",
+                "API keys can be managed through UI",
+                "Execution status can be polled via API",
+                "Webhook callbacks are delivered on completion",
+                "Rate limiting prevents abuse",
+                "All endpoints documented with OpenAPI"
+            ],
+            "acceptanceCriteriaMet": [],
+            "createdAt": "2026-04-16T00:00:00.000000Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
+            "criteriaMetCount": 0
+        },
+        {
+            "id": "c3d4e5f6-a7b8-6c7d-0e1f-2a3b4c5d6e7f",
+            "title": "Subagent Node — Call Another Workflow",
+            "description": "Create Subagent node type to execute saved workflows as building blocks. Support input/output mapping between workflows. Prevent recursive loops (max 5 levels). Show nested execution as indented logs.",
+            "status": "DONE",
+            "priority": "HIGH",
+            "dependencies": [],
+            "nodeId": null,
+            "reason": null,
+            "order": 33,
+            "acceptanceCriteria": [
+                "User can drag Subagent node onto canvas",
+                "User can select any saved workflow as target",
+                "When executed, subagent runs target workflow and returns result",
+                "Subagent can pass inputs from current workflow to target",
+                "Recursive calls are detected and blocked",
+                "Execution panel shows nested execution as indented logs"
+            ],
+            "acceptanceCriteriaMet": [],
+            "createdAt": "2026-04-16T00:00:00.000000Z",
+            "updatedAt": "2026-04-16T04:56:00.000000Z",
+            "criteriaMetCount": 0
+        },
+        {
+            "id": "d4e5f6a7-b8c9-7d8e-1f2a-3b4c5d6e7f8a",
+            "title": "LSP Support for Code Analysis",
+            "description": "Add Language Server Protocol integration for TypeScript, Python, Java. Create LspManager service to launch language servers. Support hover, definition, references, completion, documentSymbols operations. Add code-analysis node type.",
+            "status": "TODO",
+            "priority": "MEDIUM",
+            "dependencies": [],
+            "nodeId": null,
+            "reason": null,
+            "order": 34,
+            "acceptanceCriteria": [
+                "Agent can query type information from code files",
+                "Agent can find all references to a symbol",
+                "Code analysis results are passed to downstream nodes",
+                "LSP servers start on demand and stop after idle period",
+                "Works with TypeScript, Python, Java files"
+            ],
+            "acceptanceCriteriaMet": [],
+            "createdAt": "2026-04-16T00:00:00.000000Z",
+            "updatedAt": "2026-04-16T00:00:00.000000Z",
+            "criteriaMetCount": 0
+        },
+        {
+            "id": "e5f6a7b8-c9d0-8e9f-2a3b-4c5d6e7f8a9b",
+            "title": "Custom LLM Endpoint Configuration",
+            "description": "Allow users to add custom OpenAI-compatible LLM endpoints. Store in database with encrypted API keys. Add UI in Settings for managing custom endpoints. Test connection button. Show in AgentNode model dropdown.",
+            "status": "TODO",
+            "priority": "MEDIUM",
+            "dependencies": [],
+            "nodeId": null,
+            "reason": null,
+            "order": 35,
+            "acceptanceCriteria": [
+                "User can add custom OpenAI-compatible endpoint",
+                "Custom endpoints appear in AgentNode model selection",
+                "Test button verifies connectivity and API format",
+                "Custom endpoints persist across server restarts",
+                "API keys stored encrypted"
+            ],
+            "acceptanceCriteriaMet": [],
+            "createdAt": "2026-04-16T00:00:00.000000Z",
+            "updatedAt": "2026-04-16T00:00:00.000000Z",
+            "criteriaMetCount": 0
+        },
+        {
+            "id": "f6a7b8c9-d0e1-9f0a-3b4c-5d6e7f8a9b0c",
+            "title": "Desktop App (Electron)",
+            "description": "Package Axolotl as Electron desktop app for macOS, Windows, Linux. Bundle Spring Boot JAR and JRE. Auto-start backend on app launch, stop on quit. Single executable distribution.",
+            "status": "TODO",
+            "priority": "MEDIUM",
+            "dependencies": [],
+            "nodeId": null,
+            "reason": null,
+            "order": 36,
+            "acceptanceCriteria": [
+                "App installs and runs without separate Java/Node setup",
+                "Backend starts automatically and stops on quit",
+                "Works offline after first launch",
+                "Native menu bar with app-specific commands",
+                "Builds produce .dmg (macOS), .exe (Windows), .AppImage (Linux)"
+            ],
+            "acceptanceCriteriaMet": [],
+            "createdAt": "2026-04-16T00:00:00.000000Z",
+            "updatedAt": "2026-04-16T00:00:00.000000Z",
+            "criteriaMetCount": 0
         }
     ],
     "createdAt": "2026-04-13T22:17:58.472364Z",
-    "updatedAt": "2026-04-13T22:17:58.472364Z"
+    "updatedAt": "2026-04-16T00:00:00.000000Z"
 }

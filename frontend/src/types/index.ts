@@ -9,6 +9,8 @@ export interface Message {
   timestamp: number;
 }
 
+export type ExecutionMode = 'EXECUTE' | 'ANALYZE' | 'DRY_RUN';
+
 export interface NodeData {
   systemPrompt?: string;
   userPrompt?: string;
@@ -25,6 +27,9 @@ export interface NodeData {
   outputType?: 'log' | 'file';
   filePath?: string;
   fileFormat?: 'text' | 'json' | 'markdown';
+  subagentSchemaId?: string;
+  inputMapping?: Record<string, string>;
+  outputMapping?: Record<string, string>;
 }
 
 export interface SourceItem {
@@ -36,7 +41,7 @@ export interface SourceItem {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent';
   parentId?: string;
   collapsed?: boolean;
   name: string;
@@ -78,4 +83,31 @@ export interface Agent {
     apiKey?: string;
     timeout: number;
   };
+}
+
+export interface ElectronAPI {
+  showNotification: (options: { title: string; body: string }) => Promise<boolean>;
+  getAppVersion: () => Promise<string>;
+  getAppPath: () => Promise<string>;
+  showSaveDialog: (options: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>;
+  showOpenDialog: (options: Electron.OpenDialogOptions) => Promise<Electron.OpenDialogReturnValue>;
+  readFile: (filePath: string) => Promise<string>;
+  writeFile: (options: { filePath: string; content: string }) => Promise<boolean>;
+  openExternal: (url: string) => Promise<void>;
+  windowMinimize: () => Promise<void>;
+  windowMaximize: () => Promise<void>;
+  windowClose: () => Promise<void>;
+  windowIsMaximized: () => Promise<boolean>;
+  onCreateNewWorkflow: (callback: () => void) => void;
+  onOpenWorkflow: (callback: () => void) => void;
+  onSaveWorkflow: (callback: () => void) => void;
+  onExportPng: (callback: () => void) => void;
+  onExportJson: (callback: () => void) => void;
+  removeAllListeners: (channel: string) => void;
+}
+
+declare global {
+  interface Window {
+    electronAPI?: ElectronAPI;
+  }
 }

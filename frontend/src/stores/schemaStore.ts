@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
+import type { WorkflowSchema, FlowNode, FlowEdge, ExecutionMode } from '../types';
 import { schemaApi } from '../services/api';
 
 export const useSchemaStore = defineStore('schema', () => {
   const schemas = ref<WorkflowSchema[]>([]);
   const currentSchema = ref<WorkflowSchema | null>(null);
   const loading = ref(false);
-  
+  const executionMode = ref<ExecutionMode>('EXECUTE');
+
   async function loadSchemas() {
     loading.value = true;
     try {
@@ -77,27 +78,33 @@ export const useSchemaStore = defineStore('schema', () => {
   async function executeCurrentSchema() {
     if (currentSchema.value) {
       try {
-        await schemaApi.executeSchema(currentSchema.value.id);
+        await schemaApi.executeSchema(currentSchema.value.id, executionMode.value);
       } catch (error) {
         console.error('Ошибка выполнения схемы:', error);
         throw error;
       }
     }
   }
-  
+
   function updateCurrentSchema(schema: WorkflowSchema) {
     currentSchema.value = schema;
   }
-  
+
+  function setExecutionMode(mode: ExecutionMode) {
+    executionMode.value = mode;
+  }
+
   return {
     schemas,
     currentSchema,
     loading,
+    executionMode,
     loadSchemas,
     createSchema,
     updateSchema,
     deleteSchema,
     executeCurrentSchema,
     updateCurrentSchema,
+    setExecutionMode,
   };
 });

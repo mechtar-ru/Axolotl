@@ -1,0 +1,8 @@
+{
+  "name": "axolotl-desktop",
+  "version": "1.0.0",
+  "description": "Axolotl - Visual AI-Agent Orchestration (Desktop)",
+  "private": true,
+  "main": "dist-electron/main.mjs",
+  "type": "module"
+}

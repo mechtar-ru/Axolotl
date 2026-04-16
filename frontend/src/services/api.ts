@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { WorkflowSchema, Agent } from '../types';
+import type { WorkflowSchema, Agent, ExecutionMode } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
@@ -59,8 +59,8 @@ export const schemaApi = {
     await api.delete(`/schemas/${id}`);
   },
   
-  async executeSchema(id: string): Promise<void> {
-    await api.post(`/schemas/${id}/execute`);
+  async executeSchema(id: string, mode: ExecutionMode = 'EXECUTE'): Promise<void> {
+    await api.post(`/schemas/${id}/execute`, {}, { params: { mode } });
   },
 
   async stopSchema(id: string): Promise<void> {

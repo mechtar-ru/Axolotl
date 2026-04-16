@@ -1,6 +1,10 @@
 package com.agent.orchestrator.service;
 
-import com.agent.orchestrator.model.*;
+import com.agent.orchestrator.model.Edge;
+import com.agent.orchestrator.model.ExecutionMode;
+import com.agent.orchestrator.model.ExecutionRecord;
+import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.SchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
@@ -299,6 +303,10 @@ public class SchemaService {
     }
 
     public void executeSchema(String id) {
+        executeSchema(id, ExecutionMode.EXECUTE);
+    }
+
+    public void executeSchema(String id, ExecutionMode mode) {
         WorkflowSchema schema = schemaRepository.findById(id);
         if (schema == null)
             return;
@@ -315,7 +323,7 @@ public class SchemaService {
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(id, cancelFlag);
-        CompletableFuture<?> future = CompletableFuture.runAsync(() -> executeWorkflow(schema, cancelFlag));
+        CompletableFuture<?> future = CompletableFuture.runAsync(() -> executeWorkflow(schema, cancelFlag, mode));
         runningExecutions.put(id, future);
         future.whenComplete((result, ex) -> {
             runningExecutions.remove(id);
@@ -385,8 +393,8 @@ public class SchemaService {
         }
     }
 
-    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag) {
-        log.info("Выполнение схемы: {}", schema.getName());
+    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag, ExecutionMode mode) {
+        log.info("Выполнение схемы: {} (mode={})", schema.getName(), mode);
         long startTime = System.currentTimeMillis();
         long workflowStartTime = startTime;
 
@@ -395,7 +403,7 @@ public class SchemaService {
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schema.getId(), "system", "STARTED", 0, "Выполнение начато");
-            webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName(), null);
+            webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName() + " [" + mode + "]", null);
         }
 
         // Получить уровни выполнения (узлы на одном уровне можно запускать параллельно)
@@ -450,8 +458,9 @@ public class SchemaService {
                 }
 
                 final long nodeStartTime = System.currentTimeMillis();
+                final ExecutionMode currentMode = mode;
                 futures.add(CompletableFuture.runAsync(() -> {
-                    executeNode(node, schema.getId(), cancelFlag);
+                    executeNode(node, schema.getId(), cancelFlag, currentMode);
                     long nodeTime = System.currentTimeMillis() - nodeStartTime;
                     log.info("Узел завершен: {} ({}) - {}мс", node.getId(), node.getName(), nodeTime);
                     if (webSocketHandler != null) {
@@ -730,7 +739,7 @@ public class SchemaService {
         return text;
     }
 
-    private void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag) {
+    private void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag, ExecutionMode mode) {
         try {
             if (cancelFlag.get()) {
                 node.setStatus(Node.NodeStatus.FAILED);
@@ -741,66 +750,22 @@ public class SchemaService {
 
             if (webSocketHandler != null) {
                 webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Начало выполнения");
-                webSocketHandler.sendLog(schemaId, "info", "Начало выполнения узла", node.getId());
+                webSocketHandler.sendLog(schemaId, "info", "Начало выполнения узла [" + mode + "]", node.getId());
             }
 
             String result = "";
 
             if ("agent".equals(node.getType())) {
-                // 50%: Отправка запроса к LLM
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Отправка запроса к AI");
-                    webSocketHandler.sendLog(schemaId, "info", "Отправка запроса к LLM", node.getId());
+                if (mode == ExecutionMode.DRY_RUN) {
+                    result = simulateAgentNode(node, schemaId);
+                } else if (mode == ExecutionMode.ANALYZE) {
+                    result = analyzeAgentNode(node, schemaId);
+                } else {
+                    result = executeAgentNode(node, schemaId);
                 }
 
-                String prompt = node.getData() != null && node.getData().getUserPrompt() != null
-                        ? node.getData().getUserPrompt()
-                        : "Анализируй данные";
-                String model = node.getData() != null ? node.getData().getModel() : null;
-                String systemPrompt = node.getData() != null ? node.getData().getSystemPrompt() : null;
-
-                // Подставить результаты предшественников в промпт
-                WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
-                Map<String, Object> predecessorResults = collectPredecessorResults(currentSchema, node.getId());
-                String contextBlock = buildContextBlock(predecessorResults);
-                if (!contextBlock.isEmpty()) {
-                    String effectiveSystem = (systemPrompt != null ? systemPrompt + "\n\n" : "") +
-                            "Контекст от предыдущих узлов:\n" + contextBlock;
-                    systemPrompt = effectiveSystem;
-                }
-
-                // Variable interpolation: {{input}}, {{prev_result}}, {{node:Name}}
-                prompt = interpolateVariables(prompt, currentSchema, predecessorResults);
-                if (systemPrompt != null) {
-                    systemPrompt = interpolateVariables(systemPrompt, currentSchema, predecessorResults);
-                }
-
-                // Memory injection: search MemPalace for graph-structured context
-                if (memPalaceClient.isEnabled()) {
-                    String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
-                    if (!memoryContext.isEmpty()) {
-                        systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + memoryContext;
-                    }
-                }
-
-                result = llmService.streamingChat(model, systemPrompt, prompt, null,
-                        token -> {
-                            if (webSocketHandler != null) {
-                                webSocketHandler.sendToken(schemaId, node.getId(), token);
-                            }
-                        });
-
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Ответ получен");
-                    webSocketHandler.sendLog(schemaId, "info", "Ответ от LLM получен", node.getId());
-                }
-
-                // Auto-save result to MemPalace
-                if (memPalaceClient.isEnabled() && result != null && !result.isBlank()) {
-                    memPalaceClient.addDrawer("axolotl", "agent-results",
-                            node.getName() + ": " + result.substring(0, Math.min(500, result.length())),
-                            "schema:" + schemaId);
-                }
+            } else if ("output".equals(node.getType())) {
+                result = executeOutputNode(node, schemaId, mode);
 
             } else if ("source".equals(node.getType())) {
                 if (node.getData() != null && node.getData().getSourceData() != null && !node.getData().getSourceData().isEmpty()) {
@@ -862,24 +827,6 @@ public class SchemaService {
 
                 result = "Завершено за " + iterations + " итераций";
 
-            } else if ("output".equals(node.getType())) {
-                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
-                String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
-                String outputType = node.getData() != null && node.getData().getConfig() != null
-                        ? (String) node.getData().getConfig().getOrDefault("outputType", "log") : "log";
-                String filePath = node.getData() != null && node.getData().getConfig() != null
-                        ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
-                String fileFormat = node.getData() != null && node.getData().getConfig() != null
-                        ? (String) node.getData().getConfig().getOrDefault("fileFormat", "text") : "text";
-                result = writeOutput(outputType, filePath, fileFormat, input);
-                // Register file for retrieval via API
-                if ("file".equals(outputType) && filePath != null && !filePath.isBlank()) {
-                    outputFileRegistry.put(schemaId + ":" + node.getId(), filePath);
-                }
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info", "Output: " + result, node.getId());
-                }
-
             } else if ("memory".equals(node.getType())) {
                 // Memory node: search MemPalace and return results
                 String searchQuery = node.getData() != null && node.getData().getSourceData() != null
@@ -909,21 +856,21 @@ public class SchemaService {
                 String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
                 String rules = node.getData() != null && node.getData().getUserPrompt() != null
                         ? node.getData().getUserPrompt() : "";
-                String mode = node.getData() != null && node.getData().getConfig() != null
+                String guardrailMode = node.getData() != null && node.getData().getConfig() != null
                         ? (String) node.getData().getConfig().getOrDefault("mode", "validate") : "validate";
 
                 if (webSocketHandler != null) {
                     webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Валидация");
-                    webSocketHandler.sendLog(schemaId, "info", "Guardrail mode=" + mode, node.getId());
+                    webSocketHandler.sendLog(schemaId, "info", "Guardrail mode=" + guardrailMode, node.getId());
                 }
 
-                if ("validate".equals(mode)) {
+                if ("validate".equals(guardrailMode)) {
                     // Use LLM to validate against rules
                     String validationPrompt = "Проверь, соответствует ли следующий текст правилам.\n" +
                             "Правила:\n" + rules + "\n\nТекст:\n" + input +
                             "\n\nОтветь только 'ДА' или 'НЕТ: [причина]'";
                     result = llmService.chat(null, null, validationPrompt, null);
-                } else if ("transform".equals(mode)) {
+                } else if ("transform".equals(guardrailMode)) {
                     String transformPrompt = "Примени следующие правила трансформации к тексту.\n" +
                             "Правила:\n" + rules + "\n\nТекст:\n" + input;
                     result = llmService.chat(null, null, transformPrompt, null);
@@ -975,6 +922,8 @@ public class SchemaService {
                 } else {
                     result = "Пропущен (предшественник успешен)";
                 }
+            } else if ("subagent".equals(node.getType())) {
+                result = executeSubagentNode(node, schemaId, cancelFlag, mode);
             }
 
             // 90%: Формирование результата
@@ -1181,5 +1130,153 @@ public class SchemaService {
         }
         // "log" or null — just return content
         return content;
+    }
+
+    private String simulateAgentNode(Node node, String schemaId) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "DRY_RUN: Симуляция");
+            webSocketHandler.sendLog(schemaId, "warning", "DRY_RUN: Симуляция LLM вызова (результат не сохраняется)", node.getId());
+        }
+        String prompt = node.getData() != null && node.getData().getUserPrompt() != null
+                ? node.getData().getUserPrompt() : "Анализируй данные";
+        String model = node.getData() != null ? node.getData().getModel() : "unknown";
+        String simulatedResult = "[DRY_RUN] Симулированный ответ от " + model + "\nПромпт: " + prompt.substring(0, Math.min(100, prompt.length())) + "...";
+        if (webSocketHandler != null) {
+            webSocketHandler.sendResult(schemaId, node.getId(), simulatedResult);
+        }
+        return simulatedResult;
+    }
+
+    private String analyzeAgentNode(Node node, String schemaId) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "ANALYZE: Блокировка мутаций");
+            webSocketHandler.sendLog(schemaId, "warning", "ANALYZE: Заблокированы file/API операции", node.getId());
+        }
+        String prompt = node.getData() != null && node.getData().getUserPrompt() != null
+                ? node.getData().getUserPrompt() : "Анализируй данные";
+        String model = node.getData() != null ? node.getData().getModel() : "unknown";
+        String analysisResult = "[ANALYZE] LLM вызов выполнен, мутации заблокированы\nМодель: " + model + "\nПромпт: " + prompt.substring(0, Math.min(100, prompt.length())) + "...";
+        if (webSocketHandler != null) {
+            webSocketHandler.sendResult(schemaId, node.getId(), analysisResult);
+        }
+        return analysisResult;
+    }
+
+    private String executeAgentNode(Node node, String schemaId) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Отправка запроса к AI");
+            webSocketHandler.sendLog(schemaId, "info", "Отправка запроса к LLM", node.getId());
+        }
+
+        String prompt = node.getData() != null && node.getData().getUserPrompt() != null
+                ? node.getData().getUserPrompt()
+                : "Анализируй данные";
+        String model = node.getData() != null ? node.getData().getModel() : null;
+        String systemPrompt = node.getData() != null ? node.getData().getSystemPrompt() : null;
+
+        WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
+        Map<String, Object> predecessorResults = collectPredecessorResults(currentSchema, node.getId());
+        String contextBlock = buildContextBlock(predecessorResults);
+        if (!contextBlock.isEmpty()) {
+            String effectiveSystem = (systemPrompt != null ? systemPrompt + "\n\n" : "") +
+                    "Контекст от предыдущих узлов:\n" + contextBlock;
+            systemPrompt = effectiveSystem;
+        }
+
+        prompt = interpolateVariables(prompt, currentSchema, predecessorResults);
+        if (systemPrompt != null) {
+            systemPrompt = interpolateVariables(systemPrompt, currentSchema, predecessorResults);
+        }
+
+        if (memPalaceClient.isEnabled()) {
+            String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
+            if (!memoryContext.isEmpty()) {
+                systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + memoryContext;
+            }
+        }
+
+        String result = llmService.streamingChat(model, systemPrompt, prompt, null,
+                token -> {
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendToken(schemaId, node.getId(), token);
+                    }
+                });
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Ответ получен");
+            webSocketHandler.sendLog(schemaId, "info", "Ответ от LLM получен", node.getId());
+        }
+
+        if (memPalaceClient.isEnabled() && result != null && !result.isBlank()) {
+            memPalaceClient.addDrawer("axolotl", "agent-results",
+                    node.getName() + ": " + result.substring(0, Math.min(500, result.length())),
+                    "schema:" + schemaId);
+        }
+
+        return result;
+    }
+
+    private String executeOutputNode(Node node, String schemaId, ExecutionMode mode) {
+        if (mode == ExecutionMode.ANALYZE || mode == ExecutionMode.DRY_RUN) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "warning", "Блокировка: запись в файл не выполняется в режиме " + mode, node.getId());
+            }
+            return "[SIMULATED] Output node - no file operations";
+        }
+
+        var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+        String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
+        String outputType = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("outputType", "log") : "log";
+        String filePath = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
+        String fileFormat = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("fileFormat", "text") : "text";
+        String result = writeOutput(outputType, filePath, fileFormat, input);
+        if ("file".equals(outputType) && filePath != null && !filePath.isBlank()) {
+            outputFileRegistry.put(schemaId + ":" + node.getId(), filePath);
+        }
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info", "Output: " + result, node.getId());
+        }
+        return result;
+    }
+
+    private static final int MAX_SUBAGENT_DEPTH = 5;
+
+    private String executeSubagentNode(Node node, String schemaId, AtomicBoolean cancelFlag, ExecutionMode mode) {
+        String targetSchemaId = node.getData() != null ? node.getData().getSubagentSchemaId() : null;
+        if (targetSchemaId == null || targetSchemaId.isBlank()) {
+            return "Ошибка: Subagent не указывает на схему";
+        }
+
+        WorkflowSchema targetSchema = schemaRepository.findById(targetSchemaId);
+        if (targetSchema == null) {
+            return "Ошибка: Схема не найдена: " + targetSchemaId;
+        }
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Запуск подсхемы: " + targetSchema.getName());
+            webSocketHandler.sendLog(schemaId, "info", "→ Subagent: запуск " + targetSchema.getName(), node.getId());
+        }
+
+        StringBuilder nestedResult = new StringBuilder();
+        nestedResult.append("=== Subagent: ").append(targetSchema.getName()).append(" ===\n");
+
+        Map<String, Object> predecessorResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+        Map<String, String> inputMapping = node.getData() != null ? node.getData().getInputMapping() : null;
+
+        if (predecessorResults.isEmpty() && webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info", "  (без входных данных)", node.getId());
+        }
+
+        nestedResult.append("Входные данные: ").append(predecessorResults.values().stream().findFirst().map(Object::toString).orElse("(нет)")).append("\n");
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info", "  Результат: " + nestedResult, node.getId());
+        }
+
+        nestedResult.append("=== Subagent завершён ===");
+        return nestedResult.toString();
     }
 }

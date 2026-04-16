@@ -109,12 +109,24 @@ public class Node {
 
         private String loopCondition;
         private int maxIterations;
+        private String subagentSchemaId;
+        private Map<String, String> inputMapping;
+        private Map<String, String> outputMapping;
 
         public String getLoopCondition() { return loopCondition; }
         public void setLoopCondition(String loopCondition) { this.loopCondition = loopCondition; }
 
         public int getMaxIterations() { return maxIterations; }
         public void setMaxIterations(int maxIterations) { this.maxIterations = maxIterations; }
+
+        public String getSubagentSchemaId() { return subagentSchemaId; }
+        public void setSubagentSchemaId(String subagentSchemaId) { this.subagentSchemaId = subagentSchemaId; }
+
+        public Map<String, String> getInputMapping() { return inputMapping; }
+        public void setInputMapping(Map<String, String> inputMapping) { this.inputMapping = inputMapping; }
+
+        public Map<String, String> getOutputMapping() { return outputMapping; }
+        public void setOutputMapping(Map<String, String> outputMapping) { this.outputMapping = outputMapping; }
     }
     
     public static class Message {

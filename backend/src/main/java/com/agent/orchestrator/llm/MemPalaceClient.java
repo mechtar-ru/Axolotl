@@ -144,27 +144,36 @@ public class MemPalaceClient {
     public String buildGraphContext(String query, int resultLimit) {
         if (!enabled) return "";
 
-        // 1. Get taxonomy
         Map<String, Map<String, Integer>> taxonomy = getTaxonomy();
         if (taxonomy.isEmpty()) return "";
 
         StringBuilder sb = new StringBuilder();
-        sb.append("[MEMORY GRAPH — структура знаний]:\n\n");
+        sb.append("[MEMORY GRAPH — структурированный граф знаний]\n\n");
 
-        // 2. Wings and rooms
-        sb.append("Крылья и комнаты:\n");
+        sb.append("## Структура графа\n");
+        sb.append("```\n");
+
+        int wingIndex = 0;
         for (Map.Entry<String, Map<String, Integer>> wingEntry : taxonomy.entrySet()) {
             String wing = wingEntry.getKey();
-            sb.append("  ").append(wing).append(" → [");
-            List<String> rooms = new ArrayList<>(wingEntry.getValue().keySet());
-            sb.append(String.join(", ", rooms));
-            sb.append("]\n");
-        }
+            int totalDrawers = wingEntry.getValue().values().stream().mapToInt(Integer::intValue).sum();
+            sb.append(String.format("Уровень 0: %s (%d drawers)\n", wing, totalDrawers));
 
-        // 3. Tunnels (connections between wings)
+            List<Map.Entry<String, Integer>> rooms = new ArrayList<>(wingEntry.getValue().entrySet());
+            for (int i = 0; i < rooms.size(); i++) {
+                Map.Entry<String, Integer> room = rooms.get(i);
+                boolean lastRoom = (i == rooms.size() - 1);
+                String prefix = lastRoom ? "└── " : "├── ";
+                sb.append(String.format("  %s%s (%d)\n", prefix, room.getKey(), room.getValue()));
+            }
+            wingIndex++;
+        }
+        sb.append("```\n\n");
+
         Set<String> wings = taxonomy.keySet();
         if (wings.size() > 1) {
-            sb.append("\nТуннели (связи между крыльями):\n");
+            sb.append("## Туннели (межкрыльевые связи)\n");
+            sb.append("```\n");
             for (String wing : wings) {
                 Map<String, Object> tunnelsResult = findTunnels(wing);
                 @SuppressWarnings("unchecked")
@@ -173,31 +182,33 @@ public class MemPalaceClient {
                     String room = (String) tunnel.get("room");
                     String connectedWing = (String) tunnel.get("connectedWing");
                     if (room != null && connectedWing != null) {
-                        sb.append("  ").append(wing).append(" ↔ ").append(connectedWing)
-                                .append(" через комнату \"").append(room).append("\"\n");
+                        sb.append(String.format("%s ←[%s]→ %s\n", wing, room, connectedWing));
                     }
                 }
             }
+            sb.append("```\n\n");
         }
 
-        // 4. Relevant content attached to graph nodes
         List<Map<String, Object>> results = search(query, null, null, resultLimit);
         if (!results.isEmpty()) {
-            sb.append("\nРелевантные узлы:\n");
+            sb.append("## Релевантные узлы (по запросу)\n");
+            sb.append("| Wing | Room | Score | Preview |\n");
+            sb.append("|------|------|-------|--------|\n");
             for (Map<String, Object> r : results) {
                 String content = (String) r.get("content");
                 String wing = (String) r.get("wing");
                 String room = (String) r.get("room");
                 Double score = (Double) r.getOrDefault("score", 0.0);
-                String preview = content != null && content.length() > 200
-                        ? content.substring(0, 200) + "..."
-                        : content;
-                sb.append(String.format("  [%s/%s] score=%.2f: %s\n",
-                        wing, room, score, preview));
+                String preview = content != null && content.length() > 100
+                        ? content.substring(0, 100).replace("\n", " ").replace("|", "\\|") + "..."
+                        : (content != null ? content.replace("\n", " ").replace("|", "\\|") : "");
+                sb.append(String.format("| %s | %s | %.2f | %s |\n", wing, room, score, preview));
             }
+            sb.append("\n**Инструкция:** Используй структуру выше для навигации по памяти. ");
+            sb.append("Комнаты связаны через туннели. Запроси соседние узлы при необходимости.\n");
         }
 
-        sb.append("\n[КОНЕЦ ПАМЯТИ]");
+        sb.append("\n[КОНЕЦ MEMORY GRAPH]");
         return sb.toString();
     }
 
@@ -315,5 +326,47 @@ public class MemPalaceClient {
             log.error("MemPalace tunnels error: {}", e.getMessage());
         }
         return Map.of("tunnels", List.of());
+    }
+
+    public String getNavigationContext(String wing, String room, int depth) {
+        if (!enabled) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("[MEMORY NAVIGATION — %s/%s (depth=%d)]\n\n", wing, room, depth));
+
+        List<Map<String, Object>> currentDrawers = listDrawers(wing, room);
+        if (!currentDrawers.isEmpty()) {
+            sb.append("## Текущий узел: ").append(wing).append("/").append(room).append("\n");
+            sb.append("| ID | Content | Source |\n");
+            sb.append("|----|---------|--------|\n");
+            for (Map<String, Object> drawer : currentDrawers) {
+                String content = (String) drawer.getOrDefault("content", "");
+                String preview = content.length() > 80 ? content.substring(0, 80) + "..." : content;
+                String id = (String) drawer.getOrDefault("id", "");
+                String source = (String) drawer.getOrDefault("source_file", "-");
+                sb.append(String.format("| %s | %s | %s |\n", id, preview.replace("\n", " ").replace("|", "\\|"), source));
+            }
+        }
+
+        if (depth > 0) {
+            Map<String, Object> tunnels = findTunnels(wing);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> tunnelList = (List<Map<String, Object>>) tunnels.getOrDefault("tunnels", List.of());
+            if (!tunnelList.isEmpty()) {
+                sb.append("\n## Связанные узлы (через туннели)\n");
+                for (Map<String, Object> tunnel : tunnelList) {
+                    String connectedWing = (String) tunnel.get("connectedWing");
+                    String tunnelRoom = (String) tunnel.get("room");
+                    if (connectedWing != null) {
+                        List<Map<String, Object>> neighborDrawers = listDrawers(connectedWing, tunnelRoom);
+                        int count = neighborDrawers.size();
+                        sb.append(String.format("- [%s/%s] — %d drawers\n", connectedWing, tunnelRoom, count));
+                    }
+                }
+                sb.append("\n**Подсказка:** Для навигации используй команду `memory:nav(wing, room)`\n");
+            }
+        }
+
+        sb.append("\n[END NAVIGATION]");
+        return sb.toString();
     }
 }
