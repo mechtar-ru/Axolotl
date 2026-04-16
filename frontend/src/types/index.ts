@@ -89,8 +89,17 @@ export interface ElectronAPI {
   showNotification: (options: { title: string; body: string }) => Promise<boolean>;
   getAppVersion: () => Promise<string>;
   getAppPath: () => Promise<string>;
-  showSaveDialog: (options: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>;
-  showOpenDialog: (options: Electron.OpenDialogOptions) => Promise<Electron.OpenDialogReturnValue>;
+  showSaveDialog: (options: {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }) => Promise<{ canceled: boolean; filePath?: string }>;
+  showOpenDialog: (options: {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+    properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
+  }) => Promise<{ canceled: boolean; filePaths: string[] }>;
   readFile: (filePath: string) => Promise<string>;
   writeFile: (options: { filePath: string; content: string }) => Promise<boolean>;
   openExternal: (url: string) => Promise<void>;

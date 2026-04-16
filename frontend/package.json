@@ -38,8 +38,9 @@
     "@vitejs/plugin-vue": "^6.0.5",
     "@vue/test-utils": "^2.4.6",
     "@vue/tsconfig": "^0.9.1",
-    "electron": "^34.0.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^41.2.1",
+    "electron-builder": "^26.8.1",
+    "esbuild": "^0.28.0",
     "jsdom": "^29.0.1",
     "npm-run-all2": "^8.0.4",
     "typescript": "~6.0.0",
@@ -65,14 +66,23 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "win": {
-      "target": ["nsis", "portable"]
+      "target": [
+        "nsis",
+        "portable"
+      ]
     },
     "linux": {
       "category": "Development",
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     },
     "nsis": {
       "oneClick": false,

@@ -38,14 +38,23 @@ export function useElectron() {
     return '';
   };
 
-  const showSaveDialog = async (options: Electron.SaveDialogOptions) => {
+  const showSaveDialog = async (options: {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+  }) => {
     if (api) {
       return api.showSaveDialog(options);
     }
     throw new Error('Save dialog not available in browser');
   };
 
-  const showOpenDialog = async (options: Electron.OpenDialogOptions) => {
+  const showOpenDialog = async (options: {
+    title?: string;
+    defaultPath?: string;
+    filters?: Array<{ name: string; extensions: string[] }>;
+    properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>;
+  }) => {
     if (api) {
       return api.showOpenDialog(options);
     }
