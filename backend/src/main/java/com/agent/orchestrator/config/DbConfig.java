@@ -2,6 +2,7 @@ package com.agent.orchestrator.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
 import jakarta.annotation.PostConstruct;
@@ -17,10 +18,9 @@ public class DbConfig {
 
     private final String dbUrl;
 
-    public DbConfig() {
-        String projectDir = System.getProperty("user.dir");
-        dbUrl = "jdbc:sqlite:schema.db";
-        log.info("DbConfig dbUrl: {} (cwd: {})", dbUrl, projectDir);
+    public DbConfig(@Value("${axolotl.db.path:schema.db}") String dbPath) {
+        dbUrl = "jdbc:sqlite:" + dbPath;
+        log.info("DbConfig dbUrl: {}", dbUrl);
     }
 
     @PostConstruct
