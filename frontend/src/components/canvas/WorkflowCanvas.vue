@@ -2,7 +2,7 @@
   <div class="canvas-container">
     <div class="schema-name" @click="editSchemaName">
       <span class="schema-title" @click="editSchemaName">📝 {{ schema.name }}</span>
-      <div class="schema-actions">
+      <div class="schema-actions" @click.stop>
         <select v-model="executionMode" class="mode-selector" title="Режим выполнения">
           <option value="EXECUTE">▶️ Execute</option>
           <option value="ANALYZE">🔍 Analyze</option>
