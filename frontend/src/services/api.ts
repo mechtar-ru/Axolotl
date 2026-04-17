@@ -103,6 +103,16 @@ export const settingsApi = {
     const response = await api.get(`/settings/providers/${providerName}/models`);
     return response.data;
   },
+
+  async updateProvider(provider: string, data: { apiKey?: string; baseUrl?: string; defaultModel?: string }) {
+    const response = await api.put(`/settings/${provider}`, data);
+    return response.data;
+  },
+
+  async testProvider(provider: string): Promise<{ provider: string; apiKeyConfigured: boolean; baseUrl: string; available: boolean }> {
+    const response = await api.get(`/settings/${provider}/health`);
+    return response.data;
+  },
 };
 
 export interface ExecutionRecord {

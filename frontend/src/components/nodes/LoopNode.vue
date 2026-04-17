@@ -157,176 +157,38 @@ function handleDelete() {
 </script>
 
 <style scoped>
+@import './node-base.css';
+
 .loop-node {
-  border-color: #ff9800;
-  position: relative;
-  background: #2d2d44;
-  border-radius: 8px;
-  border: 2px solid #ff9800;
-  min-width: 200px;
-  max-width: 300px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-  transition: box-shadow 0.3s ease;
+  border-color: var(--warning);
 }
 .loop-node.selected {
-  border-color: #ff6b6b;
-  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.3);
-}
-.node-running {
-  animation: pulse-running 1.5s ease-in-out infinite;
-}
-.node-completed {
-  box-shadow: 0 0 12px rgba(76, 175, 80, 0.5);
-}
-.node-failed {
-  box-shadow: 0 0 12px rgba(255, 0, 0, 0.5);
-  animation: shake 0.4s ease-in-out;
-}
-@keyframes pulse-running {
-  0%, 100% { box-shadow: 0 0 4px rgba(255, 165, 0, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(255, 165, 0, 0.7); }
-}
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-4px); }
-  40% { transform: translateX(4px); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(4px); }
-}
-.delete-btn {
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  width: 24px;
-  height: 24px;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  transition: all 0.2s;
-}
-.delete-btn:hover {
-  background: #c82333;
-  transform: scale(1.1);
-}
-.node-header {
-  padding: 10px;
-  background: #1e1e2e;
-  border-radius: 6px 6px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.node-icon {
-  font-size: 20px;
-}
-.node-name {
-  flex: 1;
-  font-weight: bold;
-  color: #eee;
-  cursor: pointer;
-}
-.node-name-input {
-  flex: 1;
-  background: #1a1a2e;
-  border: 1px solid #ff9800;
-  color: #eee;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 14px;
-  font-weight: bold;
-}
-.node-status {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-.execution-icon {
-  font-size: 14px;
-  margin-left: 4px;
-}
-.node-expand {
-  background: none;
-  border: none;
-  color: #eee;
-  cursor: pointer;
-  font-size: 12px;
-}
-.node-content {
-  padding: 10px;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow-accent);
 }
 .field-label {
-  color: #aaa;
+  color: var(--text-secondary);
   font-size: 12px;
   margin-bottom: 4px;
   display: block;
 }
-.node-content textarea {
-  width: 100%;
-  background: #1a1a2e;
-  border: 1px solid #4a4a6a;
-  color: #eee;
-  border-radius: 4px;
-  padding: 8px;
-  font-family: monospace;
-  resize: vertical;
-  margin-bottom: 8px;
-}
 .number-input {
   width: 100%;
-  background: #1a1a2e;
-  border: 1px solid #4a4a6a;
-  color: #eee;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   border-radius: 4px;
   padding: 8px;
   font-size: 14px;
   margin-bottom: 8px;
 }
-.progress-bar {
-  width: 100%;
-  height: 20px;
-  background: #1a1a2e;
-  border: 1px solid #4a4a6a;
-  border-radius: 4px;
-  margin-top: 8px;
-  position: relative;
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: #ff9800;
-  transition: width 0.3s ease;
-}
-.progress-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #eee;
-  font-size: 12px;
-  font-weight: bold;
-}
-.node-result {
-  margin-top: 10px;
-  padding: 8px;
-  background: #1a1a2e;
-  border-radius: 4px;
-  font-size: 12px;
-  word-break: break-word;
-}
 .handle-body {
-  background: #ff9800 !important;
+  background: var(--warning) !important;
   width: 12px !important;
   height: 12px !important;
 }
 .handle-exit {
-  background: #4caf50 !important;
+  background: var(--success) !important;
   width: 12px !important;
   height: 12px !important;
 }

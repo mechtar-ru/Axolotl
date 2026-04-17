@@ -12,18 +12,18 @@
       <div class="login-form">
         <div class="field">
           <label>Имя пользователя</label>
-          <input v-model="username" type="text" placeholder="admin" @keyup.enter="login" autofocus />
+          <input v-model="username" type="text" placeholder="Введите логин" @keyup.enter="login" autofocus />
         </div>
         <div class="field">
           <label>Пароль</label>
-          <input v-model="password" type="password" placeholder="admin" @keyup.enter="login" />
+          <input v-model="password" type="password" placeholder="Введите пароль" @keyup.enter="login" />
         </div>
         <button class="login-btn" @click="login" :disabled="loading">
           {{ loading ? 'Вход...' : 'Войти' }}
         </button>
       </div>
 
-      <div class="login-hint">
+      <div v-if="showHint" class="login-hint">
         По умолчанию: admin / admin
       </div>
     </div>
@@ -37,10 +37,11 @@ import { useAuthStore } from '../stores/authStore';
 
 const router = useRouter();
 const authStore = useAuthStore();
-const username = ref('admin');
-const password = ref('admin');
+const username = ref('');
+const password = ref('');
 const error = ref('');
 const loading = ref(false);
+const showHint = ref(false);
 
 async function login() {
   error.value = '';
@@ -50,6 +51,7 @@ async function login() {
     router.push('/');
   } catch (e: any) {
     error.value = e.response?.data?.error || e.message || 'Ошибка входа';
+    showHint.value = true;
   } finally {
     loading.value = false;
   }

@@ -19,7 +19,7 @@
 
     <VueFlow ref="vueFlowRef" v-model="elements" :node-types="nodeTypes" :edge-types="edgeTypes"
       :fit-view-on-init="true" :multi-select-on-click="true" @connect="onConnect" @node-drag-stop="onNodeDragStop"
-      @node-click="onNodeClick" @edge-click="onEdgeClick" @pane-click="onPaneClick"
+      @node-click="onNodeClick" @node-context-menu="onNodeContextMenu" @edge-click="onEdgeClick" @pane-click="onPaneClick"
       @node-double-click="onNodeDoubleClick">
       <Background />
       <Controls />
@@ -32,25 +32,37 @@
       </div>
 
       <div class="toolbar-panel">
-        <button @click="addNode('source')">📥 Source</button>
-        <button @click="addNode('agent')">🤖 Agent</button>
-        <button @click="addNode('condition')">⚖️ Condition</button>
-        <button @click="addNode('loop')">🔄 Loop</button>
-        <button @click="addNode('output')">📤 Output</button>
-        <button @click="addNode('memory')">🧠 Memory</button>
-        <button @click="addNode('guardrail')">🛡️ Guardrail</button>
-        <button @click="addNode('human')">👤 Human</button>
-        <button @click="addNode('fallback')">🔄 Fallback</button>
-        <button @click="addNode('subagent')">🤝 Subagent</button>
-        <button @click="addNode('comment')">📝 Заметка</button>
-        <button @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦
-          Группа</button>
-        <button @click="ungroupSelectedNode"
-          :disabled="!selectedNodeId || !(props.schema.nodes || []).find(n => n.id === selectedNodeId)?.parentId"
-          title="Разгруппировать">📤 Разгрупп.</button>
-        <button @click="showHistory = !showHistory" title="История выполнений">📜 История</button>
-        <button @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠 Граф</button>
-        <button @click="exportAsImage" title="Сохранить как PNG">📷 PNG</button>
+        <div class="toolbar-group toolbar-add">
+          <button class="toolbar-btn toolbar-add-btn" @click="showAddMenu = !showAddMenu" title="Добавить узел">
+            ＋ Добавить <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>
+          </button>
+          <div v-if="showAddMenu" class="add-dropdown">
+            <button @click="addNode('source'); showAddMenu = false">📥 Source</button>
+            <button @click="addNode('agent'); showAddMenu = false">🤖 Agent</button>
+            <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
+            <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
+            <button @click="addNode('output'); showAddMenu = false">📤 Output</button>
+            <button @click="addNode('memory'); showAddMenu = false">🧠 Memory</button>
+            <button @click="addNode('guardrail'); showAddMenu = false">🛡️ Guardrail</button>
+            <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
+            <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
+            <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
+            <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
+          </div>
+        </div>
+        <div class="toolbar-separator"></div>
+        <div class="toolbar-group">
+          <button class="toolbar-btn" @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
+          <button class="toolbar-btn" @click="ungroupSelectedNode"
+            :disabled="!selectedNodeId || !(props.schema.nodes || []).find(n => n.id === selectedNodeId)?.parentId"
+            title="Разгруппировать">📤 Разгрупп.</button>
+        </div>
+        <div class="toolbar-separator"></div>
+        <div class="toolbar-group">
+          <button class="toolbar-btn" @click="showHistory = !showHistory" title="История выполнений">📜</button>
+          <button class="toolbar-btn" @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠</button>
+          <button class="toolbar-btn" @click="exportAsImage" title="Сохранить как PNG">📷</button>
+        </div>
       </div>
     </VueFlow>
 
@@ -73,16 +85,25 @@
       :result="{ wing: card.wing, room: card.room, content: card.content, score: card.score }"
       :initial-position="{ x: card.x, y: card.y }" @close="closeMemoryCard(card.id)" @pin="pinMemoryResult" />
 
-    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
-      <div class="modal-content">
-        <h3>Удалить схему?</h3>
-        <p>Вы действительно хотите удалить схему "{{ schema.name }}"? Это действие нельзя отменить.</p>
-        <div class="modal-buttons">
-          <button @click="deleteSchema" class="delete-confirm-btn">Да, удалить</button>
-          <button @click="showDeleteConfirm = false">Отмена</button>
-        </div>
+    <AppModal v-model="showDeleteConfirm" title="Удалить схему?">
+      <p>Вы действительно хотите удалить схему "{{ schema.name }}"? Это действие нельзя отменить.</p>
+      <div class="modal-buttons">
+        <button @click="deleteSchema" class="delete-confirm-btn">Да, удалить</button>
+        <button @click="showDeleteConfirm = false">Отмена</button>
       </div>
-    </div>
+    </AppModal>
+
+    <NodeContextMenu
+      :visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :can-edit-prompt="ctxMenu.nodeType === 'agent'"
+      @rename="startRenameFromCtx"
+      @duplicate="duplicateNode"
+      @delete="deleteSelectedNode"
+      @toggle-collapse="toggleCollapseCtx"
+      @edit-prompt="openPromptEditorFromCtx"
+    />
   </div>
 </template>
 
@@ -107,6 +128,8 @@ import FallbackNode from '../nodes/FallbackNode.vue';
 import SubagentNode from '../nodes/SubagentNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
 import ExecutionPanel from '../execution/ExecutionPanel.vue';
+import AppModal from '../ui/AppModal.vue';
+import NodeContextMenu from './NodeContextMenu.vue';
 import PromptEditorModal from '../editor/PromptEditorModal.vue';
 import ExecutionHistory from '../execution/ExecutionHistory.vue';
 import MemoryGraphView from '../memory/MemoryGraphView.vue';
@@ -161,6 +184,10 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const showPromptEditor = ref(false);
 const promptEditorNodeId = ref<string | null>(null);
 const showHistory = ref(false);
+const showAddMenu = ref(false);
+const ctxMenu = ref<{ visible: boolean; x: number; y: number; nodeId: string; nodeType: string }>({
+  visible: false, x: 0, y: 0, nodeId: '', nodeType: ''
+});
 const showMemoryGraph = ref(false);
 const memoryResultCards = ref<Array<{ id: string; wing: string; room: string; content: string; score?: number; x: number; y: number }>>([]);
 
@@ -354,6 +381,7 @@ function deleteEdge(edgeId: string) {
 
 function onNodeClick(event: NodeMouseEvent) {
   console.log('Node clicked:', event.node.id);
+  ctxMenu.value.visible = false;
   const nodeId = event.node.id;
   if (event.event?.shiftKey) {
     // Multi-select with Shift+click
@@ -380,7 +408,72 @@ function onPaneClick() {
   console.log('Pane clicked');
   selectedNodeId.value = null;
   selectedEdgeId.value = null;
+  showAddMenu.value = false;
+  ctxMenu.value.visible = false;
   convertToFlowElements();
+}
+
+function onNodeContextMenu(event: NodeMouseEvent) {
+  event.event?.preventDefault();
+  const node = event.node;
+  selectedNodeId.value = node.id;
+  ctxMenu.value = {
+    visible: true,
+    x: (event.event as MouseEvent).clientX,
+    y: (event.event as MouseEvent).clientY,
+    nodeId: node.id,
+    nodeType: (node.data as any)?.type || node.type || '',
+  };
+}
+
+function startRenameFromCtx() {
+  ctxMenu.value.visible = false;
+  // Find the node element and trigger dblclick on name
+  const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
+  if (node && node.data?.onRename) {
+    const newName = prompt('Новое имя:', node.name);
+    if (newName?.trim()) node.data.onRename(newName.trim());
+  }
+}
+
+function duplicateNode() {
+  ctxMenu.value.visible = false;
+  const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
+  if (!node) return;
+  const newNode: any = {
+    ...node,
+    id: `node-${Date.now()}`,
+    position: { x: (node.position?.x || 0) + 40, y: (node.position?.y || 0) + 40 },
+    data: { ...node.data, name: `${node.name} (копия)` },
+  };
+  delete newNode.data.onRename;
+  delete newNode.data.onDelete;
+  delete newNode.data.onUpdate;
+  addNode(node.type || 'agent', newNode.position, newNode.data);
+}
+
+function deleteSelectedNode() {
+  ctxMenu.value.visible = false;
+  if (selectedNodeId.value) {
+    removeNode(selectedNodeId.value);
+  }
+}
+
+function toggleCollapseCtx() {
+  ctxMenu.value.visible = false;
+  // Toggle collapse handled by node expand button — emit custom event
+  const node = elements.value.find((el: any) => el.id === ctxMenu.value.nodeId);
+  if (node && (node as any).data?.onToggleExpand) {
+    (node as any).data.onToggleExpand();
+  }
+}
+
+function openPromptEditorFromCtx() {
+  ctxMenu.value.visible = false;
+  const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
+  if (node?.data?.onOpenPromptEditor) {
+    node.data.onOpenPromptEditor();
+  }
 }
 
 function deleteSelected() {
@@ -1131,24 +1224,89 @@ function ungroupSelectedNode() {
   position: absolute;
   top: 50px;
   left: 10px;
-  background: #1e1e2e;
-  padding: 10px;
-  border-radius: 8px;
+  background: var(--bg-card, #1e1e2e);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 8px);
   z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border, #4a4a6a);
 }
 
-.toolbar-panel button {
-  margin-right: 10px;
-  padding: 6px 12px;
-  background: #6c63ff;
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-add {
+  position: relative;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border, #4a4a6a);
+  margin: 0 4px;
+}
+
+.toolbar-btn {
+  padding: 6px 10px;
+  background: var(--accent, #6c63ff);
   border: none;
   border-radius: 4px;
   color: white;
   cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: opacity 0.2s;
 }
 
-.toolbar-panel button:hover {
-  background: #5a52d9;
+.toolbar-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chevron {
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+.add-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--bg-card, #1e1e2e);
+  border: 1px solid var(--border, #4a4a6a);
+  border-radius: var(--radius-sm, 6px);
+  box-shadow: var(--shadow-md, 0 8px 30px rgba(0, 0, 0, 0.35));
+  z-index: 1001;
+  min-width: 160px;
+  padding: 4px;
+}
+
+.add-dropdown button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--text-primary, #eee);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.add-dropdown button:hover {
+  background: var(--bg-hover, #3d3d5c);
 }
 
 .execution-panel {
@@ -1216,35 +1374,6 @@ function ungroupSelectedNode() {
   word-break: break-word;
 }
 
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-}
-
-.modal-content {
-  background: #2d2d44;
-  padding: 20px;
-  border-radius: 12px;
-  max-width: 400px;
-}
-
-.modal-content h3 {
-  margin-bottom: 15px;
-}
-
-.modal-content p {
-  margin-bottom: 20px;
-  color: #ccc;
-}
-
 .modal-buttons {
   display: flex;
   gap: 10px;
@@ -1259,21 +1388,21 @@ function ungroupSelectedNode() {
 }
 
 .delete-confirm-btn {
-  background: #dc3545;
+  background: var(--error);
   color: white;
 }
 
 .delete-confirm-btn:hover {
-  background: #c82333;
+  opacity: 0.9;
 }
 
 .modal-buttons button:last-child {
-  background: #6c63ff;
+  background: var(--accent);
   color: white;
 }
 
 .modal-buttons button:last-child:hover {
-  background: #5a52d9;
+  opacity: 0.9;
 }
 
 /* Highlighted node animation */

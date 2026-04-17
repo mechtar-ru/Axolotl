@@ -1,31 +1,50 @@
 <template>
   <div class="app">
-    <div class="sidebar" :style="{ width: sidebarWidth + 'px' }">
-      <div class="sidebar-header">
-        <img src="../assets/axolotl-symbol.svg" alt="Axolotl" class="sidebar-logo" />
-        <span class="sidebar-brand">Axolotl</span>
+    <!-- Mobile sidebar toggle -->
+    <button class="sidebar-toggle" @click="sidebarOpen = !sidebarOpen">☰</button>
+    <div v-if="sidebarOpen" class="sidebar-overlay" @click="sidebarOpen = false"></div>
+
+    <div class="sidebar" :class="{ 'sidebar-open': sidebarOpen }" :style="{ width: sidebarWidth + 'px' }" @click="sidebarOpen = false">
+      <!-- Brand zone -->
+      <div class="sidebar-brand-zone">
+        <div class="sidebar-header">
+          <img src="../assets/axolotl-symbol.svg" alt="Axolotl" class="sidebar-logo" />
+          <span class="sidebar-brand">Axolotl</span>
+        </div>
       </div>
-      <h2>📋 Схемы</h2>
-      <ul>
-        <li
-          v-for="schema in schemaStore.schemas"
-          :key="schema.id"
-          :class="{ active: schemaStore.currentSchema?.id === schema.id }"
-          @click="selectSchema(schema)"
-        >
-          {{ schema.name }}
-        </li>
-      </ul>
-      <button @click="createNewSchema">+ Новая схема</button>
-      <button @click="showImport = true" class="import-btn">📥 Импорт</button>
-      <button @click="exportJson" class="export-json-btn">📦 JSON экспорт</button>
-      <button @click="triggerJsonImport" class="import-json-btn">📂 JSON импорт</button>
-      <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="importJson" />
-      <button @click="goToSettings" class="settings-btn">⚙️ Настройки</button>
-      <button @click="showPlan = !showPlan" class="plan-btn">📋 План</button>
-      <div class="user-info">
-        <span class="user-name">👤 {{ authStore.username }}</span>
-        <button @click="logout" class="logout-btn">Выйти</button>
+
+      <!-- Schemas zone -->
+      <div class="sidebar-schemas-zone">
+        <div class="sidebar-section-header">
+          <h2>📋 Схемы</h2>
+          <button class="icon-btn" @click="createNewSchema" title="Новая схема">＋</button>
+        </div>
+        <ul>
+          <li
+            v-for="schema in schemaStore.schemas"
+            :key="schema.id"
+            :class="{ active: schemaStore.currentSchema?.id === schema.id }"
+            @click="selectSchema(schema)"
+          >
+            {{ schema.name }}
+          </li>
+        </ul>
+        <div class="sidebar-schemas-actions">
+          <button @click="showImport = true" class="compact-btn">📥 Mermaid</button>
+          <button @click="exportJson" class="compact-btn">📦 JSON</button>
+          <button @click="triggerJsonImport" class="compact-btn">📂 JSON</button>
+          <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="importJson" />
+          <button @click="showPlan = !showPlan" class="compact-btn">📋 План</button>
+        </div>
+      </div>
+
+      <!-- Footer zone -->
+      <div class="sidebar-footer-zone">
+        <button @click="goToSettings" class="sidebar-footer-btn">⚙️ Настройки</button>
+        <div class="user-info">
+          <span class="user-name">👤 {{ authStore.username }}</span>
+          <button @click="logout" class="logout-btn">Выйти</button>
+        </div>
       </div>
 
       <!-- Resize handle -->
@@ -102,43 +121,32 @@
     </div>
 
     <!-- Модальное окно экспорта -->
-    <div v-if="showMermaid" class="modal">
-      <div class="modal-content">
-        <h3>📊 Mermaid диаграмма</h3>
-        <pre>{{ mermaidCode }}</pre>
-        <div class="modal-buttons">
-          <button @click="copyToClipboard">📋 Скопировать</button>
-          <button @click="saveToFile">💾 Сохранить</button>
-          <button @click="exportPython" class="btn-python">🐍 Python</button>
-          <button @click="showMermaid = false">❌ Закрыть</button>
-        </div>
+    <AppModal v-model="showMermaid" title="📊 Mermaid диаграмма">
+      <pre>{{ mermaidCode }}</pre>
+      <div class="modal-buttons">
+        <button @click="copyToClipboard">📋 Скопировать</button>
+        <button @click="saveToFile">💾 Сохранить</button>
+        <button @click="exportPython" class="btn-python">🐍 Python</button>
       </div>
-    </div>
+    </AppModal>
 
     <!-- Модальное окно Python экспорта -->
-    <div v-if="showPython" class="modal">
-      <div class="modal-content modal-large">
-        <h3>🐍 Python скрипт</h3>
-        <pre class="python-code">{{ pythonCode }}</pre>
-        <div class="modal-buttons">
-          <button @click="copyPythonToClipboard">📋 Скопировать</button>
-          <button @click="savePythonToFile">💾 Сохранить .py</button>
-          <button @click="showPython = false">❌ Закрыть</button>
-        </div>
+    <AppModal v-model="showPython" title="🐍 Python скрипт" :large="true">
+      <pre class="python-code">{{ pythonCode }}</pre>
+      <div class="modal-buttons">
+        <button @click="copyPythonToClipboard">📋 Скопировать</button>
+        <button @click="savePythonToFile">💾 Сохранить .py</button>
       </div>
-    </div>
+    </AppModal>
 
     <!-- Модальное окно импорта -->
-    <div v-if="showImport" class="modal">
-      <div class="modal-content">
-        <h3>📥 Импорт Mermaid схемы</h3>
-        <textarea v-model="importText" placeholder="Вставьте Mermaid код..." rows="10"></textarea>
-        <div class="modal-buttons">
-          <button @click="importFromMermaid">📥 Импортировать</button>
-          <button @click="showImport = false">❌ Отмена</button>
-        </div>
+    <AppModal v-model="showImport" title="📥 Импорт Mermaid схемы">
+      <textarea v-model="importText" placeholder="Вставьте Mermaid код..." rows="10"></textarea>
+      <div class="modal-buttons">
+        <button @click="importFromMermaid">📥 Импортировать</button>
+        <button @click="showImport = false">❌ Отмена</button>
       </div>
-    </div>
+    </AppModal>
 
     <PlanPanel
       :visible="showPlan"
@@ -148,6 +156,8 @@
     />
 
     <CommandPalette v-model="showCommandPalette" @execute="handleCommand" />
+
+    <ShortcutsOverlay v-model="showShortcuts" />
 
     <OnboardingModal
       :visible="showOnboarding"
@@ -168,6 +178,8 @@ import WorkflowCanvas from '../components/canvas/WorkflowCanvas.vue';
 import PlanPanel from '../components/plan/PlanPanel.vue';
 import CommandPalette from '../components/ui/CommandPalette.vue';
 import OnboardingModal from '../components/ui/OnboardingModal.vue';
+import AppModal from '../components/ui/AppModal.vue';
+import ShortcutsOverlay from '../components/ui/ShortcutsOverlay.vue';
 import type { WorkflowSchema } from '../types';
 import { schemaApi } from '../services/api';
 
@@ -186,6 +198,8 @@ const showPlan = ref(false);
 const showCommandPalette = ref(false);
 const showSearch = ref(false);
 const showOnboarding = ref(false);
+const showShortcuts = ref(false);
+const sidebarOpen = ref(false);
 
 // Resizable sidebar
 const sidebarWidth = ref(250);
@@ -280,6 +294,15 @@ onMounted(() => {
   if (!onboardingStatus) {
     showOnboarding.value = true;
   }
+
+  // Global keyboard shortcuts
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    // '?' opens shortcuts overlay (only when not in input/textarea)
+    if (e.key === '?' && !['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+      e.preventDefault();
+      showShortcuts.value = !showShortcuts.value;
+    }
+  });
 });
 
 watch(() => route.params.id, (newId) => {
@@ -596,25 +619,87 @@ body {
 .app {
   display: flex;
   height: 100vh;
+  position: relative;
+}
+
+/* Mobile hamburger */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1100;
+  width: 36px;
+  height: 36px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 18px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* Tablet: auto-collapse sidebar */
+@media (max-width: 1024px) {
+  .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 1050;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+  .sidebar-toggle {
+    display: flex;
+  }
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1040;
+  }
+  .main-content {
+    width: 100%;
+  }
+}
+
+/* Mobile: full-screen sidebar overlay */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 280px !important;
+  }
 }
 
 .sidebar {
   width: 250px;
-  background: #0b0f2a;
-  padding: 20px;
+  background: var(--bg-secondary);
+  padding: 0;
   border-right: 1px solid rgba(123, 92, 255, 0.2);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 
+.sidebar-brand-zone {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(123, 92, 255, 0.15);
+}
+
 .sidebar-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(123, 92, 255, 0.2);
 }
 
 .sidebar-logo {
@@ -625,15 +710,45 @@ body {
 .sidebar-brand {
   font-size: 18px;
   font-weight: 600;
-  background: linear-gradient(135deg, #7b5cff, #4facfe);
+  background: var(--accent-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.sidebar h2 {
-  margin-bottom: 20px;
-  color: #7b5cff;
+.sidebar-schemas-zone {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.sidebar-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sidebar-section-header h2 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.icon-btn {
+  width: 28px !important;
+  height: 28px;
+  background: var(--accent) !important;
+  color: white !important;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  margin: 0 !important;
 }
 
 .sidebar ul {
@@ -645,9 +760,11 @@ body {
   padding: 10px;
   margin-bottom: 5px;
   background: rgba(123, 92, 255, 0.1);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background 0.2s;
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 .sidebar li:hover {
@@ -655,88 +772,89 @@ body {
 }
 
 .sidebar li.active {
-  background: linear-gradient(135deg, #7b5cff, #4facfe);
-}
-
-.sidebar button {
-  width: 100%;
-  padding: 10px;
-  margin-bottom: 10px;
-  background: linear-gradient(135deg, #7b5cff, #4facfe);
+  background: var(--accent-gradient);
   color: white;
-  border: none;
-  border-radius: 6px;
+}
+
+.sidebar-schemas-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.compact-btn {
+  flex: 1;
+  min-width: calc(50% - 3px);
+  padding: 6px 8px !important;
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
   cursor: pointer;
-  transition: all 0.2s;
-  font-weight: 500;
+  font-size: 11px !important;
+  text-align: center;
+  margin: 0 !important;
+  font-weight: 400 !important;
 }
 
-.sidebar button:hover {
-  opacity: 0.9;
-  transform: translateY(-1px);
+.compact-btn:hover {
+  background: var(--bg-hover) !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
 
-.import-btn {
-  background: rgba(79, 172, 254, 0.2);
-  color: #4facfe;
-}
-
-.import-btn:hover {
-  background: rgba(79, 172, 254, 0.3);
-}
-
-.settings-btn {
-  background: #2d2d44 !important;
+.sidebar-footer-zone {
+  padding: 16px 20px;
+  border-top: 1px solid rgba(123, 92, 255, 0.15);
   margin-top: auto;
 }
 
-.settings-btn:hover {
-  background: #3d3d5c !important;
+.sidebar-footer-btn {
+  width: 100%;
+  padding: 8px 12px !important;
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  cursor: pointer;
+  font-size: 13px !important;
+  margin-bottom: 10px !important;
+  text-align: left;
 }
 
-.export-json-btn {
-  background: #0f3460 !important;
+.sidebar-footer-btn:hover {
+  background: var(--bg-hover) !important;
+  opacity: 1 !important;
+  transform: none !important;
 }
-.export-json-btn:hover {
-  background: #16213e !important;
-}
-.import-json-btn {
-  background: #0f3460 !important;
-}
-.import-json-btn:hover {
-  background: #16213e !important;
-}
+
 .user-info {
-  margin-top: auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255,255,255,0.1);
 }
 .user-name {
   flex: 1;
   font-size: 13px;
-  color: #aaa;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .logout-btn {
-  background: #dc3545 !important;
+  background: var(--error) !important;
   padding: 6px 10px !important;
   font-size: 12px !important;
   width: auto !important;
   margin: 0 !important;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  cursor: pointer;
 }
 .logout-btn:hover {
-  background: #c82333 !important;
-}
-.plan-btn {
-  background: #4a4a6a !important;
-}
-.plan-btn:hover {
-  background: #5a5a7a !important;
+  opacity: 0.9 !important;
 }
 
 .main-content {
@@ -950,53 +1068,6 @@ body {
   font-size: 18px;
 }
 
-.modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-}
-
-.modal-content {
-  background: #16213e;
-  padding: 20px;
-  border-radius: 10px;
-  max-width: 600px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-}
-
-.modal-content h3 {
-  margin-bottom: 15px;
-  color: #e94560;
-}
-
-.modal-content pre {
-  background: #0f3460;
-  padding: 10px;
-  border-radius: 5px;
-  overflow-x: auto;
-  margin-bottom: 15px;
-}
-
-.modal-content textarea {
-  width: 100%;
-  padding: 10px;
-  background: #0f3460;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  resize: vertical;
-  font-family: monospace;
-}
-
 .modal-buttons {
   display: flex;
   gap: 10px;
@@ -1005,7 +1076,7 @@ body {
 
 .modal-buttons button {
   padding: 8px 12px;
-  background: #e94560;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 5px;
@@ -1014,18 +1085,33 @@ body {
 }
 
 .modal-buttons button:hover {
-  background: #d43d51;
+  opacity: 0.9;
+}
+
+pre {
+  background: var(--bg-primary);
+  padding: 10px;
+  border-radius: 5px;
+  overflow-x: auto;
+  margin-bottom: 15px;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  resize: vertical;
+  font-family: var(--font-mono, monospace);
 }
 
 .btn-python {
-  background: #4a4a6a !important;
+  background: var(--bg-hover) !important;
 }
 .btn-python:hover {
-  background: #5a5a7a !important;
-}
-
-.modal-large {
-  max-width: 800px;
+  background: var(--border) !important;
 }
 
 .python-code {

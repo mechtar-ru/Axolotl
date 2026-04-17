@@ -161,79 +161,21 @@ function truncate(str: string, len: number): string {
 </script>
 
 <style scoped>
+@import './node-base.css';
+
 .memory-node {
   border-color: #00bcd4;
 }
 .memory-node.selected {
-  border-color: #ff6b6b;
-  box-shadow: 0 0 0 2px rgba(255,107,107,0.3);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow-accent);
 }
-.node {
-  background: #2d2d44;
-  border-radius: 8px;
-  border: 2px solid #4a4a6a;
-  min-width: 220px;
-  max-width: 320px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-  position: relative;
-}
-.delete-btn {
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  width: 24px;
-  height: 24px;
-  background: #dc3545;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-}
-.node-header {
-  padding: 10px;
-  background: #1e1e2e;
-  border-radius: 6px 6px 0 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.node-icon { font-size: 20px; }
-.node-name {
-  flex: 1;
-  font-weight: bold;
-  color: #eee;
-  cursor: pointer;
-}
-.node-name-input {
-  flex: 1;
-  background: #1a1a2e;
-  border: 1px solid #00bcd4;
-  color: #eee;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 14px;
-  font-weight: bold;
-}
-.execution-icon { font-size: 14px; margin-left: 4px; }
-.node-expand {
-  background: none;
-  border: none;
-  color: #eee;
-  cursor: pointer;
-  font-size: 12px;
-}
-.node-content { padding: 10px; }
 .search-row { display: flex; gap: 4px; }
 .search-input {
   flex: 1;
-  background: #1a1a2e;
+  background: var(--bg-primary);
   border: 1px solid #00bcd4;
-  color: #eee;
+  color: var(--text-primary);
   border-radius: 4px;
   padding: 6px 8px;
   font-size: 13px;
@@ -250,9 +192,9 @@ function truncate(str: string, len: number): string {
 .filter-row { display: flex; gap: 4px; margin-top: 6px; }
 .filter-input {
   flex: 1;
-  background: #1a1a2e;
-  border: 1px solid #4a4a6a;
-  color: #eee;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
@@ -269,18 +211,18 @@ function truncate(str: string, len: number): string {
 }
 .result-card:hover { background: rgba(0, 188, 212, 0.2); }
 .result-wing { font-size: 10px; color: #00bcd4; text-transform: uppercase; }
-.result-text { font-size: 12px; color: #ccc; margin-top: 2px; }
+.result-text { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
 .selected-memory {
   margin-top: 8px;
   padding: 8px;
   background: rgba(0, 188, 212, 0.15);
   border-radius: 6px;
   font-size: 12px;
-  color: #eee;
+  color: var(--text-primary);
 }
 .memory-content {
   margin: 4px 0;
-  color: #ccc;
+  color: var(--text-secondary);
   word-break: break-word;
 }
 .pin-btn {
@@ -291,26 +233,5 @@ function truncate(str: string, len: number): string {
   border-radius: 4px;
   cursor: pointer;
   font-size: 11px;
-}
-.node-result {
-  margin-top: 10px;
-  padding: 8px;
-  background: #1a1a2e;
-  border-radius: 4px;
-  font-size: 12px;
-  word-break: break-word;
-}
-.node-time {
-  margin-top: 6px;
-  font-size: 11px;
-  color: #888;
-  text-align: right;
-}
-.node-running { animation: pulse-running 1.5s ease-in-out infinite; }
-.node-completed { box-shadow: 0 0 12px rgba(76, 175, 80, 0.5); }
-.node-failed { box-shadow: 0 0 12px rgba(255, 0, 0, 0.5); }
-@keyframes pulse-running {
-  0%, 100% { box-shadow: 0 0 4px rgba(255, 165, 0, 0.3); }
-  50% { box-shadow: 0 0 16px rgba(255, 165, 0, 0.7); }
 }
 </style>

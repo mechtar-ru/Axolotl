@@ -19,17 +19,62 @@
             <button class="refresh-btn" @click="refreshProviders">🔄</button>
           </div>
 
-          <div class="provider-details">
+          <div class="provider-fields">
             <div class="field">
-              <label>URL</label>
-              <span>{{ provider.baseUrl }}</span>
+              <label>API Key</label>
+              <div class="field-row">
+                <input
+                  :type="showKeys[provider.name] ? 'text' : 'password'"
+                  :value="editedKeys[provider.name] ?? ''"
+                  :placeholder="editedKeys[provider.name] !== undefined ? '' : 'sk-...'"
+                  class="field-input"
+                  @input="editedKeys[provider.name] = ($event.target as HTMLInputElement).value"
+                />
+                <button class="toggle-vis" @click="showKeys[provider.name] = !showKeys[provider.name]" title="Показать/скрыть">
+                  {{ showKeys[provider.name] ? '🙈' : '👁' }}
+                </button>
+              </div>
             </div>
+
             <div class="field">
-              <label>Модели</label>
-              <div v-if="provider.models.length > 0" class="model-list">
+              <label>Base URL</label>
+              <input
+                :value="editedUrls[provider.name] ?? provider.baseUrl ?? ''"
+                class="field-input"
+                placeholder="https://api.example.com/v1"
+                @input="editedUrls[provider.name] = ($event.target as HTMLInputElement).value"
+              />
+            </div>
+
+            <div class="field">
+              <label>Модель по умолчанию</label>
+              <select
+                :value="editedModels[provider.name] ?? provider.defaultModel ?? ''"
+                class="field-input"
+                @change="editedModels[provider.name] = ($event.target as HTMLSelectElement).value"
+              >
+                <option value="">Авто</option>
+                <option v-for="m in provider.models" :key="m" :value="m">{{ m }}</option>
+              </select>
+            </div>
+
+            <div class="field-actions">
+              <button class="save-btn" @click="saveProvider(provider.name)" :disabled="saving[provider.name]">
+                {{ saving[provider.name] ? 'Сохранение...' : '💾 Сохранить' }}
+              </button>
+              <button class="test-btn" @click="testProvider(provider.name)" :disabled="testing[provider.name]">
+                {{ testing[provider.name] ? 'Проверка...' : '🔍 Тест' }}
+              </button>
+              <span v-if="testResults[provider.name]" class="test-result" :class="testResults[provider.name].ok ? 'test-ok' : 'test-fail'">
+                {{ testResults[provider.name].ok ? '✅ Доступен' : '❌ ' + testResults[provider.name].msg }}
+              </span>
+            </div>
+
+            <div v-if="provider.models.length > 0" class="field">
+              <label>Доступные модели</label>
+              <div class="model-list">
                 <span v-for="model in provider.models" :key="model" class="model-tag">{{ model }}</span>
               </div>
-              <span v-else class="no-models">Нет доступных моделей</span>
             </div>
           </div>
         </div>
@@ -43,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { settingsApi, type ProviderInfo } from '../services/api';
 
@@ -51,6 +96,13 @@ const router = useRouter();
 const providers = ref<ProviderInfo[]>([]);
 const loading = ref(true);
 const error = ref('');
+const saving = reactive<Record<string, boolean>>({});
+const testing = reactive<Record<string, boolean>>({});
+const testResults = reactive<Record<string, { ok: boolean; msg: string } | null>>({});
+const editedKeys = reactive<Record<string, string>>({});
+const editedUrls = reactive<Record<string, string>>({});
+const editedModels = reactive<Record<string, string>>({});
+const showKeys = reactive<Record<string, boolean>>({});
 
 function getProviderLabel(name: string): string {
   const labels: Record<string, string> = {
@@ -71,6 +123,36 @@ async function refreshProviders() {
     error.value = 'Ошибка загрузки провайдеров: ' + (e.message || e);
   } finally {
     loading.value = false;
+  }
+}
+
+async function saveProvider(name: string) {
+  saving[name] = true;
+  try {
+    const data: Record<string, string> = {};
+    if (editedKeys[name] !== undefined) data.apiKey = editedKeys[name];
+    if (editedUrls[name] !== undefined) data.baseUrl = editedUrls[name];
+    if (editedModels[name] !== undefined) data.defaultModel = editedModels[name];
+    await settingsApi.updateProvider(name, data);
+    await refreshProviders();
+    editedKeys[name] = '';
+  } catch (e: any) {
+    error.value = 'Ошибка сохранения: ' + (e.message || e);
+  } finally {
+    saving[name] = false;
+  }
+}
+
+async function testProvider(name: string) {
+  testing[name] = true;
+  testResults[name] = null;
+  try {
+    const result = await settingsApi.testProvider(name);
+    testResults[name] = { ok: result.available, msg: result.available ? 'OK' : 'Нет ключа или недоступен' };
+  } catch (e: any) {
+    testResults[name] = { ok: false, msg: e.message || 'Ошибка' };
+  } finally {
+    testing[name] = false;
   }
 }
 
@@ -97,29 +179,29 @@ onMounted(refreshProviders);
 
 .settings-header h1 {
   font-size: 24px;
-  color: #eee;
+  color: var(--text-primary, #eee);
 }
 
 .back-btn {
   padding: 8px 16px;
-  background: #2d2d44;
-  color: #eee;
-  border: 1px solid #4a4a6a;
-  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
 }
 
 .back-btn:hover {
-  background: #3d3d5c;
+  background: var(--bg-hover);
 }
 
 .provider-card {
-  background: #2d2d44;
-  border-radius: 12px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
   padding: 20px;
   margin-bottom: 16px;
-  border: 1px solid #4a4a6a;
+  border: 1px solid var(--border);
 }
 
 .provider-header {
@@ -131,7 +213,7 @@ onMounted(refreshProviders);
 
 .provider-header h2 {
   font-size: 18px;
-  color: #eee;
+  color: var(--text-primary);
   flex: 1;
 }
 
@@ -143,35 +225,35 @@ onMounted(refreshProviders);
 }
 
 .status-dot.online {
-  background: #4caf50;
+  background: var(--success);
   box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
 }
 
 .status-dot.offline {
-  background: #f44336;
-  box-shadow: 0 0 8px rgba(244, 67, 54, 0.5);
+  background: var(--error);
+  box-shadow: 0 0 8px rgba(220, 53, 69, 0.5);
 }
 
 .status-text {
   font-size: 13px;
-  color: #888;
+  color: var(--text-secondary);
 }
 
 .refresh-btn {
   background: none;
-  border: 1px solid #4a4a6a;
-  color: #eee;
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   cursor: pointer;
   font-size: 14px;
 }
 
 .refresh-btn:hover {
-  background: #3d3d5c;
+  background: var(--bg-hover);
 }
 
-.provider-details {
+.provider-fields {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -180,15 +262,96 @@ onMounted(refreshProviders);
 .field label {
   display: block;
   font-size: 12px;
-  color: #888;
+  color: var(--text-secondary);
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.field span {
-  color: #eee;
+.field-row {
+  display: flex;
+  gap: 6px;
+}
+
+.field-input {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 8px 12px;
   font-size: 14px;
+  outline: none;
+}
+
+.field-input:focus {
+  border-color: var(--border-focus);
+}
+
+.toggle-vis {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 14px;
+}
+
+.field-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.save-btn {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.save-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-btn {
+  padding: 8px 16px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.test-btn:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.test-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.test-result {
+  font-size: 13px;
+}
+
+.test-ok {
+  color: var(--success);
+}
+
+.test-fail {
+  color: var(--error);
 }
 
 .model-list {
@@ -198,26 +361,26 @@ onMounted(refreshProviders);
 }
 
 .model-tag {
-  background: #1a1a2e;
-  color: #6c63ff;
+  background: var(--bg-primary);
+  color: var(--accent);
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 13px;
-  font-family: monospace;
+  font-family: var(--font-mono, monospace);
 }
 
 .no-models {
-  color: #666;
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .loading, .error, .empty {
   text-align: center;
   padding: 40px;
-  color: #888;
+  color: var(--text-secondary);
 }
 
 .error {
-  color: #f44336;
+  color: var(--error);
 }
 </style>
