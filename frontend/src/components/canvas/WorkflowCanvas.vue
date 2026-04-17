@@ -136,8 +136,9 @@ import MemoryGraphView from '../memory/MemoryGraphView.vue';
 import MemoryResultCard from '../nodes/MemoryResultCard.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
 import { useSchemaStore } from '../../stores/schemaStore';
+import { useToast } from '../../composables/useToast';
 import { schemaApi } from '../../services/api';
-import { toPng, toSvg } from 'html-to-image';
+import { toPng } from 'html-to-image';
 
 const props = defineProps<{
   schema: WorkflowSchema;
@@ -233,6 +234,7 @@ function redo() {
 }
 
 const schemaStore = useSchemaStore();
+const toast = useToast();
 const { connect, disconnect, isConnected } = useWebSocket();
 const isExecuting = ref(false);
 const executionMode = ref<ExecutionMode>(schemaStore.executionMode);
@@ -455,7 +457,7 @@ function duplicateNode() {
 function deleteSelectedNode() {
   ctxMenu.value.visible = false;
   if (selectedNodeId.value) {
-    removeNode(selectedNodeId.value);
+    deleteNode(selectedNodeId.value);
   }
 }
 
@@ -599,16 +601,14 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
-if (typeof window !== 'undefined') {
+onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('axolotl:highlight-node', handleExternalHighlight);
-}
+});
 
 onUnmounted(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('keydown', handleKeyDown);
-    window.removeEventListener('axolotl:highlight-node', handleExternalHighlight);
-  }
+  window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('axolotl:highlight-node', handleExternalHighlight);
   disconnect();
 });
 
@@ -762,7 +762,7 @@ async function executeSchema() {
         disconnect();
         isExecuting.value = false;
         stopTimer();
-        alert(`Выполнение завершено! Время: ${data.totalTime}мс, узлов выполнено: ${data.nodesCompleted}`);
+        toast.success(`Выполнение завершено! Время: ${data.totalTime}мс, узлов: ${data.nodesCompleted}`);
       },
       onMetrics: (data) => {
         console.log('📈 Metrics callback:', data);
@@ -811,7 +811,11 @@ async function executeSchema() {
     });
 
     console.log('⏳ Ожидание подключения WebSocket...');
+    const wsTimeout = Date.now() + 5000;
     while (!isConnected.value) {
+      if (Date.now() > wsTimeout) {
+        throw new Error('WebSocket connection timeout');
+      }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     console.log('✅ WebSocket подключен, отправка запроса на выполнение...');
@@ -825,7 +829,7 @@ async function executeSchema() {
     pushLog('Ошибка запуска выполнения схемы', 'error');
     isExecuting.value = false;
     stopTimer();
-    alert('Ошибка выполнения схемы');
+    toast.error('Ошибка выполнения схемы');
   }
 }
 

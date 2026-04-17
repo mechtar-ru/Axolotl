@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useAuthStore } from '../stores/authStore';
@@ -181,7 +181,7 @@ import OnboardingModal from '../components/ui/OnboardingModal.vue';
 import AppModal from '../components/ui/AppModal.vue';
 import ShortcutsOverlay from '../components/ui/ShortcutsOverlay.vue';
 import type { WorkflowSchema } from '../types';
-import { schemaApi } from '../services/api';
+import { schemaApi, api } from '../services/api';
 
 const router = useRouter();
 const route = useRoute();
@@ -223,6 +223,14 @@ function stopResize() {
   document.removeEventListener('mousemove', onResize);
   document.removeEventListener('mouseup', stopResize);
 }
+
+onUnmounted(() => {
+  if (isResizing) {
+    isResizing = false;
+    document.removeEventListener('mousemove', onResize);
+    document.removeEventListener('mouseup', stopResize);
+  }
+});
 
 // Recent schemas (last 5)
 const recentSchemas = computed(() => {
@@ -382,7 +390,7 @@ async function handleSave() {
 
 async function handleExecute() {
   await schemaStore.executeCurrentSchema();
-  alert('Выполнение запущено!');
+  toast.success('Выполнение запущено!');
 }
 
 async function handleExportMermaid() {
@@ -395,9 +403,8 @@ async function handleExportMermaid() {
 async function exportPython() {
   if (!schemaStore.currentSchema) return;
   try {
-    const res = await fetch(`/api/schemas/${schemaStore.currentSchema.id}/export/python`);
-    const data = await res.json();
-    pythonCode.value = data.python || '';
+    const res = await api.get(`/schemas/${schemaStore.currentSchema.id}/export/python`);
+    pythonCode.value = res.data.python || '';
     showPython.value = true;
     showMermaid.value = false;
   } catch (e) {
@@ -407,7 +414,7 @@ async function exportPython() {
 
 async function copyPythonToClipboard() {
   await navigator.clipboard.writeText(pythonCode.value);
-  alert('Скопировано!');
+  toast.success('Скопировано!');
 }
 
 function savePythonToFile() {
@@ -489,7 +496,7 @@ function saveToFile() {
 async function importFromMermaid() {
   const text = importText.value;
   if (!text.trim()) {
-    alert('Введите Mermaid код для импорта');
+    toast.error('Введите Mermaid код для импорта');
     return;
   }
 
@@ -537,7 +544,7 @@ async function importFromMermaid() {
     }
   }
 
-  if (nodes.length === 0) { alert('Не удалось распознать узлы'); return; }
+  if (nodes.length === 0) { toast.error('Не удалось распознать узлы'); return; }
 
   const newSchema: WorkflowSchema = {
     id: `imported-${Date.now()}`,
@@ -583,7 +590,7 @@ async function importJson(event: Event) {
     await schemaStore.updateSchema(created);
     router.push({ name: 'schema', params: { id: created.id } });
   } catch (e) {
-    alert('Ошибка импорта JSON: ' + (e as Error).message);
+    toast.error('Ошибка импорта JSON: ' + (e as Error).message);
   }
 }
 
