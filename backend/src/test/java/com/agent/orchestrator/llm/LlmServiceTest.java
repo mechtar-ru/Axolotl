@@ -1,5 +1,6 @@
 package com.agent.orchestrator.llm;
 
+import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +20,7 @@ class LlmServiceTest {
     @Mock LlmProvider openai;
     @Mock LlmProvider anthropic;
     @Mock LlmProvider deepseek;
+    @Mock CustomLlmEndpointRepository customEndpointRepository;
 
     LlmService llmService;
 
@@ -28,8 +30,9 @@ class LlmServiceTest {
         when(openai.getName()).thenReturn("openai");
         when(anthropic.getName()).thenReturn("anthropic");
         when(deepseek.getName()).thenReturn("deepseek");
+        lenient().when(customEndpointRepository.findAll()).thenReturn(List.of());
 
-        llmService = new LlmService(List.of(ollama, openai, anthropic, deepseek));
+        llmService = new LlmService(List.of(ollama, openai, anthropic, deepseek), customEndpointRepository);
     }
 
     @Test

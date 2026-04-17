@@ -91,6 +91,10 @@ export interface ProviderInfo {
   baseUrl: string;
   models: string[];
   defaultModel?: string;
+  custom?: boolean;
+  id?: string;
+  authType?: string;
+  enabled?: boolean;
 }
 
 export const settingsApi = {
@@ -111,6 +115,43 @@ export const settingsApi = {
 
   async testProvider(provider: string): Promise<{ provider: string; apiKeyConfigured: boolean; baseUrl: string; available: boolean }> {
     const response = await api.get(`/settings/${provider}/health`);
+    return response.data;
+  },
+};
+
+export interface CustomLlmEndpoint {
+  id?: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+  authType: string;
+  enabled: boolean;
+  priority: number;
+}
+
+export const customEndpointApi = {
+  async list(): Promise<CustomLlmEndpoint[]> {
+    const response = await api.get('/settings/endpoints');
+    return response.data;
+  },
+
+  async create(endpoint: CustomLlmEndpoint): Promise<CustomLlmEndpoint> {
+    const response = await api.post('/settings/endpoints', endpoint);
+    return response.data;
+  },
+
+  async update(id: string, endpoint: Partial<CustomLlmEndpoint>): Promise<CustomLlmEndpoint> {
+    const response = await api.put(`/settings/endpoints/${id}`, endpoint);
+    return response.data;
+  },
+
+  async remove(id: string): Promise<void> {
+    await api.delete(`/settings/endpoints/${id}`);
+  },
+
+  async test(endpoint: CustomLlmEndpoint): Promise<{ success: boolean; message: string }> {
+    const response = await api.post('/settings/endpoints/test', endpoint);
     return response.data;
   },
 };

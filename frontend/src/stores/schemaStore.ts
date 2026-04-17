@@ -78,6 +78,7 @@ export const useSchemaStore = defineStore('schema', () => {
   async function executeCurrentSchema() {
     if (currentSchema.value) {
       try {
+        await updateSchema(currentSchema.value);
         await schemaApi.executeSchema(currentSchema.value.id, executionMode.value);
       } catch (error) {
         console.error('Ошибка выполнения схемы:', error);

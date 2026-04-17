@@ -4,6 +4,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.agent.orchestrator.model.CustomLlmEndpoint;
+import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -19,12 +22,14 @@ public class LlmService {
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
     private final Map<String, LlmProvider> providers;
+    private final CustomLlmEndpointRepository customEndpointRepository;
 
-    public LlmService(List<LlmProvider> providerList) {
+    public LlmService(List<LlmProvider> providerList, CustomLlmEndpointRepository customEndpointRepository) {
         this.providers = new HashMap<>();
         for (LlmProvider provider : providerList) {
             providers.put(provider.getName(), provider);
         }
+        this.customEndpointRepository = customEndpointRepository;
         log.info("LLM провайдеры: {}", providers.keySet());
     }
 
@@ -113,6 +118,20 @@ public class LlmService {
             info.put("available", provider.isAvailable());
             info.put("baseUrl", provider.getBaseUrl());
             info.put("models", provider.listModels());
+            info.put("custom", false);
+            result.add(info);
+        }
+        for (CustomLlmEndpoint ep : customEndpointRepository.findAll()) {
+            Map<String, Object> info = new HashMap<>();
+            info.put("name", ep.getName());
+            info.put("available", ep.isEnabled() && ep.getApiKey() != null && !ep.getApiKey().isBlank());
+            info.put("baseUrl", ep.getBaseUrl());
+            info.put("models", ep.getModelName() != null ? List.of(ep.getModelName()) : List.of());
+            info.put("defaultModel", ep.getModelName());
+            info.put("custom", true);
+            info.put("id", ep.getId());
+            info.put("authType", ep.getAuthType());
+            info.put("enabled", ep.isEnabled());
             result.add(info);
         }
         return result;
