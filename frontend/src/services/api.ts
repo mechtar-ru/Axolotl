@@ -19,11 +19,11 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Redirect to login on 401/403
+// Redirect to login on 401
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401) {
       localStorage.removeItem('axolotl_token');
       localStorage.removeItem('axolotl_username');
       localStorage.removeItem('axolotl_role');
