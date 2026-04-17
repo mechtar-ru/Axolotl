@@ -43,6 +43,16 @@ public class AuthController {
             userRepository.save(admin);
             log.info("Default admin user created (admin:admin)");
         }
+        if (userRepository.findByUsername("tech") == null) {
+            AppUser tech = new AppUser(
+                    UUID.randomUUID().toString(),
+                    "tech",
+                    passwordEncoder.encode("tech"),
+                    "tech"
+            );
+            userRepository.save(tech);
+            log.info("Tech user created (tech:tech)");
+        }
         adminInitialized = true;
     }
 

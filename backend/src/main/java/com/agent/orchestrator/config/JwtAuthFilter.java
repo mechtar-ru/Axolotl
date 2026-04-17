@@ -36,6 +36,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
+        // If still unauthenticated after filter, SecurityConfig's authorizeHttpRequests will handle 403
         filterChain.doFilter(request, response);
     }
 }
