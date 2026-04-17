@@ -35,14 +35,13 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to) => {
   const token = localStorage.getItem('axolotl_token');
   if (to.meta.requiresAuth && !token) {
-    next({ name: 'login' });
-  } else if (to.name === 'login' && token) {
-    next({ name: 'home' });
-  } else {
-    next();
+    return { name: 'login' };
+  }
+  if (to.name === 'login' && token) {
+    return { name: 'home' };
   }
 });
 
