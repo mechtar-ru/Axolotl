@@ -77,7 +77,6 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
                 }
             }
         }
-        log.debug("Отправлено WS сообщение для схемы {}: {}", schemaId, jsonMessage);
     }
 
     private Map<String, Object> baseMsg(String type, String schemaId) {
@@ -103,7 +102,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         msg.put("progress", progress);
         msg.put("message", message);
         sendMessage(schemaId, toJson(msg));
-        log.info("Прогресс [{}/{}]: {} - {}% - {}", schemaId, nodeId, status, progress, message);
+        log.debug("Прогресс [{}/{}]: {} - {}% - {}", schemaId, nodeId, status, progress, message);
     }
 
     public void sendResult(String schemaId, String nodeId, String result) {
@@ -111,7 +110,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         msg.put("nodeId", nodeId);
         msg.put("result", result);
         sendMessage(schemaId, toJson(msg));
-        log.info("Результат [{}/{}]: {}", schemaId, nodeId, result);
+        log.debug("Результат [{}/{}]: {}", schemaId, nodeId, result.length() > 80 ? result.substring(0, 80) + "..." : result);
     }
 
     public void sendError(String schemaId, String nodeId, String error) {
@@ -138,7 +137,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         msg.put("elapsedTime", elapsedTime);
         msg.put("nodesPerSecond", nodesPerSecond);
         sendMessage(schemaId, toJson(msg));
-        log.info("Метрики [{}]: {}/{} узлов, {}мс, {} уз/с", schemaId, completedNodes, totalNodes, elapsedTime,
+        log.debug("Метрики [{}]: {}/{} узлов, {}мс, {} уз/с", schemaId, completedNodes, totalNodes, elapsedTime,
                 String.format("%.2f", nodesPerSecond));
     }
 
@@ -202,6 +201,6 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         msg.put("nodeIds", nodeIds);
         msg.put("status", status);
         sendMessage(schemaId, toJson(msg));
-        log.info("Волна {} [{}]: {} ({} узлов)", waveNumber, schemaId, status, nodeIds.size());
+        log.debug("Волна {} [{}]: {} ({} узлов)", waveNumber, schemaId, status, nodeIds.size());
     }
 }
