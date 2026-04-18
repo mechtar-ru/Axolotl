@@ -137,6 +137,13 @@ import { ref, watch, onUnmounted, computed } from 'vue';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = extra || {};
+  const token = localStorage.getItem('axolotl_token');
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 const visibleProp = defineProps<{ visible: boolean; schemaNodes?: Array<{ id: string; name: string; type: string }> }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'highlight-node', nodeId: string): void }>();
 
@@ -182,7 +189,7 @@ async function loadPlan() {
   loading.value = true;
   error.value = '';
   try {
-    const response = await fetch(`${API_BASE_URL}/plan`);
+    const response = await fetch(`${API_BASE_URL}/plan`, { headers: authHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const plan = await response.json();
     tasks.value = (plan.tasks || []).map((t: any) => ({
@@ -209,7 +216,7 @@ async function addBatchTasks() {
     for (const task of batch) {
       const response = await fetch(`${API_BASE_URL}/plan/tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ title: task.title, priority: task.priority }),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -243,7 +250,7 @@ async function updateTaskRemote(taskId: string, updates: { status?: string; prio
     }
     const response = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(body),
     });
     if (!response.ok) {
@@ -301,6 +308,7 @@ async function deleteTask(i: number) {
   try {
     const response = await fetch(`${API_BASE_URL}/plan/tasks/${task.id}`, {
       method: 'DELETE',
+      headers: authHeaders(),
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     tasks.value.splice(i, 1);
@@ -320,7 +328,7 @@ function dropTask(targetIndex: number) {
     // Reorder on server
     fetch(`${API_BASE_URL}/plan/tasks/${item.id}/move`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ position: { type: 'index', value: String(targetIndex) } }),
     }).catch(console.error);
   }
@@ -366,7 +374,7 @@ async function linkNodeToTask(taskIndex: number | null, nodeId: string) {
   try {
     await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/link`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ nodeId }),
     });
   } catch (e) {
@@ -383,7 +391,7 @@ async function unlinkNode(taskIndex: number | null) {
   try {
     await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/link`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ nodeId: null }),
     });
   } catch (e) {
@@ -419,7 +427,7 @@ async function saveCriteria(taskIndex: number | null) {
   try {
     await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/criteria`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         criteria: task.acceptanceCriteria || [],
         met: task.acceptanceCriteriaMet || [],
