@@ -4,11 +4,14 @@ import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.Priority;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.SchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,9 +37,11 @@ public class SchemaService {
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final MemPalaceClient memPalaceClient;
+    private final PlanService planService;
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, String>> nodeResults = new ConcurrentHashMap<>();
     private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
     private static final int MAX_HISTORY = 100;
     private static final int MAX_NODE_RESTARTS = 3;
@@ -49,11 +54,13 @@ public class SchemaService {
     public SchemaService(SchemaRepository schemaRepository,
             LlmService llmService,
             ExecutionWebSocketHandler webSocketHandler,
-            MemPalaceClient memPalaceClient) {
+            MemPalaceClient memPalaceClient,
+            PlanService planService) {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
+        this.planService = planService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -410,6 +417,7 @@ public class SchemaService {
         long workflowStartTime = startTime;
 
         conditionResults.keySet().removeIf(k -> k.startsWith(schema.getId() + ":"));
+        nodeResults.remove(schema.getId());
         nodeFailureCounts.put(schema.getId(), new ConcurrentHashMap<>());
 
         if (webSocketHandler != null) {
@@ -671,13 +679,26 @@ public class SchemaService {
         if (schema.getEdges() == null || schema.getNodes() == null) {
             return results;
         }
+        Map<String, String> cached = nodeResults.getOrDefault(schema.getId(), Map.of());
         for (Edge edge : schema.getEdges()) {
             if (nodeId.equals(edge.getTarget())) {
                 String sourceId = edge.getSource();
-                for (Node n : schema.getNodes()) {
-                    if (sourceId.equals(n.getId()) && n.getData() != null && n.getData().getResult() != null) {
-                        results.put(n.getName().replaceAll("\\s+", "_"), n.getData().getResult());
+                // Check in-memory cache first, then fall back to node data
+                String result = cached.get(sourceId);
+                if (result == null) {
+                    for (Node n : schema.getNodes()) {
+                        if (sourceId.equals(n.getId()) && n.getData() != null && n.getData().getResult() != null) {
+                            result = n.getData().getResult();
+                            break;
+                        }
                     }
+                }
+                if (result != null) {
+                    String name = schema.getNodes().stream()
+                            .filter(n -> sourceId.equals(n.getId()))
+                            .map(Node::getName)
+                            .findFirst().orElse(sourceId);
+                    results.put(name.replaceAll("\\s+", "_"), result);
                 }
             }
         }
@@ -935,6 +956,8 @@ public class SchemaService {
                 }
             } else if ("subagent".equals(node.getType())) {
                 result = executeSubagentNode(node, schemaId, cancelFlag, mode);
+            } else if ("schemabuilder".equals(node.getType())) {
+                result = executeSchemaBuilderNode(node, schemaId);
             }
 
             // 90%: Формирование результата
@@ -947,6 +970,13 @@ public class SchemaService {
             if (webSocketHandler != null) {
                 webSocketHandler.sendResult(schemaId, node.getId(), result);
             }
+
+            // Store result on node data for downstream nodes
+            if (node.getData() != null) {
+                node.getData().setResult(result);
+            }
+            nodeResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                    .put(node.getId(), result);
 
             // 100%: Завершено
             if (webSocketHandler != null) {
@@ -1289,5 +1319,160 @@ public class SchemaService {
 
         nestedResult.append("=== Subagent завершён ===");
         return nestedResult.toString();
+    }
+
+    private static final String SCHEMA_BUILDER_SYSTEM_PROMPT = """
+            You are a workflow architect. Given an analysis/result text, design an Axolotl workflow schema.
+            Respond ONLY with valid JSON, no markdown fences:
+            {
+              "name": "Schema name",
+              "description": "What this workflow does",
+              "nodes": [
+                {"id": "n1", "type": "source|agent|output|condition|loop|memory|guardrail|human|fallback", "name": "Node name", "position": {"x": 100, "y": 200}, "data": {"userPrompt": "...", "systemPrompt": "..."}}
+              ],
+              "edges": [
+                {"source": "n1", "target": "n2"}
+              ],
+              "planExplanation": "Markdown text explaining the plan"
+            }
+            Rules:
+            - Use agent nodes with detailed userPrompt and systemPrompt
+            - Typical flow: source → agent → output
+            - Position nodes with reasonable spacing (x increments of 300)
+            - Each node needs a unique id (n1, n2, n3...)
+            """;
+
+    private String executeSchemaBuilderNode(Node node, String schemaId) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Building schema from agent result");
+            webSocketHandler.sendLog(schemaId, "info", "🏗️ SchemaBuilder: generating workflow", node.getId());
+        }
+
+        var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+        String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
+        if (input.isBlank()) {
+            return "Error: no predecessor result to build schema from";
+        }
+
+        boolean generateMd = node.getData() != null && node.getData().getConfig() != null
+                && Boolean.TRUE.equals(node.getData().getConfig().get("generateMd"));
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 40, "Sending to LLM");
+        }
+
+        String llmResponse = llmService.chat(null, SCHEMA_BUILDER_SYSTEM_PROMPT, input, null);
+
+        if (llmResponse == null || llmResponse.isBlank()) {
+            return "Error: LLM returned empty response";
+        }
+
+        // Strip markdown fences if present
+        String jsonStr = llmResponse.trim();
+        if (jsonStr.startsWith("```")) {
+            jsonStr = jsonStr.replaceFirst("^```\\w*\\n?", "").replaceFirst("\\n?```$", "");
+        }
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 60, "Parsing schema");
+        }
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root;
+        try {
+            root = mapper.readTree(jsonStr);
+        } catch (Exception e) {
+            return "Error: failed to parse LLM response as JSON: " + e.getMessage();
+        }
+
+        // Build WorkflowSchema from parsed JSON
+        WorkflowSchema newSchema = new WorkflowSchema();
+        newSchema.setName(root.has("name") ? root.get("name").asText() : "Generated Schema");
+        newSchema.setDescription(root.has("description") ? root.get("description").asText() : "");
+        newSchema.setVersion("1.0");
+
+        List<Node> nodes = new ArrayList<>();
+        if (root.has("nodes")) {
+            for (JsonNode n : root.get("nodes")) {
+                Node schemaNode = new Node();
+                schemaNode.setId(n.has("id") ? n.get("id").asText() : UUID.randomUUID().toString());
+                schemaNode.setType(n.has("type") ? n.get("type").asText() : "agent");
+                schemaNode.setName(n.has("name") ? n.get("name").asText() : "Node");
+                if (n.has("position")) {
+                    Node.Position pos = new Node.Position();
+                    pos.setX(n.get("position").has("x") ? n.get("position").get("x").asInt() : 100);
+                    pos.setY(n.get("position").has("y") ? n.get("position").get("y").asInt() : 200);
+                    schemaNode.setPosition(pos);
+                }
+                if (n.has("data")) {
+                    Node.NodeData data = new Node.NodeData();
+                    JsonNode d = n.get("data");
+                    if (d.has("userPrompt")) data.setUserPrompt(d.get("userPrompt").asText());
+                    if (d.has("systemPrompt")) data.setSystemPrompt(d.get("systemPrompt").asText());
+                    schemaNode.setData(data);
+                }
+                nodes.add(schemaNode);
+            }
+        }
+        newSchema.setNodes(nodes);
+
+        List<Edge> edges = new ArrayList<>();
+        if (root.has("edges")) {
+            for (JsonNode e : root.get("edges")) {
+                Edge edge = new Edge();
+                edge.setId(UUID.randomUUID().toString());
+                edge.setSource(e.has("source") ? e.get("source").asText() : "");
+                edge.setTarget(e.has("target") ? e.get("target").asText() : "");
+                edges.add(edge);
+            }
+        }
+        newSchema.setEdges(edges);
+
+        // Save the new schema
+        WorkflowSchema saved = createSchema(newSchema);
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 75, "Creating plan tasks");
+        }
+
+        // Create plan tasks for each generated node
+        for (Node schemaNode : nodes) {
+            try {
+                planService.addTask("default", schemaNode.getName(),
+                        "Node in generated schema: " + saved.getName(),
+                        Priority.MEDIUM, null, null);
+            } catch (Exception e) {
+                log.warn("Failed to create plan task for node {}: {}", schemaNode.getName(), e.getMessage());
+            }
+        }
+
+        // Optionally write .md explanation
+        String planExplanation = root.has("planExplanation") ? root.get("planExplanation").asText() : "";
+        if (generateMd && !planExplanation.isBlank()) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 85, "Writing plan .md");
+            }
+            try {
+                String mdContent = "# " + saved.getName() + "\n\n"
+                        + saved.getDescription() + "\n\n"
+                        + planExplanation + "\n\n"
+                        + "## Nodes\n\n";
+                for (Node n : nodes) {
+                    mdContent += "- **" + n.getName() + "** (" + n.getType() + ")\n";
+                }
+                String mdPath = "plan_" + saved.getId().substring(0, 8) + ".md";
+                writeOutput("file", mdPath, "markdown", mdContent);
+            } catch (Exception e) {
+                log.warn("Failed to write plan .md: {}", e.getMessage());
+            }
+        }
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 95, "Schema created");
+            webSocketHandler.sendLog(schemaId, "success",
+                    "🏗️ SchemaBuilder: created '" + saved.getName() + "' (" + nodes.size() + " nodes)", node.getId());
+        }
+
+        return "Schema created: " + saved.getName() + " (ID: " + saved.getId() + ", " + nodes.size() + " nodes, " + edges.size() + " edges)";
     }
 }

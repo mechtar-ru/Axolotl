@@ -47,6 +47,7 @@
             <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
             <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
             <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
+            <button @click="addNode('schemabuilder'); showAddMenu = false">🏗️ SchemaBuilder</button>
             <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
           </div>
         </div>
@@ -126,6 +127,7 @@ import GuardrailNode from '../nodes/GuardrailNode.vue';
 import HumanNode from '../nodes/HumanNode.vue';
 import FallbackNode from '../nodes/FallbackNode.vue';
 import SubagentNode from '../nodes/SubagentNode.vue';
+import SchemaBuilderNode from '../nodes/SchemaBuilderNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
 import ExecutionPanel from '../execution/ExecutionPanel.vue';
 import AppModal from '../ui/AppModal.vue';
@@ -164,6 +166,7 @@ const nodeTypes = {
   human: HumanNode,
   fallback: FallbackNode,
   subagent: SubagentNode,
+  schemabuilder: SchemaBuilderNode,
 } as any;
 
 const edgeTypes = {
