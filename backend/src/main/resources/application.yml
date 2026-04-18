@@ -27,6 +27,8 @@ spring:
 axolotl:
   db:
     path: ${AXOLOTL_DB_PATH:schema.db}
+  jwt:
+    secret: ${AXOLOTL_JWT_SECRET:axolotl-secret-key-must-be-at-least-32-chars-long-for-hs256}
   llm:
     ollama:
       base-url: http://localhost:11434

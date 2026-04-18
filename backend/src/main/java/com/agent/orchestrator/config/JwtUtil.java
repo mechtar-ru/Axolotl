@@ -20,7 +20,7 @@ public class JwtUtil {
     private static final Logger log = LoggerFactory.getLogger(JwtUtil.class);
     private static final String DEFAULT_SECRET = "axolotl-secret-key-must-be-at-least-32-chars-long-for-hs256";
 
-    @Value("${axolotl.jwt.secret:" + DEFAULT_SECRET + "}")
+    @Value("${axolotl.jwt.secret}")
     private String secret;
 
     @Value("${axolotl.jwt.expiration:86400000}")
@@ -28,12 +28,12 @@ public class JwtUtil {
 
     @jakarta.annotation.PostConstruct
     void init() {
-        if (DEFAULT_SECRET.equals(secret)) {
+        if (secret == null || secret.isBlank()) {
             SecureRandom random = new SecureRandom();
             byte[] bytes = new byte[64];
             random.nextBytes(bytes);
             secret = Base64.getEncoder().encodeToString(bytes);
-            log.warn("JWT secret is default — generated random secret. Tokens will not survive restart. Set axolotl.jwt.secret in properties.");
+            log.warn("JWT secret is not set — generated random secret. Tokens will not survive restart. Set axolotl.jwt.secret in properties.");
         }
     }
 
