@@ -68,6 +68,7 @@ export interface WorkflowSchema {
   version: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  defaultModel?: string;
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;

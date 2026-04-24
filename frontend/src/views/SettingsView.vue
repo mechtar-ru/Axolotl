@@ -11,6 +11,25 @@
       <div v-else-if="error" class="error">{{ error }}</div>
 
       <div v-else>
+        <!-- User default model -->
+        <div class="provider-card user-default-card">
+          <div class="provider-header">
+            <span style="font-size: 20px;">🎯</span>
+            <h2>Модель по умолчанию</h2>
+          </div>
+          <div class="provider-fields">
+            <div class="field">
+              <label>Использовать для новых узлов и схем</label>
+              <select v-model="userDefaultModel" class="field-input" @change="saveUserDefaultModel">
+                <option value="">Авто (Ollama)</option>
+                <optgroup v-for="group in allModelGroups" :key="group.name" :label="group.name">
+                  <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <!-- Built-in providers -->
         <div v-for="provider in builtInProviders" :key="provider.name" class="provider-card">
           <div class="provider-header">
@@ -209,6 +228,28 @@ const customErrors = reactive<Record<string, string>>({});
 const customEditedKeys = reactive<Record<string, string>>({});
 const customShowKeys = reactive<Record<string, boolean>>({});
 
+// User default model
+const userDefaultModel = ref('');
+const allModelOptions = ref<{ value: string; label: string; group: string }[]>([]);
+
+const allModelGroups = computed(() => {
+  const groups: Record<string, { value: string; label: string }[]> = {};
+  for (const opt of allModelOptions.value) {
+    const g = groups[opt.group];
+    if (g) g.push(opt);
+    else groups[opt.group] = [opt];
+  }
+  return Object.entries(groups).map(([name, options]) => ({ name, options }));
+});
+
+async function saveUserDefaultModel() {
+  try {
+    await settingsApi.setUserDefaultModel(userDefaultModel.value);
+  } catch (e: any) {
+    error.value = 'Ошибка сохранения: ' + (e.message || e);
+  }
+}
+
 const builtInProviders = computed(() => providers.value.filter(p => !p.custom));
 
 function getProviderLabel(name: string): string {
@@ -352,6 +393,21 @@ function goBack() {
 
 onMounted(async () => {
   await Promise.all([refreshProviders(), refreshCustomEndpoints()]);
+  // Load user default model
+  try {
+    userDefaultModel.value = await settingsApi.getUserDefaultModel();
+  } catch {}
+  // Build flat model list from all providers
+  const opts: { value: string; label: string; group: string }[] = [];
+  for (const p of providers.value) {
+    const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
+    if (p.models?.length > 0) {
+      for (const model of p.models) {
+        opts.push({ value: model, label: model, group });
+      }
+    }
+  }
+  allModelOptions.value = opts;
 });
 </script>
 
@@ -651,5 +707,10 @@ onMounted(async () => {
   padding: 24px;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+.user-default-card {
+  border-left: 3px solid var(--accent);
+  margin-bottom: 24px;
 }
 </style>

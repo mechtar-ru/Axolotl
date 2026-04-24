@@ -64,6 +64,15 @@
           <button class="toolbar-btn" @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠</button>
           <button class="toolbar-btn" @click="exportAsImage" title="Сохранить как PNG">📷</button>
         </div>
+        <div class="toolbar-separator"></div>
+        <div class="toolbar-group">
+          <select class="toolbar-model-select" v-model="schemaDefaultModel" @change="updateSchemaDefaultModel" title="Модель по умолчанию для схемы">
+            <option value="">Модель: авто</option>
+            <optgroup v-for="group in defaultModelGroups" :key="group.name" :label="group.name">
+              <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </optgroup>
+          </select>
+        </div>
       </div>
     </VueFlow>
 
@@ -139,7 +148,7 @@ import MemoryResultCard from '../nodes/MemoryResultCard.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useToast } from '../../composables/useToast';
-import { schemaApi } from '../../services/api';
+import { schemaApi, settingsApi } from '../../services/api';
 import { toPng } from 'html-to-image';
 
 const props = defineProps<{
@@ -253,6 +262,39 @@ const executionEstimatedCost = ref(0);
 const executionStartTime = ref(0);
 const elapsedSeconds = ref(0);
 let timerInterval: number | null = null;
+
+const schemaDefaultModel = ref(props.schema.defaultModel || '');
+const defaultModelOptions = ref<{ value: string; label: string; group: string }[]>([]);
+
+const defaultModelGroups = computed(() => {
+  const groups: Record<string, { value: string; label: string }[]> = {};
+  for (const opt of defaultModelOptions.value) {
+    const g = groups[opt.group];
+    if (g) g.push(opt);
+    else groups[opt.group] = [opt];
+  }
+  return Object.entries(groups).map(([name, options]) => ({ name, options }));
+});
+
+onMounted(async () => {
+  try {
+    const providers = await settingsApi.getProviders();
+    const opts: { value: string; label: string; group: string }[] = [];
+    for (const p of providers) {
+      const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
+      if (p.models?.length > 0) {
+        for (const model of p.models) {
+          opts.push({ value: model, label: model, group });
+        }
+      }
+    }
+    defaultModelOptions.value = opts;
+  } catch {}
+});
+
+function updateSchemaDefaultModel() {
+  emit('update', { ...props.schema, defaultModel: schemaDefaultModel.value });
+}
 
 interface LogEntry {
   timestamp: number;
@@ -670,6 +712,12 @@ function addNode(type: string, position?: { x: number; y: number }, nodeData?: R
   if (type === 'agent') newNode.data.userPrompt = '';
   if (type === 'source') newNode.data.sourceData = '';
   if (type === 'condition') newNode.data.condition = '';
+
+  // Pre-fill default model for LLM-capable nodes
+  if (type === 'agent' || type === 'schemabuilder') {
+    const defaultModel = props.schema.defaultModel || '';
+    if (defaultModel) newNode.data.model = defaultModel;
+  }
   if (type === 'loop') { newNode.data.loopCondition = ''; newNode.data.maxIterations = 10; }
 
   nextNodeOffset++;
@@ -1281,6 +1329,16 @@ function ungroupSelectedNode() {
 .toolbar-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.toolbar-model-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  max-width: 180px;
 }
 
 .chevron {

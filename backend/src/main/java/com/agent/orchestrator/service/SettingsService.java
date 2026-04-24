@@ -183,6 +183,22 @@ public class SettingsService {
         return null;
     }
 
+    public String getGlobalDefaultModel() {
+        return getDefaultModel("__global__");
+    }
+
+    public void setGlobalDefaultModel(String model) {
+        updateProviderSettings("__global__", null, null, model);
+    }
+
+    public String getUserDefaultModel(String userId) {
+        return getDefaultModel("__user__:" + userId);
+    }
+
+    public void setUserDefaultModel(String userId, String model) {
+        updateProviderSettings("__user__:" + userId, null, null, model);
+    }
+
     public List<Map<String, Object>> getAllProviderSettings() {
         List<Map<String, Object>> result = new ArrayList<>();
         String sql = "SELECT * FROM provider_settings";

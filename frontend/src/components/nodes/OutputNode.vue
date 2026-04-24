@@ -57,10 +57,15 @@
           </select>
         </div>
       </template>
-      <div v-if="props.data.result" class="node-result">
-        <span v-if="outputType === 'file' && props.data.executionStatus === 'completed'" class="file-saved">✅ {{ props.data.result }}</span>
-        <span v-else>{{ props.data.result }}</span>
-      </div>
+      <template v-if="props.data.result">
+        <button class="result-toggle" @click="resultExpanded = !resultExpanded">
+          {{ resultExpanded ? '▼ Результат' : '▶ Результат' }}
+        </button>
+        <div v-if="resultExpanded" class="node-result">
+          <span v-if="outputType === 'file' && props.data.executionStatus === 'completed'" class="file-saved">✅ {{ props.data.result }}</span>
+          <span v-else>{{ props.data.result }}</span>
+        </div>
+      </template>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
@@ -101,6 +106,7 @@ const editingName = ref(false);
 const localName = ref(props.data.name);
 const nameInput = ref<HTMLInputElement | null>(null);
 const expanded = ref(true);
+const resultExpanded = ref(true);
 
 const outputType = ref<'log' | 'file'>(props.data.outputType || 'log');
 const filePath = ref(props.data.filePath || './output/result.md');

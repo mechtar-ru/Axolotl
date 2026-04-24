@@ -44,10 +44,14 @@
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
       </div>
-      <div v-if="props.data.result" class="node-result">
-        <strong>Результат:</strong>
-        <div>{{ props.data.result }}</div>
-      </div>
+      <template v-if="props.data.result">
+        <button class="result-toggle" @click="resultExpanded = !resultExpanded">
+          {{ resultExpanded ? '▼ Результат' : '▶ Результат' }}
+        </button>
+        <div v-if="resultExpanded" class="node-result">
+          <div>{{ props.data.result }}</div>
+        </div>
+      </template>
       <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
@@ -83,6 +87,7 @@ const localName = ref(props.data.name);
 const localSourceData = ref(props.data.sourceData || '');
 const nameInput = ref<HTMLInputElement | null>(null);
 const expanded = ref(true);
+const resultExpanded = ref(true);
 const isDragging = ref(false);
 
 function handleDrop(event: DragEvent) {

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { WorkflowSchema, FlowNode, FlowEdge, ExecutionMode } from '../types';
-import { schemaApi } from '../services/api';
+import { schemaApi, settingsApi } from '../services/api';
 
 export const useSchemaStore = defineStore('schema', () => {
   const schemas = ref<WorkflowSchema[]>([]);
@@ -25,6 +25,13 @@ export const useSchemaStore = defineStore('schema', () => {
   }
   
   async function createSchema(name: string) {
+    // Pre-fill user default model if available
+    let defaultModel: string | undefined;
+    try {
+      defaultModel = await settingsApi.getUserDefaultModel();
+      if (!defaultModel) defaultModel = undefined;
+    } catch {}
+
     const newSchema = {
       id: `new-${Date.now()}`,
       name,
@@ -32,6 +39,7 @@ export const useSchemaStore = defineStore('schema', () => {
       version: '1.0',
       nodes: [],
       edges: [],
+      defaultModel,
       createdAt: new Date().toISOString(),
     } as WorkflowSchema;
     try {

@@ -2,6 +2,8 @@ package com.agent.orchestrator.controller;
 
 import com.agent.orchestrator.service.SettingsService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -66,5 +68,52 @@ public class SettingsController {
         // TODO: actual health check via HTTP call
         response.put("available", apiKey != null && !apiKey.isBlank());
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/default-model")
+    public ResponseEntity<Map<String, Object>> getDefaultModel() {
+        String model = settingsService.getGlobalDefaultModel();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("defaultModel", model != null ? model : "");
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/default-model")
+    public ResponseEntity<Map<String, Object>> setDefaultModel(@RequestBody Map<String, String> body) {
+        String model = body.get("defaultModel");
+        settingsService.setGlobalDefaultModel(model);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "ok");
+        response.put("defaultModel", model);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/user/default-model")
+    public ResponseEntity<Map<String, Object>> getUserDefaultModel() {
+        String userId = getCurrentUserId();
+        String model = userId != null ? settingsService.getUserDefaultModel(userId) : null;
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("defaultModel", model != null ? model : "");
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/user/default-model")
+    public ResponseEntity<Map<String, Object>> setUserDefaultModel(@RequestBody Map<String, String> body) {
+        String userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).build();
+        String model = body.get("defaultModel");
+        settingsService.setUserDefaultModel(userId, model);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "ok");
+        response.put("defaultModel", model);
+        return ResponseEntity.ok(response);
+    }
+
+    private String getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            return auth.getName();
+        }
+        return null;
     }
 }

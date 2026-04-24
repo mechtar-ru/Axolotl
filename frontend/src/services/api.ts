@@ -129,6 +129,24 @@ export const settingsApi = {
     const response = await api.get(`/settings/${provider}/health`);
     return response.data;
   },
+
+  async getDefaultModel(): Promise<string> {
+    const response = await api.get('/settings/default-model');
+    return response.data.defaultModel || '';
+  },
+
+  async setDefaultModel(model: string): Promise<void> {
+    await api.put('/settings/default-model', { defaultModel: model });
+  },
+
+  async getUserDefaultModel(): Promise<string> {
+    const response = await api.get('/settings/user/default-model');
+    return response.data.defaultModel || '';
+  },
+
+  async setUserDefaultModel(model: string): Promise<void> {
+    await api.put('/settings/user/default-model', { defaultModel: model });
+  },
 };
 
 export interface CustomLlmEndpoint {

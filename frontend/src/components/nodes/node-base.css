@@ -178,6 +178,21 @@
   font-weight: bold;
 }
 
+.result-toggle {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 0 0;
+  width: 100%;
+  text-align: left;
+}
+
+.result-toggle:hover {
+  color: var(--text-primary);
+}
+
 .node-result {
   margin-top: 10px;
   padding: 8px;

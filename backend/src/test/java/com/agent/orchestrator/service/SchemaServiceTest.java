@@ -26,12 +26,13 @@ class SchemaServiceTest {
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock MemPalaceClient memPalaceClient;
     @Mock PlanService planService;
+    @Mock SettingsService settingsService;
 
     SchemaService schemaService;
 
     @BeforeEach
     void setUp() {
-        schemaService = new SchemaService(schemaRepository, llmService, webSocketHandler, memPalaceClient, planService);
+        schemaService = new SchemaService(schemaRepository, llmService, webSocketHandler, memPalaceClient, planService, settingsService);
     }
 
     // === Topological Sort / Execution Levels ===

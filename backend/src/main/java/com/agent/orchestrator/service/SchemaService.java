@@ -38,6 +38,7 @@ public class SchemaService {
     private final ExecutionWebSocketHandler webSocketHandler;
     private final MemPalaceClient memPalaceClient;
     private final PlanService planService;
+    private final SettingsService settingsService;
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
@@ -55,12 +56,14 @@ public class SchemaService {
             LlmService llmService,
             ExecutionWebSocketHandler webSocketHandler,
             MemPalaceClient memPalaceClient,
-            PlanService planService) {
+            PlanService planService,
+            SettingsService settingsService) {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
         this.planService = planService;
+        this.settingsService = settingsService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -1219,10 +1222,10 @@ public class SchemaService {
         String prompt = node.getData() != null && node.getData().getUserPrompt() != null
                 ? node.getData().getUserPrompt()
                 : "Анализируй данные";
-        String model = node.getData() != null ? node.getData().getModel() : null;
         String systemPrompt = node.getData() != null ? node.getData().getSystemPrompt() : null;
 
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
+        String model = resolveModel(node.getData() != null ? node.getData().getModel() : null, currentSchema);
         Map<String, Object> predecessorResults = collectPredecessorResults(currentSchema, node.getId());
         String contextBlock = buildContextBlock(predecessorResults);
         if (!contextBlock.isEmpty()) {
@@ -1368,7 +1371,7 @@ public class SchemaService {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 40, "Sending to LLM");
         }
 
-        String model = node.getData() != null ? node.getData().getModel() : null;
+        String model = resolveModel(node.getData() != null ? node.getData().getModel() : null, schemaRepository.findById(schemaId));
         String llmResponse = llmService.chat(model, SCHEMA_BUILDER_SYSTEM_PROMPT, input, null);
 
         if (llmResponse == null || llmResponse.isBlank()
@@ -1494,5 +1497,17 @@ public class SchemaService {
             schema.setEdges(schema.getEdges().stream().filter(e -> e != null && e.getId() != null).toList());
         }
         return schema;
+    }
+
+    private String resolveModel(String nodeModel, WorkflowSchema schema) {
+        if (nodeModel != null && !nodeModel.isBlank()) return nodeModel;
+        if (schema.getDefaultModel() != null && !schema.getDefaultModel().isBlank()) return schema.getDefaultModel();
+        if (schema.getUserId() != null) {
+            String userModel = settingsService.getUserDefaultModel(schema.getUserId());
+            if (userModel != null && !userModel.isBlank()) return userModel;
+        }
+        String global = settingsService.getGlobalDefaultModel();
+        if (global != null && !global.isBlank()) return global;
+        return null;
     }
 }
