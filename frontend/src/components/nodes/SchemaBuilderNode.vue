@@ -8,6 +8,15 @@
     </div>
     <div class="node-body">
       <div class="config-row">
+        <label class="config-label">Model:</label>
+        <select v-model="localModel" class="model-select">
+          <option value="">Default</option>
+          <optgroup v-for="group in modelGroups" :key="group.name" :label="group.name">
+            <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="config-row">
         <label>
           <input type="checkbox" :checked="generateMd" @change="toggleMd" />
           📄 Generate .md plan
@@ -29,11 +38,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { settingsApi } from '../../services/api';
 
 interface NodeData {
   name?: string;
+  model?: string;
   config?: Record<string, any>;
   result?: string;
 }
@@ -49,13 +60,53 @@ const emit = defineEmits<{
   (e: 'update:data', data: NodeData): void;
 }>();
 
+const localModel = ref(props.data.model || '');
+const providerOptions = ref<{ value: string; label: string; group: string }[]>([]);
+
+onMounted(async () => {
+  try {
+    const providers = await settingsApi.getProviders();
+    const opts: { value: string; label: string; group: string }[] = [];
+    for (const p of providers) {
+      const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
+      if (p.models?.length > 0) {
+        for (const model of p.models) {
+          opts.push({ value: model, label: model, group });
+        }
+      } else {
+        opts.push({ value: p.name, label: `${group} (default)`, group });
+      }
+    }
+    providerOptions.value = opts;
+  } catch {
+    providerOptions.value = [
+      { value: 'ollama', label: 'Ollama (local)', group: 'Ollama' },
+      { value: 'qwen2.5:7b', label: 'Qwen 2.5 7B', group: 'Ollama' },
+    ];
+  }
+});
+
+const modelGroups = computed(() => {
+  const groups: Record<string, { value: string; label: string }[]> = {};
+  for (const opt of providerOptions.value) {
+    const g = groups[opt.group];
+    if (g) g.push(opt);
+    else groups[opt.group] = [opt];
+  }
+  return Object.entries(groups).map(([name, options]) => ({ name, options }));
+});
+
 const generateMd = computed(() => props.data.config?.generateMd !== false);
+
+watch(localModel, (newVal) => {
+  emit('update:data', { ...props.data, model: newVal } as NodeData);
+});
 
 function toggleMd() {
   emit('update:data', {
     ...props.data,
     config: { ...props.data.config, generateMd: !generateMd.value },
-  });
+  } as NodeData);
 }
 
 function truncateResult(text: string): string {
@@ -75,17 +126,9 @@ function truncateResult(text: string): string {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.schemabuilder-node.completed {
-  border-color: #10b981;
-}
-
-.schemabuilder-node.running {
-  border-color: #f59e0b;
-}
-
-.schemabuilder-node.failed {
-  border-color: #ef4444;
-}
+.schemabuilder-node.completed { border-color: #10b981; }
+.schemabuilder-node.running { border-color: #f59e0b; }
+.schemabuilder-node.failed { border-color: #ef4444; }
 
 .node-header {
   display: flex;
@@ -97,9 +140,7 @@ function truncateResult(text: string): string {
   border-bottom: 1px solid #f59e0b44;
 }
 
-.node-icon {
-  font-size: 18px;
-}
+.node-icon { font-size: 18px; }
 
 .node-title {
   flex: 1;
@@ -117,12 +158,26 @@ function truncateResult(text: string): string {
   font-weight: 600;
 }
 
-.node-body {
-  padding: 12px;
+.node-body { padding: 12px; }
+
+.config-row { margin-bottom: 8px; }
+
+.config-label {
+  display: block;
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 4px;
 }
 
-.config-row {
-  margin-bottom: 8px;
+.model-select {
+  width: 100%;
+  background: #0f0f1a;
+  color: #eee;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .config-row label {
@@ -134,9 +189,7 @@ function truncateResult(text: string): string {
   cursor: pointer;
 }
 
-.config-row input[type="checkbox"] {
-  accent-color: #f59e0b;
-}
+.config-row input[type="checkbox"] { accent-color: #f59e0b; }
 
 .config-hint {
   color: #666;

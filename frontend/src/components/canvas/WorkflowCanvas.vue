@@ -1,7 +1,7 @@
 <template>
   <div class="canvas-container">
     <div class="schema-name" @click="editSchemaName">
-      <span class="schema-title" @click="editSchemaName">📝 {{ schema.name }}</span>
+      <span class="schema-title" @click.stop="editSchemaName">📝 {{ schema.name }}</span>
       <div class="schema-actions" @click.stop>
         <select v-model="executionMode" class="mode-selector" title="Режим выполнения">
           <option value="EXECUTE">▶️ Execute</option>
@@ -433,11 +433,11 @@ function onNodeContextMenu(event: NodeMouseEvent) {
 
 function startRenameFromCtx() {
   ctxMenu.value.visible = false;
-  // Find the node element and trigger dblclick on name
-  const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
-  if (node && node.data?.onRename) {
-    const newName = prompt('Новое имя:', node.name);
-    if (newName?.trim()) node.data.onRename(newName.trim());
+  const nodeId = ctxMenu.value.nodeId;
+  const el = elements.value.find((e: any) => e.id === nodeId);
+  if (el && (el as any).data?.onRename) {
+    const newName = prompt('Новое имя:', (el as any).data?.name || '');
+    if (newName?.trim()) (el as any).data.onRename(newName.trim());
   }
 }
 

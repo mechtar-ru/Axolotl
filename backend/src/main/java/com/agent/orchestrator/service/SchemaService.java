@@ -1361,10 +1361,12 @@ public class SchemaService {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 40, "Sending to LLM");
         }
 
-        String llmResponse = llmService.chat(null, SCHEMA_BUILDER_SYSTEM_PROMPT, input, null);
+        String model = node.getData() != null ? node.getData().getModel() : null;
+        String llmResponse = llmService.chat(model, SCHEMA_BUILDER_SYSTEM_PROMPT, input, null);
 
-        if (llmResponse == null || llmResponse.isBlank()) {
-            return "Error: LLM returned empty response";
+        if (llmResponse == null || llmResponse.isBlank()
+                || llmResponse.startsWith("Error:") || llmResponse.startsWith("Ollama")) {
+            return "Error: LLM call failed — " + (llmResponse != null ? llmResponse : "empty response");
         }
 
         // Strip markdown fences if present
