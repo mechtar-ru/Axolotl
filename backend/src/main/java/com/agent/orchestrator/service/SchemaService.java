@@ -77,7 +77,7 @@ public class SchemaService {
     }
 
     public WorkflowSchema getSchema(String id) {
-        return schemaRepository.findById(id);
+        return sanitizeSchema(schemaRepository.findById(id));
     }
 
     public WorkflowSchema createSchema(WorkflowSchema schema) {
@@ -93,13 +93,20 @@ public class SchemaService {
     public WorkflowSchema updateSchema(String id, WorkflowSchema schema) {
         schema.setId(id);
         schema.setUpdatedAt(Instant.now().toString());
+        // Sanitize: remove null entries from nodes/edges lists
+        if (schema.getNodes() != null) {
+            schema.setNodes(schema.getNodes().stream().filter(n -> n != null && n.getId() != null).toList());
+        }
+        if (schema.getEdges() != null) {
+            schema.setEdges(schema.getEdges().stream().filter(e -> e != null && e.getId() != null).toList());
+        }
         schemaRepository.save(schema);
 
         // Schema versioning: save each change to MemPalace
         if (memPalaceClient.isEnabled()) {
             int nodeCount = schema.getNodes() != null ? schema.getNodes().size() : 0;
             int edgeCount = schema.getEdges() != null ? schema.getEdges().size() : 0;
-            String nodeTypes = schema.getNodes() != null
+            String nodeTypes = !schema.getNodes().isEmpty()
                     ? schema.getNodes().stream()
                         .map(n -> n.getType() + "(" + n.getName() + ")")
                         .reduce((a, b) -> a + ", " + b).orElse("")
@@ -1476,5 +1483,16 @@ public class SchemaService {
         }
 
         return "Schema created: " + saved.getName() + " (ID: " + saved.getId() + ", " + nodes.size() + " nodes, " + edges.size() + " edges)";
+    }
+
+    private WorkflowSchema sanitizeSchema(WorkflowSchema schema) {
+        if (schema == null) return null;
+        if (schema.getNodes() != null) {
+            schema.setNodes(schema.getNodes().stream().filter(n -> n != null && n.getId() != null).toList());
+        }
+        if (schema.getEdges() != null) {
+            schema.setEdges(schema.getEdges().stream().filter(e -> e != null && e.getId() != null).toList());
+        }
+        return schema;
     }
 }

@@ -80,22 +80,26 @@ public class LlmService {
     private String resolveProvider(String model) {
         if (model == null || model.isBlank()) return "ollama";
         String lower = model.toLowerCase();
-        // Direct provider name
         if (providers.containsKey(lower)) return lower;
-        return switch (lower) {
+        if (lower.startsWith("@cf/")) return "custom";
+        String stripped = stripEndpointPrefix(lower);
+        return switch (stripped) {
             case "local" -> "ollama";
             case "gpt" -> "openai";
             case "claude" -> "anthropic";
             default -> {
-                // Match by model name prefix
-                if (lower.startsWith("gpt-") || lower.startsWith("o1-") || lower.startsWith("o3-")) yield "openai";
-                if (lower.startsWith("claude-")) yield "anthropic";
-                if (lower.startsWith("deepseek-")) yield "deepseek";
-                if (lower.startsWith("llama") || lower.startsWith("gemma") || lower.startsWith("mistral") || lower.startsWith("qwen")) yield "ollama";
-                // Fallback to ollama
+                if (stripped.startsWith("gpt-") || stripped.startsWith("o1-") || stripped.startsWith("o3-")) yield "openai";
+                if (stripped.startsWith("claude-")) yield "anthropic";
+                if (stripped.startsWith("deepseek-")) yield "deepseek";
+                if (stripped.startsWith("llama") || stripped.startsWith("gemma") || stripped.startsWith("mistral") || stripped.startsWith("qwen")) yield "ollama";
                 yield "ollama";
             }
         };
+    }
+
+    private String stripEndpointPrefix(String model) {
+        int colon = model.indexOf(':');
+        return colon > 0 ? model.substring(colon + 1) : model;
     }
 
     /**

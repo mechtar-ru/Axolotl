@@ -476,8 +476,9 @@ function toggleCollapseCtx() {
 function openPromptEditorFromCtx() {
   ctxMenu.value.visible = false;
   const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
-  if (node?.data?.onOpenPromptEditor) {
-    node.data.onOpenPromptEditor();
+  const nodeData = node?.data as any;
+  if (nodeData?.onOpenPromptEditor) {
+    nodeData.onOpenPromptEditor();
   }
 }
 
@@ -640,7 +641,7 @@ function generateUniqueName(baseName: string): string {
   return `${baseName} (${counter})`;
 }
 
-function addNode(type: string) {
+function addNode(type: string, position?: { x: number; y: number }, nodeData?: Record<string, any>) {
   const nameMap = {
     source: 'Входные данные',
     agent: 'Аналитик',
@@ -661,8 +662,8 @@ function addNode(type: string) {
     id: `node-${Date.now()}-${Math.random()}`,
     type: type as any,
     name: uniqueName,
-    position: { x: 250 + offset * 30, y: 250 + offset * 30 },
-    data: {},
+    position: position || { x: 250 + offset * 30, y: 250 + offset * 30 },
+    data: nodeData || {},
     status: 'idle',
   };
 
@@ -943,6 +944,8 @@ function onNodeDragStop(event: NodeDragEvent) {
   });
   emit('update', { ...props.schema, nodes: updatedNodes });
 }
+
+// === Auto-save on node data changes (debounced) ===
 
 function editSchemaName() {
   const newName = prompt('Введите новое имя схемы:', props.schema.name);
