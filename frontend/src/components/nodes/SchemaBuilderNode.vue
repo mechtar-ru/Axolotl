@@ -47,6 +47,7 @@ interface NodeData {
   model?: string;
   config?: Record<string, any>;
   result?: string;
+  onUpdate?: (updates: any) => void;
 }
 
 const props = defineProps<{
@@ -99,14 +100,22 @@ const modelGroups = computed(() => {
 const generateMd = computed(() => props.data.config?.generateMd !== false);
 
 watch(localModel, (newVal) => {
-  emit('update:data', { ...props.data, model: newVal } as NodeData);
+  if (props.data.onUpdate) {
+    props.data.onUpdate({ model: newVal });
+  } else {
+    emit('update:data', { ...props.data, model: newVal } as NodeData);
+  }
 });
 
 function toggleMd() {
-  emit('update:data', {
-    ...props.data,
-    config: { ...props.data.config, generateMd: !generateMd.value },
-  } as NodeData);
+  if (props.data.onUpdate) {
+    props.data.onUpdate({ config: { ...props.data.config, generateMd: !generateMd.value } });
+  } else {
+    emit('update:data', {
+      ...props.data,
+      config: { ...props.data.config, generateMd: !generateMd.value },
+    } as NodeData);
+  }
 }
 
 function truncateResult(text: string): string {

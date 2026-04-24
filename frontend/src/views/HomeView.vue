@@ -150,7 +150,7 @@
 
     <PlanPanel
       :visible="showPlan"
-      :schema-nodes="(schemaStore.currentSchema?.nodes || []).map(n => ({ id: n.id, name: n.name, type: n.type }))"
+      :schema-nodes="(schemaStore.currentSchema?.nodes || []).filter(n => n).map(n => ({ id: n.id, name: n.name, type: n.type }))"
       @close="showPlan = false"
       @highlight-node="highlightCanvasNode"
     />
