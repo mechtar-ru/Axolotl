@@ -11,6 +11,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isElectron = process.env.ELECTRON === 'true'
 
 export default defineConfig({
+  server: {
+    allowedHosts: ['slam-setback-swampland.ngrok-free.dev'],
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+      },
+    },
+  },
   plugins: [
     vue(),
     vueDevTools(),
