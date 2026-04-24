@@ -112,7 +112,11 @@ public class CustomLlmProvider implements LlmProvider {
 
             if (response.statusCode() == 200) {
                 var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(response.body());
-                return node.at("/choices/0/message/content").asText();
+                String content = node.at("/choices/0/message/content").asText();
+                if (content == null || content.isBlank()) {
+                    content = node.at("/choices/0/message/reasoning_content").asText();
+                }
+                return content != null ? content : "";
             } else {
                 log.error("Custom LLM request failed: {} - {}", response.statusCode(), response.body());
                 return "Error: HTTP " + response.statusCode();
@@ -169,6 +173,9 @@ public class CustomLlmProvider implements LlmProvider {
                                     try {
                                         var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(data);
                                         String content = node.at("/choices/0/delta/content").asText("");
+                                        if (content.isEmpty()) {
+                                            content = node.at("/choices/0/delta/reasoning_content").asText("");
+                                        }
                                         if (!content.isEmpty()) {
                                             fullResponse.append(content);
                                             tokenConsumer.accept(content);
@@ -202,7 +209,7 @@ public class CustomLlmProvider implements LlmProvider {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
             requestBody.put("messages", List.of(Map.of("role", "user", "content", "ping")));
-            requestBody.put("max_tokens", 5);
+            requestBody.put("max_tokens", 50);
 
             String jsonBody = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(requestBody);
 

@@ -139,16 +139,17 @@ public class SpringAiLlmProvider implements LlmProvider {
     @Override
     public boolean isAvailable() {
         try {
-            String result = ollamaChatClient.prompt()
-                    .messages(new UserMessage("test"))
-                    .options(OllamaChatOptions.builder()
-                            .model("qwen2.5:0.5b")
-                            .build())
-                    .call()
-                    .content();
-            return result != null;
+            var response = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(2))
+                    .build()
+                    .send(java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create("http://localhost:11434/api/tags"))
+                            .timeout(java.time.Duration.ofSeconds(3))
+                            .GET()
+                            .build(),
+                            java.net.http.HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
         } catch (Exception e) {
-            log.warn("Spring AI Ollama not available: {}", e.getMessage());
             return false;
         }
     }

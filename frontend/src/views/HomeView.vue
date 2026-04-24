@@ -150,7 +150,7 @@
 
     <PlanPanel
       :visible="showPlan"
-      :schema-nodes="(schemaStore.currentSchema?.nodes || []).map(n => ({ id: n.id, name: n.name, type: n.type }))"
+      :schema-nodes="(schemaStore.currentSchema?.nodes || []).filter(n => n).map(n => ({ id: n.id, name: n.name, type: n.type }))"
       @close="showPlan = false"
       @highlight-node="highlightCanvasNode"
     />
@@ -427,8 +427,21 @@ function savePythonToFile() {
   URL.revokeObjectURL(url);
 }
 
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
 function handleSchemaUpdate(updatedSchema: WorkflowSchema) {
+  // Filter null nodes before processing
+  if (updatedSchema.nodes) {
+    updatedSchema.nodes = updatedSchema.nodes.filter(n => n != null && n.id);
+  }
   schemaStore.updateCurrentSchema(updatedSchema);
+  // Debounced auto-save (500ms)
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (schemaStore.currentSchema) {
+      schemaStore.updateSchema(schemaStore.currentSchema);
+    }
+  }, 500);
 }
 
 async function handleDeleteSchema(id: string) {

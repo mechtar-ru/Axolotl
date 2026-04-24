@@ -1,7 +1,7 @@
 <template>
   <div class="canvas-container">
     <div class="schema-name" @click="editSchemaName">
-      <span class="schema-title" @click="editSchemaName">📝 {{ schema.name }}</span>
+      <span class="schema-title" @click.stop="editSchemaName">📝 {{ schema.name }}</span>
       <div class="schema-actions" @click.stop>
         <select v-model="executionMode" class="mode-selector" title="Режим выполнения">
           <option value="EXECUTE">▶️ Execute</option>
@@ -47,6 +47,7 @@
             <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
             <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
             <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
+            <button @click="addNode('schemabuilder'); showAddMenu = false">🏗️ SchemaBuilder</button>
             <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
           </div>
         </div>
@@ -126,6 +127,7 @@ import GuardrailNode from '../nodes/GuardrailNode.vue';
 import HumanNode from '../nodes/HumanNode.vue';
 import FallbackNode from '../nodes/FallbackNode.vue';
 import SubagentNode from '../nodes/SubagentNode.vue';
+import SchemaBuilderNode from '../nodes/SchemaBuilderNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
 import ExecutionPanel from '../execution/ExecutionPanel.vue';
 import AppModal from '../ui/AppModal.vue';
@@ -164,6 +166,7 @@ const nodeTypes = {
   human: HumanNode,
   fallback: FallbackNode,
   subagent: SubagentNode,
+  schemabuilder: SchemaBuilderNode,
 } as any;
 
 const edgeTypes = {
@@ -430,11 +433,11 @@ function onNodeContextMenu(event: NodeMouseEvent) {
 
 function startRenameFromCtx() {
   ctxMenu.value.visible = false;
-  // Find the node element and trigger dblclick on name
-  const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
-  if (node && node.data?.onRename) {
-    const newName = prompt('Новое имя:', node.name);
-    if (newName?.trim()) node.data.onRename(newName.trim());
+  const nodeId = ctxMenu.value.nodeId;
+  const el = elements.value.find((e: any) => e.id === nodeId);
+  if (el && (el as any).data?.onRename) {
+    const newName = prompt('Новое имя:', (el as any).data?.name || '');
+    if (newName?.trim()) (el as any).data.onRename(newName.trim());
   }
 }
 
@@ -473,8 +476,9 @@ function toggleCollapseCtx() {
 function openPromptEditorFromCtx() {
   ctxMenu.value.visible = false;
   const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
-  if (node?.data?.onOpenPromptEditor) {
-    node.data.onOpenPromptEditor();
+  const nodeData = node?.data as any;
+  if (nodeData?.onOpenPromptEditor) {
+    nodeData.onOpenPromptEditor();
   }
 }
 
@@ -637,7 +641,7 @@ function generateUniqueName(baseName: string): string {
   return `${baseName} (${counter})`;
 }
 
-function addNode(type: string) {
+function addNode(type: string, position?: { x: number; y: number }, nodeData?: Record<string, any>) {
   const nameMap = {
     source: 'Входные данные',
     agent: 'Аналитик',
@@ -658,8 +662,8 @@ function addNode(type: string) {
     id: `node-${Date.now()}-${Math.random()}`,
     type: type as any,
     name: uniqueName,
-    position: { x: 250 + offset * 30, y: 250 + offset * 30 },
-    data: {},
+    position: position || { x: 250 + offset * 30, y: 250 + offset * 30 },
+    data: nodeData || {},
     status: 'idle',
   };
 
@@ -940,6 +944,8 @@ function onNodeDragStop(event: NodeDragEvent) {
   });
   emit('update', { ...props.schema, nodes: updatedNodes });
 }
+
+// === Auto-save on node data changes (debounced) ===
 
 function editSchemaName() {
   const newName = prompt('Введите новое имя схемы:', props.schema.name);

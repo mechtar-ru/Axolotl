@@ -41,7 +41,7 @@ export interface SourceItem {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder';
   parentId?: string;
   collapsed?: boolean;
   name: string;

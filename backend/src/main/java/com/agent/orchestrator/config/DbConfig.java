@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
 import jakarta.annotation.PostConstruct;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
@@ -18,8 +20,17 @@ public class DbConfig {
 
     private final String dbUrl;
 
-    public DbConfig(@Value("${axolotl.db.path:schema.db}") String dbPath) {
-        dbUrl = "jdbc:sqlite:" + dbPath;
+    public DbConfig(@Value("${axolotl.db.path:}") String dbPath) {
+        if (dbPath != null && !dbPath.isBlank()) {
+            // Env var provided — resolve to absolute
+            Path resolved = Paths.get(dbPath).toAbsolutePath();
+            dbUrl = "jdbc:sqlite:" + resolved;
+        } else {
+            // Default: ~/.axolotl/schema.db (OS-agnostic, survives app updates)
+            Path dataDir = Paths.get(System.getProperty("user.home"), ".axolotl");
+            dataDir.toFile().mkdirs();
+            dbUrl = "jdbc:sqlite:" + dataDir.resolve("schema.db");
+        }
         log.info("DbConfig dbUrl: {}", dbUrl);
     }
 
