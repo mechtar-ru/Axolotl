@@ -1,10 +1,10 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  base: '/Axolotl/',
+  
   title: 'Axolotl',
   description: 'Visual AI Agent Orchestration Platform',
-
-  outDir: '../.vitepress/dist',
 
   head: [
     ['link', { rel: 'icon', href: '/logo.svg' }]
