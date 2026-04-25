@@ -50,6 +50,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue';
 import { Handle, Position } from '@vue-flow/core';
+import { api } from '../../services/api';
 
 interface MemoryResult {
   wing: string;
@@ -120,22 +121,18 @@ async function searchMemory() {
   searching.value = true;
   results.value = [];
   try {
-    const params = new URLSearchParams({ query: searchQuery.value, limit: '5' });
-    if (filterWing.value) params.set('wing', filterWing.value);
-    if (filterRoom.value) params.set('room', filterRoom.value);
-    const response = await fetch(`/api/memory/search?${params}`);
-    if (response.ok) {
-      const data = await response.json();
-      results.value = data.map((r: any) => ({
-        wing: r.wing || '',
-        room: r.room || '',
-        content: r.content || '',
-        score: r.score,
-      }));
-      // Emit results for floating cards on canvas
-      if (props.data.onMemoryResults) {
-        props.data.onMemoryResults(props.id, results.value);
-      }
+    const params: Record<string, string> = { query: searchQuery.value, limit: '5' };
+    if (filterWing.value) params.wing = filterWing.value;
+    if (filterRoom.value) params.room = filterRoom.value;
+    const { data } = await api.get('/memory/search', { params });
+    results.value = data.map((r: any) => ({
+      wing: r.wing || '',
+      room: r.room || '',
+      content: r.content || '',
+      score: r.score,
+    }));
+    if (props.data.onMemoryResults) {
+      props.data.onMemoryResults(props.id, results.value);
     }
   } catch (e) {
     console.error('Memory search failed:', e);

@@ -163,23 +163,23 @@ const emit = defineEmits<{
 }>();
 
 const nodeTypes = {
-  agent: AgentNode,
-  source: SourceNode,
-  output: OutputNode,
-  condition: ConditionNode,
-  loop: LoopNode,
-  group: GroupNode,
-  comment: CommentNode,
-  memory: MemoryNode,
-  guardrail: GuardrailNode,
-  human: HumanNode,
-  fallback: FallbackNode,
-  subagent: SubagentNode,
+  agent: markRaw(AgentNode),
+  source: markRaw(SourceNode),
+  output: markRaw(OutputNode),
+  condition: markRaw(ConditionNode),
+  loop: markRaw(LoopNode),
+  group: markRaw(GroupNode),
+  comment: markRaw(CommentNode),
+  memory: markRaw(MemoryNode),
+  guardrail: markRaw(GuardrailNode),
+  human: markRaw(HumanNode),
+  fallback: markRaw(FallbackNode),
+  subagent: markRaw(SubagentNode),
   schemabuilder: SchemaBuilderNode,
 } as any;
 
 const edgeTypes = {
-  custom: CustomEdge,
+  custom: markRaw(CustomEdge),
 };
 
 const elements = ref<(Node | Edge)[]>([]);
