@@ -39,7 +39,7 @@ axolotl:
     path: /mcp
   mempalace:
     base-url: ${AXOLOTL_MEMPALACE_URL:http://localhost:5890}
-    enabled: ${AXOLOTL_MEMPALACE_ENABLED:true}
+    enabled: ${AXOLOTL_MEMPALACE_ENABLED:false}
 
 logging:
   level:

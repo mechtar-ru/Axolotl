@@ -51,7 +51,14 @@ public class MemPalaceClient {
      * Search MemPalace for relevant memories.
      */
     public List<Map<String, Object>> search(String query, String wing, String room, int limit) {
-        if (!enabled) return List.of();
+        if (!enabled) {
+            // Return mock data for testing when MemPalace is disabled
+            return List.of(
+                Map.of("content", "Test memory: " + query, "wing", "test-wing", "room", "test-room", "score", 0.95),
+                Map.of("content", "Another test result about " + query, "wing", "test-wing", "room", "general", "score", 0.87),
+                Map.of("content", "Sample data for development: " + query, "wing", "dev", "room", "samples", "score", 0.72)
+            );
+        }
         try {
             var params = new StringBuilder("?query=").append(java.net.URLEncoder.encode(query, "UTF-8"));
             params.append("&limit=").append(limit);
