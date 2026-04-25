@@ -78,6 +78,30 @@
         </div>
       </template>
 
+      <!-- PROJECT mode -->
+      <template v-if="sourceType === 'project'">
+        <div class="project-config">
+          <div class="config-row">
+            <label class="config-label">Project path:</label>
+            <div class="path-row">
+              <input v-model="projectPath" placeholder="/path/to/project" class="path-input" />
+              <button class="browse-btn" @click="browseProject" title="Browse">📂</button>
+            </div>
+          </div>
+          <div class="config-row inline">
+            <label class="config-sm">
+              Depth: <input v-model.number="maxDepth" type="number" min="1" max="10" class="num-input" />
+            </label>
+            <label class="config-sm">
+              Max files: <input v-model.number="maxFiles" type="number" min="1" max="200" class="num-input" />
+            </label>
+          </div>
+          <div v-if="projectPath && !localSourceData" class="project-hint">
+            Path saved. Backend reads files at execution time.
+          </div>
+        </div>
+      </template>
+
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
@@ -113,6 +137,7 @@ const sourceTypes = [
   { value: 'memory', icon: '🧠', label: 'Память' },
   { value: 'file', icon: '📁', label: 'Файл' },
   { value: 'url', icon: '🌐', label: 'URL' },
+  { value: 'project', icon: '📂', label: 'Проект' },
 ];
 
 const props = defineProps<{
@@ -164,6 +189,11 @@ const fetching = ref(false);
 const urlPreview = ref('');
 const urlPreviewExpanded = ref(false);
 
+// Project state
+const projectPath = ref((props.data.config?.projectPath as string) || '');
+const maxDepth = ref((props.data.config?.maxDepth as number) || 4);
+const maxFiles = ref((props.data.config?.maxFiles as number) || 50);
+
 const typeIcon = computed(() => {
   const t = sourceTypes.find(s => s.value === sourceType.value);
   return t ? t.icon : '📥';
@@ -189,6 +219,32 @@ function setSourceType(type: string) {
 watch(localSourceData, (newVal) => {
   if (props.data.onUpdate) props.data.onUpdate({ sourceData: newVal });
 });
+
+watch([projectPath, maxDepth, maxFiles], () => {
+  if (props.data.onUpdate) {
+    props.data.onUpdate({
+      config: {
+        ...(props.data.config || {}),
+        sourceType: 'project',
+        projectPath: projectPath.value,
+        maxDepth: maxDepth.value,
+        maxFiles: maxFiles.value,
+      }
+    });
+  }
+});
+
+async function browseProject() {
+  if (window.electronAPI?.showOpenDialog) {
+    const result = await window.electronAPI.showOpenDialog({
+      title: 'Select project directory',
+      properties: ['openDirectory'],
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      projectPath.value = result.filePaths[0];
+    }
+  }
+}
 
 // Memory search
 async function searchMemory() {
@@ -384,4 +440,25 @@ function handleDelete() {
 }
 
 .drop-zone { border: 2px dashed var(--accent); border-radius: 8px; }
+
+/* Project mode styles */
+.project-config { display: flex; flex-direction: column; gap: 6px; }
+.config-row { display: flex; flex-direction: column; gap: 3px; }
+.config-row.inline { flex-direction: row; gap: 10px; }
+.config-label { font-size: 11px; color: var(--text-secondary); }
+.config-sm { font-size: 11px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; }
+.path-row { display: flex; gap: 4px; }
+.path-input {
+  flex: 1; background: var(--bg-primary); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none;
+  font-family: monospace;
+}
+.browse-btn {
+  background: var(--accent); border: none; color: white; border-radius: 4px; width: 32px; cursor: pointer;
+}
+.num-input {
+  width: 50px; background: var(--bg-primary); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: 4px; padding: 3px 6px; font-size: 12px; text-align: center;
+}
+.project-hint { font-size: 11px; color: var(--text-secondary); font-style: italic; }
 </style>

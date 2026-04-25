@@ -9,6 +9,9 @@ public class Plan {
     private String id;
     private String workspaceId;
     private String name;
+    private String parentId;
+    private String schemaId;
+    private PlanLevel level = PlanLevel.PROJECT;
     private List<Task> tasks = new ArrayList<>();
     private Instant createdAt;
     private Instant updatedAt;
@@ -34,6 +37,15 @@ public class Plan {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public String getParentId() { return parentId; }
+    public void setParentId(String parentId) { this.parentId = parentId; }
+
+    public String getSchemaId() { return schemaId; }
+    public void setSchemaId(String schemaId) { this.schemaId = schemaId; }
+
+    public PlanLevel getLevel() { return level; }
+    public void setLevel(PlanLevel level) { this.level = level; }
 
     public List<Task> getTasks() { return tasks; }
     public void setTasks(List<Task> tasks) { this.tasks = tasks; }

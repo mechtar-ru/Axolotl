@@ -429,6 +429,43 @@ public class PlanService {
         }
     }
 
+    // === Hierarchy operations ===
+
+    public List<Plan> getChildPlans(String parentPlanId) {
+        return planRepository.findByParentId(parentPlanId);
+    }
+
+    public Plan createSubPlan(String workspaceId, String parentPlanId, String name, PlanLevel level, String schemaId) {
+        Plan sub = new Plan(workspaceId, name);
+        sub.setParentId(parentPlanId);
+        sub.setLevel(level);
+        sub.setSchemaId(schemaId);
+        planRepository.save(sub);
+        log.info("Создан подплан '{}' (level={}) для parent={}", name, level, parentPlanId);
+        return sub;
+    }
+
+    public Plan getPlanBySchemaId(String schemaId) {
+        return planRepository.findBySchemaId(schemaId);
+    }
+
+    public Plan getPlanById(String planId) {
+        return planRepository.findById(planId);
+    }
+
+    public Plan importSchemaAsSubPlan(String workspaceId, String parentPlanId, String schemaId) {
+        Plan existing = planRepository.findBySchemaId(schemaId);
+        if (existing != null) {
+            return existing;
+        }
+        Plan sub = new Plan(workspaceId, "Schema plan");
+        sub.setParentId(parentPlanId);
+        sub.setLevel(PlanLevel.SUBSCHEMA);
+        sub.setSchemaId(schemaId);
+        planRepository.save(sub);
+        return sub;
+    }
+
     public String getDefaultWorkspace() {
         return DEFAULT_WORKSPACE;
     }
