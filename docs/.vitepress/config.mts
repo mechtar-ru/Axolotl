@@ -4,7 +4,7 @@ export default defineConfig({
   title: 'Axolotl',
   description: 'Visual AI Agent Orchestration Platform',
 
-  root: '.',
+  outDir: '../.vitepress/dist',
 
   head: [
     ['link', { rel: 'icon', href: '/logo.svg' }]
