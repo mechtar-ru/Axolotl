@@ -1713,7 +1713,7 @@ public class SchemaService {
                                 if (taskNode.has("acceptanceCriteria") && taskNode.get("acceptanceCriteria").isArray()) {
                                     for (JsonNode ac : taskNode.get("acceptanceCriteria")) criteria.add(ac.asText());
                                 }
-                                planService.addTask("default", title, desc, Priority.valueOf(prio.toUpperCase()), deps, null);
+                                planService.addTask("default", title, desc, Priority.valueOf(prio.toUpperCase()), deps, null, null);
                             }
                             tasksFromJson = true;
                         }
@@ -1727,7 +1727,7 @@ public class SchemaService {
                     try {
                         planService.addTask("default", schemaNode.getName(),
                                 "Node in generated schema: " + saved.getName(),
-                                Priority.MEDIUM, null, null);
+                                Priority.MEDIUM, null, null, null);
                     } catch (Exception e) {
                         log.warn("Failed to create plan task for node {}: {}", schemaNode.getName(), e.getMessage());
                     }

@@ -84,7 +84,7 @@
         </button>
         <div v-if="resultExpanded" class="node-result">
           <span v-if="outputType === 'file' && props.data.executionStatus === 'completed'" class="file-saved">✅ {{ props.data.result }}</span>
-          <span v-else>{{ props.data.result }}</span>
+          <span v-else class="result-text">{{ props.data.result }}</span>
         </div>
       </template>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
@@ -224,5 +224,8 @@ function handleDelete() {
 }
 .file-saved {
   color: var(--success);
+}
+.result-text {
+  color: white;
 }
 </style>

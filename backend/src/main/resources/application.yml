@@ -34,6 +34,10 @@ axolotl:
       base-url: http://localhost:11434
       default-model: qwen2.5:0.5b
       timeout: 120
+    llama-cpp:
+      base-url: ${LLAMA_CPP_BASE_url:http://localhost:8080}
+      default-model: Ternary-Bonsai-1.7B-Q2_0.gguf
+      timeout: 300
   mcp:
     enabled: true
     path: /mcp

@@ -37,7 +37,8 @@ public class PlanController {
                 request.description(),
                 request.priority(),
                 request.dependencies(),
-                request.position()
+                request.position(),
+                request.schemaId()
         );
     }
 
@@ -147,7 +148,7 @@ public class PlanController {
 
     public record AddTaskRequest(String workspaceId, String title, String description,
                                   Priority priority, java.util.List<String> dependencies,
-                                  PlanService.PositionRequest position) {}
+                                  PlanService.PositionRequest position, String schemaId) {}
 
     public record BatchAddRequest(String workspaceId, List<BatchTask> tasks) {}
     public record BatchTask(String title, String description, Priority priority, java.util.List<String> dependencies) {}

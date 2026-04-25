@@ -92,6 +92,7 @@ public class LlmService {
                 if (stripped.startsWith("claude-")) yield "anthropic";
                 if (stripped.startsWith("deepseek-")) yield "deepseek";
                 if (stripped.startsWith("llama") || stripped.startsWith("gemma") || stripped.startsWith("mistral") || stripped.startsWith("qwen")) yield "ollama";
+                if (stripped.contains("gguf") || stripped.contains("bonsai")) yield "llama-cpp";
                 yield "ollama";
             }
         };

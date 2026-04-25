@@ -402,7 +402,7 @@ public class PlanTools {
         }
 
         try {
-            Task task = planService.addTask(workspaceId, title, description, priority, dependencies, position);
+            Task task = planService.addTask(workspaceId, title, description, priority, dependencies, position, null);
             return "OK: Task added — '" + task.getTitle() + "' (ID: " + task.getId() +
                     ", priority: " + task.getPriority() +
                     ", dependencies: " + task.getDependencies().size() + ")";

@@ -88,7 +88,7 @@ public class PlanService {
     }
 
     public Task addTask(String workspaceId, String title, String description,
-                        Priority priority, List<String> dependencies, PositionRequest position) {
+                        Priority priority, List<String> dependencies, PositionRequest position, String schemaId) {
         Plan plan = getPlan(workspaceId);
 
         if (title == null || title.isBlank()) {
@@ -99,6 +99,7 @@ public class PlanService {
         task.setDescription(description != null ? description : "");
         task.setPriority(priority != null ? priority : Priority.MEDIUM);
         task.setDependencies(dependencies != null ? dependencies : new ArrayList<>());
+        task.setSchemaId(schemaId);
 
         // Validate dependencies exist
         Set<String> existingIds = plan.getTasks().stream().map(Task::getId).collect(Collectors.toSet());
