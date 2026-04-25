@@ -4,6 +4,8 @@ export default defineConfig({
   title: 'Axolotl',
   description: 'Visual AI Agent Orchestration Platform',
 
+  root: '.',
+
   head: [
     ['link', { rel: 'icon', href: '/logo.svg' }]
   ],
