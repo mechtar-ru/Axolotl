@@ -5,6 +5,19 @@
       <button class="close-btn" @click="$emit('close')">✕</button>
     </div>
 
+    <!-- Level filter tabs -->
+    <div class="level-tabs">
+      <button
+        v-for="lvl in levels"
+        :key="lvl.value"
+        class="level-tab"
+        :class="{ active: selectedLevel === lvl.value }"
+        @click="selectLevel(lvl.value)"
+      >
+        {{ lvl.label }}
+      </button>
+    </div>
+
     <div v-if="loading" class="plan-loading">Загрузка...</div>
 
     <div v-else-if="error" class="plan-error">
@@ -14,16 +27,21 @@
 
     <div v-else>
       <div class="plan-add">
-        <textarea
-          v-model="newTask"
-          placeholder="Задачи (каждая с новой строки)...&#10;Напр: Сделать тесты | HIGH&#10;      Обновить docs | LOW"
-          class="plan-textarea"
-          rows="3"
-          @keydown.ctrl.enter="addBatchTasks"
-        />
-        <button class="add-btn" @click="addBatchTasks" :disabled="!parsedTaskCount">
-          +{{ parsedTaskCount > 1 ? parsedTaskCount : '' }}
-        </button>
+        <div class="plan-add-row">
+          <textarea
+            v-model="newTask"
+            placeholder="Задачи (каждая с новой строки)...&#10;Напр: Сделать тесты | HIGH&#10;      Обновить docs | LOW"
+            class="plan-textarea"
+            rows="3"
+            @keydown.ctrl.enter="addBatchTasks"
+          />
+          <div class="plan-add-actions">
+            <button class="add-btn" @click="addBatchTasks" :disabled="!parsedTaskCount">
+              +{{ parsedTaskCount > 1 ? parsedTaskCount : '' }}
+            </button>
+            <button class="browse-btn" @click="browseFolder" title="Выбрать папку">📂</button>
+          </div>
+        </div>
       </div>
 
       <!-- Node link dropdown -->
@@ -103,7 +121,13 @@
             <button class="task-status-btn" @click="cycleStatus(i)">
               {{ statusIcon(task.status) }}
             </button>
-            <span class="task-text" :class="{ done: task.status === 'DONE' }">{{ task.title }}</span>
+            <div class="task-content">
+              <span class="task-text" :class="{ done: task.status === 'DONE' }">{{ task.title }}</span>
+              <span v-if="task.description" class="task-desc">{{ task.description }}</span>
+              <span v-if="task.dependencies && task.dependencies.length > 0" class="task-deps" :title="task.dependencies.join(', ')">
+                ↓ {{ task.dependencies.length }}
+              </span>
+            </div>
             <!-- Acceptance criteria indicator -->
             <span v-if="task.acceptanceCriteria && task.acceptanceCriteria.length > 0" class="criteria-indicator" :title="`${criteriaMetCount(i)}/${task.acceptanceCriteria.length} критериев выполнено`">
               <span class="criteria-bar">
@@ -144,15 +168,17 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return headers;
 }
 
-const visibleProp = defineProps<{ visible: boolean; schemaNodes?: Array<{ id: string; name: string; type: string }> }>();
+const visibleProp = defineProps<{ visible: boolean; schemaNodes?: Array<{ id: string; name: string; type: string }>; schemaId?: string }>();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'highlight-node', nodeId: string): void }>();
 
 interface PlanTask {
   id: string;
   title: string;
+  description?: string;
   status: 'TODO' | 'IN_PROGRESS' | 'DONE' | 'BLOCKED';
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
   nodeId?: string;
+  schemaId?: string;
   dependencies?: string[];
   acceptanceCriteria?: string[];
   acceptanceCriteriaMet?: boolean[];
@@ -162,10 +188,38 @@ const tasks = ref<PlanTask[]>([]);
 const newTask = ref('');
 const loading = ref(false);
 const error = ref('');
+const childPlans = ref<Array<{ id: string; name: string; level: string }>>([]);
 let dragTaskId = ref<string | null>(null);
 const linkingTaskIndex = ref<number | null>(null);
 const criteriaEditIndex = ref<number | null>(null);
 const newCriterion = ref('');
+
+// Level filter
+type PlanLevel = 'all' | 'project' | 'current' | 'child';
+const levels = [
+  { value: 'project' as PlanLevel, label: 'Общее' },
+  { value: 'current' as PlanLevel, label: 'Текущий' },
+  { value: 'child' as PlanLevel, label: 'Дочерние' },
+  { value: 'all' as PlanLevel, label: 'Все' },
+];
+const selectedLevel = ref<PlanLevel>('project');
+
+function selectLevel(lvl: PlanLevel) {
+  selectedLevel.value = lvl;
+  loadPlan();
+}
+
+async function browseFolder() {
+  if (window.electronAPI?.showOpenDialog) {
+    const result = await window.electronAPI.showOpenDialog({
+      title: 'Select project folder',
+      properties: ['openDirectory'],
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      newTask.value += '\n' + result.filePaths[0];
+    }
+  }
+}
 
 // Batch task parsing
 const parsedTasks = computed(() => {
@@ -188,20 +242,109 @@ let ws: WebSocket | null = null;
 async function loadPlan() {
   loading.value = true;
   error.value = '';
+  const schemaId = visibleProp.schemaId;
+
+  // Load child plans from the current schema
+  if (selectedLevel.value === 'child' && schemaId) {
+    try {
+      const schemaPlanResp = await fetch(`${API_BASE_URL}/plan/by-schema/${schemaId}`, { headers: authHeaders() });
+      if (schemaPlanResp.ok) {
+        const schemaPlan = await schemaPlanResp.json();
+        if (schemaPlan) {
+          tasks.value = (schemaPlan.tasks || []).map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description || '',
+            status: t.status || 'TODO',
+            priority: t.priority || 'MEDIUM',
+            nodeId: t.nodeId,
+            schemaId: t.schemaId,
+            dependencies: t.dependencies || [],
+            acceptanceCriteria: t.acceptanceCriteria || [],
+            acceptanceCriteriaMet: t.acceptanceCriteriaMet || [],
+          }));
+        } else {
+          tasks.value = [];
+        }
+      } else {
+        tasks.value = [];
+      }
+    } catch {
+      tasks.value = [];
+    }
+    loading.value = false;
+    return;
+  }
+
+  // Load all subplans for children tab
+  if (selectedLevel.value === 'child') {
+    try {
+      const response = await fetch(`${API_BASE_URL}/plan`, { headers: authHeaders() });
+      if (response.ok) {
+        const plan = await response.json();
+        const childResp = await fetch(`${API_BASE_URL}/plan/${plan.id}/children`, { headers: authHeaders() });
+        if (childResp.ok) {
+          childPlans.value = await childResp.json();
+        }
+      }
+    } catch {}
+    tasks.value = [];
+    loading.value = false;
+    return;
+  }
+
+  // Default: load main plan
   try {
     const response = await fetch(`${API_BASE_URL}/plan`, { headers: authHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const plan = await response.json();
-    tasks.value = (plan.tasks || []).map((t: any) => ({
-      id: t.id,
-      title: t.title,
-      status: t.status || 'TODO',
-      priority: t.priority || 'MEDIUM',
-      nodeId: t.nodeId,
-      dependencies: t.dependencies || [],
-      acceptanceCriteria: t.acceptanceCriteria || [],
-      acceptanceCriteriaMet: t.acceptanceCriteriaMet || [],
-    }));
+
+    // For 'project' level, filter out tasks that have schemaId
+    if (selectedLevel.value === 'project') {
+      tasks.value = (plan.tasks || [])
+        .filter((t: any) => !t.schemaId)
+        .map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          status: t.status || 'TODO',
+          priority: t.priority || 'MEDIUM',
+          nodeId: t.nodeId,
+          schemaId: t.schemaId,
+          dependencies: t.dependencies || [],
+          acceptanceCriteria: t.acceptanceCriteria || [],
+          acceptanceCriteriaMet: t.acceptanceCriteriaMet || [],
+        }));
+    // For 'current' level, filter tasks with current schemaId
+    } else if (selectedLevel.value === 'current' && schemaId) {
+      tasks.value = (plan.tasks || [])
+        .filter((t: any) => t.schemaId === schemaId)
+        .map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description || '',
+          status: t.status || 'TODO',
+          priority: t.priority || 'MEDIUM',
+          nodeId: t.nodeId,
+          schemaId: t.schemaId,
+          dependencies: t.dependencies || [],
+          acceptanceCriteria: t.acceptanceCriteria || [],
+          acceptanceCriteriaMet: t.acceptanceCriteriaMet || [],
+        }));
+    } else {
+      tasks.value = (plan.tasks || []).map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description || '',
+        status: t.status || 'TODO',
+        priority: t.priority || 'MEDIUM',
+        nodeId: t.nodeId,
+        schemaId: t.schemaId,
+        dependencies: t.dependencies || [],
+        acceptanceCriteria: t.acceptanceCriteria || [],
+        acceptanceCriteriaMet: t.acceptanceCriteriaMet || [],
+      }));
+    }
   } catch (e: any) {
     error.value = 'Ошибка загрузки плана: ' + (e.message || e);
   } finally {
@@ -212,21 +355,28 @@ async function loadPlan() {
 async function addBatchTasks() {
   const batch = parsedTasks.value;
   if (batch.length === 0) return;
+  const schemaId = visibleProp.schemaId;
   try {
     for (const task of batch) {
+      const body: Record<string, any> = { title: task.title, priority: task.priority };
+      if (selectedLevel.value === 'current' && schemaId) {
+        body.schemaId = schemaId;
+      }
       const response = await fetch(`${API_BASE_URL}/plan/tasks`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ title: task.title, priority: task.priority }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const created = await response.json();
       tasks.value.push({
         id: created.id,
         title: created.title,
+        description: created.description || '',
         status: created.status || 'TODO',
         priority: created.priority || task.priority,
         nodeId: created.nodeId,
+        schemaId: created.schemaId,
       });
     }
     newTask.value = '';
@@ -537,6 +687,53 @@ loadPlan();
   color: #eee;
 }
 
+.level-tabs {
+  display: flex;
+  padding: 8px 12px;
+  gap: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.level-tab {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #888;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.level-tab.active {
+  background: var(--accent, #00bcd4);
+  border-color: var(--accent, #00bcd4);
+  color: #fff;
+}
+
+.task-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.task-desc {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-deps {
+  font-size: 10px;
+  color: #666;
+  background: rgba(255,255,255,0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
 .close-btn {
   background: rgba(255,255,255,0.1);
   border: none;
@@ -573,6 +770,29 @@ loadPlan();
   display: flex;
   gap: 4px;
   padding: 10px 12px;
+}
+
+.plan-add-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.plan-add-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.browse-btn {
+  background: var(--accent, #00bcd4);
+  border: none;
+  color: white;
+  border-radius: 4px;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  font-size: 16px;
 }
 
 .plan-textarea {

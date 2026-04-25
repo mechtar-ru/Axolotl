@@ -29,7 +29,7 @@ class PlanServiceTest {
     @Test
     @DisplayName("Add task to empty plan")
     void addTaskToEmptyPlan() {
-        Task task = planService.addTask("default", "Test task", "Description", Priority.HIGH, List.of(), null);
+        Task task = planService.addTask("default", "Test task", "Description", Priority.HIGH, List.of(), null, null);
         assertNotNull(task.getId());
         assertEquals("Test task", task.getTitle());
         assertEquals("Description", task.getDescription());
@@ -42,22 +42,22 @@ class PlanServiceTest {
     @DisplayName("Add task with null title should fail")
     void addTaskNullTitle() {
         assertThrows(IllegalArgumentException.class, () ->
-                planService.addTask("default", null, "", Priority.MEDIUM, List.of(), null));
+                planService.addTask("default", null, "", Priority.MEDIUM, List.of(), null, null));
     }
 
     @Test
     @DisplayName("Add task with empty title should fail")
     void addTaskEmptyTitle() {
         assertThrows(IllegalArgumentException.class, () ->
-                planService.addTask("default", "", "", Priority.MEDIUM, List.of(), null));
+                planService.addTask("default", "", "", Priority.MEDIUM, List.of(), null, null));
     }
 
     @Test
     @DisplayName("Add task with invalid dependency should fail")
     void addTaskInvalidDependency() {
-        planService.addTask("default", "Task A", "", Priority.MEDIUM, List.of(), null);
+        planService.addTask("default", "Task A", "", Priority.MEDIUM, List.of(), null, null);
         assertThrows(IllegalArgumentException.class, () ->
-                planService.addTask("default", "Task B", "", Priority.MEDIUM, List.of("non-existent-id"), null));
+                planService.addTask("default", "Task B", "", Priority.MEDIUM, List.of("non-existent-id"), null, null));
     }
 
     // ===== Update Status =====
@@ -65,7 +65,7 @@ class PlanServiceTest {
     @Test
     @DisplayName("Update task status to DONE — no dependencies")
     void updateStatusNoDeps() {
-        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null);
+        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null, null);
         Task updated = planService.updateTaskStatus("default", task.getId(), TaskStatus.DONE, null);
         assertEquals(TaskStatus.DONE, updated.getStatus());
     }
@@ -73,10 +73,10 @@ class PlanServiceTest {
     @Test
     @DisplayName("Update task status to DONE — with completed dependency — should succeed")
     void updateStatusWithCompletedDependency() {
-        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null);
+        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null, null);
         planService.updateTaskStatus("default", dep.getId(), TaskStatus.DONE, null);
 
-        Task task = planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null);
+        Task task = planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null, null);
         Task updated = planService.updateTaskStatus("default", task.getId(), TaskStatus.DONE, null);
         assertEquals(TaskStatus.DONE, updated.getStatus());
     }
@@ -84,8 +84,8 @@ class PlanServiceTest {
     @Test
     @DisplayName("Update task status to DONE — with incomplete dependency — should fail")
     void updateStatusWithIncompleteDependency() {
-        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null);
-        Task task = planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null);
+        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null, null);
+        Task task = planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null, null);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
                 planService.updateTaskStatus("default", task.getId(), TaskStatus.DONE, null));
@@ -95,7 +95,7 @@ class PlanServiceTest {
     @Test
     @DisplayName("Update task status to IN_PROGRESS — no validation needed")
     void updateStatusInProgress() {
-        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null);
+        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null, null);
         Task updated = planService.updateTaskStatus("default", task.getId(), TaskStatus.IN_PROGRESS, "Started");
         assertEquals(TaskStatus.IN_PROGRESS, updated.getStatus());
         assertEquals("Started", updated.getReason());
@@ -106,9 +106,9 @@ class PlanServiceTest {
     @Test
     @DisplayName("Move task to start")
     void moveTaskToStart() {
-        Task a = planService.addTask("default", "A", "", Priority.MEDIUM, List.of(), null);
-        Task b = planService.addTask("default", "B", "", Priority.MEDIUM, List.of(), null);
-        Task c = planService.addTask("default", "C", "", Priority.MEDIUM, List.of(), null);
+        Task a = planService.addTask("default", "A", "", Priority.MEDIUM, List.of(), null, null);
+        Task b = planService.addTask("default", "B", "", Priority.MEDIUM, List.of(), null, null);
+        Task c = planService.addTask("default", "C", "", Priority.MEDIUM, List.of(), null, null);
 
         planService.moveTask("default", c.getId(), new PlanService.MovePosition("start", ""));
 
@@ -121,8 +121,8 @@ class PlanServiceTest {
     @Test
     @DisplayName("Move task to end")
     void moveTaskToEnd() {
-        Task a = planService.addTask("default", "A", "", Priority.MEDIUM, List.of(), null);
-        Task b = planService.addTask("default", "B", "", Priority.MEDIUM, List.of(), null);
+        Task a = planService.addTask("default", "A", "", Priority.MEDIUM, List.of(), null, null);
+        Task b = planService.addTask("default", "B", "", Priority.MEDIUM, List.of(), null, null);
 
         planService.moveTask("default", a.getId(), new PlanService.MovePosition("end", ""));
 
@@ -136,7 +136,7 @@ class PlanServiceTest {
     @Test
     @DisplayName("Delete task — no dependents")
     void deleteTaskNoDependents() {
-        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null);
+        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null, null);
         planService.deleteTask("default", task.getId(), false);
         assertEquals(0, planService.getPlan("default").getTasks().size());
     }
@@ -144,8 +144,8 @@ class PlanServiceTest {
     @Test
     @DisplayName("Delete task — with dependents, cascade=false — should fail")
     void deleteTaskWithDependentsNoCascade() {
-        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null);
-        planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null);
+        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null, null);
+        planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null, null);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, () ->
                 planService.deleteTask("default", dep.getId(), false));
@@ -155,8 +155,8 @@ class PlanServiceTest {
     @Test
     @DisplayName("Delete task — with dependents, cascade=true — should succeed")
     void deleteTaskWithDependentsCascade() {
-        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null);
-        planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null);
+        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null, null);
+        planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null, null);
 
         planService.deleteTask("default", dep.getId(), true);
         assertEquals(0, planService.getPlan("default").getTasks().size());
@@ -165,8 +165,8 @@ class PlanServiceTest {
     @Test
     @DisplayName("Delete task — cascade removes dependents too")
     void deleteTaskCascadeRemovesDependents() {
-        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null);
-        Task dependent = planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null);
+        Task dep = planService.addTask("default", "Dependency", "", Priority.MEDIUM, List.of(), null, null);
+        Task dependent = planService.addTask("default", "Dependent", "", Priority.MEDIUM, List.of(dep.getId()), null, null);
 
         planService.deleteTask("default", dep.getId(), true);
 
@@ -179,7 +179,7 @@ class PlanServiceTest {
     @Test
     @DisplayName("Update task priority")
     void updateTaskPriority() {
-        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null);
+        Task task = planService.addTask("default", "Task", "", Priority.MEDIUM, List.of(), null, null);
         Task updated = planService.updateTaskPriority("default", task.getId(), Priority.LOW);
         assertEquals(Priority.LOW, updated.getPriority());
     }
@@ -222,7 +222,7 @@ class PlanServiceTest {
 
         @Override
         public Task addTask(String workspaceId, String title, String description,
-                            Priority priority, List<String> dependencies, PositionRequest position) {
+                            Priority priority, List<String> dependencies, PositionRequest position, String schemaId) {
             if (title == null || title.isBlank()) {
                 throw new IllegalArgumentException("Task title cannot be empty");
             }
