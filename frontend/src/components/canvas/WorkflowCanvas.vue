@@ -20,10 +20,10 @@
     <VueFlow ref="vueFlowRef" v-model="elements" :node-types="nodeTypes" :edge-types="edgeTypes"
       :fit-view-on-init="true" :multi-select-on-click="true" @connect="onConnect" @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick" @node-context-menu="onNodeContextMenu" @edge-click="onEdgeClick" @pane-click="onPaneClick"
-      @node-double-click="onNodeDoubleClick">
+      @node-double-click="onNodeDoubleClick" @mini-map-click="onMiniMapClick">
       <Background />
       <Controls />
-      <MiniMap />
+      <MiniMap :node-color="minimapNodeColor" :mask-color="'rgba(0,0,0,0.3)'" :pannable="true" :zoomable="true" />
 
       <div v-if="showSearch" class="search-panel">
         <input ref="searchInput" v-model="searchQuery" placeholder="Поиск узлов..." class="search-input"
@@ -462,6 +462,43 @@ function onPaneClick() {
   showAddMenu.value = false;
   ctxMenu.value.visible = false;
   convertToFlowElements();
+}
+
+function onMiniMapClick(event: { event: MouseEvent; node: Node }) {
+  if (event.node?.id) {
+    const nodeId = event.node.id;
+    selectedNodeIds.value = new Set([nodeId]);
+    selectedNodeId.value = nodeId;
+    selectedEdgeId.value = null;
+    convertToFlowElements();
+    fitToNode(nodeId);
+  }
+}
+
+function fitToNode(nodeId: string) {
+  const vf = vueFlowRef.value;
+  if (!vf) return;
+  const node = vf.findNode(nodeId);
+  if (node) {
+    vf.fitView({ nodes: [node as any], padding: 0.2, duration: 300 });
+  }
+}
+
+function minimapNodeColor(node: Node): string {
+  const colors: Record<string, string> = {
+    source: '#4CAF50',
+    agent: '#2196F3',
+    output: '#FF9800',
+    condition: '#9C27B0',
+    loop: '#E91E63',
+    guardrail: '#00BCD4',
+    human: '#8BC34A',
+    fallback: '#FFC107',
+    subagent: '#673AB7',
+    schemabuilder: '#607D8B',
+    comment: '#795548',
+  };
+  return colors[node.type || ''] || '#999';
 }
 
 function onNodeContextMenu(event: NodeMouseEvent) {

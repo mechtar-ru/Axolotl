@@ -63,6 +63,7 @@
         </button>
         <div v-if="resultExpanded" class="node-result">
           <div>{{ props.data.result }}</div>
+          <button class="copy-result-btn" @click.stop="copyResult" title="Скопировать">📋</button>
         </div>
       </template>
       <div v-if="props.data.isStreaming" class="typing-indicator">
@@ -107,6 +108,12 @@ const emit = defineEmits<{
 }>();
 
 const resultExpanded = ref(true);
+
+function copyResult() {
+  if (props.data.result) {
+    navigator.clipboard.writeText(props.data.result);
+  }
+}
 
 const expanded = ref(false);
 const editingName = ref(false);
