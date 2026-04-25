@@ -26,6 +26,22 @@ public class PlanController {
         return planService.getPlan(workspaceId);
     }
 
+    // === List workspaces ===
+
+    @GetMapping("/workspaces")
+    public List<String> listWorkspaces() {
+        return planService.listWorkspaces();
+    }
+
+    // === Create workspace ===
+
+    @PostMapping("/workspaces")
+    public ResponseEntity<Map<String, Object>> createWorkspace(@RequestBody CreateWorkspaceRequest request) {
+        String name = request.name() != null ? request.name() : "new-workspace";
+        planService.getPlan(name);
+        return ResponseEntity.ok(Map.of("status", "created", "workspaceId", name));
+    }
+
     // === Add task ===
 
     @PostMapping("/tasks")
@@ -162,4 +178,5 @@ public class PlanController {
     public record CriteriaRequest(List<String> criteria, List<Boolean> met) {}
     public record CreateSubPlanRequest(String workspaceId, String name, PlanLevel level, String schemaId) {}
     public record ImportSchemaRequest(String workspaceId, String parentPlanId, String schemaId) {}
+    public record CreateWorkspaceRequest(String name) {}
 }

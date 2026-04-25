@@ -5,6 +5,26 @@
       <button class="close-btn" @click="$emit('close')">✕</button>
     </div>
 
+    <!-- Workspace selector -->
+    <div class="workspace-selector">
+      <select v-model="selectedWorkspace" @change="onWorkspaceChange" class="workspace-select">
+        <option v-for="ws in workspaces" :key="ws" :value="ws">{{ ws }}</option>
+      </select>
+      <button class="add-workspace-btn" @click="showCreateWorkspace = true" title="Создать workspace">➕</button>
+    </div>
+
+    <!-- Create workspace modal -->
+    <div v-if="showCreateWorkspace" class="create-workspace-modal">
+      <div class="create-workspace-content">
+        <div class="create-workspace-header">
+          <span>Новый workspace</span>
+          <button @click="showCreateWorkspace = false">✕</button>
+        </div>
+        <input v-model="newWorkspaceName" placeholder="Имя workspace" class="workspace-input" @keyup.enter="createWorkspace" />
+        <button @click="createWorkspace" class="create-btn">Создать</button>
+      </div>
+    </div>
+
     <!-- Level filter tabs -->
     <div class="level-tabs">
       <button
@@ -117,34 +137,63 @@
           @dragover.prevent
           @drop="dropTask(i)"
         >
-          <div class="task-left">
-            <button class="task-status-btn" @click="cycleStatus(i)">
-              {{ statusIcon(task.status) }}
-            </button>
-            <div class="task-content">
-              <span class="task-text" :class="{ done: task.status === 'DONE' }">{{ task.title }}</span>
-              <span v-if="task.description" class="task-desc">{{ task.description }}</span>
-              <span v-if="task.dependencies && task.dependencies.length > 0" class="task-deps" :title="task.dependencies.join(', ')">
-                ↓ {{ task.dependencies.length }}
+          <div class="task-main" @click="expandedTask = expandedTask === i ? null : i">
+            <div class="task-left">
+              <button class="task-status-btn" @click.stop="cycleStatus(i)">
+                {{ statusIcon(task.status) }}
+              </button>
+              <div class="task-content">
+                <span class="task-text" :class="{ done: task.status === 'DONE' }">{{ task.title }}</span>
+                <span v-if="task.description && expandedTask !== i" class="task-desc">{{ task.description }}</span>
+                <span v-if="task.dependencies && task.dependencies.length > 0 && expandedTask !== i" class="task-deps" :title="task.dependencies.join(', ')">
+                  ↓ {{ task.dependencies.length }}
+                </span>
+              </div>
+              <!-- Acceptance criteria indicator -->
+              <span v-if="task.acceptanceCriteria && task.acceptanceCriteria.length > 0" class="criteria-indicator" :title="`${criteriaMetCount(i)}/${task.acceptanceCriteria.length} критериев выполнено`">
+                <span class="criteria-bar">
+                  <span class="criteria-fill" :style="{ width: criteriaPercent(i) + '%' }"></span>
+                </span>
+                <span class="criteria-text">{{ criteriaMetCount(i) }}/{{ task.acceptanceCriteria.length }}</span>
               </span>
             </div>
-            <!-- Acceptance criteria indicator -->
-            <span v-if="task.acceptanceCriteria && task.acceptanceCriteria.length > 0" class="criteria-indicator" :title="`${criteriaMetCount(i)}/${task.acceptanceCriteria.length} критериев выполнено`">
-              <span class="criteria-bar">
-                <span class="criteria-fill" :style="{ width: criteriaPercent(i) + '%' }"></span>
+            <div class="task-right">
+              <span class="task-expand-icon">{{ expandedTask === i ? '▼' : '▶' }}</span>
+              <span class="task-priority" @click.stop="cyclePriority(i)" :title="task.priority">
+                {{ priorityIcon(task.priority) }}
               </span>
-              <span class="criteria-text">{{ criteriaMetCount(i) }}/{{ task.acceptanceCriteria.length }}</span>
-            </span>
+              <span class="task-link" @click.stop="toggleNodeLink(i)" :title="task.nodeId ? 'Перейти к узлу' : 'Связать с узлом'">
+                🔗
+              </span>
+              <button class="task-criteria-btn" @click.stop="criteriaEditIndex = i" title="Критерии приёмки">📋</button>
+              <button class="task-delete" @click.stop="deleteTask(i)" title="Удалить">✕</button>
+            </div>
           </div>
-          <div class="task-right">
-            <span class="task-priority" @click="cyclePriority(i)" :title="task.priority">
-              {{ priorityIcon(task.priority) }}
-            </span>
-            <span class="task-link" @click="toggleNodeLink(i)" :title="task.nodeId ? 'Перейти к узлу' : 'Связать с узлом'">
-              {{ task.nodeId ? '🔗' : '🔗' }}
-            </span>
-            <button class="task-criteria-btn" @click="criteriaEditIndex = i" title="Критерии приёмки">📋</button>
-            <button class="task-delete" @click="deleteTask(i)" title="Удалить">✕</button>
+          <!-- Expanded detail -->
+          <div v-if="expandedTask === i" class="task-detail">
+            <div v-if="task.description" class="detail-section">
+              <div class="detail-label">Description</div>
+              <div class="detail-text">{{ task.description }}</div>
+            </div>
+            <div v-if="task.dependencies && task.dependencies.length > 0" class="detail-section">
+              <div class="detail-label">Dependencies</div>
+              <div class="detail-deps">
+                <span v-for="dep in task.dependencies" :key="dep" class="dep-chip">{{ dep }}</span>
+              </div>
+            </div>
+            <div v-if="task.acceptanceCriteria && task.acceptanceCriteria.length > 0" class="detail-section">
+              <div class="detail-label">Acceptance Criteria</div>
+              <div class="detail-criteria">
+                <div v-for="(c, ci) in task.acceptanceCriteria" :key="ci" class="detail-criterion" :class="{ met: task.acceptanceCriteriaMet?.[ci] }">
+                  <span class="criterion-check">{{ task.acceptanceCriteriaMet?.[ci] ? '☑' : '☐' }}</span>
+                  {{ c }}
+                </div>
+              </div>
+            </div>
+            <div v-if="task.schemaId" class="detail-section">
+              <div class="detail-label">Schema</div>
+              <div class="detail-schema">{{ task.schemaId.substring(0, 8) }}...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -193,6 +242,7 @@ let dragTaskId = ref<string | null>(null);
 const linkingTaskIndex = ref<number | null>(null);
 const criteriaEditIndex = ref<number | null>(null);
 const newCriterion = ref('');
+const expandedTask = ref<number | null>(null);
 
 // Level filter
 type PlanLevel = 'all' | 'project' | 'current' | 'child';
@@ -203,6 +253,50 @@ const levels = [
   { value: 'all' as PlanLevel, label: 'Все' },
 ];
 const selectedLevel = ref<PlanLevel>('project');
+
+// Workspace management
+const workspaces = ref<string[]>(['default']);
+const selectedWorkspace = ref<string>('default');
+const showCreateWorkspace = ref(false);
+const newWorkspaceName = ref('');
+
+async function loadWorkspaces() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/plan/workspaces`, { headers: authHeaders() });
+    if (res.ok) {
+      const list = await res.json();
+      if (list.length > 0) {
+        workspaces.value = list;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load workspaces:', e);
+  }
+}
+
+async function createWorkspace() {
+  if (!newWorkspaceName.value.trim()) return;
+  try {
+    const res = await fetch(`${API_BASE_URL}/plan/workspaces`, {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ name: newWorkspaceName.value.trim() }),
+    });
+    if (res.ok) {
+      await loadWorkspaces();
+      selectedWorkspace.value = newWorkspaceName.value.trim();
+      newWorkspaceName.value = '';
+      showCreateWorkspace.value = false;
+      loadPlan();
+    }
+  } catch (e) {
+    console.error('Failed to create workspace:', e);
+  }
+}
+
+async function onWorkspaceChange() {
+  loadPlan();
+}
 
 function selectLevel(lvl: PlanLevel) {
   selectedLevel.value = lvl;
@@ -216,7 +310,12 @@ async function browseFolder() {
       properties: ['openDirectory'],
     });
     if (!result.canceled && result.filePaths.length > 0) {
-      newTask.value += '\n' + result.filePaths[0];
+      newTask.value = 'Analyze project: ' + result.filePaths[0];
+    }
+  } else {
+    const path = prompt('Enter project path:');
+    if (path) {
+      newTask.value = 'Analyze project: ' + path;
     }
   }
 }
@@ -247,7 +346,7 @@ async function loadPlan() {
   // Load child plans from the current schema
   if (selectedLevel.value === 'child' && schemaId) {
     try {
-      const schemaPlanResp = await fetch(`${API_BASE_URL}/plan/by-schema/${schemaId}`, { headers: authHeaders() });
+      const schemaPlanResp = await fetch(`${API_BASE_URL}/plan/by-schema/${schemaId}?workspaceId=${selectedWorkspace.value}`, { headers: authHeaders() });
       if (schemaPlanResp.ok) {
         const schemaPlan = await schemaPlanResp.json();
         if (schemaPlan) {
@@ -279,7 +378,7 @@ async function loadPlan() {
   // Load all subplans for children tab
   if (selectedLevel.value === 'child') {
     try {
-      const response = await fetch(`${API_BASE_URL}/plan`, { headers: authHeaders() });
+      const response = await fetch(`${API_BASE_URL}/plan?workspaceId=${selectedWorkspace.value}`, { headers: authHeaders() });
       if (response.ok) {
         const plan = await response.json();
         const childResp = await fetch(`${API_BASE_URL}/plan/${plan.id}/children`, { headers: authHeaders() });
@@ -295,7 +394,7 @@ async function loadPlan() {
 
   // Default: load main plan
   try {
-    const response = await fetch(`${API_BASE_URL}/plan`, { headers: authHeaders() });
+    const response = await fetch(`${API_BASE_URL}/plan?workspaceId=${selectedWorkspace.value}`, { headers: authHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const plan = await response.json();
 
@@ -358,7 +457,7 @@ async function addBatchTasks() {
   const schemaId = visibleProp.schemaId;
   try {
     for (const task of batch) {
-      const body: Record<string, any> = { title: task.title, priority: task.priority };
+      const body: Record<string, any> = { title: task.title, priority: task.priority, workspaceId: selectedWorkspace.value };
       if (selectedLevel.value === 'current' && schemaId) {
         body.schemaId = schemaId;
       }
@@ -390,11 +489,11 @@ async function updateTaskRemote(taskId: string, updates: { status?: string; prio
     let url: string;
     let body: Record<string, any>;
     if (updates.status) {
-      url = `${API_BASE_URL}/plan/tasks/${taskId}/status`;
-      body = { status: updates.status };
+      url = `${API_BASE_URL}/plan/tasks/${taskId}/status?workspaceId=${selectedWorkspace.value}`;
+      body = { status: updates.status, workspaceId: selectedWorkspace.value };
     } else if (updates.priority) {
-      url = `${API_BASE_URL}/plan/tasks/${taskId}/priority`;
-      body = { priority: updates.priority };
+      url = `${API_BASE_URL}/plan/tasks/${taskId}/priority?workspaceId=${selectedWorkspace.value}`;
+      body = { priority: updates.priority, workspaceId: selectedWorkspace.value };
     } else {
       return;
     }
@@ -456,7 +555,7 @@ async function deleteTask(i: number) {
   const task = tasks.value[i];
   if (!task) return;
   try {
-    const response = await fetch(`${API_BASE_URL}/plan/tasks/${task.id}`, {
+    const response = await fetch(`${API_BASE_URL}/plan/tasks/${task.id}?workspaceId=${selectedWorkspace.value}`, {
       method: 'DELETE',
       headers: authHeaders(),
     });
@@ -476,7 +575,7 @@ function dropTask(targetIndex: number) {
   if (item) {
     tasks.value.splice(targetIndex, 0, item);
     // Reorder on server
-    fetch(`${API_BASE_URL}/plan/tasks/${item.id}/move`, {
+    fetch(`${API_BASE_URL}/plan/tasks/${item.id}/move?workspaceId=${selectedWorkspace.value}`, {
       method: 'PUT',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ position: { type: 'index', value: String(targetIndex) } }),
@@ -522,7 +621,7 @@ async function linkNodeToTask(taskIndex: number | null, nodeId: string) {
   linkingTaskIndex.value = null;
   // Save to backend
   try {
-    await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/link`, {
+    await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/link?workspaceId=${selectedWorkspace.value}`, {
       method: 'PUT',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ nodeId }),
@@ -539,7 +638,7 @@ async function unlinkNode(taskIndex: number | null) {
   task.nodeId = undefined;
   linkingTaskIndex.value = null;
   try {
-    await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/link`, {
+    await fetch(`${API_BASE_URL}/plan/tasks/${task.id}/link?workspaceId=${selectedWorkspace.value}`, {
       method: 'PUT',
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ nodeId: null }),
@@ -645,6 +744,7 @@ function connectWebSocket() {
 
 watch(() => visibleProp.visible, (v) => {
   if (v) {
+    loadWorkspaces();
     loadPlan();
     connectWebSocket();
   } else {
@@ -685,6 +785,81 @@ loadPlan();
   border-bottom: 1px solid rgba(255,255,255,0.08);
   font-weight: 600;
   color: #eee;
+}
+
+.workspace-selector {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.workspace-select {
+  flex: 1;
+  background: #0f3460;
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #eee;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.add-workspace-btn {
+  background: var(--accent, #00bcd4);
+  border: none;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.create-workspace-modal {
+  position: absolute;
+  top: 60px;
+  left: 10px;
+  right: 10px;
+  background: rgba(15, 52, 96, 0.98);
+  border: 1px solid rgba(108, 99, 255, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  z-index: 100;
+}
+
+.create-workspace-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: #eee;
+  font-size: 13px;
+}
+
+.create-workspace-header button {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+}
+
+.workspace-input {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #eee;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.create-btn {
+  width: 100%;
+  background: var(--accent, #00bcd4);
+  border: none;
+  color: white;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
 .level-tabs {
@@ -844,19 +1019,95 @@ loadPlan();
 }
 
 .plan-task {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px;
   border-radius: 6px;
   margin-bottom: 4px;
   cursor: grab;
   transition: background 0.2s;
+  border: 1px solid transparent;
 }
 
-.plan-task:hover { background: rgba(255,255,255,0.05); }
+.plan-task:hover { border-color: rgba(255,255,255,0.1); }
 .plan-task.status-done { opacity: 0.6; }
 .plan-task.status-blocked { background: rgba(244, 67, 54, 0.1); }
+
+.task-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.task-expand-icon {
+  font-size: 10px;
+  color: #666;
+}
+
+.task-detail {
+  padding: 0 12px 10px 32px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+.detail-section {
+  margin-top: 6px;
+}
+
+.detail-label {
+  font-size: 10px;
+  color: #00bcd4;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.detail-text {
+  font-size: 12px;
+  color: #aaa;
+  line-height: 1.4;
+}
+
+.detail-deps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dep-chip {
+  font-size: 10px;
+  background: rgba(108, 99, 255, 0.15);
+  border: 1px solid rgba(108, 99, 255, 0.3);
+  color: #b8b0ff;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.detail-criteria {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-criterion {
+  font-size: 11px;
+  color: #999;
+  display: flex;
+  gap: 4px;
+}
+
+.detail-criterion.met {
+  color: #4caf50;
+  text-decoration: line-through;
+}
+
+.criterion-check {
+  flex-shrink: 0;
+}
+
+.detail-schema {
+  font-size: 11px;
+  color: #666;
+  font-family: monospace;
+}
 
 .task-left { display: flex; align-items: center; gap: 6px; flex: 1; }
 .task-status-btn {

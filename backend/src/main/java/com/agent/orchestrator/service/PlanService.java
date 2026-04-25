@@ -36,6 +36,10 @@ public class PlanService {
         return plan;
     }
 
+    public List<String> listWorkspaces() {
+        return planRepository.findAllWorkspaceIds();
+    }
+
     public Map<String, Object> getPlanSummary(String workspaceId, String format, TaskStatus statusFilter) {
         Plan plan = getPlan(workspaceId);
         List<Task> tasks = plan.getTasks();

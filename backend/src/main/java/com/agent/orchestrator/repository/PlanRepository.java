@@ -133,6 +133,24 @@ public class PlanRepository {
         return plans;
     }
 
+    public List<String> findAllWorkspaceIds() {
+        List<String> ids = new ArrayList<>();
+        String sql = "SELECT DISTINCT workspace_id FROM plans ORDER BY workspace_id";
+
+        try (Connection conn = DriverManager.getConnection(dbUrl);
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            ResultSet rs = pstmt.executeQuery();
+            while (rs.next()) {
+                ids.add(rs.getString("workspace_id"));
+            }
+        } catch (Exception e) {
+            log.error("Ошибка чтения workspaces: {}", e.getMessage());
+        }
+
+        return ids;
+    }
+
     public void delete(String id) {
         String sql = "DELETE FROM plans WHERE id = ?";
 
