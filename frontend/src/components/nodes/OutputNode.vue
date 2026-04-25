@@ -36,6 +36,7 @@
         <select v-model="outputType" class="config-select" @change="updateConfig">
           <option value="log">📋 Лог (панель)</option>
           <option value="file">💾 Файл</option>
+          <option value="memory">🧠 Память (MemPalace)</option>
         </select>
       </div>
       <template v-if="outputType === 'file'">
@@ -55,6 +56,26 @@
             <option value="markdown">Markdown</option>
             <option value="json">JSON</option>
           </select>
+        </div>
+      </template>
+      <template v-if="outputType === 'memory'">
+        <div class="output-config">
+          <label class="config-label">Wing:</label>
+          <input
+            v-model="memoryWing"
+            class="config-input"
+            placeholder="axolotl"
+            @change="updateConfig"
+          />
+        </div>
+        <div class="output-config">
+          <label class="config-label">Room:</label>
+          <input
+            v-model="memoryRoom"
+            class="config-input"
+            placeholder="agent-results"
+            @change="updateConfig"
+          />
         </div>
       </template>
       <template v-if="props.data.result">
@@ -108,9 +129,11 @@ const nameInput = ref<HTMLInputElement | null>(null);
 const expanded = ref(true);
 const resultExpanded = ref(true);
 
-const outputType = ref<'log' | 'file'>(props.data.outputType || 'log');
+const outputType = ref<'log' | 'file' | 'memory'>(props.data.outputType || 'log');
 const filePath = ref(props.data.filePath || './output/result.md');
 const fileFormat = ref<'text' | 'json' | 'markdown'>(props.data.fileFormat || 'markdown');
+const memoryWing = ref((props.data.config?.memoryWing as string) || 'axolotl');
+const memoryRoom = ref((props.data.config?.memoryRoom as string) || 'agent-results');
 
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
@@ -153,6 +176,8 @@ function updateConfig() {
   props.data.config!.outputType = outputType.value;
   props.data.config!.filePath = filePath.value;
   props.data.config!.fileFormat = fileFormat.value;
+  props.data.config!.memoryWing = memoryWing.value;
+  props.data.config!.memoryRoom = memoryRoom.value;
   props.data.outputType = outputType.value;
   props.data.filePath = filePath.value;
   props.data.fileFormat = fileFormat.value;

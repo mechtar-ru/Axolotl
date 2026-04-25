@@ -810,10 +810,48 @@ public class SchemaService {
                 result = executeOutputNode(node, schemaId, mode);
 
             } else if ("source".equals(node.getType())) {
-                if (node.getData() != null && node.getData().getSourceData() != null && !node.getData().getSourceData().isEmpty()) {
-                    result = node.getData().getSourceData();
+                String sourceType = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("sourceType", "text") : "text";
+
+                if ("memory".equals(sourceType)) {
+                    String query = node.getData() != null && node.getData().getSourceData() != null
+                            && !node.getData().getSourceData().isEmpty()
+                            ? node.getData().getSourceData() : node.getName();
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Поиск в памяти");
+                        webSocketHandler.sendLog(schemaId, "info", "Поиск в памяти: " + query, node.getId());
+                    }
+                    if (memPalaceClient.isEnabled()) {
+                        var memResults = memPalaceClient.search(query, null, null, 5);
+                        if (memResults.isEmpty()) {
+                            result = "Ничего не найдено по запросу: " + query;
+                        } else {
+                            StringBuilder sb = new StringBuilder();
+                            for (var r : memResults) sb.append("- ").append(r.get("content")).append("\n");
+                            result = sb.toString().trim();
+                        }
+                    } else {
+                        result = "Память недоступна (MemPalace не подключен)";
+                    }
+                } else if ("url".equals(sourceType)) {
+                    String url = node.getData() != null && node.getData().getConfig() != null
+                            ? (String) node.getData().getConfig().getOrDefault("url", "") : "";
+                    if (url.isEmpty()) {
+                        result = "URL не указан";
+                    } else {
+                        if (webSocketHandler != null) {
+                            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Загрузка URL");
+                            webSocketHandler.sendLog(schemaId, "info", "Загрузка URL: " + url, node.getId());
+                        }
+                        result = fetchUrlContent(url);
+                    }
                 } else {
-                    result = "Данные из источника: " + node.getName();
+                    // "text" or "file" — sourceData already contains the content
+                    if (node.getData() != null && node.getData().getSourceData() != null && !node.getData().getSourceData().isEmpty()) {
+                        result = node.getData().getSourceData();
+                    } else {
+                        result = "Данные из источника: " + node.getName();
+                    }
                 }
 
             } else if ("condition".equals(node.getType())) {
@@ -1270,15 +1308,33 @@ public class SchemaService {
     private String executeOutputNode(Node node, String schemaId, ExecutionMode mode) {
         if (mode == ExecutionMode.ANALYZE || mode == ExecutionMode.DRY_RUN) {
             if (webSocketHandler != null) {
-                webSocketHandler.sendLog(schemaId, "warning", "Блокировка: запись в файл не выполняется в режиме " + mode, node.getId());
+                webSocketHandler.sendLog(schemaId, "warning", "Блокировка: запись не выполняется в режиме " + mode, node.getId());
             }
-            return "[SIMULATED] Output node - no file operations";
+            return "[SIMULATED] Output node - no file/memory operations";
         }
 
         var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
         String input = predResults.values().stream().findFirst().map(Object::toString).orElse("");
         String outputType = node.getData() != null && node.getData().getConfig() != null
                 ? (String) node.getData().getConfig().getOrDefault("outputType", "log") : "log";
+
+        if ("memory".equals(outputType)) {
+            String wing = node.getData() != null && node.getData().getConfig() != null
+                    ? (String) node.getData().getConfig().getOrDefault("memoryWing", "axolotl") : "axolotl";
+            String room = node.getData() != null && node.getData().getConfig() != null
+                    ? (String) node.getData().getConfig().getOrDefault("memoryRoom", "agent-results") : "agent-results";
+            if (webSocketHandler != null) {
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Сохранение в память");
+                webSocketHandler.sendLog(schemaId, "info", "Сохранение в память: " + wing + "/" + room, node.getId());
+            }
+            boolean ok = memPalaceClient.addDrawer(wing, room, input, "schema:" + schemaId);
+            String result = ok ? "Сохранено в память: " + wing + "/" + room : "Ошибка сохранения в память (MemPalace не подключен)";
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, ok ? "success" : "error", result, node.getId());
+            }
+            return result;
+        }
+
         String filePath = node.getData() != null && node.getData().getConfig() != null
                 ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
         String fileFormat = node.getData() != null && node.getData().getConfig() != null
@@ -1294,6 +1350,28 @@ public class SchemaService {
     }
 
     private static final int MAX_SUBAGENT_DEPTH = 5;
+
+    private String fetchUrlContent(String url) {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10))
+                    .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                    .build();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .GET()
+                    .timeout(java.time.Duration.ofSeconds(30))
+                    .build();
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                String content = response.body();
+                return content.length() > 50000 ? content.substring(0, 50000) : content;
+            }
+            return "Ошибка загрузки URL: HTTP " + response.statusCode();
+        } catch (Exception e) {
+            return "Ошибка загрузки URL: " + e.getMessage();
+        }
+    }
 
     private String executeSubagentNode(Node node, String schemaId, AtomicBoolean cancelFlag, ExecutionMode mode) {
         String targetSchemaId = node.getData() != null ? node.getData().getSubagentSchemaId() : null;
