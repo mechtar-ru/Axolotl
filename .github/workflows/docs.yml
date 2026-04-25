@@ -35,7 +35,11 @@ jobs:
         run: cd docs && npm install
 
       - name: Build
-        run: cd docs && npm run docs:build
+        run: |
+          cd docs
+          npm run docs:build
+          ls -la .vitepress/ 2>/dev/null || echo "No .vitepress dir"
+          ls -la .vitepress/dist/ 2>/dev/null || echo "No dist dir"
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
