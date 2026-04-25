@@ -175,7 +175,7 @@ const nodeTypes = {
   human: markRaw(HumanNode),
   fallback: markRaw(FallbackNode),
   subagent: markRaw(SubagentNode),
-  schemabuilder: SchemaBuilderNode,
+  schemabuilder: markRaw(SchemaBuilderNode),
 } as any;
 
 const edgeTypes = {
