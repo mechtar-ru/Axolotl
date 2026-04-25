@@ -36,8 +36,7 @@ jobs:
 
       - name: Build
         run: |
-          cd docs
-          npm run docs:build
+          cd docs && npm run docs:build
           ls -la .vitepress/ 2>/dev/null || echo "No .vitepress dir"
           ls -la .vitepress/dist/ 2>/dev/null || echo "No dist dir"
 
