@@ -6,101 +6,116 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Service;
 
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 public class MetricsService {
 
-    private final MeterRegistry registry;
-    private final ConcurrentHashMap<String, Counter> counters = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Timer> timers = new ConcurrentHashMap<>();
-    private final AtomicInteger activeExecutions = new AtomicInteger(0);
-    private final AtomicInteger queuedExecutions = new AtomicInteger(0);
-    private final AtomicLong totalNodesExecuted = new AtomicLong(0);
-    private final AtomicLong totalWorkflowsExecuted = new AtomicLong(0);
+    private final Counter schemaExecutionsTotal;
+    private final Counter schemaExecutionsSuccess;
+    private final Counter schemaExecutionsFailed;
+    private final Counter nodeExecutionsTotal;
+    private final Counter llmCallsTotal;
+    private final Counter toolCallsTotal;
+    
+    private final AtomicInteger activeSchemas = new AtomicInteger(0);
+    private final AtomicLong totalExecutionTimeMs = new AtomicLong(0);
+    private final AtomicInteger schemasCompleted = new AtomicInteger(0);
+
+    private final Timer schemaExecutionTimer;
+    private final Timer nodeExecutionTimer;
 
     public MetricsService(MeterRegistry registry) {
-        this.registry = registry;
-
-        Gauge.builder("axolotl_executions_active", activeExecutions, AtomicInteger::get)
-                .description("Currently active workflow executions")
+        // Schema execution counters
+        this.schemaExecutionsTotal = Counter.builder("axolotl.schema.executions.total")
+                .description("Total schema executions")
+                .register(registry);
+        
+        this.schemaExecutionsSuccess = Counter.builder("axolotl.schema.executions.success")
+                .description("Successful schema executions")
+                .register(registry);
+        
+        this.schemaExecutionsFailed = Counter.builder("axolotl.schema.executions.failed")
+                .description("Failed schema executions")
+                .register(registry);
+        
+        this.nodeExecutionsTotal = Counter.builder("axolotl.node.executions.total")
+                .description("Total node executions")
+                .register(registry);
+        
+        this.llmCallsTotal = Counter.builder("axolotl.llm.calls.total")
+                .description("Total LLM API calls")
+                .register(registry);
+        
+        this.toolCallsTotal = Counter.builder("axolotl.tool.calls.total")
+                .description("Total tool calls")
                 .register(registry);
 
-        Gauge.builder("axolotl_executions_queued", queuedExecutions, AtomicInteger::get)
-                .description("Queued workflow executions")
+        // Gauges
+        Gauge.builder("axolotl.schemas.active", activeSchemas, AtomicInteger::get)
+                .description("Active schema executions")
+                .register(registry);
+        
+        Gauge.builder("axolotl.schemas.completed", schemasCompleted, AtomicInteger::get)
+                .description("Total schemas completed")
+                .register(registry);
+        
+        Gauge.builder("axolotl.execution.time.total_ms", totalExecutionTimeMs, AtomicLong::get)
+                .description("Total execution time in milliseconds")
                 .register(registry);
 
-        Gauge.builder("axolotl_nodes_executed_total", totalNodesExecuted, AtomicLong::get)
-                .description("Total nodes executed")
+        // Timers
+        this.schemaExecutionTimer = Timer.builder("axolotl.schema.execution.duration")
+                .description("Schema execution duration")
                 .register(registry);
-
-        Gauge.builder("axolotl_workflows_executed_total", totalWorkflowsExecuted, AtomicLong::get)
-                .description("Total workflows executed")
+        
+        this.nodeExecutionTimer = Timer.builder("axolotl.node.execution.duration")
+                .description("Node execution duration")
                 .register(registry);
     }
 
-    public void recordWorkflowStart() {
-        activeExecutions.incrementAndGet();
-        totalWorkflowsExecuted.incrementAndGet();
-        Counter.builder("axolotl_workflows_started")
-                .description("Workflows started")
-                .register(registry)
-                .increment();
+    public void recordSchemaExecutionStart() {
+        schemaExecutionsTotal.increment();
+        activeSchemas.incrementAndGet();
     }
 
-    public void recordWorkflowComplete() {
-        activeExecutions.decrementAndGet();
-        Counter.builder("axolotl_workflows_completed")
-                .description("Workflows completed")
-                .register(registry)
-                .increment();
+    public void recordSchemaExecutionSuccess(long durationMs) {
+        schemaExecutionsSuccess.increment();
+        activeSchemas.decrementAndGet();
+        schemasCompleted.incrementAndGet();
+        totalExecutionTimeMs.addAndGet(durationMs);
+        schemaExecutionTimer.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
-    public void recordWorkflowFailed() {
-        activeExecutions.decrementAndGet();
-        Counter.builder("axolotl_workflows_failed")
-                .description("Workflows failed")
-                .register(registry)
-                .increment();
+    public void recordSchemaExecutionFailed(long durationMs) {
+        schemaExecutionsFailed.increment();
+        activeSchemas.decrementAndGet();
+        totalExecutionTimeMs.addAndGet(durationMs);
+        schemaExecutionTimer.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
-    public void recordNodeExecution(String nodeType, long durationMs) {
-        totalNodesExecuted.incrementAndGet();
-        String name = "axolotl_nodes_" + nodeType + "_executed";
-        Counter.builder(name)
-                .description("Nodes executed by type: " + nodeType)
-                .register(registry)
-                .increment();
-
-        Timer.builder("axolotl_node_duration_" + nodeType)
-                .description("Node execution duration by type")
-                .register(registry)
-                .record(java.time.Duration.ofMillis(durationMs));
+    public void recordNodeExecution() {
+        nodeExecutionsTotal.increment();
     }
 
-    public void recordLlmCall(String provider, long durationMs, boolean success) {
-        Timer.builder("axolotl_llm_call_duration")
-                .tag("provider", provider)
-                .description("LLM call duration")
-                .register(registry)
-                .record(java.time.Duration.ofMillis(durationMs));
-
-        Counter.builder("axolotl_llm_calls")
-                .tag("provider", provider)
-                .tag("success", String.valueOf(success))
-                .description("LLM calls by provider and status")
-                .register(registry)
-                .increment();
+    public void recordNodeExecutionTime(long durationMs) {
+        nodeExecutionTimer.record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
-    public void recordApiCall(String endpoint, int statusCode) {
-        Counter.builder("axolotl_api_calls")
-                .tag("endpoint", endpoint)
-                .tag("status", String.valueOf(statusCode))
-                .description("API calls by endpoint and status")
-                .register(registry)
-                .increment();
+    public void recordLlmCall() {
+        llmCallsTotal.increment();
+    }
+
+    public void recordToolCall() {
+        toolCallsTotal.increment();
+    }
+
+    public Timer.Sample startTimer() {
+        return Timer.start();
+    }
+
+    public void stopTimer(Timer.Sample sample) {
+        sample.stop(schemaExecutionTimer);
     }
 }

@@ -3,6 +3,7 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.Plan;
+import io.micrometer.core.instrument.Timer;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.Priority;
@@ -44,6 +45,7 @@ public class SchemaService {
     private final PlanService planService;
     private final SettingsService settingsService;
     private final ToolExecutor toolExecutor;
+    private final MetricsService metricsService;
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
@@ -63,7 +65,8 @@ public class SchemaService {
             MemPalaceClient memPalaceClient,
             PlanService planService,
             SettingsService settingsService,
-            ToolExecutor toolExecutor) {
+            ToolExecutor toolExecutor,
+            MetricsService metricsService) {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -72,6 +75,7 @@ public class SchemaService {
         this.settingsService = settingsService;
         this.toolExecutor = toolExecutor;
         this.toolExecutor.setWebSocketHandler(webSocketHandler);
+        this.metricsService = metricsService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -356,12 +360,20 @@ public class SchemaService {
             }
         }
 
+        if (metricsService != null) {
+            metricsService.recordSchemaExecutionStart();
+        }
+
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(id, cancelFlag);
+        Timer.Sample timerSample = metricsService != null ? metricsService.startTimer() : null;
         CompletableFuture<?> future = CompletableFuture.runAsync(
                 () -> executeWorkflow(schema, cancelFlag, mode), executionExecutor);
         runningExecutions.put(id, future);
         future.whenComplete((result, ex) -> {
+            if (metricsService != null && timerSample != null) {
+                metricsService.stopTimer(timerSample);
+            }
             runningExecutions.remove(id);
             cancelFlags.remove(id);
             if (ex != null && !(ex instanceof CancellationException)) {
