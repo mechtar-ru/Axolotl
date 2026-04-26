@@ -1,0 +1,29 @@
+{
+  "name": "Axolotl Development",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java",
+        "vue.volar"
+      ]
+    }
+  },
+
+  "postCreateCommand": "cd /workspaces/axolotl && git fetch origin && git checkout main && git pull origin main",
+
+  "portsAttributes": {
+    "8080": {
+      "label": "Backend",
+      "visibility": "public"
+    },
+    "5173": {
+      "label": "Frontend",
+      "visibility": "public"
+    }
+  }
+}

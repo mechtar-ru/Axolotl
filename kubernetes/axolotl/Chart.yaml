@@ -1,0 +1,16 @@
+apiVersion: v2
+name: axolotl
+description: AI-agent orchestration platform
+type: application
+version: 0.2.0
+appVersion: "0.2.0"
+keywords:
+  - ai
+  - agent
+  - orchestration
+  - workflow
+maintainers:
+  - name: Axolotl Team
+    url: https://github.com/anomalyco/axolotl
+sources:
+  - https://github.com/anomalyco/axolotl

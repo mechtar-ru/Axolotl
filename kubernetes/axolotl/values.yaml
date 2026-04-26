@@ -1,0 +1,24 @@
+replicas: 1
+
+springProfile: docker
+
+imagePullPolicy: IfNotPresent
+
+image:
+  backend: ghcr.io/anomalyco/axolotl/backend:latest
+  frontend: ghcr.io/anomalyco/axolotl/frontend:latest
+
+mempalaceUrl: http://mempalace:5890
+mempalaceEnabled: false
+ollamaUrl: http://ollama:11434
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+  host: axolotl.example.com
+
+persistence:
+  enabled: false
+  size: 1Gi

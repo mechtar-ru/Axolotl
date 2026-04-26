@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-backend
+  labels:
+    app: {{ .Release.Name }}
+    component: backend
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+      component: backend
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        component: backend
+    spec:
+      containers:
+      - name: backend
+        image: "{{ .Values.image.backend }}"
+        imagePullPolicy: {{ .Values.imagePullPolicy }}
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "{{ .Values.springProfile }}"
+        - name: AXOLOTL_DB_PATH
+          value: "/data/schema.db"
+        - name: AXOLOTL_MEMPALACE_URL
+          value: "{{ .Values.mempalaceUrl }}"
+        - name: AXOLOTL_MEMPALACE_ENABLED
+          value: "{{ .Values.mempalaceEnabled }}"
+        {{- if .Values.ollamaUrl }}
+        - name: SPRING_AI_OLLAMA_BASE-URL
+          value: "{{ .Values.ollamaUrl }}"
+        {{- end }}
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+      volumes:
+      - name: data
+        {{- if .Values.persistence.enabled }}
+        persistentVolumeClaimClaimName: {{ .Release.Name }}-pvc
+        {{- else }}
+        emptyDir: {}
+        {{- end }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-backend
+spec:
+  selector:
+    app: {{ .Release.Name }}
+    component: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-frontend
+  labels:
+    app: {{ .Release.Name }}
+    component: frontend
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+      component: frontend
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        component: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: "{{ .Values.image.frontend }}"
+        imagePullPolicy: {{ .Values.imagePullPolicy }}
+        ports:
+        - containerPort: 80
+        env:
+        - name: VITE_API_URL
+          value: "http://{{ .Release.Name }}-backend:8080/api"
+        - name: VITE_WS_URL
+          value: "ws://{{ .Release.Name }}-backend:8080/ws"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-frontend
+spec:
+  selector:
+    app: {{ .Release.Name }}
+    component: frontend
+  ports:
+  - port: 80
+    targetPort: 80
+  type: {{ .Values.service.type }}
+
+---
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {{ .Values.ingress.host }}
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Release.Name }}-frontend
+            port:
+              number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Release.Name }}-backend
+            port:
+              number: 8080
+      - path: /ws
+        pathType: Prefix
+        backend:
+          service:
+            name: {{ .Release.Name }}-backend
+            port:
+              number: 8080
+{{- end }}
+
+{{- if .Values.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.persistence.size }}
+{{- end }}
