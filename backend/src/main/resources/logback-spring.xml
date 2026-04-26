@@ -8,38 +8,6 @@
         </encoder>
     </appender>
 
-    <!-- JSON appender for ELK/Loki -->
-    <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
-            <includeMarker>axolotl</includeMarker>
-            <provider class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
-                <providers>
-                    <timestamp>
-                        <fieldName>timestamp</fieldName>
-                        <pattern>yyyy-MM-dd'T'HH:mm:ss.SSSZ</pattern>
-                    </timestamp>
-                    <log Level>
-                        <fieldName>level</fieldName>
-                    </log Level>
-                    <logger>
-                        <fieldName>logger</fieldName>
-                    </logger>
-                    <message>
-                        <fieldName>message</fieldName>
-                        <fieldName>message</fieldName>
-                    </message>
-                    <stackTrace>
-                        <fieldName>stacktrace</fieldName>
-                    </stackTrace>
-                    <mdc/>
-                    <marker>
-                        <fieldName>marker</fieldName>
-                    </marker>
-                </providers>
-            </encoder>
-        </encoder>
-    </appender>
-
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>logs/axolotl.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -54,17 +22,13 @@
         </encoder>
     </appender>
 
-    <!-- Standard console logging -->
     <logger name="com.agent.orchestrator" level="DEBUG"/>
     <logger name="org.springframework" level="INFO"/>
     <logger name="org.springframework.web" level="DEBUG"/>
     <logger name="com.zaxxer.hikari" level="INFO"/>
 
-    <!-- Use CONSOLE for development, JSON for production (set system property) -->
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-        <!-- Uncomment for ELK/Loki: -->
-        <!-- <appender-ref ref="JSON"/> -->
         <appender-ref ref="FILE"/>
     </root>
 </configuration>
