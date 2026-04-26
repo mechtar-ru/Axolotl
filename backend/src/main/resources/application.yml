@@ -45,6 +45,23 @@ axolotl:
     base-url: ${AXOLOTL_MEMPALACE_URL:http://localhost:5890}
     enabled: ${AXOLOTL_MEMPALACE_ENABLED:false}
 
+# OpenAPI / Swagger
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger.html
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+
 logging:
   level:
     com.agent.orchestrator: DEBUG
