@@ -1,0 +1,44 @@
+{
+  "name": "Code Analyzer (RLM)",
+  "description": "Анализирует кодовую базу Axolotl и предлагает улучшения",
+  "nodes": [
+    {
+      "id": "source-1",
+      "type": "source",
+      "name": "Codebase",
+      "position": {"x": 100, "y": 200},
+      "data": {
+        "sourceType": "directory",
+        "name": "Codebase",
+        "content": "backend/src/main/java/com/agent/orchestrator"
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Analyzer Agent",
+      "position": {"x": 400, "y": 200},
+      "data": {
+        "systemPrompt": "Ты — экспертный анализатор кода. Изучи код и выяви:\n1. Паттерны и лучшие практики\n2. Проблемы и баги\n3. Возможности для рефакторинга\n\nОтвечай структурированно в markdown.",
+        "userPrompt": "Проанализируй код:\n\n{{codebase}}\n\nДай отчёт.",
+        "model": "ollama"
+      }
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "name": "Report",
+      "position": {"x": 700, "y": 200},
+      "data": {
+        "name": "Report",
+        "outputType": "file",
+        "filePath": "code-analysis-report.md",
+        "fileFormat": "markdown"
+      }
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": "source-1", "target": "agent-1"},
+    {"id": "e2", "source": "agent-1", "target": "output-1"}
+  ]
+}
