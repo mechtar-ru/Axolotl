@@ -1,120 +1,162 @@
-# 🧬 Axolotl — визуальная оркестрация AI-агентов
+# 🧬 Axolotl — Visual AI-Agent Orchestration
 
-> *"Рисуй логику, а не пиши её"*
+> *"Draw logic, don't write it"*
 
-Axolotl — это платформа для визуального создания и выполнения цепочек AI-агентов. Стройте workflow из узлов на бесконечном канвасе, подключайте LLM-провайдеров, управляйте памятью через MemPalace и запускайте выполнение в реальном времени.
+Axolotl is a visual platform for building and executing AI-agent workflows. Design workflows from nodes on an infinite canvas, connect LLM providers, manage memory via MemPalace, and run execution in real-time with full trajectory visibility.
 
 ---
 
-## ✨ Возможности
+## ✨ Features
 
-### Визуальный редактор
-- 🎨 **Infinite Canvas** на VueFlow — drag-and-drop, зум, панорамирование
-- 🧩 **11 типов узлов**: Source, Agent, Output, Condition, Loop, Memory, Guardrail, Human, Fallback, Subagent, Group
-- 🔗 **Связи** — типизированные edges (data, condition true/false, loop)
+### Visual Editor
+- 🎨 **Infinite Canvas** — drag-and-drop, zoom, pan via VueFlow
+- 🧩 **11 Node Types**: Source, Agent, Output, Condition, Loop, Memory, Guardrail, Human, Fallback, Subagent, Group
+- 🔗 **Typed Edges** — data, condition true/false, loop
 - ↩️ **Undo/Redo** — Cmd+Z / Cmd+Shift+Z
-- 📋 **Копирование** — Cmd+C / Cmd+V / Cmd+D
-- 🔍 **Поиск** — Cmd+F по имени и типу узла
-- 📦 **JSON экспорт/импорт** — полный обмен схемами
-- 📊 **Mermaid экспорт** — диаграммы из схемы
-- 🐍 **Python экспорт** — генерация исполняемого `.py` скрипта
-- 📷 **PNG/SVG** — скриншот канваса
-- 📝 **Comments** — текстовые заметки на канвасе
-- 📦 **Node grouping** — группировка 2+ узлов (Ctrl+G)
+- 📋 **Copy/Paste/Duplicate** — Cmd+C / Cmd+V / Cmd+D
+- 🔍 **Search** — Cmd+F by node name or type
+- 📦 **JSON Import/Export** — full schema exchange
+- 📊 **Mermaid Export** — diagrams from schema
+- 🐍 **Python Export** — generate executable `.py` scripts
+- 📷 **PNG/SVG Export** — canvas screenshots
+- 📝 **Comments** — text notes on canvas
+- 📦 **Node Grouping** — group 2+ nodes (Ctrl+G)
 
-### Выполнение схем
-- ⚡ **Параллельное выполнение** — независимые ветки через CompletableFuture
-- 📡 **WebSocket real-time** — прогресс, логи, токены, метрики, волны
-- 🔄 **Token streaming** — посимвольная отдача LLM-ответа
-- 🚦 **Convergence monitoring** — счётчик ошибок, порог 3 → `BLOCKED`
-- 🛑 **Cancel execution** — остановка по запросу
-- 📊 **Execution history** — записи о прошлых запусках
+### Workflow Execution
+- ⚡ **Parallel Execution** — independent branches via CompletableFuture
+- 📡 **WebSocket Real-time** — progress, logs, tokens, metrics, waves
+- 🔄 **Token Streaming** — character-by-character LLM response
+- 🚦 **Convergence Monitoring** — error counter, threshold 3 → `BLOCKED`
+- 🛑 **Cancel Execution** — stop on demand
+- 📊 **Execution History** — records of past runs
 - 🎭 **Execution Modes**: EXECUTE (full), ANALYZE (read-only), DRY_RUN (simulate)
 
-### LLM интеграция
-- 🦙 **Ollama** — локальные модели, NDJSON streaming
-- 🤖 **OpenAI** — GPT-4o/mini, SSE streaming
-- 🧠 **Anthropic** — Claude Sonnet/Opus/Haiku, SSE streaming
-- 🔍 **DeepSeek** — бюджетная модель
-- 🔗 **Custom Endpoints** — добавление OpenAI-совместимых провайдеров
-- 🎯 **Модель на узел** — каждый AgentNode выбирает свою модель
-- 💡 **Key storage** — API ключи в env vars или application.yml
-- ✅ **LLM Cross-check** — верификация ответа через вторую LLM
+### Tool-Enabled Agents
+- 🔧 **8 Built-in Tools**: `file_read`, `file_write`, `directory_read`, `bash`, `memory_read`, `memory_write`, `web_search`, `web_fetch`
+- 🧠 **RLM Predict Tool** — call sub-LM with DSPy signatures for structured extraction
+- 📊 **Trajectory Panel** — visualize iterations, tool calls, timing
+- 🔒 **Dangerous Command Blocking** — rm -rf, format, mkfs, etc.
+- ⚙️ **Tool Permissions** — per-node allowed paths, blocked commands
 
-### MemPalace — долговременная память
-- 🧠 **Memory Node** — поиск по памяти, фильтрация wing/room
-- 💾 **Auto-save** — результаты агентов → MemPalace автоматически
-- 🌐 **Graph visualization** — Memory Graph View с крыльями, комнатами, туннелями
-- 📊 **Graph context** — structured tree + table → injection в systemPrompt
-- 🔎 **Semantic search** — cosine similarity
-- 🗂️ **Memory result cards** — результаты поиска как плавающие карточки на канвасе
+### Agent Memory & Skills
+- 🎯 **Agent Types**: Assistant, Coder, Researcher, Reviewer, Project Analyzer
+- 🧠 **Skill Auto-Generation** — extract patterns from trajectories → auto-generate skills
+- 📈 **Skill Tracking** — usage count, success rate, version history
+- 💾 **Pattern Storage** — saved to MemPalace (axolotl/patterns, axolotl/skills)
+
+### LLM Integration
+- 🦙 **Ollama** — local models, NDJSON streaming
+- 🤖 **OpenAI** — GPT-4o/mini, SSE streaming
+- 🧠 **Anthropic** — Claude Sonnet/Opus/Haiku
+- 🔍 **DeepSeek** — budget-friendly model
+- 🔗 **Custom Endpoints** — add OpenAI-compatible providers
+- 🎯 **Per-Node Model** — each AgentNode selects its own model
+
+### MemPalace — Long-term Memory
+- 🧠 **Memory Node** — search memory, filter by wing/room
+- 💾 **Auto-save** — agent results → MemPalace automatically
+- 🌐 **Graph Visualization** — Memory Graph View with wings, rooms, tunnels
+- 📊 **Graph Context** — structured tree + table → injection into systemPrompt
+- 🔎 **Semantic Search** — cosine similarity
+- 🗂️ **Memory Result Cards** — search results as floating cards on canvas
 
 ### Plan / Workspace
-- 📋 **Todo-лист** — задачи со статусами и приоритетами
-- ✍️ **Batch add** — массовое добавление через textarea
-- ✅ **Acceptance criteria** — валидация при переходе в DONE
-- 🔗 **Node linking** — привязка задачи к узлу на канвасе
-- 🤖 **MCP сервер** — 7 инструментов через JSON-RPC 2.0 на `/mcp`
-- 🧩 **Skills** — auto-learning система с отслеживанием использования и success rate
+- 📋 **Todo List** — tasks with statuses and priorities
+- ✍️ **Batch Add** — mass-add via textarea
+- ✅ **Acceptance Criteria** — validation on DONE transition
+- 🔗 **Node Linking** — bind task to canvas node
+- 🤖 **MCP Server** — 7 tools via JSON-RPC 2.0 at `/mcp`
+- 🧩 **Skills** — auto-learning system with usage tracking and success rate
 
-### Remote API & Интеграции
-- 🔑 **API Keys** — управление ключами для внешних систем
-- 📡 **Remote API** — `/api/remote/*` для триггера workflow
-- ⚡ **Rate limiting** — 60 req/min на ключ
-- 🔗 **Webhook callbacks** — уведомления о завершении
-- 📤 **Share Links** — read-only ссылки на схемы с expiration
-- 📊 **Prometheus metrics** — `/actuator/prometheus`
-- 📚 **OpenAPI/Swagger** — `/swagger-ui.html`
+### Observability
+- 📊 **Prometheus Metrics** — `/actuator/prometheus`
+- 📚 **OpenAPI/Swagger** — `/swagger.html`
+- 📝 **Structured JSON Logging** — Logstash encoder for ELK/Loki
+
+### Remote API & Integrations
+- 🔑 **API Keys** — management for external systems
+- 📡 **Remote API** — `/api/remote/*` for workflow triggers
+- ⚡ **Rate Limiting** — 60 req/min per key
+- 🔗 **Webhook Callbacks** — completion notifications
+- 📤 **Share Links** — read-only links with expiration
 
 ### Subagent Workflows
-- 🤝 **Subagent Node** — вызов вложенных workflow
-- 🔄 **Input/Output mapping** — передача данных между workflow
-- 🛡️ **Max depth** — защита от рекурсии (5 уровней)
-- 📜 **Nested logs** — indented логи в Execution Panel
+- 🤝 **Subagent Node** — invoke nested workflows
+- 🔄 **Input/Output Mapping** — data passing between workflows
+- 🛡️ **Max Depth** — recursion protection (5 levels)
+- 📜 **Nested Logs** — indented logs in Execution Panel
 
-### Безопасность
-- 🔐 **JWT авторизация** — регистрация/вход
-- 👥 **Multi-tenancy** — изоляция схем по пользователям
-- 🔑 **Settings API** — CRUD API ключей провайдеров
-- 🛡️ **Guardrail Node** — валидация/трансформация данных
-- 👤 **Human Node** — ожидание подтверждения человека
+### Security
+- 🔐 **JWT Authorization** — registration/login
+- 👥 **Multi-tenancy** — schema isolation per user
+- 🔑 **Settings API** — CRUD provider API keys
+- 🛡️ **Guardrail Node** — data validation/transformation
+- 👤 **Human Node** — wait for human confirmation
 
 ### UI/UX
-- 🌙 **Тёмная тема** — #1e1e2e фон, #6c63ff акцент
-- ⌨️ **Command Palette** — Cmd+K быстрый доступ
-- 🎓 **Onboarding** — 2-step wizard при первом визите
-- 🎬 **Анимации** — пульсация running, свечение completed, тряска failed
-- 🔔 **Toast notifications** — feedback на действия
-- 💾 **Auto-save indicator** — визуальный индикатор сохранения
+- 🌙 **Dark Theme** — #1e1e2e background, #6c63ff accent
+- ⌨️ **Command Palette** — Cmd+K quick access
+- 🎓 **Onboarding** — 2-step wizard on first visit
+- 🎬 **Animations** — pulse running, glow completed, shake failed
+- 🔔 **Toast Notifications** — feedback on actions
+- 💾 **Auto-save Indicator** — visual save status
 
 ### Desktop App (Electron)
-- 🖥️ **Native window** — 1400x900, min 1024x700
-- 🧭 **System tray** — show/hide, new workflow, quit
-- 📋 **Application menu** — File, Edit, View, Window, Help
-- ⌨️ **Global shortcut** — Cmd/Ctrl+Shift+A toggle visibility
-- 🔔 **Native notifications** — execution complete, errors
-- 💾 **File dialogs** — native open/save for workflows
-- 🔄 **Auto-update** — electron-updater с GitHub releases
-- ⚡ **Fast startup** — preload script with secure IPC
+- 🖥️ **Native Window** — 1400x900, min 1024x700
+- 🧭 **System Tray** — show/hide, new workflow, quit
+- 📋 **Application Menu** — File, Edit, View, Window, Help
+- ⌨️ **Global Shortcut** — Cmd/Ctrl+Shift+A toggle visibility
+- 🔔 **Native Notifications** — execution complete, errors
+- 💾 **File Dialogs** — native open/save for workflows
+- 🔄 **Auto-update** — electron-updater from GitHub releases
 
 ---
 
-## 🛠️ Технологии
+## 🚀 Quick Start
 
-### Бэкенд
-| Технология | Версия |
-|-----------|--------|
+### Requirements
+- Java 21+
+- Node.js 18+
+- (optional) Ollama for local LLM
+
+### Backend
+```bash
+cd backend
+mvn spring-boot:run
+# http://localhost:8080
+```
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+# http://localhost:5173
+```
+
+### Docker Compose (full stack)
+```bash
+docker-compose up -d
+```
+
+---
+
+## 🛠️ Tech Stack
+
+### Backend
+| Technology | Version |
+|-----------|---------|
 | Java | 21 |
 | Spring Boot | 3.2 |
 | SQLite | 3.x |
 | PostgreSQL | (Docker) |
 | WebSocket | Spring |
-| Micrometer | Prometheus metrics |
+| Micrometer | Prometheus |
 | springdoc | OpenAPI 3.0 |
 
-### Фронтенд
-| Технология | Версия |
-|-----------|--------|
+### Frontend
+| Technology | Version |
+|-----------|---------|
 | Vue | 3 (Composition API) |
 | TypeScript | 5.x |
 | VueFlow | 1.x |
@@ -123,52 +165,11 @@ Axolotl — это платформа для визуального создан
 | Playwright | E2E testing |
 | Electron | 34.x |
 
-### Инфраструктура
-- Docker Compose — backend + frontend + postgres + mempalace + nginx
-- GitHub Actions — CI/CD pipeline
-- MCP Server — JSON-RPC 2.0 протокол
-- MemPalace MCP — knowledge graph + semantic search
-
 ---
 
-## 🚀 Быстрый старт
+## 📐 Architecture
 
-### Требования
-- Java 21+
-- Node.js 18+
-- (опционально) Ollama для локальных LLM
-
-### Запуск бэкенда
-```bash
-cd backend
-mvn spring-boot:run
-# http://localhost:8080
-```
-
-### Запуск фронтенда
-```bash
-cd frontend
-npm install
-npm run dev
-# http://localhost:5173
-```
-
-### Docker Compose (полный стек)
-```bash
-docker-compose up -d
-```
-
-### Desktop App
-```bash
-npm run build      # Build Electron app
-npm run electron:preview  # Preview built app
-```
-
----
-
-## 📐 Архитектура
-
-### Выполнение схем
+### Execution Flow
 ```
 Source → Agent → Condition → Loop → Output
          ↓
@@ -177,130 +178,79 @@ Source → Agent → Condition → Loop → Output
       Subagent (nested workflow)
 ```
 
-1. **Topological sort** (Kahn's algorithm) — вычисление уровней
-2. **Параллельное выполнение** узлов одного уровня
-3. **WebSocket события**: progress, log, error, nodeTime, token, wave
-4. **Context management**: сбор результатов upstream-узлов + LLM-суммаризация
-5. **Variable interpolation**: `{{input}}`, `{{prev_result}}`, `{{node:Name}}`
+1. **Topological Sort** (Kahn's algorithm) — compute levels
+2. **Parallel Execution** of nodes at same level
+3. **WebSocket Events**: progress, log, error, nodeTime, token, wave, toolCall, iteration
+4. **Context Management**: collect upstream results + LLM summarization
+5. **Variable Interpolation**: `{{input}}`, `{{prev_result}}`, `{{node:Name}}`
 6. **Execution Modes**: EXECUTE/ANALYZE/DRY_RUN
 
-### LLM Provider Interface
-```java
-interface LlmProvider {
-    String chat(String model, String system, String user, Map config);
-    String streamingChat(..., Consumer<String> onToken);
-    boolean supportsStreaming();
-    boolean isAvailable();
-    List<String> listModels();
-}
-```
-
-### API Endpoints
-| Endpoint | Description |
-|----------|-------------|
-| `GET/POST/PUT/DELETE /api/schemas` | Schema CRUD |
-| `POST /api/schemas/{id}/execute?mode=` | Execute with mode |
-| `GET /api/schemas/{id}/export/mermaid` | Mermaid diagram |
-| `POST /api/remote/workflows/{id}/run` | Remote trigger |
-| `GET /api/skills` | Skills management |
-| `POST /api/crosscheck` | LLM verification |
-| `GET /api/share/t/{token}` | Shared schema |
-| `GET /actuator/prometheus` | Metrics |
-
 ---
 
-## 📊 Статус реализации
-
-| Категория | Реализовано | Всего | Процент |
-|-----------|:-----------:|:-----:|:-------:|
-| Визуальный редактор | ✅ | 14 | 100% |
-| Выполнение схем | ✅ | 10 | 100% |
-| LLM провайдеры | ✅ | 7 | 100% |
-| MemPalace | ✅ | 6 | 100% |
-| Plan / MCP | ✅ | 7 | 100% |
-| Skills System | ✅ | 5 | 100% |
-| Remote API | ✅ | 6 | 100% |
-| Безопасность | ✅ | 6 | 100% |
-| UI/UX | ✅ | 8 | 100% |
-| Desktop App | ✅ | 8 | 100% |
-| Инфраструктура | ✅ | 5 | 100% |
-| **Всего** | | **100** | **97%** |
-
----
-
-## 🧪 Тесты
-
-```bash
-# Backend tests
-cd backend
-mvn test
-
-# Frontend unit tests
-cd frontend
-npm run test:unit
-
-# Frontend E2E tests
-npm run test:e2e
-```
-
-| Тип | Инструменты |
-|-----|------------|
-| Unit | JUnit 5 + Mockito |
-| Integration | SpringBootTest + Testcontainers |
-| E2E | Playwright |
-| Frontend | Vitest + Vue Test Utils |
-
----
-
-## 📁 Структура проекта
+## 📁 Project Structure
 
 ```
 Axolotl/
 ├── backend/                          # Spring Boot 3.2, Java 21
-│   ├── src/main/java/com/agent/orchestrator/
-│   │   ├── controller/               # REST endpoints
-│   │   │   ├── AgentController.java
-│   │   │   ├── SchemaController.java
-│   │   │   ├── RemoteApiController.java
-│   │   │   ├── SkillController.java
-│   │   │   ├── ShareController.java
-│   │   │   └── CrossCheckController.java
-│   │   ├── service/                 # Business logic
-│   │   │   ├── SchemaService.java
-│   │   │   ├── SkillService.java
-│   │   │   ├── CrossCheckService.java
-│   │   │   └── MetricsService.java
-│   │   ├── llm/                     # LLM providers
-│   │   │   ├── LlmService.java
-│   │   │   ├── OllamaProvider.java
-│   │   │   ├── OpenAiProvider.java
-│   │   │   ├── AnthropicProvider.java
-│   │   │   └── CustomLlmProvider.java
-│   │   ├── model/                   # Domain objects
-│   │   │   ├── WorkflowSchema.java
-│   │   │   ├── Node.java
-│   │   │   ├── Skill.java
-│   │   │   ├── ApiKey.java
-│   │   │   └── ShareLink.java
-│   │   ├── config/                  # Security, JWT, WebSocket
-│   │   └── websocket/               # Execution handler
+│   └── src/main/java/.../
+│       ├── controller/              # REST endpoints
+│       ├── service/                # Business logic
+│       ├── llm/                    # LLM providers
+│       ├── model/                  # Domain objects
+│       └── config/                 # Security, JWT, WebSocket
 ├── frontend/                         # Vue 3 + TypeScript + Vite
 │   └── src/
 │       ├── components/
-│       │   ├── canvas/              # WorkflowCanvas, CustomEdge
-│       │   ├── nodes/               # AgentNode, SourceNode, etc.
-│       │   ├── execution/           # ExecutionPanel, ExecutionHistory
-│       │   └── memory/             # MemoryGraphView
-│       ├── stores/                  # Pinia stores
-│       └── composables/            # WebSocket, Toast, Electron
+│       │   ├── canvas/             # WorkflowCanvas
+│       │   ├── nodes/              # Node types
+│       │   └── execution/          # ExecutionPanel
+│       └── stores/                  # Pinia
 ├── electron/                         # Electron desktop app
-│   ├── main.ts                      # Main process
-│   └── preload.ts                   # Secure IPC bridge
-├── .github/workflows/                # CI/CD
-│   └── ci.yml
-├── e2e/                             # Playwright tests
-└── docker-compose.yml               # Full stack deployment
+├── .github/workflows/               # CI/CD
+│   ├── ci.yml                     # Compile & build
+│   └── release.yml                # Docker → GHCR
+├── kubernetes/axolotl/             # Helm chart
+├── e2e/                           # Playwright tests
+├── CONTRIBUTING.md
+├── CODE_OF_CONDUCT.md
+├── DEPLOY.md
+└── docker-compose.yml
 ```
+
+---
+
+## 🧪 Tests
+
+```bash
+# Backend tests
+cd backend && mvn test
+
+# Frontend unit tests
+cd frontend && npm run test:unit
+
+# E2E tests
+cd e2e && npx playwright test
+```
+
+---
+
+## 📊 Implementation Status
+
+| Category | Implemented | Total |
+|---------|:-----------:|:-----:|
+| Visual Editor | ✅ | 14 |
+| Workflow Execution | ✅ | 10 |
+| LLM Providers | ✅ | 7 |
+| Tool-Enabled Agents | ✅ | 6 |
+| MemPalace | ✅ | 6 |
+| Plan / MCP | ✅ | 7 |
+| Skills System | ✅ | 5 |
+| Remote API | ✅ | 6 |
+| Security | ✅ | 6 |
+| UI/UX | ✅ | 8 |
+| Desktop App | ✅ | 8 |
+| Infrastructure | ✅ | 5 |
+| **Total** | | **100** |
 
 ---
 
@@ -309,19 +259,28 @@ Axolotl/
 | Feature | Axolotl | n8n | LangFlow |
 |---------|:--------:|:---:|:--------:|
 | Infinite canvas to chat | ✅ | ❌ | ❌ |
-| Real-time token streaming | ✅ | ❌ | ❌ |
+| Tool-enabled agents | ✅ | ❌ | ❌ |
+| Trajectory visualization | ✅ | ❌ | ❌ |
 | Memory as graph | ✅ | ❌ | ❌ |
+| Auto-learning Skills | ✅ | ❌ | ❌ |
 | Execution modes | ✅ | ❌ | ❌ |
 | Built-in Plan/Todo | ✅ | ❌ | ❌ |
-| Subagent workflows | ✅ | ❌ | ❌ |
-| Auto-learning Skills | ✅ | ❌ | ❌ |
 | Human-in-the-loop core | ✅ | basic | basic |
-| LLM Cross-check | ✅ | ❌ | ❌ |
 | Local-first privacy | ✅ | ❌ | ❌ |
 | Desktop App | ✅ | ✅ | ❌ |
 
 ---
 
-## 📝 Лицензия
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- PR process
+- Coding standards
+- Commit message format
+
+---
+
+## 📝 License
 
 MIT
