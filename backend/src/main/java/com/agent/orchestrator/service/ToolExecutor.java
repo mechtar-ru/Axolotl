@@ -5,6 +5,7 @@ import com.agent.orchestrator.model.Tool.ToolCategory;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.agent.orchestrator.llm.LlmService;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -19,6 +20,7 @@ public class ToolExecutor {
     private final Map<String, Tool> tools = new ConcurrentHashMap<>();
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newCachedThreadPool();
+    private LlmService llmService;
 
     private ExecutionWebSocketHandler webSocketHandler;
 
@@ -67,6 +69,10 @@ public class ToolExecutor {
             {"type":"object","properties":{"url":{"type":"string","description":"URL to fetch"}},"required":["url"]}
             """, ToolCategory.HTTP));
 
+        registerTool(new Tool("rlm_predict", "RLM Predict", "Call sub-LM with DSPy signature for structured extraction", """
+            {"type":"object","properties":{"signature":{"type":"string","description":"DSPy signature (e.g. 'input -> output)"},"task":{"type":"string","description":"Task instruction"},"data":{"type":"string","description":"Input data"}},"required":["signature","task","data"]}
+            """, ToolCategory.EXECUTION));
+
         handlers.put("file_read", this::handleFileRead);
         handlers.put("file_write", this::handleFileWrite);
         handlers.put("directory_read", this::handleDirectoryRead);
@@ -75,6 +81,7 @@ public class ToolExecutor {
         handlers.put("memory_write", this::handleMemoryWrite);
         handlers.put("web_search", this::handleWebSearch);
         handlers.put("web_fetch", this::handleWebFetch);
+        handlers.put("rlm_predict", this::handleRlmPredict);
     }
 
     public void registerTool(Tool tool) {
@@ -136,6 +143,10 @@ public class ToolExecutor {
 
     public void setWebSocketHandler(ExecutionWebSocketHandler handler) {
         this.webSocketHandler = handler;
+    }
+
+    public void setLlmService(LlmService llmService) {
+        this.llmService = llmService;
     }
 
     private ToolResult handleFileRead(Map<String, Object> params, ToolPermission permission) {
@@ -241,6 +252,38 @@ public class ToolExecutor {
         if (url == null) return ToolResult.error("Missing url parameter");
 
         return ToolResult.ok("[Web fetch placeholder - implement with HTTP client]");
+    }
+
+    private ToolResult handleRlmPredict(Map<String, Object> params, ToolPermission permission) {
+        String signature = (String) params.get("signature");
+        String task = (String) params.get("task");
+        String data = (String) params.get("data");
+
+        if (signature == null || task == null || data == null) {
+            return ToolResult.error("Missing required parameters: signature, task, data");
+        }
+
+        if (llmService == null) {
+            return ToolResult.error("LLM service not configured");
+        }
+
+        try {
+            String fullPrompt = String.format("""
+                Using signature: %s
+
+                Task: %s
+
+                Input data:
+                %s
+
+                Provide structured output following the signature.
+                """, signature, task, data);
+
+            String result = llmService.chat("ollama", null, fullPrompt, null);
+            return ToolResult.ok(result);
+        } catch (Exception e) {
+            return ToolResult.error("RLM predict failed: " + e.getMessage());
+        }
     }
 
     @FunctionalInterface

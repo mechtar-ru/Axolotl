@@ -34,7 +34,12 @@ public class SkillController {
 
     @GetMapping("/{id}")
     public Skill getSkill(@PathVariable String id) {
-        return skillService.getSkill(id).orElse(null);
+        Skill skill = skillService.getSkill(id);
+        if (skill == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Skill not found: " + id);
+        }
+        return skill;
     }
 
     @PostMapping

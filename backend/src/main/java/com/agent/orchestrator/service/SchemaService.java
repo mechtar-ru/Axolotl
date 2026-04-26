@@ -75,6 +75,7 @@ public class SchemaService {
         this.settingsService = settingsService;
         this.toolExecutor = toolExecutor;
         this.toolExecutor.setWebSocketHandler(webSocketHandler);
+        this.toolExecutor.setLlmService(llmService);
         this.metricsService = metricsService;
     }
 
