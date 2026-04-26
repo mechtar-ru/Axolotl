@@ -7,6 +7,9 @@ import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.Priority;
 import com.agent.orchestrator.model.WorkflowSchema;
+import com.agent.orchestrator.model.Tool;
+import com.agent.orchestrator.model.ToolPermission;
+import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.repository.SchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
@@ -40,6 +43,7 @@ public class SchemaService {
     private final MemPalaceClient memPalaceClient;
     private final PlanService planService;
     private final SettingsService settingsService;
+    private final ToolExecutor toolExecutor;
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
@@ -58,13 +62,15 @@ public class SchemaService {
             ExecutionWebSocketHandler webSocketHandler,
             MemPalaceClient memPalaceClient,
             PlanService planService,
-            SettingsService settingsService) {
+            SettingsService settingsService,
+            ToolExecutor toolExecutor) {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
         this.planService = planService;
         this.settingsService = settingsService;
+        this.toolExecutor = toolExecutor;
     }
 
     @jakarta.annotation.PostConstruct
@@ -810,6 +816,12 @@ public class SchemaService {
             } else if ("output".equals(node.getType())) {
                 result = executeOutputNode(node, schemaId, mode);
 
+            } else if ("command".equals(node.getType())) {
+                result = executeCommandNode(node, schemaId);
+
+            } else if ("filewrite".equals(node.getType())) {
+                result = executeFileWriteNode(node, schemaId);
+
             } else if ("source".equals(node.getType())) {
                 String sourceType = node.getData() != null && node.getData().getConfig() != null
                         ? (String) node.getData().getConfig().getOrDefault("sourceType", "text") : "text";
@@ -1264,7 +1276,14 @@ public class SchemaService {
         return analysisResult;
     }
 
-    private String executeAgentNode(Node node, String schemaId) {
+private String executeAgentNode(Node node, String schemaId) {
+        boolean useTools = node.getData() != null && node.getData().getEnabledTools() != null
+                && !node.getData().getEnabledTools().isEmpty();
+
+        if (useTools) {
+            return executeToolAgentNode(node, schemaId);
+        }
+
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Отправка запроса к AI");
             webSocketHandler.sendLog(schemaId, "info", "Отправка запроса к LLM", node.getId());
@@ -1318,6 +1337,197 @@ public class SchemaService {
         return result;
     }
 
+    private String executeToolAgentNode(Node node, String schemaId) {
+        String agentType = node.getData().getAgentType();
+        List<String> enabledTools = node.getData().getEnabledTools();
+        int maxToolCalls = node.getData().getMaxToolCalls() > 0 ? node.getData().getMaxToolCalls() : 10;
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Инициализация агента с инструментами");
+            webSocketHandler.sendLog(schemaId, "info", "��гент типа: " + agentType + ", инструменты: " + enabledTools, node.getId());
+        }
+
+        String prompt = node.getData().getUserPrompt();
+        String systemPrompt = node.getData().getSystemPrompt();
+
+        WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
+        String model = resolveModel(node.getData().getModel(), currentSchema);
+        Map<String, Object> predecessorResults = collectPredecessorResults(currentSchema, node.getId());
+        String contextBlock = buildContextBlock(predecessorResults);
+
+        prompt = interpolateVariables(prompt, currentSchema, predecessorResults);
+        if (systemPrompt != null) {
+            systemPrompt = interpolateVariables(systemPrompt, currentSchema, predecessorResults);
+        }
+
+        String toolDefs = buildToolDefinitions(enabledTools);
+        String toolInstructions = buildToolInstructions(enabledTools);
+        systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + toolInstructions;
+
+        if (!contextBlock.isEmpty()) {
+            systemPrompt += "\n\nКонтекст от предыдущих узлов:\n" + contextBlock;
+        }
+
+        if (memPalaceClient.isEnabled()) {
+            String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
+            if (!memoryContext.isEmpty()) {
+                systemPrompt += "\n\n" + memoryContext;
+            }
+        }
+
+        List<Node.Message> messages = new ArrayList<>();
+        messages.add(new Node.Message("system", systemPrompt));
+        messages.add(new Node.Message("user", prompt));
+
+        StringBuilder fullResponse = new StringBuilder();
+        int toolCallCount = 0;
+        String lastResponse = null;
+
+        while (toolCallCount < maxToolCalls) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20 + (toolCallCount * 5),
+                        "Итерация " + (toolCallCount + 1) + " из " + maxToolCalls);
+                webSocketHandler.sendLog(schemaId, "info", "Итерация " + (toolCallCount + 1), node.getId());
+            }
+
+            lastResponse = llmService.chat(model, null, buildMessagesForToolCall(messages), null);
+            messages.add(new Node.Message("assistant", lastResponse));
+            fullResponse.append(lastResponse).append("\n");
+
+            List<Map<String, Object>> toolCalls = parseToolCalls(lastResponse);
+            if (toolCalls.isEmpty()) {
+                break;
+            }
+
+            for (Map<String, Object> toolCall : toolCalls) {
+                if (toolCallCount >= maxToolCalls) {
+                    sendUserApprovalRequest(schemaId, node.getId(), toolCallCount, maxToolCalls);
+                    break;
+                }
+
+                String toolId = (String) toolCall.get("name");
+                Map<String, Object> args = (Map<String, Object>) toolCall.get("arguments");
+
+                String toolResult = executeToolCall(toolId, args, node);
+                messages.add(new Node.Message("tool", toolResult));
+                messages.add(new Node.Message("tool_call_id", (String) toolCall.get("id")));
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info", "Инструмент " + toolId + ": " +
+                            (toolResult.length() > 100 ? toolResult.substring(0, 100) + "..." : toolResult), node.getId());
+                }
+
+                toolCallCount++;
+            }
+
+            if (toolCalls.isEmpty() || toolCallCount >= maxToolCalls) {
+                break;
+            }
+        }
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 90, "Завершение");
+            webSocketHandler.sendLog(schemaId, "info", "Выполнено инструментов: " + toolCallCount, node.getId());
+        }
+
+        if (memPalaceClient.isEnabled() && fullResponse.length() > 0) {
+            memPalaceClient.addDrawer("axolotl", "agent-results",
+                    node.getName() + ": " + fullResponse.substring(0, Math.min(500, fullResponse.length())),
+                    "schema:" + schemaId);
+        }
+
+        return lastResponse != null ? lastResponse : fullResponse.toString();
+    }
+
+    private String buildToolDefinitions(List<String> toolIds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## available_tools\n\n");
+        sb.append("namespace functions {\n\n");
+        for (String toolId : toolIds) {
+            Tool tool = toolExecutor.getTool(toolId);
+            if (tool != null) {
+                sb.append("// ").append(tool.getDescription()).append("\n");
+                sb.append("type ").append(toolId).append(" = (_: {\n");
+                sb.append(tool.getInputSchema().replace("\"", "'")).append("\n}) => any;\n\n");
+            }
+        }
+        sb.append("}\n");
+        return sb.toString();
+    }
+
+    private String buildToolInstructions(List<String> toolIds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("You have access to tools. To use a tool, respond with a JSON object in your final answer.\n\n");
+        sb.append("Available tools:\n");
+        for (String toolId : toolIds) {
+            Tool tool = toolExecutor.getTool(toolId);
+            if (tool != null) {
+                sb.append("- ").append(toolId).append(": ").append(tool.getDescription()).append("\n");
+            }
+        }
+        sb.append("\nTo call a tool, include tool_calls in your response:\n");
+        sb.append("```json\n");
+        sb.append("{\"role\": \"assistant\", \"content\": \"...\", \"tool_calls\": [");
+        sb.append("{\"id\": \"call_1\", \"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}]");
+        sb.append("}\n```\n");
+        return sb.toString();
+    }
+
+    private String buildMessagesForToolCall(List<Node.Message> messages) {
+        StringBuilder sb = new StringBuilder();
+        for (Node.Message msg : messages) {
+            sb.append("<message role=\"").append(msg.getRole()).append("\">\n");
+            sb.append(msg.getContent()).append("\n</message>\n");
+        }
+        return sb.toString();
+    }
+
+    private List<Map<String, Object>> parseToolCalls(String response) {
+        List<Map<String, Object>> calls = new ArrayList<>();
+        if (response == null || !response.contains("tool_calls")) {
+            return calls;
+        }
+
+        try {
+            int start = response.indexOf("tool_calls");
+            int braceStart = response.indexOf("[", start);
+            int braceEnd = response.indexOf("]", braceStart);
+            if (braceStart > 0 && braceEnd > 0) {
+                String toolsJson = response.substring(braceStart, braceEnd + 1);
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> parsed = mapper.readValue(toolsJson, List.class);
+                calls.addAll(parsed);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to parse tool calls: {}", e.getMessage());
+        }
+        return calls;
+    }
+
+    private String executeToolCall(String toolId, Map<String, Object> args, Node node) {
+        ToolPermission permission = null;
+        if (node.getData().getToolPermissions() != null) {
+            for (ToolPermission tp : node.getData().getToolPermissions()) {
+                if (tp.getToolId().equals(toolId)) {
+                    permission = tp;
+                    break;
+                }
+            }
+        }
+
+        ToolResult result = toolExecutor.execute(toolId, args, permission);
+        return result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
+    }
+
+    private void sendUserApprovalRequest(String schemaId, String nodeId, int toolCallCount, int maxToolCalls) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "warning",
+                    "Достигнут лимит инструментов (" + toolCallCount + "/" + maxToolCalls + "). Требуется подтверждение для продолжения.",
+                    nodeId);
+        }
+    }
+
     private String executeOutputNode(Node node, String schemaId, ExecutionMode mode) {
         if (mode == ExecutionMode.ANALYZE || mode == ExecutionMode.DRY_RUN) {
             if (webSocketHandler != null) {
@@ -1360,6 +1570,110 @@ public class SchemaService {
             webSocketHandler.sendLog(schemaId, "info", "Output: " + result, node.getId());
         }
         return result;
+    }
+
+    private String executeCommandNode(Node node, String schemaId) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Выполнение команды");
+        }
+
+        String command = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("command", "") : "";
+        String workingDir = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("workingDir", "") : "";
+        int timeout = node.getData() != null && node.getData().getConfig() != null
+                ? (Integer) node.getData().getConfig().getOrDefault("timeout", 60) : 60;
+
+        if (command == null || command.isBlank()) {
+            return "Ошибка: команда не указана";
+        }
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+            if (workingDir != null && !workingDir.isBlank()) {
+                pb.directory(new java.io.File(workingDir));
+            }
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            String output;
+            try {
+                boolean finished = process.waitFor(timeout, java.util.concurrent.TimeUnit.SECONDS);
+                if (!finished) {
+                    process.destroyForcibly();
+                    return "Таймаут после " + timeout + " сек";
+                }
+                int exitCode = process.exitValue();
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(process.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                }
+                output = sb.toString();
+                node.getData().setResult(output);
+                node.getData().setConfig(java.util.Map.of("exitCode", exitCode));
+                String result = output.isEmpty() ? "(пусто)" : output;
+                if (exitCode == 0) {
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "success", "Команда выполнена (exit " + exitCode + ")", node.getId());
+                    }
+                } else {
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "error", "Команда завершена с ошибкой (exit " + exitCode + ")", node.getId());
+                    }
+                }
+                return result.trim();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                process.destroyForcibly();
+                return "Прервано: " + e.getMessage();
+            }
+        } catch (Exception e) {
+            log.error("Ошибка выполнения команды: {}", e.getMessage(), e);
+            return "Ошибка: " + e.getMessage();
+        }
+    }
+
+    private String executeFileWriteNode(Node node, String schemaId) {
+        if (webSocketHandler != null) {
+            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Запись в файл");
+        }
+
+        String filePath = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
+        String writeMode = node.getData() != null && node.getData().getConfig() != null
+                ? (String) node.getData().getConfig().getOrDefault("writeMode", "overwrite") : "overwrite";
+
+        if (filePath == null || filePath.isBlank()) {
+            return "Ошибка: путь к файлу не указан";
+        }
+
+        var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+        String content = predResults.values().stream().findFirst().map(Object::toString).orElse("");
+
+        try {
+            java.io.File file = new java.io.File(filePath);
+            if ("create-dir".equals(writeMode)) {
+                java.io.File dir = file.getParentFile();
+                if (dir != null && !dir.exists()) {
+                    dir.mkdirs();
+                }
+            }
+            java.io.FileWriter writer = new java.io.FileWriter(file, "append".equals(writeMode));
+            writer.write(content);
+            writer.close();
+
+            String result = "Записано в файл: " + filePath;
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "success", result, node.getId());
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("Ошибка записи в файл: {}", e.getMessage(), e);
+            return "Ошибка записи: " + e.getMessage();
+        }
     }
 
     private static final int MAX_SUBAGENT_DEPTH = 5;
