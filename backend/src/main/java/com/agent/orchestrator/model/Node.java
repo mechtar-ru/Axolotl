@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 public class Node {
     private String id;
@@ -113,6 +114,24 @@ public class Node {
         private Map<String, String> inputMapping;
         private Map<String, String> outputMapping;
 
+        // Tool-enabled agent fields
+        private String agentType;
+        private List<String> enabledTools;
+        private List<ToolPermission> toolPermissions;
+        private int maxToolCalls;
+
+        public String getAgentType() { return agentType; }
+        public void setAgentType(String agentType) { this.agentType = agentType; }
+
+        public List<String> getEnabledTools() { return enabledTools; }
+        public void setEnabledTools(List<String> enabledTools) { this.enabledTools = enabledTools; }
+
+        public List<ToolPermission> getToolPermissions() { return toolPermissions; }
+        public void setToolPermissions(List<ToolPermission> toolPermissions) { this.toolPermissions = toolPermissions; }
+
+        public int getMaxToolCalls() { return maxToolCalls; }
+        public void setMaxToolCalls(int maxToolCalls) { this.maxToolCalls = maxToolCalls; }
+
         public String getLoopCondition() { return loopCondition; }
         public void setLoopCondition(String loopCondition) { this.loopCondition = loopCondition; }
 
@@ -133,7 +152,15 @@ public class Node {
         private String role;
         private String content;
         private long timestamp;
-        
+
+        public Message() {}
+
+        public Message(String role, String content) {
+            this.role = role;
+            this.content = content;
+            this.timestamp = System.currentTimeMillis();
+        }
+
         public String getRole() { return role; }
         public void setRole(String role) { this.role = role; }
         public String getContent() { return content; }

@@ -204,6 +204,44 @@ public class AgentController {
         return memPalaceClient.findTunnels(wing_a);
     }
 
+    @PostMapping("/memory/add")
+    public Map<String, Object> addMemoryDrawer(@RequestBody Map<String, String> body) {
+        String wing = body.getOrDefault("wing", "axolotl");
+        String room = body.getOrDefault("room", "agent-results");
+        String content = body.get("content");
+        String sourceFile = body.get("source_file");
+        boolean ok = memPalaceClient.addDrawer(wing, room, content, sourceFile);
+        return Map.of("success", ok, "wing", wing, "room", room);
+    }
+
+    @PostMapping("/fetch-url")
+    public Map<String, String> fetchUrl(@RequestBody Map<String, String> body) {
+        String url = body.get("url");
+        if (url == null || url.isBlank()) {
+            return Map.of("status", "error", "error", "URL is required");
+        }
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10))
+                    .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                    .build();
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .GET()
+                    .timeout(java.time.Duration.ofSeconds(30))
+                    .build();
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                String content = response.body();
+                if (content.length() > 50000) content = content.substring(0, 50000);
+                return Map.of("status", "ok", "content", content);
+            }
+            return Map.of("status", "error", "error", "HTTP " + response.statusCode());
+        } catch (Exception e) {
+            return Map.of("status", "error", "error", e.getMessage());
+        }
+    }
+
     @GetMapping("/outputs/{schemaId}/{nodeId}")
     public Map<String, String> getOutputFile(@PathVariable String schemaId, @PathVariable String nodeId) {
         String content = schemaService.getOutputFileContent(schemaId, nodeId);

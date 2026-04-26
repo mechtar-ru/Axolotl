@@ -20,10 +20,10 @@
     <VueFlow ref="vueFlowRef" v-model="elements" :node-types="nodeTypes" :edge-types="edgeTypes"
       :fit-view-on-init="true" :multi-select-on-click="true" @connect="onConnect" @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick" @node-context-menu="onNodeContextMenu" @edge-click="onEdgeClick" @pane-click="onPaneClick"
-      @node-double-click="onNodeDoubleClick">
+      @node-double-click="onNodeDoubleClick" @mini-map-click="onMiniMapClick">
       <Background />
       <Controls />
-      <MiniMap />
+      <MiniMap :node-color="minimapNodeColor" :mask-color="'rgba(0,0,0,0.3)'" :pannable="true" :zoomable="true" />
 
       <div v-if="showSearch" class="search-panel">
         <input ref="searchInput" v-model="searchQuery" placeholder="Поиск узлов..." class="search-input"
@@ -42,7 +42,6 @@
             <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
             <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
             <button @click="addNode('output'); showAddMenu = false">📤 Output</button>
-            <button @click="addNode('memory'); showAddMenu = false">🧠 Memory</button>
             <button @click="addNode('guardrail'); showAddMenu = false">🛡️ Guardrail</button>
             <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
             <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
@@ -62,6 +61,7 @@
         <div class="toolbar-group">
           <button class="toolbar-btn" @click="showHistory = !showHistory" title="История выполнений">📜</button>
           <button class="toolbar-btn" @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠</button>
+          <button class="toolbar-btn" @click="showTemplateGallery = true" title="Шаблоны">🏗️</button>
           <button class="toolbar-btn" @click="exportAsImage" title="Сохранить как PNG">📷</button>
         </div>
         <div class="toolbar-separator"></div>
@@ -89,6 +89,8 @@
     <ExecutionHistory :visible="showHistory" :schema-id="schema.id" @close="showHistory = false" />
 
     <MemoryGraphView :visible="showMemoryGraph" @close="showMemoryGraph = false" />
+
+    <TemplateGallery :visible="showTemplateGallery" @close="showTemplateGallery = false" @create="onTemplateCreate" />
 
     <!-- Floating memory result cards -->
     <MemoryResultCard v-for="card in memoryResultCards" :key="card.id"
@@ -144,6 +146,7 @@ import NodeContextMenu from './NodeContextMenu.vue';
 import PromptEditorModal from '../editor/PromptEditorModal.vue';
 import ExecutionHistory from '../execution/ExecutionHistory.vue';
 import MemoryGraphView from '../memory/MemoryGraphView.vue';
+import TemplateGallery from '../ui/TemplateGallery.vue';
 import MemoryResultCard from '../nodes/MemoryResultCard.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -175,7 +178,7 @@ const nodeTypes = {
   human: markRaw(HumanNode),
   fallback: markRaw(FallbackNode),
   subagent: markRaw(SubagentNode),
-  schemabuilder: SchemaBuilderNode,
+  schemabuilder: markRaw(SchemaBuilderNode),
 } as any;
 
 const edgeTypes = {
@@ -202,6 +205,7 @@ const ctxMenu = ref<{ visible: boolean; x: number; y: number; nodeId: string; no
   visible: false, x: 0, y: 0, nodeId: '', nodeType: ''
 });
 const showMemoryGraph = ref(false);
+const showTemplateGallery = ref(false);
 const memoryResultCards = ref<Array<{ id: string; wing: string; room: string; content: string; score?: number; x: number; y: number }>>([]);
 
 // Undo/Redo
@@ -458,6 +462,43 @@ function onPaneClick() {
   showAddMenu.value = false;
   ctxMenu.value.visible = false;
   convertToFlowElements();
+}
+
+function onMiniMapClick(event: { event: MouseEvent; node: Node }) {
+  if (event.node?.id) {
+    const nodeId = event.node.id;
+    selectedNodeIds.value = new Set([nodeId]);
+    selectedNodeId.value = nodeId;
+    selectedEdgeId.value = null;
+    convertToFlowElements();
+    fitToNode(nodeId);
+  }
+}
+
+function fitToNode(nodeId: string) {
+  const vf = vueFlowRef.value;
+  if (!vf) return;
+  const node = vf.findNode(nodeId);
+  if (node) {
+    vf.fitView({ nodes: [node as any], padding: 0.2, duration: 300 });
+  }
+}
+
+function minimapNodeColor(node: Node): string {
+  const colors: Record<string, string> = {
+    source: '#4CAF50',
+    agent: '#2196F3',
+    output: '#FF9800',
+    condition: '#9C27B0',
+    loop: '#E91E63',
+    guardrail: '#00BCD4',
+    human: '#8BC34A',
+    fallback: '#FFC107',
+    subagent: '#673AB7',
+    schemabuilder: '#607D8B',
+    comment: '#795548',
+  };
+  return colors[node.type || ''] || '#999';
 }
 
 function onNodeContextMenu(event: NodeMouseEvent) {
@@ -887,6 +928,21 @@ async function executeSchema() {
 
 function saveSchema() {
   emit('save');
+}
+
+async function onTemplateCreate(templateData: any) {
+  showTemplateGallery.value = false;
+  try {
+    const created = await schemaStore.createSchema(templateData.name || 'New Workflow');
+    if (created) {
+      created.nodes = templateData.nodes || [];
+      created.edges = templateData.edges || [];
+      created.description = templateData.description || '';
+      await schemaStore.updateSchema(created);
+    }
+  } catch (e) {
+    console.error('Failed to create from template:', e);
+  }
 }
 
 function exportSchema() {

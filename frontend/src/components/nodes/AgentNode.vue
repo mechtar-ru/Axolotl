@@ -53,6 +53,42 @@
           <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </optgroup>
       </select>
+      <div class="tools-section">
+        <div class="tools-header" @click="toolsExpanded = !toolsExpanded">
+          <span>{{ toolsExpanded ? '▼' : '▶' }}</span>
+          <span>Инструменты ({{ localEnabledTools?.length || 0 }})</span>
+        </div>
+        <div v-if="toolsExpanded" class="tools-body">
+          <select v-model="localAgentType" class="agent-type-select">
+            <option value="assistant">Ассистент</option>
+            <option value="coder">Кодер</option>
+            <option value="researcher">Исследователь</option>
+            <option value="reviewer">Ревьюер</option>
+            <option value="custom">Свой</option>
+          </select>
+          <div class="tools-checklist">
+            <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox">
+              <input
+                type="checkbox"
+                :checked="localEnabledTools?.includes(tool.id)"
+                @change="toggleTool(tool.id)"
+              />
+              <span class="tool-icon">{{ tool.icon }}</span>
+              <span class="tool-name">{{ tool.name }}</span>
+            </label>
+          </div>
+          <div class="tool-limit">
+            <label>Лимит вызовов:</label>
+            <input
+              type="number"
+              v-model.number="localMaxToolCalls"
+              min="1"
+              max="100"
+              class="tool-limit-input"
+            />
+          </div>
+        </div>
+      </div>
       <div v-if="props.data.executionStatus === 'running' && props.data.progress !== undefined" class="progress-bar">
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
@@ -63,6 +99,7 @@
         </button>
         <div v-if="resultExpanded" class="node-result">
           <div>{{ props.data.result }}</div>
+          <button class="copy-result-btn" @click.stop="copyResult" title="Скопировать">📋</button>
         </div>
       </template>
       <div v-if="props.data.isStreaming" class="typing-indicator">
@@ -95,6 +132,9 @@ const props = defineProps<{
     model?: string;
     nodeTimeMs?: number;
     isStreaming?: boolean;
+    agentType?: string;
+    enabledTools?: string[];
+    maxToolCalls?: number;
     onUpdate?: (updates: any) => void;
     onRename?: (name: string) => void;
     onDelete?: () => void;
@@ -108,6 +148,12 @@ const emit = defineEmits<{
 
 const resultExpanded = ref(true);
 
+function copyResult() {
+  if (props.data.result) {
+    navigator.clipboard.writeText(props.data.result);
+  }
+}
+
 const expanded = ref(false);
 const editingName = ref(false);
 const localName = ref(props.data.name);
@@ -115,6 +161,22 @@ const localPrompt = ref(props.data.userPrompt || '');
 const localModel = ref(props.data.model || 'ollama');
 const nameInput = ref<HTMLInputElement | null>(null);
 const providerOptions = ref<{ value: string; label: string; group: string }[]>([]);
+
+const toolsExpanded = ref(false);
+const localAgentType = ref(props.data.agentType || 'assistant');
+const localEnabledTools = ref<string[]>(props.data.enabledTools || []);
+const localMaxToolCalls = ref(props.data.maxToolCalls || 10);
+
+const availableTools = [
+  { id: 'file_read', name: 'Чтение файла', icon: '📄', category: 'file' },
+  { id: 'file_write', name: 'Запись файла', icon: '💾', category: 'file' },
+  { id: 'directory_read', name: 'Список файлов', icon: '📁', category: 'file' },
+  { id: 'bash', name: 'Bash', icon: '⌨️', category: 'exec' },
+  { id: 'memory_read', name: 'Чтение памяти', icon: '🧠', category: 'memory' },
+  { id: 'memory_write', name: 'Запись в память', icon: '💭', category: 'memory' },
+  { id: 'web_search', name: 'Веб-поиск', icon: '🔍', category: 'web' },
+  { id: 'web_fetch', name: 'Загрузка URL', icon: '🌐', category: 'web' },
+];
 
 onMounted(async () => {
   try {
@@ -181,6 +243,36 @@ watch(localModel, (newVal) => {
   }
 });
 
+watch(localAgentType, (newVal) => {
+  if (props.data.onUpdate) {
+    props.data.onUpdate({ agentType: newVal });
+  }
+});
+
+watch(localEnabledTools, (newVal) => {
+  if (props.data.onUpdate) {
+    props.data.onUpdate({ enabledTools: newVal });
+  }
+}, { deep: true });
+
+watch(localMaxToolCalls, (newVal) => {
+  if (props.data.onUpdate) {
+    props.data.onUpdate({ maxToolCalls: newVal });
+  }
+});
+
+function toggleTool(toolId: string) {
+  const idx = localEnabledTools.value.indexOf(toolId);
+  if (idx >= 0) {
+    localEnabledTools.value.splice(idx, 1);
+  } else {
+    localEnabledTools.value.push(toolId);
+  }
+  if (props.data.onUpdate) {
+    props.data.onUpdate({ enabledTools: [...localEnabledTools.value] });
+  }
+}
+
 function toggleExpand() {
   expanded.value = !expanded.value;
 }
@@ -235,5 +327,82 @@ function handleDelete() {
 }
 .prompt-editor-btn:hover {
   filter: brightness(1.3);
+}
+.tools-section {
+  margin-top: 8px;
+  border: 1px solid var(--border-color, #333);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tools-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-secondary, #2a2a2a);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+.tools-header:hover {
+  background: var(--bg-hover, #333);
+}
+.tools-body {
+  padding: 8px;
+  background: var(--bg-primary, #1a1a1a);
+}
+.agent-type-select {
+  width: 100%;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-color, #fff);
+  font-size: 12px;
+}
+.tools-checklist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.tool-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary, #2a2a2a);
+  cursor: pointer;
+  font-size: 11px;
+}
+.tool-checkbox:hover {
+  background: var(--bg-hover, #333);
+}
+.tool-checkbox input {
+  margin: 0;
+}
+.tool-icon {
+  font-size: 12px;
+}
+.tool-name {
+  color: var(--text-secondary, #aaa);
+}
+.tool-limit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #aaa);
+}
+.tool-limit-input {
+  width: 60px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-color, #fff);
+  font-size: 11px;
 }
 </style>

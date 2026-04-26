@@ -200,6 +200,24 @@
   border-radius: 4px;
   font-size: 12px;
   word-break: break-word;
+  position: relative;
+}
+
+.copy-result-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.copy-result-btn:hover {
+  opacity: 1;
 }
 
 .node-time {

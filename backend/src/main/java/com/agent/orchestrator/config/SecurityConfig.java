@@ -35,6 +35,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/api/memory/**").permitAll()
                 .requestMatchers("/api/share/t/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/mcp").permitAll()

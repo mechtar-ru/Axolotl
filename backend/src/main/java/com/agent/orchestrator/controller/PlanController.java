@@ -26,6 +26,22 @@ public class PlanController {
         return planService.getPlan(workspaceId);
     }
 
+    // === List workspaces ===
+
+    @GetMapping("/workspaces")
+    public List<String> listWorkspaces() {
+        return planService.listWorkspaces();
+    }
+
+    // === Create workspace ===
+
+    @PostMapping("/workspaces")
+    public ResponseEntity<Map<String, Object>> createWorkspace(@RequestBody CreateWorkspaceRequest request) {
+        String name = request.name() != null ? request.name() : "new-workspace";
+        planService.getPlan(name);
+        return ResponseEntity.ok(Map.of("status", "created", "workspaceId", name));
+    }
+
     // === Add task ===
 
     @PostMapping("/tasks")
@@ -37,7 +53,8 @@ public class PlanController {
                 request.description(),
                 request.priority(),
                 request.dependencies(),
-                request.position()
+                request.position(),
+                request.schemaId()
         );
     }
 
@@ -114,11 +131,40 @@ public class PlanController {
         return ResponseEntity.ok(Map.of("status", "deleted", "taskId", taskId));
     }
 
+    // === Hierarchy ===
+
+    @GetMapping("/{planId}/children")
+    public List<Plan> getChildPlans(@PathVariable String planId) {
+        return planService.getChildPlans(planId);
+    }
+
+    @PostMapping("/{planId}/subplan")
+    public Plan createSubPlan(@PathVariable String planId,
+                               @RequestBody CreateSubPlanRequest request) {
+        String workspaceId = request.workspaceId() != null ? request.workspaceId() : planService.getDefaultWorkspace();
+        return planService.createSubPlan(workspaceId, planId, request.name(),
+                request.level(), request.schemaId());
+    }
+
+    @PostMapping("/import-schema")
+    public ResponseEntity<Map<String, Object>> importSchemaAsSubPlan(@RequestBody ImportSchemaRequest request) {
+        String workspaceId = request.workspaceId() != null ? request.workspaceId() : planService.getDefaultWorkspace();
+        Plan sub = planService.importSchemaAsSubPlan(workspaceId, request.parentPlanId(), request.schemaId());
+        return ResponseEntity.ok(Map.of("status", "imported", "planId", sub.getId(), "name", sub.getName()));
+    }
+
+    @GetMapping("/by-schema/{schemaId}")
+    public ResponseEntity<Plan> getPlanBySchemaId(@PathVariable String schemaId) {
+        Plan plan = planService.getPlanBySchemaId(schemaId);
+        if (plan == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(plan);
+    }
+
     // === Request DTOs ===
 
     public record AddTaskRequest(String workspaceId, String title, String description,
                                   Priority priority, java.util.List<String> dependencies,
-                                  PlanService.PositionRequest position) {}
+                                  PlanService.PositionRequest position, String schemaId) {}
 
     public record BatchAddRequest(String workspaceId, List<BatchTask> tasks) {}
     public record BatchTask(String title, String description, Priority priority, java.util.List<String> dependencies) {}
@@ -130,4 +176,7 @@ public class PlanController {
     public record MoveTaskRequest(String workspaceId, PlanService.PositionRequest position) {}
     public record LinkTaskRequest(String nodeId) {}
     public record CriteriaRequest(List<String> criteria, List<Boolean> met) {}
+    public record CreateSubPlanRequest(String workspaceId, String name, PlanLevel level, String schemaId) {}
+    public record ImportSchemaRequest(String workspaceId, String parentPlanId, String schemaId) {}
+    public record CreateWorkspaceRequest(String name) {}
 }

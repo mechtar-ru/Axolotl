@@ -36,6 +36,10 @@ public class PlanService {
         return plan;
     }
 
+    public List<String> listWorkspaces() {
+        return planRepository.findAllWorkspaceIds();
+    }
+
     public Map<String, Object> getPlanSummary(String workspaceId, String format, TaskStatus statusFilter) {
         Plan plan = getPlan(workspaceId);
         List<Task> tasks = plan.getTasks();
@@ -88,7 +92,7 @@ public class PlanService {
     }
 
     public Task addTask(String workspaceId, String title, String description,
-                        Priority priority, List<String> dependencies, PositionRequest position) {
+                        Priority priority, List<String> dependencies, PositionRequest position, String schemaId) {
         Plan plan = getPlan(workspaceId);
 
         if (title == null || title.isBlank()) {
@@ -99,6 +103,7 @@ public class PlanService {
         task.setDescription(description != null ? description : "");
         task.setPriority(priority != null ? priority : Priority.MEDIUM);
         task.setDependencies(dependencies != null ? dependencies : new ArrayList<>());
+        task.setSchemaId(schemaId);
 
         // Validate dependencies exist
         Set<String> existingIds = plan.getTasks().stream().map(Task::getId).collect(Collectors.toSet());
@@ -427,6 +432,43 @@ public class PlanService {
         if (webSocketHandler != null) {
             webSocketHandler.sendPlanUpdated(plan.getWorkspaceId(), plan);
         }
+    }
+
+    // === Hierarchy operations ===
+
+    public List<Plan> getChildPlans(String parentPlanId) {
+        return planRepository.findByParentId(parentPlanId);
+    }
+
+    public Plan createSubPlan(String workspaceId, String parentPlanId, String name, PlanLevel level, String schemaId) {
+        Plan sub = new Plan(workspaceId, name);
+        sub.setParentId(parentPlanId);
+        sub.setLevel(level);
+        sub.setSchemaId(schemaId);
+        planRepository.save(sub);
+        log.info("Создан подплан '{}' (level={}) для parent={}", name, level, parentPlanId);
+        return sub;
+    }
+
+    public Plan getPlanBySchemaId(String schemaId) {
+        return planRepository.findBySchemaId(schemaId);
+    }
+
+    public Plan getPlanById(String planId) {
+        return planRepository.findById(planId);
+    }
+
+    public Plan importSchemaAsSubPlan(String workspaceId, String parentPlanId, String schemaId) {
+        Plan existing = planRepository.findBySchemaId(schemaId);
+        if (existing != null) {
+            return existing;
+        }
+        Plan sub = new Plan(workspaceId, "Schema plan");
+        sub.setParentId(parentPlanId);
+        sub.setLevel(PlanLevel.SUBSCHEMA);
+        sub.setSchemaId(schemaId);
+        planRepository.save(sub);
+        return sub;
     }
 
     public String getDefaultWorkspace() {

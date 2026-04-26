@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8082
 
 spring:
   main:
@@ -34,12 +34,16 @@ axolotl:
       base-url: http://localhost:11434
       default-model: qwen2.5:0.5b
       timeout: 120
+    llama-cpp:
+      base-url: ${LLAMA_CPP_BASE_url:http://localhost:8080}
+      default-model: Ternary-Bonsai-1.7B-Q2_0.gguf
+      timeout: 300
   mcp:
     enabled: true
     path: /mcp
   mempalace:
     base-url: ${AXOLOTL_MEMPALACE_URL:http://localhost:5890}
-    enabled: ${AXOLOTL_MEMPALACE_ENABLED:true}
+    enabled: ${AXOLOTL_MEMPALACE_ENABLED:false}
 
 logging:
   level:

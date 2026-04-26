@@ -17,6 +17,7 @@ public class Task {
     private Priority priority = Priority.MEDIUM;
     private List<String> dependencies = new ArrayList<>();
     private String nodeId;
+    private String schemaId;
     private String reason;
     private int order;
     private List<String> acceptanceCriteria = new ArrayList<>();
@@ -56,6 +57,9 @@ public class Task {
 
     public String getNodeId() { return nodeId; }
     public void setNodeId(String nodeId) { this.nodeId = nodeId; }
+
+    public String getSchemaId() { return schemaId; }
+    public void setSchemaId(String schemaId) { this.schemaId = schemaId; }
 
     public String getReason() { return reason; }
     public void setReason(String reason) { this.reason = reason; }

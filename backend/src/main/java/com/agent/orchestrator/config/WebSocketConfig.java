@@ -24,6 +24,6 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         log.info("Регистрация WebSocket endpoint: /ws/execution");
         registry.addHandler(webSocketHandler, "/ws/execution")
-                .setAllowedOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:5175");
+                .setAllowedOrigins("*");
     }
 }
