@@ -90,6 +90,6 @@ test.describe('Axolotl E2E', () => {
     expect(response.ok()).toBe(true);
     
     const data = await response.json();
-    expect(data.status).toBe('UP');
+    expect(data.status).toBe('ok');
   });
 });
