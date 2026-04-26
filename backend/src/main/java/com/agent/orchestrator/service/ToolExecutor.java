@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.Tool.ToolCategory;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.model.ToolPermission;
+import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -18,6 +19,8 @@ public class ToolExecutor {
     private final Map<String, Tool> tools = new ConcurrentHashMap<>();
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newCachedThreadPool();
+
+    private ExecutionWebSocketHandler webSocketHandler;
 
     private static final Set<String> DEFAULT_BLOCKED_COMMANDS = Set.of(
         "rm -rf", "rm -r /", "del /", "format",
@@ -93,6 +96,11 @@ public class ToolExecutor {
     }
 
     public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission) {
+        return execute(toolId, params, permission, null, null);
+    }
+
+    public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission, String schemaId, String nodeId) {
+        long startTime = System.currentTimeMillis();
         Tool tool = tools.get(toolId);
         if (tool == null) {
             return ToolResult.error("Unknown tool: " + toolId);
@@ -107,10 +115,27 @@ public class ToolExecutor {
         }
 
         try {
-            return handler.execute(params, permission);
+            ToolResult result = handler.execute(params, permission);
+            long durationMs = System.currentTimeMillis() - startTime;
+
+            if (schemaId != null && nodeId != null && webSocketHandler != null) {
+                String argsJson = params != null ? params.toString() : "";
+                webSocketHandler.sendToolCall(schemaId, nodeId, toolId, argsJson, durationMs, result.isSuccess(), result.getOutput());
+            }
+
+            return result;
         } catch (Exception e) {
+            long durationMs = System.currentTimeMillis() - startTime;
+            if (schemaId != null && nodeId != null && webSocketHandler != null) {
+                webSocketHandler.sendToolCall(schemaId, nodeId, toolId, params != null ? params.toString() : "",
+                        durationMs, false, e.getMessage());
+            }
             return ToolResult.error(e.getMessage());
         }
+    }
+
+    public void setWebSocketHandler(ExecutionWebSocketHandler handler) {
+        this.webSocketHandler = handler;
     }
 
     private ToolResult handleFileRead(Map<String, Object> params, ToolPermission permission) {

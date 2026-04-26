@@ -64,6 +64,7 @@
             <option value="coder">Кодер</option>
             <option value="researcher">Исследователь</option>
             <option value="reviewer">Ревьюер</option>
+            <option value="project-analyzer">Анализатор проекта</option>
             <option value="custom">Свой</option>
           </select>
           <div class="tools-checklist">
@@ -176,7 +177,16 @@ const availableTools = [
   { id: 'memory_write', name: 'Запись в память', icon: '💭', category: 'memory' },
   { id: 'web_search', name: 'Веб-поиск', icon: '🔍', category: 'web' },
   { id: 'web_fetch', name: 'Загрузка URL', icon: '🌐', category: 'web' },
+  { id: 'web_parse_html', name: 'HTML парсинг', icon: '📝', category: 'web' },
 ];
+
+const agentTypePresets: Record<string, { tools: string[], systemPrompt: string }> = {
+  assistant: { tools: [], systemPrompt: 'Ты ассистент.' },
+  coder: { tools: ['file_read', 'file_write', 'bash'], systemPrompt: 'Ты программист. Пиши чистый код с тестами.' },
+  researcher: { tools: ['web_search', 'web_fetch', 'directory_read'], systemPrompt: 'Ты исследователь. Собирай информацию и анализируй.' },
+  reviewer: { tools: ['file_read', 'directory_read', 'bash'], systemPrompt: 'Ты ревьюер. Анализируй код, ищи баги и улучшения.' },
+  'project-analyzer': { tools: ['directory_read', 'file_read', 'memory_write'], systemPrompt: 'Ты аналитик проекта. Анализируй архитектуру, зависимости, паттерны. Предлагай улучшения.' },
+};
 
 onMounted(async () => {
   try {
@@ -246,6 +256,13 @@ watch(localModel, (newVal) => {
 watch(localAgentType, (newVal) => {
   if (props.data.onUpdate) {
     props.data.onUpdate({ agentType: newVal });
+  }
+  const preset = agentTypePresets[newVal];
+  if (preset && (!props.data.enabledTools || props.data.enabledTools.length === 0)) {
+    localEnabledTools.value = [...preset.tools];
+    if (preset.systemPrompt && props.data.onUpdate) {
+      props.data.onUpdate({ systemPrompt: preset.systemPrompt });
+    }
   }
 });
 

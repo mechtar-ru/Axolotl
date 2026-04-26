@@ -177,6 +177,56 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         sendMessage(schemaId, toJson(msg));
     }
 
+    public void sendToolCall(String schemaId, String nodeId, String toolName, String args, long durationMs, boolean success, String result) {
+        Map<String, Object> msg = baseMsg("toolCall", schemaId);
+        msg.put("nodeId", nodeId);
+        msg.put("toolName", toolName);
+        msg.put("args", args);
+        msg.put("durationMs", durationMs);
+        msg.put("success", success);
+        msg.put("result", result != null ? (result.length() > 200 ? result.substring(0, 200) + "..." : result) : "");
+        sendMessage(schemaId, toJson(msg));
+        log.debug("Инструмент [{}/{}]: {} - {}ms", schemaId, nodeId, toolName, durationMs);
+    }
+
+    public void sendPredictCall(String schemaId, String nodeId, String signature, String inputSummary, String outputSummary, long durationMs, int tokens) {
+        Map<String, Object> msg = baseMsg("predictCall", schemaId);
+        msg.put("nodeId", nodeId);
+        msg.put("signature", signature);
+        msg.put("inputSummary", inputSummary != null && inputSummary.length() > 100 ? inputSummary.substring(0, 100) + "..." : inputSummary);
+        msg.put("outputSummary", outputSummary != null && outputSummary.length() > 100 ? outputSummary.substring(0, 100) + "..." : outputSummary);
+        msg.put("durationMs", durationMs);
+        msg.put("tokens", tokens);
+        sendMessage(schemaId, toJson(msg));
+        log.debug("Predict [{}/{}]: {} - {}ms, {} токенов", schemaId, nodeId, signature, durationMs, tokens);
+    }
+
+    public void sendIteration(String schemaId, String nodeId, int iteration, long durationMs, int toolCalls, int predictCalls) {
+        Map<String, Object> msg = baseMsg("iteration", schemaId);
+        msg.put("nodeId", nodeId);
+        msg.put("iteration", iteration);
+        msg.put("durationMs", durationMs);
+        msg.put("toolCalls", toolCalls);
+        msg.put("predictCalls", predictCalls);
+        sendMessage(schemaId, toJson(msg));
+        log.debug("Итерация [{}/{}]: #{} - {}ms, {} tool, {} predict", schemaId, nodeId, iteration, durationMs, toolCalls, predictCalls);
+    }
+
+    public void sendTrajectoryComplete(String schemaId, String nodeId, int totalIterations, long totalTimeMs, int totalToolCalls, int totalPredictCalls, int totalTokens, double estimatedCost) {
+        Map<String, Object> msg = baseMsg("trajectoryComplete", schemaId);
+        msg.put("nodeId", nodeId);
+        msg.put("totalIterations", totalIterations);
+        msg.put("totalTimeMs", totalTimeMs);
+        msg.put("totalToolCalls", totalToolCalls);
+        msg.put("totalPredictCalls", totalPredictCalls);
+        msg.put("totalTokens", totalTokens);
+        msg.put("estimatedCost", estimatedCost);
+        sendMessage(schemaId, toJson(msg));
+        log.info("Траектория завершена [{}/{}]: {} итераций, {}ms, {} tool, {} predict, ~${}",
+                schemaId, nodeId, totalIterations, totalTimeMs, totalToolCalls, totalPredictCalls,
+                String.format("%.4f", estimatedCost));
+    }
+
     public void sendPlanUpdated(String workspaceId, Object plan) {
         try {
             ObjectMapper planMapper = new ObjectMapper();

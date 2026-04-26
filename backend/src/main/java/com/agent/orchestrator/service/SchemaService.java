@@ -71,6 +71,7 @@ public class SchemaService {
         this.planService = planService;
         this.settingsService = settingsService;
         this.toolExecutor = toolExecutor;
+        this.toolExecutor.setWebSocketHandler(webSocketHandler);
     }
 
     @jakarta.annotation.PostConstruct
@@ -1381,13 +1382,19 @@ private String executeAgentNode(Node node, String schemaId) {
 
         StringBuilder fullResponse = new StringBuilder();
         int toolCallCount = 0;
+        int predictCallCount = 0;
+        int iterationCount = 0;
+        long totalStartTime = System.currentTimeMillis();
         String lastResponse = null;
 
         while (toolCallCount < maxToolCalls) {
+            long iterationStartTime = System.currentTimeMillis();
+            iterationCount++;
+
             if (webSocketHandler != null) {
                 webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20 + (toolCallCount * 5),
-                        "Итерация " + (toolCallCount + 1) + " из " + maxToolCalls);
-                webSocketHandler.sendLog(schemaId, "info", "Итерация " + (toolCallCount + 1), node.getId());
+                        "Итерация " + iterationCount + " из " + maxToolCalls);
+                webSocketHandler.sendLog(schemaId, "info", "Итерация " + iterationCount, node.getId());
             }
 
             lastResponse = llmService.chat(model, null, buildMessagesForToolCall(messages), null);
@@ -1396,9 +1403,14 @@ private String executeAgentNode(Node node, String schemaId) {
 
             List<Map<String, Object>> toolCalls = parseToolCalls(lastResponse);
             if (toolCalls.isEmpty()) {
+                long iterDuration = System.currentTimeMillis() - iterationStartTime;
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, 0, 0);
+                }
                 break;
             }
 
+            int toolsInThisIteration = 0;
             for (Map<String, Object> toolCall : toolCalls) {
                 if (toolCallCount >= maxToolCalls) {
                     sendUserApprovalRequest(schemaId, node.getId(), toolCallCount, maxToolCalls);
@@ -1408,7 +1420,7 @@ private String executeAgentNode(Node node, String schemaId) {
                 String toolId = (String) toolCall.get("name");
                 Map<String, Object> args = (Map<String, Object>) toolCall.get("arguments");
 
-                String toolResult = executeToolCall(toolId, args, node);
+                String toolResult = executeToolCall(toolId, args, node, schemaId);
                 messages.add(new Node.Message("tool", toolResult));
                 messages.add(new Node.Message("tool_call_id", (String) toolCall.get("id")));
 
@@ -1418,6 +1430,12 @@ private String executeAgentNode(Node node, String schemaId) {
                 }
 
                 toolCallCount++;
+                toolsInThisIteration++;
+            }
+
+            long iterDuration = System.currentTimeMillis() - iterationStartTime;
+            if (webSocketHandler != null) {
+                webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, toolsInThisIteration, 0);
             }
 
             if (toolCalls.isEmpty() || toolCallCount >= maxToolCalls) {
@@ -1425,15 +1443,19 @@ private String executeAgentNode(Node node, String schemaId) {
             }
         }
 
+        long totalDuration = System.currentTimeMillis() - totalStartTime;
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 90, "Завершение");
             webSocketHandler.sendLog(schemaId, "info", "Выполнено инструментов: " + toolCallCount, node.getId());
+            webSocketHandler.sendTrajectoryComplete(schemaId, node.getId(), iterationCount, totalDuration, toolCallCount, predictCallCount, 0, 0.0);
         }
 
         if (memPalaceClient.isEnabled() && fullResponse.length() > 0) {
-            memPalaceClient.addDrawer("axolotl", "agent-results",
-                    node.getName() + ": " + fullResponse.substring(0, Math.min(500, fullResponse.length())),
-                    "schema:" + schemaId);
+            String summary = fullResponse.substring(0, Math.min(500, fullResponse.length()));
+            memPalaceClient.addDrawer("axolotl", "agent-results", node.getName() + ": " + summary, "schema:" + schemaId);
+            memPalaceClient.addDrawer("axolotl", "trajectories",
+                    "Итераций: " + iterationCount + ", инструментов: " + toolCallCount + ", время: " + totalDuration + "мс",
+                    "schema:" + schemaId + ",node:" + node.getId());
         }
 
         return lastResponse != null ? lastResponse : fullResponse.toString();
@@ -1505,7 +1527,7 @@ private String executeAgentNode(Node node, String schemaId) {
         return calls;
     }
 
-    private String executeToolCall(String toolId, Map<String, Object> args, Node node) {
+    private String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId) {
         ToolPermission permission = null;
         if (node.getData().getToolPermissions() != null) {
             for (ToolPermission tp : node.getData().getToolPermissions()) {
@@ -1516,7 +1538,7 @@ private String executeAgentNode(Node node, String schemaId) {
             }
         }
 
-        ToolResult result = toolExecutor.execute(toolId, args, permission);
+        ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId());
         return result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
     }
 

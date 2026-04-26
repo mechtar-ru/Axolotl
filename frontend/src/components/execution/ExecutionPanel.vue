@@ -30,6 +30,27 @@
       <span v-if="(estimatedCost ?? 0) > 0" class="cost">~${{ (estimatedCost ?? 0).toFixed(4) }}</span>
     </div>
 
+    <!-- Tabs: Logs / Trajectory -->
+    <div class="panel-tabs">
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'logs' }"
+        @click="activeTab = 'logs'"
+      >
+        📋 Логи
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: activeTab === 'trajectory' }"
+        @click="activeTab = 'trajectory'"
+      >
+        🎯 Траектория
+        <span v-if="trajectoryStats.toolCalls > 0" class="tab-badge">
+          {{ trajectoryStats.iterations }}·{{ trajectoryStats.toolCalls }}
+        </span>
+      </button>
+    </div>
+
     <!-- Waves section -->
     <div v-if="waves.length > 0" class="execution-panel__waves">
       <div class="waves-header">
@@ -51,7 +72,8 @@
       </div>
     </div>
 
-    <div class="execution-panel__logs" ref="logsContainer">
+    <!-- Logs Tab -->
+    <div v-if="activeTab === 'logs'" class="execution-panel__logs" ref="logsContainer">
       <div
         v-for="(entry, index) in logs"
         :key="index"
@@ -61,6 +83,39 @@
       >
         <span class="log-time">{{ formatLogTime(entry.timestamp) }}</span>
         <span class="log-message">{{ entry.message }}</span>
+      </div>
+    </div>
+
+    <!-- Trajectory Tab -->
+    <div v-if="activeTab === 'trajectory'" class="execution-panel__trajectory" ref="trajectoryContainer">
+      <div v-if="trajectory.length === 0" class="trajectory-empty">
+        Траектория будет отображаться здесь при выполнении агента с инструментами
+      </div>
+      <div v-else class="trajectory-list">
+        <div
+          v-for="(iter, i) in trajectory"
+          :key="i"
+          class="trajectory-iteration"
+        >
+          <div class="iter-header">
+            <span class="iter-number">Итерация {{ iter.iteration }}</span>
+            <span class="iter-duration">{{ iter.durationMs }}ms</span>
+            <span v-if="iter.toolCalls > 0" class="iter-tools">🔧 {{ iter.toolCalls }}</span>
+          </div>
+          <div v-for="tc in iter.toolCallsDetail" :key="tc.toolName" class="iter-tool">
+            <span class="tool-icon">🔧</span>
+            <span class="tool-name">{{ tc.toolName }}</span>
+            <span class="tool-duration">{{ tc.durationMs }}ms</span>
+            <span class="tool-result" :class="{ 'tool-error': !tc.success }">
+              {{ tc.success ? '✓' : '✗' }}
+            </span>
+          </div>
+        </div>
+        <div v-if="trajectoryStats.totalIterations > 0" class="trajectory-summary">
+          <span>📊 {{ trajectoryStats.totalIterations }} итераций</span>
+          <span>🔧 {{ trajectoryStats.toolCalls }} инструментов</span>
+          <span>⏱ {{ trajectoryStats.totalTimeMs }}ms</span>
+        </div>
       </div>
     </div>
   </div>
@@ -74,6 +129,22 @@ interface LogEntry {
   message: string;
   level: 'info' | 'error' | 'success' | 'warning';
   nodeId?: string;
+}
+
+interface ToolCallDetail {
+  toolName: string;
+  args: string;
+  durationMs: number;
+  success: boolean;
+  result: string;
+}
+
+interface TrajectoryIteration {
+  iteration: number;
+  durationMs: number;
+  toolCalls: number;
+  predictCalls: number;
+  toolCallsDetail: ToolCallDetail[];
 }
 
 const props = defineProps<{
@@ -92,18 +163,65 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'highlight-node', nodeId: string): void;
   (e: 'highlight-wave', nodeIds: string[]): void;
+  (e: 'add-tool-call', data: ToolCallDetail): void;
+  (e: 'add-iteration', data: TrajectoryIteration): void;
 }>();
 
 const waves = ref<Array<{ nodeIds: string[]; status: 'pending' | 'running' | 'completed' }>>([]);
-
 const logsContainer = ref<HTMLElement>();
+const trajectoryContainer = ref<HTMLElement>();
 let autoScroll = true;
+
+const activeTab = ref<'logs' | 'trajectory'>('logs');
+
+const trajectory = ref<TrajectoryIteration[]>([]);
+const trajectoryStats = ref({
+  iterations: 0,
+  toolCalls: 0,
+  predictCalls: 0,
+  totalTimeMs: 0,
+  estimatedCost: 0
+});
 
 const nodesPerSecond = ref(0);
 const avgNodeTime = computed(() => {
   if (props.completedNodes <= 0 || props.elapsedSeconds <= 0) return '—';
   return Math.round((props.elapsedSeconds * 1000) / props.completedNodes);
 });
+
+function addToolCall(data: ToolCallDetail) {
+  const currentIter = trajectory.value[trajectory.value.length - 1];
+  if (currentIter) {
+    currentIter.toolCallsDetail.push(data);
+    currentIter.toolCalls++;
+    trajectoryStats.value.toolCalls++;
+  }
+  emit('add-tool-call', data);
+}
+
+function addIteration(data: { iteration: number; durationMs: number; toolCalls: number; predictCalls: number }) {
+  const iter: TrajectoryIteration = {
+    iteration: data.iteration,
+    durationMs: data.durationMs,
+    toolCalls: data.toolCalls,
+    predictCalls: data.predictCalls,
+    toolCallsDetail: []
+  };
+  trajectory.value.push(iter);
+  trajectoryStats.value.totalIterations = data.iteration;
+  trajectoryStats.value.totalTimeMs += data.durationMs;
+  emit('add-iteration', iter);
+}
+
+function addTrajectoryComplete(data: { totalIterations: number; totalTimeMs: number; totalToolCalls: number; totalPredictCalls: number; estimatedCost: number }) {
+  trajectoryStats.value = {
+    totalIterations: data.totalIterations,
+    toolCalls: data.totalToolCalls,
+    predictCalls: data.totalPredictCalls,
+    totalTimeMs: data.totalTimeMs,
+    estimatedCost: data.estimatedCost
+  };
+}
 
 watch(() => props.elapsedSeconds, (newVal) => {
   if (newVal > 0) {
@@ -167,7 +285,7 @@ function updateWave(waveNumber: number, nodeIds: string[], status: 'pending' | '
   waves.value[waveNumber] = { nodeIds, status: status as 'pending' | 'running' | 'completed' };
 }
 
-defineExpose({ updateWave });
+defineExpose({ updateWave, addToolCall, addIteration, addTrajectoryComplete });
 
 onMounted(() => {
   if (logsContainer.value) {
@@ -312,6 +430,46 @@ function handleScroll() {
   color: #51cf66;
 }
 
+/* Tabs */
+.panel-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-btn.active {
+  background: rgba(108, 99, 255, 0.3);
+  color: #b8b0ff;
+}
+
+.tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #aaa;
+}
+
+.tab-badge {
+  margin-left: 4px;
+  padding: 1px 4px;
+  border-radius: 8px;
+  background: rgba(108, 99, 255, 0.5);
+  font-size: 10px;
+}
+
+/* Waves */
 .execution-panel__waves {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
@@ -389,6 +547,7 @@ function handleScroll() {
   font-size: 10px;
 }
 
+/* Logs */
 .execution-panel__logs {
   flex: 1;
   overflow-y: auto;
@@ -396,6 +555,7 @@ function handleScroll() {
   background: rgba(12, 14, 24, 0.95);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 200px;
 }
 
 .execution-panel__log-entry {
@@ -433,5 +593,101 @@ function handleScroll() {
 
 .log-message {
   flex: 1;
+}
+
+/* Trajectory */
+.execution-panel__trajectory {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  background: rgba(12, 14, 24, 0.95);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  max-height: 200px;
+}
+
+.trajectory-empty {
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+  padding: 20px;
+}
+
+.trajectory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.trajectory-iteration {
+  border: 1px solid rgba(108, 99, 255, 0.2);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.iter-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #aaa;
+  margin-bottom: 4px;
+}
+
+.iter-number {
+  font-weight: 600;
+  color: #b8b0ff;
+}
+
+.iter-duration {
+  margin-left: auto;
+  color: #666;
+}
+
+.iter-tools {
+  color: #888;
+}
+
+.iter-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  font-size: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+.tool-icon {
+  font-size: 10px;
+}
+
+.tool-name {
+  color: #ddd;
+}
+
+.tool-duration {
+  margin-left: auto;
+  color: #666;
+}
+
+.tool-result {
+  color: #51cf66;
+}
+
+.tool-result.tool-error {
+  color: #ff6b6b;
+}
+
+.trajectory-summary {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  font-size: 11px;
+  color: #aaa;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 8px;
 }
 </style>
