@@ -10,6 +10,10 @@ export interface WebSocketCallbacks {
   onNodeTime?: (data: { schemaId: string; nodeId: string; durationMs: number }) => void;
   onToken?: (data: { schemaId: string; nodeId: string; token: string }) => void;
   onWave?: (data: { waveNumber: number; nodeIds: string[]; status: string }) => void;
+  onToolCall?: (data: { schemaId: string; nodeId: string; toolName: string; args: string; durationMs: number; success: boolean; result: string }) => void;
+  onPredictCall?: (data: { schemaId: string; nodeId: string; signature: string; inputSummary: string; outputSummary: string; durationMs: number; tokens: number }) => void;
+  onIteration?: (data: { schemaId: string; nodeId: string; iteration: number; durationMs: number; toolCalls: number; predictCalls: number }) => void;
+  onTrajectoryComplete?: (data: { schemaId: string; nodeId: string; totalIterations: number; totalTimeMs: number; totalToolCalls: number; totalPredictCalls: number; totalTokens: number; estimatedCost: number }) => void;
 }
 
 export function useWebSocket() {
@@ -76,6 +80,18 @@ export function useWebSocket() {
               break;
             case 'wave':
               callbacks?.onWave?.(data);
+              break;
+            case 'toolCall':
+              callbacks?.onToolCall?.(data);
+              break;
+            case 'predictCall':
+              callbacks?.onPredictCall?.(data);
+              break;
+            case 'iteration':
+              callbacks?.onIteration?.(data);
+              break;
+            case 'trajectoryComplete':
+              callbacks?.onTrajectoryComplete?.(data);
               break;
             default:
               console.warn('Unknown message type:', data.type);
