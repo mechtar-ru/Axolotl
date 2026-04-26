@@ -46,7 +46,7 @@
       >
         🎯 Траектория
         <span v-if="trajectoryStats.toolCalls > 0" class="tab-badge">
-          {{ trajectoryStats.iterations }}·{{ trajectoryStats.toolCalls }}
+          {{ trajectoryStats.totalIterations }}·{{ trajectoryStats.toolCalls }}
         </span>
       </button>
     </div>
@@ -176,7 +176,7 @@ const activeTab = ref<'logs' | 'trajectory'>('logs');
 
 const trajectory = ref<TrajectoryIteration[]>([]);
 const trajectoryStats = ref({
-  iterations: 0,
+  totalIterations: 0,
   toolCalls: 0,
   predictCalls: 0,
   totalTimeMs: 0,

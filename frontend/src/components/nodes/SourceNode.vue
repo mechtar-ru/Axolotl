@@ -241,7 +241,7 @@ async function browseProject() {
       properties: ['openDirectory'],
     });
     if (!result.canceled && result.filePaths.length > 0) {
-      projectPath.value = result.filePaths[0];
+      projectPath.value = result.filePaths[0] ?? '';
     }
   }
 }

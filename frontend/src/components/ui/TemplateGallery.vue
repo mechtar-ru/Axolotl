@@ -143,7 +143,9 @@ function createFromTemplate() {
         if (v.nodeId === node.id && v.field && variables.value[v.name]) {
           const parts = v.field.split('.');
           if (parts.length === 2) {
-            node.data[parts[0]] = { ...(node.data[parts[0]] as any || {}), [parts[1]]: variables.value[v.name] };
+            const key = parts[0] as string;
+            const subKey = parts[1] as string;
+            node.data[key] = { ...(node.data[key] as any || {}), [subKey]: variables.value[v.name] };
           } else if (v.field === 'userPrompt') {
             // Replace {{features}} placeholder
             node.data.userPrompt = node.data.userPrompt?.replace(

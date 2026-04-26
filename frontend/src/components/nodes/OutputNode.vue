@@ -112,7 +112,7 @@ const props = defineProps<{
     onRename?: (name: string) => void;
     onDelete?: () => void;
     nodeTimeMs?: number;
-    outputType?: 'log' | 'file';
+    outputType?: 'log' | 'file' | 'memory';
     filePath?: string;
     fileFormat?: 'text' | 'json' | 'markdown';
     config?: Record<string, any>;

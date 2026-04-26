@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn compile:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(brew install:*)",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(curl -s http://localhost:11434/api/chat -d '{\"model\":\"gemma4:e2b\",\"messages\":[{\"role\":\"user\",\"content\":\"Ответь одним словом: привет\"}],\"stream\":false}')",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s http://localhost:11434/api/chat -d '{\"model\":\"gemma4:e2b\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":false}')",
+      "Bash(npm run:*)",
+      "mcp__plugin_mempalace_mempalace__mempalace_status",
+      "Bash(npm install:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173/)",
+      "Bash(kill %1)",
+      "Bash(npx vitest:*)",
+      "mcp__plugin_mempalace_mempalace__mempalace_diary_write",
+      "Bash(mvn test:*)",
+      "mcp__plugin_mempalace_mempalace__mempalace_add_drawer",
+      "mcp__plugin_mempalace_mempalace__mempalace_kg_add",
+      "Bash(ELECTRON=true npm run build-only)",
+      "Bash(mvn clean:*)"
+    ]
+  }
+}

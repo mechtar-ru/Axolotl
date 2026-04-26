@@ -24,7 +24,7 @@ export interface NodeData {
   loopCondition?: string;
   maxIterations?: number;
   nodeTimeMs?: number;
-  outputType?: 'log' | 'file';
+  outputType?: 'log' | 'file' | 'memory';
   filePath?: string;
   fileFormat?: 'text' | 'json' | 'markdown';
   subagentSchemaId?: string;
