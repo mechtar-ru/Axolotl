@@ -228,10 +228,10 @@ const modelGroups = computed(() => {
 });
 const statusColor = computed(() => {
   switch (props.data.status) {
-    case 'running': return '#ffa500';
-    case 'completed': return '#00ff00';
-    case 'failed': return '#ff0000';
-    default: return '#888';
+    case 'running': return 'var(--warning)';
+    case 'completed': return 'var(--success)';
+    case 'failed': return 'var(--error)';
+    default: return 'var(--text-muted)';
   }
 });
 const executionIcon = computed(() => {
@@ -334,8 +334,8 @@ function handleDelete() {
   border-color: var(--node-agent);
 }
 .agent-node.selected {
-  border-color: #ff6b6b;
-  box-shadow: 0 0 0 2px rgba(255, 107, 107, 0.3);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(108, 99, 255, 0.3);
 }
 .prompt-editor-btn {
   background: none;
@@ -349,7 +349,7 @@ function handleDelete() {
 }
 .tools-section {
   margin-top: 8px;
-  border: 1px solid var(--border-color, #333);
+  border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -358,26 +358,26 @@ function handleDelete() {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  background: var(--bg-secondary, #2a2a2a);
+  background: var(--bg-secondary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
 }
 .tools-header:hover {
-  background: var(--bg-hover, #333);
+  background: var(--bg-card-hover);
 }
 .tools-body {
   padding: 8px;
-  background: var(--bg-primary, #1a1a1a);
+  background: var(--bg-primary);
 }
 .agent-type-select {
   width: 100%;
   padding: 4px 8px;
   margin-bottom: 8px;
-  border: 1px solid var(--border-color, #444);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg-secondary, #2a2a2a);
-  color: var(--text-color, #fff);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   font-size: 12px;
 }
 .tools-checklist {
@@ -392,12 +392,12 @@ function handleDelete() {
   gap: 4px;
   padding: 3px 6px;
   border-radius: 4px;
-  background: var(--bg-secondary, #2a2a2a);
+  background: var(--bg-secondary);
   cursor: pointer;
   font-size: 11px;
 }
 .tool-checkbox:hover {
-  background: var(--bg-hover, #333);
+  background: var(--bg-card-hover);
 }
 .tool-checkbox input {
   margin: 0;
@@ -406,22 +406,22 @@ function handleDelete() {
   font-size: 12px;
 }
 .tool-name {
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
 }
 .tool-limit {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 11px;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
 }
 .tool-limit-input {
   width: 60px;
   padding: 2px 6px;
-  border: 1px solid var(--border-color, #444);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg-secondary, #2a2a2a);
-  color: var(--text-color, #fff);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   font-size: 11px;
 }
 </style>

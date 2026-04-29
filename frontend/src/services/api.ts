@@ -19,12 +19,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-login as tech user on 401, redirect to /login on second failure
+// Auto-login as tech user on 401/403, redirect to /login on second failure
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retried) {
+    const status = error.response?.status;
+    if ((status === 401 || status === 403) && !originalRequest._retried) {
       originalRequest._retried = true;
       try {
         const res = await api.post('/auth/login', { username: 'tech', password: 'tech' });

@@ -32,13 +32,25 @@ const router = createRouter({
       name: 'about',
       component: () => import('../views/AboutView.vue'),
     },
+    // Catch-all route for 404s
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/'
+    },
   ],
 })
 
 router.beforeEach((to, _from) => {
   const token = localStorage.getItem('axolotl_token');
-  if (to.meta.requiresAuth && !token) return { name: 'login' };
-  if (to.name === 'login' && token) return { name: 'home' };
+  console.log('[Router] Navigation to:', to.path, '| requiresAuth:', to.meta.requiresAuth, '| hasToken:', !!token);
+  if (to.meta.requiresAuth && !token) {
+    console.log('[Router] No token, redirecting to login');
+    return { name: 'login' };
+  }
+  if (to.name === 'login' && token) {
+    console.log('[Router] Already logged in, redirecting to home');
+    return { name: 'home' };
+  }
 });
 
 export default router

@@ -138,10 +138,10 @@ const memoryRoom = ref((props.data.config?.memoryRoom as string) || 'agent-resul
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
   switch (props.data.executionStatus) {
-    case 'running': return '#ffa500';
-    case 'completed': return '#00ff00';
-    case 'failed': return '#ff0000';
-    default: return '#888';
+    case 'running': return 'var(--warning)';
+    case 'completed': return 'var(--success)';
+    case 'failed': return 'var(--error)';
+    default: return 'var(--text-muted)';
   }
 });
 const executionIcon = computed(() => {
@@ -196,7 +196,7 @@ function handleDelete() {
 @import './node-base.css';
 
 .output-node {
-  border-color: #ff9800;
+  border-color: var(--node-output);
 }
 .output-node.selected {
   border-color: var(--accent);

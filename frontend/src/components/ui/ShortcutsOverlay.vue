@@ -74,7 +74,7 @@ const groups = [
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: var(--text-muted, #666);
+  color: var(--text-muted);
 }
 .shortcut-row {
   display: flex;
@@ -84,18 +84,18 @@ const groups = [
 }
 kbd {
   display: inline-block;
-  background: var(--bg-primary, #13131f);
-  border: 1px solid var(--border, #4a4a6a);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 8px;
   font-size: 12px;
   font-family: var(--font-mono, monospace);
-  color: var(--text-primary, #eee);
+  color: var(--text-primary);
   min-width: 80px;
   text-align: center;
 }
 .shortcut-row span {
   font-size: 13px;
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary);
 }
 </style>

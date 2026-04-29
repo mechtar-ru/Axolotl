@@ -784,7 +784,7 @@ loadPlan();
   padding: 14px 16px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   font-weight: 600;
-  color: #eee;
+  color: var(--text-primary);
 }
 
 .workspace-selector {
@@ -796,16 +796,16 @@ loadPlan();
 
 .workspace-select {
   flex: 1;
-  background: #0f3460;
+  background: var(--bg-code);
   border: 1px solid rgba(255,255,255,0.1);
-  color: #eee;
+  color: var(--text-primary);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 12px;
 }
 
 .add-workspace-btn {
-  background: var(--accent, #00bcd4);
+  background: var(--memory-color);
   border: none;
   color: white;
   width: 28px;
@@ -831,14 +831,14 @@ loadPlan();
   display: flex;
   justify-content: space-between;
   margin-bottom: 8px;
-  color: #eee;
+  color: var(--text-primary);
   font-size: 13px;
 }
 
 .create-workspace-header button {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted-alt);
   cursor: pointer;
 }
 
@@ -846,7 +846,7 @@ loadPlan();
   width: 100%;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
-  color: #eee;
+  color: var(--text-primary);
   padding: 8px;
   border-radius: 4px;
   margin-bottom: 8px;
@@ -854,7 +854,7 @@ loadPlan();
 
 .create-btn {
   width: 100%;
-  background: var(--accent, #00bcd4);
+  background: var(--memory-color);
   border: none;
   color: white;
   padding: 8px;
@@ -872,7 +872,7 @@ loadPlan();
 .level-tab {
   background: transparent;
   border: 1px solid rgba(255,255,255,0.15);
-  color: #888;
+  color: var(--text-muted-alt);
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 12px;
@@ -880,9 +880,9 @@ loadPlan();
 }
 
 .level-tab.active {
-  background: var(--accent, #00bcd4);
-  border-color: var(--accent, #00bcd4);
-  color: #fff;
+  background: var(--memory-color);
+  border-color: var(--accent);
+  color: var(--text-inverse);
 }
 
 .task-content {
@@ -895,7 +895,7 @@ loadPlan();
 
 .task-desc {
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted-alt);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -903,7 +903,7 @@ loadPlan();
 
 .task-deps {
   font-size: 10px;
-  color: #666;
+  color: var(--text-muted);
   background: rgba(255,255,255,0.1);
   padding: 1px 4px;
   border-radius: 3px;
@@ -912,7 +912,7 @@ loadPlan();
 .close-btn {
   background: rgba(255,255,255,0.1);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -923,17 +923,17 @@ loadPlan();
 .plan-error {
   padding: 30px 16px;
   text-align: center;
-  color: #888;
+  color: var(--text-muted-alt);
   font-size: 14px;
 }
 
 .plan-error {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .retry-btn {
   margin-top: 8px;
-  background: #6c63ff;
+  background: var(--accent);
   border: none;
   color: white;
   padding: 6px 12px;
@@ -960,7 +960,7 @@ loadPlan();
 }
 
 .browse-btn {
-  background: var(--accent, #00bcd4);
+  background: var(--memory-color);
   border: none;
   color: white;
   border-radius: 4px;
@@ -972,9 +972,9 @@ loadPlan();
 
 .plan-textarea {
   flex: 1;
-  background: #0f3460;
-  border: 1px solid #4a4a6a;
-  color: #eee;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
@@ -987,15 +987,15 @@ loadPlan();
 }
 
 .plan-textarea:focus {
-  border-color: #6c63ff;
+  border-color: var(--accent);
 }
 
 .plan-textarea::placeholder {
-  color: #666;
+  color: var(--text-muted);
 }
 
 .add-btn {
-  background: #e94560;
+  background: var(--node-loop);
   border: none;
   color: white;
   width: 36px;
@@ -1015,7 +1015,10 @@ loadPlan();
 .plan-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.3) transparent;
 }
 
 .plan-task {
@@ -1040,7 +1043,7 @@ loadPlan();
 
 .task-expand-icon {
   font-size: 10px;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .task-detail {
@@ -1054,7 +1057,7 @@ loadPlan();
 
 .detail-label {
   font-size: 10px;
-  color: #00bcd4;
+  color: var(--memory-color);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 2px;
@@ -1062,7 +1065,7 @@ loadPlan();
 
 .detail-text {
   font-size: 12px;
-  color: #aaa;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
@@ -1076,7 +1079,7 @@ loadPlan();
   font-size: 10px;
   background: rgba(108, 99, 255, 0.15);
   border: 1px solid rgba(108, 99, 255, 0.3);
-  color: #b8b0ff;
+  color: var(--violet-light);
   padding: 2px 6px;
   border-radius: 3px;
 }
@@ -1089,13 +1092,13 @@ loadPlan();
 
 .detail-criterion {
   font-size: 11px;
-  color: #999;
+  color: var(--text-muted-alt);
   display: flex;
   gap: 4px;
 }
 
 .detail-criterion.met {
-  color: #4caf50;
+  color: var(--success);
   text-decoration: line-through;
 }
 
@@ -1105,7 +1108,7 @@ loadPlan();
 
 .detail-schema {
   font-size: 11px;
-  color: #666;
+  color: var(--text-muted);
   font-family: monospace;
 }
 
@@ -1117,8 +1120,8 @@ loadPlan();
   font-size: 14px;
   padding: 0;
 }
-.task-text { font-size: 13px; color: #ddd; }
-.task-text.done { text-decoration: line-through; color: #888; }
+.task-text { font-size: 13px; color: var(--text-primary); }
+.task-text.done { text-decoration: line-through; color: var(--text-muted-alt); }
 
 .task-right { display: flex; gap: 4px; align-items: center; }
 .task-priority {
@@ -1136,11 +1139,11 @@ loadPlan();
 .task-delete {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted-alt);
   cursor: pointer;
   font-size: 12px;
 }
-.task-delete:hover { color: #ff6b6b; }
+.task-delete:hover { color: var(--danger); }
 
 .plan-footer {
   padding: 10px 12px;
@@ -1149,9 +1152,9 @@ loadPlan();
 
 .export-plan-btn {
   width: 100%;
-  background: #0f3460;
+  background: var(--bg-code);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   padding: 8px;
   border-radius: 6px;
   cursor: pointer;
@@ -1172,7 +1175,7 @@ loadPlan();
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted-alt);
   margin-bottom: 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -1181,13 +1184,13 @@ loadPlan();
 .node-picker-close {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted-alt);
   cursor: pointer;
   font-size: 12px;
 }
 
 .node-picker-close:hover {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .node-picker-list {
@@ -1206,7 +1209,7 @@ loadPlan();
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
-  color: #ddd;
+  color: var(--text-primary);
   transition: background 0.15s;
 }
 
@@ -1216,7 +1219,7 @@ loadPlan();
 
 .node-picker-item.selected {
   background: rgba(108, 99, 255, 0.25);
-  color: #b8b0ff;
+  color: var(--violet-light);
 }
 
 .unlink-btn {
@@ -1224,7 +1227,7 @@ loadPlan();
   margin-top: 6px;
   background: rgba(244, 67, 54, 0.15);
   border: 1px solid rgba(244, 67, 54, 0.3);
-  color: #ff6b6b;
+  color: var(--danger);
   padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -1252,14 +1255,14 @@ loadPlan();
 
 .criteria-fill {
   height: 100%;
-  background: #4caf50;
+  background: var(--success);
   border-radius: 2px;
   transition: width 0.3s;
 }
 
 .criteria-text {
   font-size: 10px;
-  color: #888;
+  color: var(--text-muted-alt);
 }
 
 .task-criteria-btn {
@@ -1288,7 +1291,7 @@ loadPlan();
   justify-content: space-between;
   align-items: center;
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted-alt);
   margin-bottom: 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -1297,7 +1300,7 @@ loadPlan();
 .criteria-close {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted-alt);
   cursor: pointer;
   font-size: 12px;
 }
@@ -1324,14 +1327,14 @@ loadPlan();
 }
 
 .criteria-item input[type="checkbox"] {
-  accent-color: #4caf50;
+  accent-color: var(--success);
 }
 
 .criteria-input {
   flex: 1;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ddd;
+  color: var(--text-primary);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
@@ -1339,19 +1342,19 @@ loadPlan();
 }
 
 .criteria-input:focus {
-  border-color: #6c63ff;
+  border-color: var(--accent);
 }
 
 .criteria-delete {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted-alt);
   cursor: pointer;
   font-size: 12px;
 }
 
 .criteria-delete:hover {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .criteria-add {
@@ -1366,7 +1369,7 @@ loadPlan();
   flex: 1;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #ddd;
+  color: var(--text-primary);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
@@ -1376,7 +1379,7 @@ loadPlan();
 .criteria-add-btn {
   background: rgba(108, 99, 255, 0.2);
   border: 1px solid rgba(108, 99, 255, 0.3);
-  color: #b8b0ff;
+  color: var(--violet-light);
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;

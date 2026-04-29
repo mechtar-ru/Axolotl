@@ -49,8 +49,8 @@ defineEmits<{
 <style scoped>
 .ctx-menu {
   position: fixed;
-  background: var(--bg-card, #1e1e2e);
-  border: 1px solid var(--border, #4a4a6a);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm, 8px);
   box-shadow: var(--shadow-md, 0 8px 30px rgba(0, 0, 0, 0.35));
   padding: 4px;
@@ -66,7 +66,7 @@ defineEmits<{
   padding: 8px 12px;
   background: none;
   border: none;
-  color: var(--text-primary, #eee);
+  color: var(--text-primary);
   cursor: pointer;
   border-radius: 4px;
   font-size: 13px;
@@ -74,11 +74,11 @@ defineEmits<{
 }
 
 .ctx-item:hover {
-  background: var(--bg-hover, #3d3d5c);
+  background: var(--bg-card-hover);
 }
 
 .ctx-item-danger {
-  color: var(--error, #dc3545);
+  color: var(--error);
 }
 
 .ctx-item-danger:hover {
@@ -87,7 +87,7 @@ defineEmits<{
 
 .ctx-separator {
   height: 1px;
-  background: var(--border, #4a4a6a);
+  background: var(--border);
   margin: 4px 0;
 }
 

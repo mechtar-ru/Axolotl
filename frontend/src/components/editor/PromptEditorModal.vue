@@ -126,71 +126,71 @@ function insertVar(variable: string) {
 .prompt-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: var(--overlay-heavy);
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 3000;
+  z-index: var(--z-tooltip);
 }
 .prompt-modal {
-  background: #1e1e2e;
-  border-radius: 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
   width: 700px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-subtle);
 }
 .prompt-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  color: #eee;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--text-base);
 }
 .prompt-modal-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .template-btn {
-  background: #6c63ff;
+  background: var(--accent);
   border: none;
-  color: white;
+  color: var(--text-inverse);
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-base);
 }
 .close-btn {
   background: rgba(255,255,255,0.1);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   width: 30px;
   height: 30px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 .templates-panel {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 12px 20px;
+  gap: var(--space-1-5);
+  padding: var(--space-3) var(--space-5);
   background: rgba(0,0,0,0.2);
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-bottom: 1px solid var(--border-subtle);
 }
 .template-item {
-  background: rgba(108, 99, 255, 0.15);
-  border: 1px solid rgba(108, 99, 255, 0.3);
-  color: #c8c0ff;
+  background: var(--accent-light);
+  border: 1px solid var(--accent-border, rgba(108, 99, 255, 0.3));
+  color: var(--violet-light);
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
 }
 .template-item:hover {
@@ -198,39 +198,39 @@ function insertVar(variable: string) {
 }
 .prompt-modal-body {
   flex: 1;
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .field-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .field-group label {
-  font-size: 12px;
-  color: #888;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 .prompt-textarea {
   width: 100%;
-  background: #13131f;
-  border: 1px solid #3a3a5a;
-  color: #eee;
-  border-radius: 8px;
-  padding: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
   line-height: 1.6;
   resize: vertical;
   outline: none;
 }
 .prompt-textarea:focus {
-  border-color: #6c63ff;
+  border-color: var(--accent);
 }
 .main-prompt {
   flex: 1;
@@ -238,21 +238,21 @@ function insertVar(variable: string) {
 .variables-hint {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   flex-wrap: wrap;
 }
 .hint-label {
-  font-size: 11px;
-  color: #666;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 .var-btn {
-  background: rgba(108, 99, 255, 0.1);
-  border: 1px solid rgba(108, 99, 255, 0.2);
-  color: #9e96ff;
+  background: var(--accent-light);
+  border: 1px solid var(--accent-border, rgba(108, 99, 255, 0.2));
+  color: var(--accent-hover);
   padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-family: monospace;
 }
 .var-btn:hover {
@@ -262,24 +262,24 @@ function insertVar(variable: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-subtle);
 }
 .char-count {
-  font-size: 12px;
-  color: #666;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 .save-btn {
-  background: #4f7cff;
+  background: var(--info);
   border: none;
-  color: white;
-  padding: 8px 24px;
-  border-radius: 8px;
+  color: var(--text-inverse);
+  padding: var(--space-2) var(--space-6);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 .save-btn:hover {
-  background: #3d6bef;
+  background: var(--accent-blue);
 }
 </style>

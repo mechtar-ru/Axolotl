@@ -61,12 +61,12 @@ function toggleCollapse() {
 
 <style scoped>
 .group-node {
-  background: rgba(108, 99, 255, 0.08);
+  background: var(--accent-light);
   border: 2px dashed rgba(108, 99, 255, 0.4);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   min-width: 300px;
   min-height: 200px;
-  padding: 4px;
+  padding: var(--space-1);
 }
 .group-node.collapsed {
   min-height: auto;
@@ -75,37 +75,37 @@ function toggleCollapse() {
 .group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1-5);
   padding: 4px 8px;
   background: rgba(108, 99, 255, 0.15);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
 }
 .group-icon {
   font-size: 14px;
 }
 .group-name {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #b8b0ff;
+  color: var(--violet-light);
   cursor: pointer;
 }
 .group-name-input {
   flex: 1;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid #6c63ff;
-  color: #eee;
-  border-radius: 4px;
+  background: var(--overlay);
+  border: 1px solid var(--accent);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 .group-toggle {
   background: none;
   border: none;
-  color: #b8b0ff;
+  color: var(--violet-light);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-xs);
   padding: 2px;
 }
 </style>

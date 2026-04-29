@@ -383,34 +383,34 @@ function handleDelete() {
 /* Memory search styles */
 .search-row { display: flex; gap: 4px; }
 .search-input {
-  flex: 1; background: var(--bg-primary); border: 1px solid #00bcd4;
-  color: var(--text-primary); border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none;
+  flex: 1; background: var(--bg-primary); border: 1px solid var(--memory-color);
+  color: var(--text-primary); border-radius: var(--radius-sm); padding: 6px 8px; font-size: var(--text-base); outline: none;
 }
 .search-btn {
-  background: #00bcd4; border: none; color: white; border-radius: 4px; width: 32px; cursor: pointer;
+  background: var(--memory-color); border: none; color: var(--text-inverse); border-radius: var(--radius-sm); width: 32px; cursor: pointer;
 }
-.filter-row { display: flex; gap: 4px; margin-top: 6px; }
+.filter-row { display: flex; gap: var(--space-1); margin-top: var(--space-1-5); }
 .filter-input {
   flex: 1; background: var(--bg-primary); border: 1px solid var(--border);
-  color: var(--text-primary); border-radius: 4px; padding: 4px 8px; font-size: 12px;
+  color: var(--text-primary); border-radius: var(--radius-sm); padding: 4px 8px; font-size: var(--text-sm);
 }
-.search-status { font-size: 12px; color: #00bcd4; margin-top: 6px; }
-.results-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.search-status { font-size: var(--text-sm); color: var(--memory-color); margin-top: var(--space-1-5); }
+.results-list { margin-top: var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); }
 .result-card {
-  background: rgba(0, 188, 212, 0.1); border: 1px solid rgba(0, 188, 212, 0.3);
-  border-radius: 6px; padding: 6px 8px; cursor: pointer; transition: background 0.2s;
+  background: var(--memory-light); border: 1px solid rgba(0, 188, 212, 0.3);
+  border-radius: var(--radius-sm); padding: 6px 8px; cursor: pointer; transition: background var(--transition);
 }
 .result-card:hover { background: rgba(0, 188, 212, 0.2); }
-.result-wing { font-size: 10px; color: #00bcd4; text-transform: uppercase; }
-.result-text { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+.result-wing { font-size: 10px; color: var(--memory-color); text-transform: uppercase; }
+.result-text { font-size: var(--text-sm); color: var(--text-secondary); margin-top: 2px; }
 .selected-memory {
-  margin-top: 8px; padding: 8px; background: rgba(0, 188, 212, 0.15);
-  border-radius: 6px; font-size: 12px; color: var(--text-primary);
+  margin-top: var(--space-2); padding: var(--space-2); background: var(--memory-light);
+  border-radius: var(--radius-sm); font-size: var(--text-sm); color: var(--text-primary);
 }
-.memory-content { margin: 4px 0; color: var(--text-secondary); word-break: break-word; }
+.memory-content { margin: var(--space-1) 0; color: var(--text-secondary); word-break: break-word; }
 .pin-btn {
-  background: #00bcd4; border: none; color: white; padding: 4px 10px;
-  border-radius: 4px; cursor: pointer; font-size: 11px;
+  background: var(--memory-color); border: none; color: var(--text-inverse); padding: 4px 10px;
+  border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-xs);
 }
 
 /* File styles */
@@ -430,7 +430,7 @@ function handleDelete() {
   color: var(--text-primary); border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none;
 }
 .fetch-btn {
-  background: var(--accent); border: none; color: white; border-radius: 4px; width: 32px; cursor: pointer;
+  background: var(--accent); border: none; color: var(--text-inverse); border-radius: var(--radius-sm); width: 32px; cursor: pointer;
 }
 .url-preview { margin-top: 6px; }
 .preview-content {
@@ -454,7 +454,7 @@ function handleDelete() {
   font-family: monospace;
 }
 .browse-btn {
-  background: var(--accent); border: none; color: white; border-radius: 4px; width: 32px; cursor: pointer;
+  background: var(--accent); border: none; color: var(--text-inverse); border-radius: var(--radius-sm); width: 32px; cursor: pointer;
 }
 .num-input {
   width: 50px; background: var(--bg-primary); border: 1px solid var(--border);

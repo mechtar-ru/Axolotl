@@ -1,5 +1,6 @@
 <template>
-  <div v-if="visible" class="execution-panel">
+  <div v-if="visible" class="execution-panel" role="region" aria-label="Выполнение схемы" aria-live="polite">
+    <div class="sr-only" aria-live="polite" aria-atomic="true">{{ screenReaderAnnouncement }}</div>
     <div class="execution-panel__header">
       <span>Выполнение схемы</span>
       <div class="execution-panel__buttons">
@@ -23,6 +24,7 @@
       <div>Узлов: {{ completedNodes }}/{{ totalNodes }}</div>
       <div>Скорость: {{ nodesPerSecond.toFixed(1) }} уз/с</div>
       <div v-if="completedNodes > 0">Ср: {{ avgNodeTime }}мс/уз</div>
+      <div v-if="estimatedRemaining > 0">Осталось: {{ formatTime(estimatedRemaining) }}</div>
     </div>
 
     <div class="execution-panel__tokens">
@@ -78,7 +80,7 @@
         v-for="(entry, index) in logs"
         :key="index"
         class="execution-panel__log-entry"
-        :class="{ 'log-error': entry.level === 'error', 'log-success': entry.level === 'success' }"
+        :class="{ 'log-error': entry.level === 'error', 'log-success': entry.level === 'success', 'log-warning': entry.level === 'warning', 'log-info': entry.level === 'info' }"
         @click="onLogClick(entry)"
       >
         <span class="log-time">{{ formatLogTime(entry.timestamp) }}</span>
@@ -187,6 +189,20 @@ const nodesPerSecond = ref(0);
 const avgNodeTime = computed(() => {
   if (props.completedNodes <= 0 || props.elapsedSeconds <= 0) return '—';
   return Math.round((props.elapsedSeconds * 1000) / props.completedNodes);
+});
+const estimatedRemaining = computed(() => {
+  if (props.completedNodes <= 0 || props.elapsedSeconds <= 0 || props.totalNodes <= props.completedNodes) return 0;
+  const rate = props.completedNodes / props.elapsedSeconds;
+  if (rate <= 0) return 0;
+  const remaining = props.totalNodes - props.completedNodes;
+  return Math.round(remaining / rate);
+});
+
+const screenReaderAnnouncement = computed(() => {
+  if (props.isExecuting) {
+    return `Выполнение: ${Math.round(props.progress)}%. Обработано узлов: ${props.completedNodes} из ${props.totalNodes}.`;
+  }
+  return '';
 });
 
 function addToolCall(data: ToolCallDetail) {
@@ -313,17 +329,17 @@ function handleScroll() {
   right: 20px;
   width: 380px;
   max-height: 500px;
-  background: rgba(30, 30, 46, 0.95);
-  color: #eee;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-  padding: 16px;
-  z-index: 1000;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  gap: var(--space-3);
+  backdrop-filter: var(--backdrop);
+  border: 1px solid var(--border-subtle);
 }
 
 .execution-panel__header {
@@ -349,12 +365,12 @@ function handleScroll() {
 }
 
 .stop-btn {
-  background: #ff5e5e;
-  color: #fff;
+  background: var(--danger);
+  color: var(--text-inverse);
 }
 
 .stop-btn:hover:not(:disabled) {
-  background: #ff4040;
+  background: var(--danger-hover);
 }
 
 .stop-btn:disabled {
@@ -363,12 +379,12 @@ function handleScroll() {
 }
 
 .close-btn {
-  background: #6c63ff;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .close-btn:hover {
-  background: #5a52d9;
+  background: var(--accent-hover);
 }
 
 .execution-panel__progress {
@@ -387,7 +403,7 @@ function handleScroll() {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4f7cff, #6c63ff);
+  background: var(--accent-gradient);
   border-radius: 4px;
   transition: width 0.3s ease;
   animation: progress-pulse 2s infinite;
@@ -408,7 +424,7 @@ function handleScroll() {
   font-size: 18px;
   font-weight: 700;
   text-align: center;
-  color: #4f7cff;
+  color: var(--info);
   font-family: monospace;
 }
 
@@ -416,18 +432,18 @@ function handleScroll() {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 13px;
-  color: #cbd5ff;
+  font-size: var(--text-sm);
+  color: rgba(79, 172, 254, 0.7);
 }
 
 .execution-panel__tokens {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: #888;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 .execution-panel__tokens .cost {
-  color: #51cf66;
+  color: var(--success);
 }
 
 /* Tabs */
@@ -445,20 +461,20 @@ function handleScroll() {
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: #888;
-  font-size: 12px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .tab-btn.active {
-  background: rgba(108, 99, 255, 0.3);
-  color: #b8b0ff;
+  background: var(--accent-light);
+  color: var(--violet-light);
 }
 
 .tab-btn:hover:not(.active) {
   background: rgba(255, 255, 255, 0.05);
-  color: #aaa;
+  color: var(--text-secondary);
 }
 
 .tab-badge {
@@ -481,14 +497,14 @@ function handleScroll() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
-  color: #aaa;
-  margin-bottom: 6px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1-5);
 }
 
 .waves-count {
   background: rgba(108, 99, 255, 0.2);
-  color: #b8b0ff;
+  color: var(--violet-light);
   padding: 2px 6px;
   border-radius: 10px;
   font-size: 10px;
@@ -533,17 +549,17 @@ function handleScroll() {
 }
 
 .wave-number {
-  color: #ddd;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
 .wave-status {
-  color: #888;
+  color: var(--text-muted);
   margin-left: auto;
 }
 
 .wave-nodes {
-  color: #666;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -561,7 +577,6 @@ function handleScroll() {
 .execution-panel__log-entry {
   font-size: 12px;
   line-height: 1.4;
-  color: #d8d8e8;
   margin-bottom: 6px;
   padding: 4px 8px;
   border-radius: 6px;
@@ -569,24 +584,56 @@ function handleScroll() {
   transition: background 0.2s;
   white-space: pre-wrap;
   word-break: break-word;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
+
+.execution-panel__log-entry::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.log-error::before { background: var(--error); }
+.log-success::before { background: var(--success); }
+.log-warning::before { background: var(--warning); }
+.log-info::before { background: var(--info); }
+.log-error .log-message { color: var(--error); }
+.log-success .log-message { color: var(--success); }
+.log-warning .log-message { color: var(--warning); }
+.log-info .log-message { color: var(--info); }
+.default .log-message { color: var(--text-primary); }
 
 .execution-panel__log-entry:hover {
   background: rgba(255, 255, 255, 0.05);
 }
 
 .log-error {
-  color: #ff6b6b;
-  background: rgba(255, 107, 107, 0.1);
+  color: var(--error);
+  background: var(--error-light);
 }
 
 .log-success {
-  color: #51cf66;
-  background: rgba(81, 207, 102, 0.1);
+  color: var(--success);
+  background: var(--success-light);
+}
+
+.log-warning {
+  color: var(--warning);
+  background: var(--warning-light);
+}
+
+.log-info {
+  color: var(--info);
+  background: var(--info-light);
 }
 
 .log-time {
-  color: #888;
+  color: var(--text-muted);
   margin-right: 8px;
   font-family: monospace;
 }
@@ -608,8 +655,8 @@ function handleScroll() {
 
 .trajectory-empty {
   text-align: center;
-  color: #666;
-  font-size: 12px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
   padding: 20px;
 }
 
@@ -630,23 +677,23 @@ function handleScroll() {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
-  color: #aaa;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
 .iter-number {
   font-weight: 600;
-  color: #b8b0ff;
+  color: var(--violet-light);
 }
 
 .iter-duration {
   margin-left: auto;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .iter-tools {
-  color: #888;
+  color: var(--text-muted);
 }
 
 .iter-tool {
@@ -665,20 +712,20 @@ function handleScroll() {
 }
 
 .tool-name {
-  color: #ddd;
+  color: var(--text-primary);
 }
 
 .tool-duration {
   margin-left: auto;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .tool-result {
-  color: #51cf66;
+  color: var(--success);
 }
 
 .tool-result.tool-error {
-  color: #ff6b6b;
+  color: var(--error);
 }
 
 .trajectory-summary {
@@ -686,8 +733,20 @@ function handleScroll() {
   justify-content: space-between;
   padding: 8px;
   font-size: 11px;
-  color: #aaa;
+  color: var(--text-secondary);
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: 8px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

@@ -92,10 +92,10 @@ const timeout = ref(props.data.timeout || 60);
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
   switch (props.data.executionStatus) {
-    case 'running': return '#ffa500';
-    case 'completed': return '#00ff00';
-    case 'failed': return '#ff0000';
-    default: return '#888';
+    case 'running': return 'var(--warning)';
+    case 'completed': return 'var(--success)';
+    case 'failed': return 'var(--error)';
+    default: return 'var(--text-muted)';
   }
 });
 const executionIcon = computed(() => {
@@ -150,7 +150,7 @@ function handleDelete() {
 @import './node-base.css';
 
 .command-node {
-  border-color: #ff5722;
+  border-color: var(--node-loop);
 }
 .command-node.selected {
   border-color: var(--accent);
@@ -207,19 +207,19 @@ function handleDelete() {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  color: #aaa;
+  color: var(--text-secondary);
 }
 
 .exit-code {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   padding: 2px 6px;
   border-radius: 3px;
-  background: #f44336;
-  color: white;
+  background: var(--error);
+  color: var(--text-inverse);
   font-size: 10px;
 }
 
 .exit-code.success {
-  background: #4caf50;
+  background: var(--success);
 }
 </style>

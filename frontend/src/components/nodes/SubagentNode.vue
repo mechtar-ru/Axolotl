@@ -57,35 +57,35 @@ function truncateResult(text: string): string {
 
 <style scoped>
 .subagent-node {
-  background: #1a1a2e;
-  border: 2px solid #6c63ff;
-  border-radius: 12px;
+  background: var(--bg-primary);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
   min-width: 200px;
   max-width: 300px;
-  font-family: 'Segoe UI', sans-serif;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-sans);
+  box-shadow: var(--shadow-md);
 }
 
 .subagent-node.completed {
-  border-color: #10b981;
+  border-color: var(--success);
 }
 
 .subagent-node.running {
-  border-color: #f59e0b;
+  border-color: var(--warning);
 }
 
 .subagent-node.failed {
-  border-color: #ef4444;
+  border-color: var(--error);
 }
 
 .node-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
-  background: linear-gradient(135deg, #6c63ff22, #6c63ff11);
+  background: linear-gradient(135deg, var(--accent-light), rgba(108, 99, 255, 0.08));
   border-radius: 10px 10px 0 0;
-  border-bottom: 1px solid #6c63ff44;
+  border-bottom: 1px solid rgba(108, 99, 255, 0.27);
 }
 
 .node-icon {
@@ -95,63 +95,63 @@ function truncateResult(text: string): string {
 .node-title {
   flex: 1;
   font-weight: 600;
-  color: #eee;
-  font-size: 14px;
+  color: var(--text-primary);
+  font-size: var(--text-md);
 }
 
 .node-badge {
-  background: #6c63ff;
-  color: white;
+  background: var(--accent);
+  color: var(--text-inverse);
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
 }
 
 .node-body {
-  padding: 12px;
+  padding: var(--space-3);
 }
 
 .target-schema {
   display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .label {
-  color: #888;
-  font-size: 12px;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .value {
-  color: #6c63ff;
-  font-size: 12px;
+  color: var(--accent);
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
 .no-target {
-  color: #f59e0b;
-  font-size: 12px;
+  color: var(--warning);
+  font-size: var(--text-sm);
   text-align: center;
-  padding: 8px;
-  background: #f59e0b11;
-  border-radius: 6px;
+  padding: var(--space-2);
+  background: rgba(245, 158, 11, 0.07);
+  border-radius: var(--radius-sm);
 }
 
 .mapping-info {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #ffffff11;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .node-result {
   padding: 8px 12px;
-  background: #0f0f1a;
-  border-top: 1px solid #ffffff11;
-  font-size: 11px;
-  color: #aaa;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   white-space: pre-wrap;
   max-height: 80px;
   overflow-y: auto;
@@ -160,18 +160,18 @@ function truncateResult(text: string): string {
 .running-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 12px;
-  background: #f59e0b11;
-  color: #f59e0b;
-  font-size: 12px;
+  background: rgba(245, 158, 11, 0.07);
+  color: var(--warning);
+  font-size: var(--text-sm);
   border-radius: 0 0 10px 10px;
 }
 
 .pulse {
   width: 8px;
   height: 8px;
-  background: #f59e0b;
+  background: var(--warning);
   border-radius: 50%;
   animation: pulse 1s infinite;
 }

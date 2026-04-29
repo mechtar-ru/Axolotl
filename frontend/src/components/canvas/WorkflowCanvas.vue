@@ -20,7 +20,7 @@
     <VueFlow ref="vueFlowRef" v-model="elements" :node-types="nodeTypes" :edge-types="edgeTypes"
       :fit-view-on-init="true" :multi-select-on-click="true" @connect="onConnect" @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick" @node-context-menu="onNodeContextMenu" @edge-click="onEdgeClick" @pane-click="onPaneClick"
-      @node-double-click="onNodeDoubleClick" @mini-map-click="onMiniMapClick">
+      @node-double-click="onNodeDoubleClick" @mini-map-click="onMiniMapClick" @drop="onDrop" @dragover="onDragOver">
       <Background />
       <Controls />
       <MiniMap :node-color="minimapNodeColor" :mask-color="'rgba(0,0,0,0.3)'" :pannable="true" :zoomable="true" />
@@ -33,21 +33,35 @@
 
       <div class="toolbar-panel">
         <div class="toolbar-group toolbar-add">
-          <button class="toolbar-btn toolbar-add-btn" @click="showAddMenu = !showAddMenu" title="Добавить узел">
+          <button class="toolbar-btn toolbar-add-btn" @click="toggleSmartAdd" title="Добавить узел (Tab для навигации)">
             ＋ Добавить <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>
           </button>
           <div v-if="showAddMenu" class="add-dropdown">
-            <button @click="addNode('source'); showAddMenu = false">📥 Source</button>
-            <button @click="addNode('agent'); showAddMenu = false">🤖 Agent</button>
-            <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
-            <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
-            <button @click="addNode('output'); showAddMenu = false">📤 Output</button>
-            <button @click="addNode('guardrail'); showAddMenu = false">🛡️ Guardrail</button>
-            <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
-            <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
-            <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
-            <button @click="addNode('schemabuilder'); showAddMenu = false">🏗️ SchemaBuilder</button>
-            <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
+            <div v-if="smartSuggestions.length > 0" class="smart-suggestions">
+              <div class="smart-label">💡 Рекомендуется</div>
+              <button
+                v-for="s in smartSuggestions"
+                :key="s.type"
+                class="smart-btn"
+                @click="addNode(s.type); showAddMenu = false"
+                :draggable="true"
+                @dragstart="onDragStart($event, s.type)"
+              >
+                {{ s.icon }} {{ s.label }}
+              </button>
+              <div class="divider"></div>
+            </div>
+            <button @click="addNode('source'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'source')">📥 Source</button>
+            <button @click="addNode('agent'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'agent')">🤖 Agent</button>
+            <button @click="addNode('condition'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'condition')">⚖️ Condition</button>
+            <button @click="addNode('loop'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'loop')">🔄 Loop</button>
+            <button @click="addNode('output'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'output')">📤 Output</button>
+            <button @click="addNode('guardrail'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'guardrail')">🛡️ Guardrail</button>
+            <button @click="addNode('human'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'human')">👤 Human</button>
+            <button @click="addNode('fallback'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'fallback')">🔄 Fallback</button>
+            <button @click="addNode('subagent'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'subagent')">🤝 Subagent</button>
+            <button @click="addNode('schemabuilder'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'schemabuilder')">🏗️ SchemaBuilder</button>
+            <button @click="addNode('comment'); showAddMenu = false" :draggable="true" @dragstart="onDragStart($event, 'comment')">📝 Заметка</button>
           </div>
         </div>
         <div class="toolbar-separator"></div>
@@ -201,6 +215,35 @@ const showPromptEditor = ref(false);
 const promptEditorNodeId = ref<string | null>(null);
 const showHistory = ref(false);
 const showAddMenu = ref(false);
+
+function toggleSmartAdd() {
+  showAddMenu.value = !showAddMenu.value;
+}
+
+const smartSuggestions = computed(() => {
+  const nodes = props.schema.nodes || [];
+  const suggestions: { type: string; label: string; icon: string }[] = [];
+
+  const typeCounts = new Map<string, number>();
+  for (const n of nodes) {
+    typeCounts.set(n.type, (typeCounts.get(n.type) || 0) + 1);
+  }
+
+  if (nodes.length === 0) {
+    suggestions.push({ type: 'source', label: 'Входные данные', icon: '📥' }, { type: 'agent', label: 'Агент', icon: '🤖' }, { type: 'output', label: 'Результат', icon: '📤' });
+  } else if (typeCounts.has('source') && !typeCounts.has('agent')) {
+    suggestions.push({ type: 'agent', label: 'Агент', icon: '🤖' });
+  } else if (typeCounts.has('agent') && !typeCounts.has('output')) {
+    suggestions.push({ type: 'output', label: 'Результат', icon: '📤' });
+  } else if ((typeCounts.get('agent') || 0) > 1) {
+    suggestions.push({ type: 'guardrail', label: 'Валидация', icon: '🛡️' }, { type: 'condition', label: 'Условие', icon: '⚖️' });
+  } else if (nodes.length > 2 && !typeCounts.has('condition')) {
+    suggestions.push({ type: 'condition', label: 'Условие', icon: '⚖️' });
+  }
+
+  return suggestions;
+});
+
 const ctxMenu = ref<{ visible: boolean; x: number; y: number; nodeId: string; nodeType: string }>({
   visible: false, x: 0, y: 0, nodeId: '', nodeType: ''
 });
@@ -584,11 +627,43 @@ function deleteSchema() {
   showDeleteConfirm.value = false;
 }
 
+function navigateNodes(reverse: boolean) {
+  const nodes = props.schema.nodes || [];
+  if (nodes.length === 0) return;
+
+  const ids = nodes.map(n => n.id).filter((id): id is string => !!id);
+  if (ids.length === 0) return;
+
+  const currentIdx = selectedNodeId.value ? ids.indexOf(selectedNodeId.value) : -1;
+
+  let nextIdx: number;
+  if (currentIdx === -1) {
+    nextIdx = 0;
+  } else if (reverse) {
+    nextIdx = currentIdx > 0 ? currentIdx - 1 : ids.length - 1;
+  } else {
+    nextIdx = currentIdx < ids.length - 1 ? currentIdx + 1 : 0;
+  }
+
+  const nextId = ids[nextIdx] as string;
+  selectedNodeId.value = nextId;
+  selectedNodeIds.value = new Set([nextId]);
+  convertToFlowElements();
+  highlightNode(nextId);
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   const mod = event.metaKey || event.ctrlKey;
 
   if (event.key === 'Delete' || event.key === 'Del') {
     deleteSelected();
+    return;
+  }
+
+  // Tab / Shift+Tab — navigate between nodes
+  if (event.key === 'Tab' && selectedNodeId.value) {
+    event.preventDefault();
+    navigateNodes(event.shiftKey);
     return;
   }
 
@@ -724,6 +799,57 @@ function generateUniqueName(baseName: string): string {
   return `${baseName} (${counter})`;
 }
 
+// Simple debounce implementation
+function debounce<T extends (...args: any[]) => void>(fn: T, wait: number): T {
+  let timeout: ReturnType<typeof setTimeout>;
+  return ((...args: any[]) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), wait);
+  }) as T;
+}
+
+// Debounced update to avoid excessive re-renders
+const debouncedUpdate = debounce((schema: WorkflowSchema) => {
+  emit('update', schema);
+}, 100);
+
+function onDragStart(event: DragEvent, nodeType: string) {
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('nodeType', nodeType);
+    event.dataTransfer.effectAllowed = 'copy';
+  }
+}
+
+function onDragOver(event: DragEvent) {
+  event.preventDefault();
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'copy';
+  }
+}
+
+function onDrop(event: DragEvent) {
+  event.preventDefault();
+  if (!event.dataTransfer) return;
+
+  const nodeType = event.dataTransfer.getData('nodeType');
+  if (!nodeType) return;
+
+  const vueFlow = vueFlowRef.value;
+  if (!vueFlow) return;
+
+  // Get the drop position relative to the VueFlow canvas
+  const bounds = (event.target as HTMLElement)?.closest('.vue-flow')?.getBoundingClientRect();
+  if (!bounds) return;
+
+  const x = event.clientX - bounds.left;
+  const y = event.clientY - bounds.top;
+
+  // Convert to flow coordinates
+  const position = vueFlow.screenToFlowCoordinate({ x, y });
+
+  addNode(nodeType, { x: position.x, y: position.y });
+}
+
 function addNode(type: string, position?: { x: number; y: number }, nodeData?: Record<string, any>) {
   const nameMap = {
     source: 'Входные данные',
@@ -812,6 +938,7 @@ async function executeSchema() {
 
   console.log('✅ Начало выполнения схемы:', props.schema.id);
   isExecuting.value = true;
+  window.__AXOLOTL_EXECUTING__ = true;
   showExecutionPanel.value = true;
   executionProgress.value = 0;
   totalNodes.value = props.schema.nodes?.length || 0;
@@ -845,6 +972,7 @@ async function executeSchema() {
         console.log('❌ Error callback:', data);
         updateNodeStatus(data.nodeId, 'failed');
         pushLog(`ошибка: ${data.error}`, 'error', data.nodeId);
+        window.__AXOLOTL_EXECUTING__ = false;
         disconnect();
         isExecuting.value = false;
         stopTimer();
@@ -852,6 +980,7 @@ async function executeSchema() {
       onComplete: (data) => {
         console.log('✅ Complete callback:', data);
         pushLog(`Выполнение завершено: ${data.nodesCompleted}/${totalNodes.value} узлов`, 'success');
+        window.__AXOLOTL_EXECUTING__ = false;
         disconnect();
         isExecuting.value = false;
         stopTimer();
@@ -889,7 +1018,8 @@ async function executeSchema() {
           }
           return n;
         });
-        emit('update', { ...props.schema, nodes: updatedNodes });
+        // Use debounced update for frequent token updates
+        debouncedUpdate({ ...props.schema, nodes: updatedNodes });
       },
       onLog: (message) => {
         try {
@@ -956,6 +1086,7 @@ async function stopExecution() {
     await schemaApi.stopSchema(props.schema.id);
     disconnect();
     isExecuting.value = false;
+    window.__AXOLOTL_EXECUTING__ = false;
     stopTimer();
     pushLog('Запрос на остановку отправлен', 'info');
   } catch (error) {
@@ -1256,7 +1387,7 @@ function ungroupSelectedNode() {
 <style>
 /* Глобальный стиль для подсветки найденных узлов (scoped не работает внутри Vue Flow) */
 .vue-flow .search-match {
-  box-shadow: 0 0 0 3px #6c63ff, 0 0 20px rgba(108, 99, 255, 0.4) !important;
+  box-shadow: 0 0 0 3px var(--node-agent), 0 0 20px rgba(108, 99, 255, 0.4) !important;
   z-index: 100;
 }
 </style>
@@ -1272,15 +1403,15 @@ function ungroupSelectedNode() {
   position: absolute;
   top: 10px;
   left: 10px;
-  z-index: 1000;
-  background: #2d2d44;
-  padding: 10px 16px;
-  border-radius: 12px;
-  color: #eee;
+  z-index: var(--z-toolbar);
+  background: var(--bg-card);
+  padding: var(--space-2-5) var(--space-4);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  gap: var(--space-3);
+  box-shadow: var(--shadow-md);
 }
 
 .schema-title {
@@ -1296,29 +1427,29 @@ function ungroupSelectedNode() {
 }
 
 .schema-name button {
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: none;
-  border-radius: 6px;
-  color: white;
+  border-radius: var(--radius-sm);
+  color: var(--text-inverse);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-base);
   white-space: nowrap;
 }
 
 .run-schema-btn {
-  background: #4f7cff;
+  background: var(--info);
 }
 
 .save-schema-btn {
-  background: #20c997;
+  background: var(--success);
 }
 
 .export-schema-btn {
-  background: #6c63ff;
+  background: var(--accent);
 }
 
 .delete-schema-btn {
-  background: #dc3545;
+  background: var(--error);
 }
 
 .schema-name button:hover {
@@ -1331,22 +1462,23 @@ function ungroupSelectedNode() {
 }
 
 .delete-schema-btn:hover {
-  background: #c82333;
+  background: var(--error-dark);
 }
 
 .toolbar-panel {
   position: absolute;
   top: 50px;
   left: 10px;
-  background: var(--bg-card, #1e1e2e);
-  padding: 6px 10px;
-  border-radius: var(--radius-sm, 8px);
-  z-index: 1000;
+  background: var(--bg-card);
+  padding: var(--space-1-5) var(--space-2-5);
+  border-radius: var(--radius-sm);
+  z-index: var(--z-toolbar);
   display: flex;
   align-items: center;
-  gap: 4px;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border, #4a4a6a);
+  gap: var(--space-1);
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
 }
 
 .toolbar-group {
@@ -1362,20 +1494,30 @@ function ungroupSelectedNode() {
 .toolbar-separator {
   width: 1px;
   height: 24px;
-  background: var(--border, #4a4a6a);
-  margin: 0 4px;
+  background: var(--border);
+  margin: 0 var(--space-1);
 }
 
 .toolbar-btn {
-  padding: 6px 10px;
-  background: var(--accent, #6c63ff);
+  padding: var(--space-1-5) var(--space-2-5);
+  background: var(--accent);
   border: none;
-  border-radius: 4px;
-  color: white;
+  border-radius: var(--radius-sm);
+  color: var(--text-inverse);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   white-space: nowrap;
-  transition: opacity 0.2s;
+  transition: all var(--transition) ease;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+}
+
+.toolbar-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: none;
 }
 
 .toolbar-btn:hover:not(:disabled) {
@@ -1406,31 +1548,54 @@ function ungroupSelectedNode() {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: 4px;
-  background: var(--bg-card, #1e1e2e);
-  border: 1px solid var(--border, #4a4a6a);
-  border-radius: var(--radius-sm, 6px);
-  box-shadow: var(--shadow-md, 0 8px 30px rgba(0, 0, 0, 0.35));
-  z-index: 1001;
-  min-width: 160px;
-  padding: 4px;
+  margin-top: var(--space-1);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-dropdown);
+  min-width: 200px;
+  padding: var(--space-1);
+}
+
+.smart-suggestions {
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-1);
+}
+
+.smart-label {
+  font-size: 10px; color: var(--accent); padding: 4px 12px;
+  text-transform: uppercase; font-weight: 600;
+}
+
+.smart-btn {
+  display: flex; align-items: center; gap: 8px;
+}
+
+.smart-btn:hover {
+  background: rgba(108, 99, 255, 0.2);
+}
+
+.divider {
+  height: 1px; background: var(--border-subtle); margin: var(--space-1) 0;
 }
 
 .add-dropdown button {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   background: none;
   border: none;
-  color: var(--text-primary, #eee);
+  color: var(--text-primary);
   cursor: pointer;
   text-align: left;
-  border-radius: 4px;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
 }
 
 .add-dropdown button:hover {
-  background: var(--bg-hover, #3d3d5c);
+  background: var(--bg-card-hover);
 }
 
 .execution-panel {
@@ -1440,15 +1605,15 @@ function ungroupSelectedNode() {
   width: 320px;
   max-height: 420px;
   background: rgba(20, 22, 34, 0.96);
-  color: #eee;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-  padding: 16px;
-  z-index: 1100;
+  color: var(--text-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-4);
+  z-index: var(--z-panel);
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .execution-panel__header {
@@ -1456,64 +1621,64 @@ function ungroupSelectedNode() {
   justify-content: space-between;
   align-items: center;
   font-weight: 600;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .stop-btn {
-  background: #ff5e5e;
+  background: var(--danger);
   border: none;
-  color: #fff;
-  border-radius: 8px;
-  padding: 6px 12px;
+  color: var(--text-inverse);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1-5) var(--space-3);
   cursor: pointer;
 }
 
 .stop-btn:hover {
-  background: #ff4040;
+  background: var(--danger-hover);
 }
 
 .execution-panel__stats {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  color: #cbd5ff;
+  gap: var(--space-3);
+  font-size: var(--text-base);
+  color: rgba(79, 172, 254, 0.7);
 }
 
 .execution-panel__logs {
   flex: 1;
   overflow-y: auto;
-  padding: 10px;
+  padding: var(--space-2-5);
   background: rgba(12, 14, 24, 0.95);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
 }
 
 .execution-panel__log-entry {
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.4;
-  color: #d8d8e8;
-  margin-bottom: 6px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1-5);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .modal-buttons {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2-5);
   justify-content: flex-end;
 }
 
 .modal-buttons button {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
 .delete-confirm-btn {
   background: var(--error);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .delete-confirm-btn:hover {
@@ -1522,7 +1687,7 @@ function ungroupSelectedNode() {
 
 .modal-buttons button:last-child {
   background: var(--accent);
-  color: white;
+  color: var(--text-inverse);
 }
 
 .modal-buttons button:last-child:hover {
@@ -1556,53 +1721,53 @@ function ungroupSelectedNode() {
   top: 10px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 1100;
+  z-index: var(--z-panel);
   display: flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .search-input {
   width: 280px;
-  padding: 8px 12px;
-  background: #2d2d44;
-  border: 1px solid #6c63ff;
-  border-radius: 8px;
-  color: #eee;
-  font-size: 14px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
   outline: none;
 }
 
 .search-input:focus {
-  border-color: #8b83ff;
+  border-color: var(--accent);
 }
 
 .search-close {
-  background: #dc3545;
+  background: var(--error);
   border: none;
-  color: white;
-  border-radius: 8px;
+  color: var(--text-inverse);
+  border-radius: var(--radius-sm);
   width: 36px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
 }
 
 .mode-selector {
-  padding: 8px 12px;
-  background: #2d2d44;
-  border: 1px solid #6c63ff;
-  border-radius: 8px;
-  color: #eee;
-  font-size: 14px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-md);
   cursor: pointer;
   outline: none;
   min-width: 120px;
 }
 
 .mode-selector:hover {
-  border-color: #8b83ff;
+  border-color: var(--accent);
 }
 
 .mode-selector:focus {
-  border-color: #8b83ff;
+  border-color: var(--accent);
 }
 </style>

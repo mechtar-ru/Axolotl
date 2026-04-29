@@ -229,7 +229,7 @@ watch(() => visibleProp.visible, (v) => {
   padding: 14px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   font-weight: 600;
-  color: #eee;
+  color: var(--text-primary);
   font-size: 15px;
   position: sticky;
   top: 0;
@@ -246,7 +246,7 @@ watch(() => visibleProp.visible, (v) => {
 .close-btn {
   background: rgba(255, 255, 255, 0.1);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -264,12 +264,12 @@ watch(() => visibleProp.visible, (v) => {
 .empty-state {
   padding: 30px 16px;
   text-align: center;
-  color: #888;
+  color: var(--text-muted-alt);
   font-size: 14px;
 }
 
 .error-state {
-  color: #ff6b6b;
+  color: var(--danger);
 }
 
 .memory-graph-body {
@@ -304,7 +304,7 @@ watch(() => visibleProp.visible, (v) => {
 
 .wing-card.active {
   background: rgba(108, 99, 255, 0.3);
-  border-color: #6c63ff;
+  border-color: var(--accent);
 }
 
 .wing-icon {
@@ -313,13 +313,13 @@ watch(() => visibleProp.visible, (v) => {
 
 .wing-name {
   font-size: 13px;
-  color: #ddd;
+  color: var(--text-secondary-light);
   font-weight: 500;
 }
 
 .wing-count {
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted-alt);
 }
 
 .rooms-section,
@@ -334,7 +334,7 @@ watch(() => visibleProp.visible, (v) => {
 .drawers-section h3,
 .tunnels-section h3 {
   font-size: 13px;
-  color: #aaa;
+  color: var(--text-secondary);
   margin: 0;
   padding: 4px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
@@ -375,7 +375,7 @@ watch(() => visibleProp.visible, (v) => {
 
 .room-name {
   font-size: 13px;
-  color: #ccc;
+  color: var(--text-secondary-light);
 }
 
 .drawer-preview {
@@ -393,7 +393,7 @@ watch(() => visibleProp.visible, (v) => {
   padding: 2px 6px;
   border-radius: 3px;
   background: rgba(108, 99, 255, 0.15);
-  color: #b8b0ff;
+  color: var(--violet-light);
 }
 
 .drawer-modal-overlay {
@@ -407,7 +407,7 @@ watch(() => visibleProp.visible, (v) => {
 }
 
 .drawer-modal {
-  background: #1e1e2e;
+  background: var(--bg-secondary);
   border-radius: 12px;
   width: 500px;
   max-height: 70vh;
@@ -423,7 +423,7 @@ watch(() => visibleProp.visible, (v) => {
   align-items: center;
   padding: 14px 18px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  color: #eee;
+  color: var(--text-primary);
   font-weight: 600;
   font-size: 14px;
 }
@@ -431,7 +431,7 @@ watch(() => visibleProp.visible, (v) => {
 .close-modal-btn {
   background: rgba(255, 255, 255, 0.1);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   width: 26px;
   height: 26px;
   border-radius: 6px;
@@ -449,7 +449,7 @@ watch(() => visibleProp.visible, (v) => {
   word-break: break-word;
   font-family: 'SF Mono', 'Fira Code', monospace;
   font-size: 13px;
-  color: #ddd;
+  color: var(--text-secondary-light);
   line-height: 1.5;
   margin: 0;
 }
@@ -458,6 +458,6 @@ watch(() => visibleProp.visible, (v) => {
   padding: 10px 18px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   font-size: 12px;
-  color: #666;
+  color: var(--text-muted);
 }
 </style>

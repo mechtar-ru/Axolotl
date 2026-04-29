@@ -46,15 +46,15 @@ function icon(type: string) {
   padding: 12px 16px;
   border-radius: 8px;
   font-size: 14px;
-  color: #eee;
+  color: var(--text-primary);
   min-width: 250px;
   max-width: 400px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-md);
   pointer-events: auto;
 }
-.toast--success { background: #2e7d32; }
-.toast--error { background: #c62828; }
-.toast--info { background: #37474f; }
+.toast--success { background: var(--success-dark); }
+.toast--error { background: var(--error-dark); }
+.toast--info { background: var(--info-dark); }
 .toast-icon {
   font-weight: bold;
   font-size: 16px;

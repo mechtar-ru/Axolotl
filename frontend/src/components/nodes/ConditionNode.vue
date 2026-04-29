@@ -97,10 +97,10 @@ const nameInput = ref<HTMLInputElement | null>(null);
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
   switch (props.data.executionStatus) {
-    case 'running': return '#ffa500';
-    case 'completed': return '#00ff00';
-    case 'failed': return '#ff0000';
-    default: return '#888';
+    case 'running': return 'var(--warning)';
+    case 'completed': return 'var(--success)';
+    case 'failed': return 'var(--error)';
+    default: return 'var(--text-muted)';
   }
 });
 const executionIcon = computed(() => {
@@ -158,7 +158,7 @@ function handleDelete() {
 }
 .condition-diamond {
   background: var(--bg-card);
-  border: 2px solid #2196f3;
+  border: 2px solid var(--info);
   border-radius: var(--radius-sm);
   min-width: 200px;
   max-width: 300px;

@@ -73,13 +73,13 @@ function onDragEnd() {
   max-height: 400px;
   background: rgba(22, 33, 62, 0.95);
   border: 1px solid rgba(0, 188, 212, 0.4);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: 0 8px 32px rgba(0, 188, 212, 0.2);
-  z-index: 500;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);
-  animation: card-appear 0.3s ease-out;
+  animation: card-appear var(--transition-slow) ease-out;
 }
 
 @keyframes card-appear {
@@ -96,39 +96,39 @@ function onDragEnd() {
 .card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid rgba(0, 188, 212, 0.2);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .card-wing {
-  color: #00bcd4;
+  color: var(--memory-color);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .card-score {
-  color: #888;
+  color: var(--text-muted);
   margin-left: auto;
 }
 
 .card-close {
   background: none;
   border: none;
-  color: #888;
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-md);
   padding: 0 2px;
 }
 
 .card-close:hover {
-  color: #ff6b6b;
+  color: var(--error);
 }
 
 .card-body {
-  padding: 10px 12px;
+  padding: var(--space-2-5) var(--space-3);
   overflow-y: auto;
   flex: 1;
   max-height: 280px;
@@ -136,28 +136,28 @@ function onDragEnd() {
 
 .card-text {
   margin: 0;
-  font-size: 13px;
-  color: #ddd;
+  font-size: var(--text-base);
+  color: var(--text-primary);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .card-actions {
-  padding: 8px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .card-action {
   width: 100%;
-  background: rgba(0, 188, 212, 0.2);
+  background: var(--memory-light);
   border: 1px solid rgba(0, 188, 212, 0.3);
-  color: #00bcd4;
+  color: var(--memory-color);
   padding: 6px 12px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 12px;
-  transition: background 0.2s;
+  font-size: var(--text-sm);
+  transition: background var(--transition);
 }
 
 .card-action:hover {

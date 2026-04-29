@@ -33,7 +33,7 @@ const props = defineProps<{
   };
 }>();
 
-const colors = ['#fff9c4', '#c8e6c9', '#bbdefb', '#f8bbd0', '#e1bee7'];
+const colors = ['#ffe082', '#a5d6a7', '#90caf9', '#f48fb1', '#ce93d8'];
 const commentColor = ref(props.data.config?.color || colors[0]);
 const localText = ref(props.data.sourceData || '');
 const isSelected = ref(props.selected);
@@ -72,7 +72,7 @@ function handleDelete() {
   right: -8px;
   width: 20px;
   height: 20px;
-  background: #dc3545;
+  background: var(--error);
   color: white;
   border: none;
   border-radius: 50%;
@@ -107,7 +107,7 @@ function handleDelete() {
   width: 100%;
   background: transparent;
   border: none;
-  color: #333;
+  color: var(--bg-primary);
   font-size: 13px;
   resize: none;
   outline: none;

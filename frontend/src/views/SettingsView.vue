@@ -427,7 +427,7 @@ onMounted(async () => {
 
 .settings-header h1 {
   font-size: 24px;
-  color: var(--text-primary, #eee);
+  color: var(--text-primary);
 }
 
 .back-btn {

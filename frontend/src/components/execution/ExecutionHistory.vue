@@ -94,7 +94,7 @@ function truncate(str: string, len: number): string {
   width: 380px;
   max-height: 500px;
   background: rgba(30, 30, 46, 0.95);
-  color: #eee;
+  color: var(--text-primary);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
   z-index: 1000;
@@ -115,7 +115,7 @@ function truncate(str: string, len: number): string {
 .close-btn {
   background: rgba(255,255,255,0.1);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   width: 28px;
   height: 28px;
   border-radius: 6px;
@@ -147,14 +147,14 @@ function truncate(str: string, len: number): string {
 }
 .history-time {
   font-weight: 600;
-  color: #4f7cff;
+  color: var(--info);
 }
 .history-item-details {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
-  color: #888;
-  margin-top: 4px;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
 }
 .history-date {
   font-size: 11px;
@@ -183,20 +183,20 @@ function truncate(str: string, len: number): string {
   border-radius: 4px;
 }
 .node-status.completed {
-  color: #51cf66;
+  color: var(--success);
 }
 .node-status.failed {
-  color: #ff6b6b;
+  color: var(--error);
 }
 .node-result-preview {
-  margin-top: 4px;
-  font-size: 11px;
-  color: #aaa;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   word-break: break-word;
 }
 .history-empty {
   text-align: center;
-  color: #666;
-  padding: 24px;
+  color: var(--text-muted);
+  padding: var(--space-6);
 }
 </style>

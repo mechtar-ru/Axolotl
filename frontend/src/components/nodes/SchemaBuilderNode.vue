@@ -126,27 +126,27 @@ function truncateResult(text: string): string {
 
 <style scoped>
 .schemabuilder-node {
-  background: #1a1a2e;
-  border: 2px solid #f59e0b;
-  border-radius: 12px;
+  background: var(--bg-primary);
+  border: 2px solid var(--warning);
+  border-radius: var(--radius-md);
   min-width: 200px;
   max-width: 300px;
-  font-family: 'Segoe UI', sans-serif;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-sans);
+  box-shadow: var(--shadow-md);
 }
 
-.schemabuilder-node.completed { border-color: #10b981; }
-.schemabuilder-node.running { border-color: #f59e0b; }
-.schemabuilder-node.failed { border-color: #ef4444; }
+.schemabuilder-node.completed { border-color: var(--success); }
+.schemabuilder-node.running { border-color: var(--warning); }
+.schemabuilder-node.failed { border-color: var(--error); }
 
 .node-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
-  background: linear-gradient(135deg, #f59e0b22, #f59e0b11);
+  background: linear-gradient(135deg, var(--warning-light), rgba(255, 165, 0, 0.1));
   border-radius: 10px 10px 0 0;
-  border-bottom: 1px solid #f59e0b44;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.27);
 }
 
 .node-icon { font-size: 18px; }
@@ -154,65 +154,65 @@ function truncateResult(text: string): string {
 .node-title {
   flex: 1;
   font-weight: 600;
-  color: #eee;
-  font-size: 14px;
+  color: var(--text-primary);
+  font-size: var(--text-md);
 }
 
 .node-badge {
-  background: #f59e0b;
-  color: #1a1a2e;
+  background: var(--warning);
+  color: var(--bg-primary);
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
 }
 
-.node-body { padding: 12px; }
+.node-body { padding: var(--space-3); }
 
-.config-row { margin-bottom: 8px; }
+.config-row { margin-bottom: var(--space-2); }
 
 .config-label {
   display: block;
-  color: #888;
-  font-size: 11px;
-  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin-bottom: var(--space-1);
 }
 
 .model-select {
   width: 100%;
-  background: #0f0f1a;
-  color: #eee;
-  border: 1px solid #333;
-  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
 .config-row label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #aaa;
-  font-size: 12px;
+  gap: var(--space-1-5);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
-.config-row input[type="checkbox"] { accent-color: #f59e0b; }
+.config-row input[type="checkbox"] { accent-color: var(--warning); }
 
 .config-hint {
-  color: #666;
-  font-size: 11px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
   text-align: center;
-  padding: 4px;
+  padding: var(--space-1);
 }
 
 .node-result {
   padding: 8px 12px;
-  background: #0f0f1a;
-  border-top: 1px solid #ffffff11;
-  font-size: 11px;
-  color: #aaa;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   white-space: pre-wrap;
   max-height: 80px;
   overflow-y: auto;
@@ -221,18 +221,18 @@ function truncateResult(text: string): string {
 .running-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 12px;
-  background: #f59e0b11;
-  color: #f59e0b;
-  font-size: 12px;
+  background: rgba(245, 158, 11, 0.07);
+  color: var(--warning);
+  font-size: var(--text-sm);
   border-radius: 0 0 10px 10px;
 }
 
 .pulse {
   width: 8px;
   height: 8px;
-  background: #f59e0b;
+  background: var(--warning);
   border-radius: 50%;
   animation: pulse 1s infinite;
 }

@@ -159,10 +159,10 @@ onUnmounted(() => {
 .command-palette {
   width: 560px;
   max-height: 400px;
-  background: #1e1e2e;
-  border: 1px solid rgba(108, 99, 255, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-border, rgba(108, 99, 255, 0.3));
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -185,13 +185,13 @@ onUnmounted(() => {
   flex: 1;
   background: transparent;
   border: none;
-  color: #e0e0e0;
-  font-size: 16px;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
   outline: none;
 }
 
 .command-palette__input::placeholder {
-  color: #666;
+  color: var(--text-muted);
 }
 
 .command-palette__kbd {
@@ -200,7 +200,7 @@ onUnmounted(() => {
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 10px;
-  color: #888;
+  color: var(--text-muted-alt);
   font-family: inherit;
 }
 
@@ -239,13 +239,13 @@ onUnmounted(() => {
 
 .command-palette__item-title {
   font-size: 14px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .command-palette__item-desc {
-  font-size: 11px;
-  color: #888;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -258,15 +258,15 @@ onUnmounted(() => {
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 11px;
-  color: #888;
+  color: var(--text-muted-alt);
   font-family: inherit;
   flex-shrink: 0;
 }
 
 .command-palette__empty {
-  padding: 24px;
+  padding: var(--space-6);
   text-align: center;
-  color: #666;
-  font-size: 14px;
+  color: var(--text-muted);
+  font-size: var(--text-md);
 }
 </style>

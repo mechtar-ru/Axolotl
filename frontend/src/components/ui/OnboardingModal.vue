@@ -155,7 +155,7 @@ onMounted(async () => {
 }
 
 .onboarding-card {
-  background: #1e1e2e;
+  background: var(--bg-secondary);
   border: 1px solid rgba(108, 99, 255, 0.3);
   border-radius: 16px;
   padding: 32px;
@@ -173,13 +173,13 @@ onMounted(async () => {
 
 .onboarding-header h1 {
   font-size: 24px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   margin: 0 0 8px;
 }
 
 .onboarding-header p {
   font-size: 14px;
-  color: #888;
+  color: var(--text-muted-alt);
   margin: 0;
 }
 
@@ -189,13 +189,13 @@ onMounted(async () => {
 
 .step h2 {
   font-size: 18px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   margin: 0 0 8px;
 }
 
 .step-desc {
   font-size: 13px;
-  color: #888;
+  color: var(--text-muted-alt);
   margin: 0 0 20px;
 }
 
@@ -210,23 +210,23 @@ onMounted(async () => {
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  background: #2d2d44;
-  border: 2px solid #4a4a6a;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-  color: #eee;
+  color: var(--text-primary);
   text-align: left;
   width: 100%;
 }
 
 .provider.option:hover {
-  border-color: #6c63ff;
+  border-color: var(--accent);
   background: rgba(108, 99, 255, 0.1);
 }
 
 .provider.option.selected {
-  border-color: #6c63ff;
+  border-color: var(--accent);
   background: rgba(108, 99, 255, 0.15);
   box-shadow: 0 0 12px rgba(108, 99, 255, 0.3);
 }
@@ -243,7 +243,7 @@ onMounted(async () => {
 
 .provider-model {
   font-size: 12px;
-  color: #6c63ff;
+  color: var(--accent);
   font-family: monospace;
 }
 
@@ -255,55 +255,55 @@ onMounted(async () => {
 
 .provider-status.online {
   background: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
+  color: var(--success);
 }
 
 .provider-status.offline {
   background: rgba(244, 67, 54, 0.2);
-  color: #f44336;
+  color: var(--error);
 }
 
 .no-providers {
   text-align: center;
   padding: 20px;
-  color: #888;
+  color: var(--text-muted-alt);
 }
 
 .no-providers .hint {
   font-size: 12px;
-  color: #666;
+  color: var(--text-muted);
   margin-top: 8px;
 }
 
 .model-chosen {
   font-size: 14px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   margin: 12px 0 20px;
 }
 
 .model-chosen code {
-  background: #2d2d44;
+  background: var(--bg-card);
   padding: 2px 8px;
   border-radius: 4px;
-  color: #6c63ff;
+  color: var(--accent);
 }
 
 .quick-start {
-  background: #2d2d44;
+  background: var(--bg-card);
   border-radius: 8px;
   padding: 16px;
 }
 
 .quick-start h3 {
   font-size: 14px;
-  color: #e0e0e0;
+  color: var(--text-primary);
   margin: 0 0 12px;
 }
 
 .quick-start ol {
   margin: 0;
   padding-left: 20px;
-  color: #aaa;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
@@ -322,7 +322,7 @@ onMounted(async () => {
 .btn-primary {
   flex: 1;
   padding: 12px 20px;
-  background: #6c63ff;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 8px;
@@ -333,7 +333,7 @@ onMounted(async () => {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #5a52e0;
+  background: var(--accent-hover);
   transform: translateY(-1px);
 }
 
@@ -345,8 +345,8 @@ onMounted(async () => {
 .btn-skip {
   padding: 12px 20px;
   background: transparent;
-  color: #888;
-  border: 1px solid #4a4a6a;
+  color: var(--text-muted-alt);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   font-size: 13px;

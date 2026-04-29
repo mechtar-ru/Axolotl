@@ -25,7 +25,7 @@
     >
       <circle
         r="14"
-        fill="#dc3545"
+        fill="var(--error)"
         class="edge-delete-btn"
         stroke="white"
         stroke-width="2"
@@ -77,10 +77,16 @@ const markerEnd = computed(() => {
   return props.markerEnd;
 });
 
+const isExecuting = computed(() => {
+  return window.__AXOLOTL_EXECUTING__ === true;
+});
+
 const edgeStyle = computed(() => ({
-  stroke: props.selected ? '#ff6b6b' : '#4a9eff',
+  stroke: props.selected ? 'var(--accent)' : 'var(--info)',
   strokeWidth: props.selected ? 3 : 2,
   cursor: 'pointer',
+  strokeDasharray: isExecuting.value ? '8 4' : undefined,
+  animation: isExecuting.value ? 'flow-animation 0.5s linear infinite' : undefined,
 }));
 
 const selected = computed(() => props.selected === true);
@@ -103,11 +109,16 @@ function handleDelete(event: MouseEvent) {
 </script>
 
 <style scoped>
+@keyframes flow-animation {
+  0% { stroke-dashoffset: 12; }
+  100% { stroke-dashoffset: 0; }
+}
+
 .custom-edge {
   cursor: pointer;
 }
 .custom-edge.selected .vue-flow__edge-path {
-  stroke: #ff6b6b;
+  stroke: var(--accent);
   stroke-width: 3;
 }
 .edge-click-area {
