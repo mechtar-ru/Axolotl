@@ -2,7 +2,7 @@
 """Axolotl API helper for harnesses. Usage:
   python3 scripts/api.py GET  /api/plan
   python3 scripts/api.py POST /api/plan/tasks '{"title":"Task"}'
-  python3 scripts/api.py PUT  /api/plan/tasks/ID/status '{"status":"DONE"}'
+  python3 scripts/api.py PUT /api/plan/tasks/ID/status @/tmp/body.json'
 """
 import json, sys, urllib.request, urllib.parse
 
@@ -16,13 +16,21 @@ def get_token():
     resp = urllib.request.urlopen(req)
     return json.loads(resp.read())["token"]
 
+def load_body(body_arg):
+    if body_arg is None:
+        return None
+    if body_arg.startswith('@'):
+        with open(body_arg[1:], 'r') as f:
+            return json.load(f)
+    return json.loads(body_arg)
+
 def call(method, path, body=None):
     token = get_token()
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(f"{BASE}{path}", data=data,
-                                 method=method,
-                                 headers={"Authorization": f"Bearer {token}",
-                                          "Content-Type": "application/json"})
+                                  method=method,
+                                  headers={"Authorization": f"Bearer {token}",
+                                           "Content-Type": "application/json"})
     try:
         resp = urllib.request.urlopen(req)
         print(resp.read().decode())
@@ -33,5 +41,5 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(__doc__); sys.exit(1)
     method, path = sys.argv[1], sys.argv[2]
-    body = json.loads(sys.argv[3]) if len(sys.argv) > 3 else None
+    body = load_body(sys.argv[3]) if len(sys.argv) > 3 else None
     call(method, path, body)
