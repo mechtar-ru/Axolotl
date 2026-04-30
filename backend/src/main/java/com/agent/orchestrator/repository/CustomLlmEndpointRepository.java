@@ -2,6 +2,7 @@ package com.agent.orchestrator.repository;
 
 import com.agent.orchestrator.config.DbConfig;
 import com.agent.orchestrator.model.CustomLlmEndpoint;
+import com.agent.orchestrator.service.EncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
@@ -17,10 +18,12 @@ public class CustomLlmEndpointRepository {
     private static final Logger log = LoggerFactory.getLogger(CustomLlmEndpointRepository.class);
 
     private final String dbUrl;
+    private final EncryptionService encryptionService;
     private final Map<String, CustomLlmEndpoint> cache = new HashMap<>();
 
-    public CustomLlmEndpointRepository(DbConfig dbConfig) {
+    public CustomLlmEndpointRepository(DbConfig dbConfig, EncryptionService encryptionService) {
         this.dbUrl = dbConfig.getDbUrl();
+        this.encryptionService = encryptionService;
         createTable();
         loadAll();
     }
@@ -71,7 +74,8 @@ public class CustomLlmEndpointRepository {
         e.setId(rs.getString("id"));
         e.setName(rs.getString("name"));
         e.setBaseUrl(rs.getString("base_url"));
-        e.setApiKey(rs.getString("api_key"));
+        String encryptedKey = rs.getString("api_key");
+        e.setApiKey(encryptionService.decrypt(encryptedKey));
         e.setModelName(rs.getString("model_name"));
         e.setAuthType(rs.getString("auth_type"));
         e.setEnabled(rs.getInt("enabled") == 1);
@@ -86,14 +90,14 @@ public class CustomLlmEndpointRepository {
     public CustomLlmEndpoint save(CustomLlmEndpoint endpoint) {
         String sql = """
             INSERT OR REPLACE INTO custom_llm_endpoints (id, name, base_url, api_key, model_name, auth_type, enabled, created_at, last_used_at, priority)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
         try (Connection conn = DriverManager.getConnection(dbUrl);
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, endpoint.getId());
             pstmt.setString(2, endpoint.getName());
             pstmt.setString(3, endpoint.getBaseUrl());
-            pstmt.setString(4, endpoint.getApiKey());
+            pstmt.setString(4, encryptionService.encrypt(endpoint.getApiKey()));
             pstmt.setString(5, endpoint.getModelName());
             pstmt.setString(6, endpoint.getAuthType());
             pstmt.setInt(7, endpoint.isEnabled() ? 1 : 0);

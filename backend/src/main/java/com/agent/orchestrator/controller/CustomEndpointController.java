@@ -27,13 +27,43 @@ public class CustomEndpointController {
     }
 
     @GetMapping
-    public List<CustomLlmEndpoint> getAll() {
-        return endpointRepository.findAll();
+    public List<Map<String, Object>> getAll() {
+        return endpointRepository.findAll().stream()
+                .map(this::toMaskedMap)
+                .toList();
     }
 
-    @GetMapping("/enabled")
-    public List<CustomLlmEndpoint> getEnabled() {
-        return endpointRepository.findEnabled();
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getById(@PathVariable String id) {
+        return endpointRepository.findById(id)
+                .map(endpoint -> ResponseEntity.ok().body(endpoint))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    private Map<String, Object> toMaskedMap(CustomLlmEndpoint endpoint) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("id", endpoint.getId());
+        map.put("name", endpoint.getName());
+        map.put("baseUrl", endpoint.getBaseUrl());
+        map.put("modelName", endpoint.getModelName());
+        map.put("authType", endpoint.getAuthType());
+        map.put("enabled", endpoint.isEnabled());
+        map.put("priority", endpoint.getPriority());
+        map.put("createdAt", endpoint.getCreatedAt());
+        map.put("lastUsedAt", endpoint.getLastUsedAt());
+        // Mask API key: show only last 4 chars
+        String key = endpoint.getApiKey();
+        if (key != null && key.length() > 4) {
+            map.put("apiKey", "..." + key.substring(key.length() - 4));
+            map.put("hasApiKey", true);
+        } else if (key != null) {
+            map.put("apiKey", "...");
+            map.put("hasApiKey", true);
+        } else {
+            map.put("apiKey", null);
+            map.put("hasApiKey", false);
+        }
+        return map;
     }
 
     @PostMapping
