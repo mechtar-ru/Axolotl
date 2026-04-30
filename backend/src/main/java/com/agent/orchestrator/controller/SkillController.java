@@ -62,4 +62,41 @@ public class SkillController {
         Boolean success = body.getOrDefault("success", false);
         skillService.recordUsage(id, success);
     }
+
+    /**
+     * Search agentskills.io registry.
+     */
+    @GetMapping("/search")
+    public List<Map<String, Object>> searchSkills(@RequestParam String query) {
+        return skillService.searchInRegistry(query);
+    }
+
+    /**
+     * Validate skill spec compliance.
+     */
+    @PostMapping("/{id}/validate")
+    public Map<String, Object> validateSkill(@PathVariable String id) {
+        Skill skill = skillService.getSkill(id);
+        if (skill == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Skill not found: " + id);
+        }
+        return skillService.validateSpecCompliance(skill);
+    }
+
+    /**
+     * Sync skills from registry.
+     */
+    @PostMapping("/sync")
+    public Map<String, Object> syncSkills() {
+        return skillService.syncFromRegistry();
+    }
+
+    /**
+     * Discover available skills from registry.
+     */
+    @GetMapping("/discover")
+    public List<Map<String, Object>> discoverSkills() {
+        return skillService.discoverFromRegistry();
+    }
 }

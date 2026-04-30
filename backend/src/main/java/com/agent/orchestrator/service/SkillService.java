@@ -186,22 +186,77 @@ public class SkillService {
                 .collect(Collectors.toList());
     }
 
-    public List<String> suggestToolSequence(String query) {
-        List<Skill> matches = findMatchingSkills(query);
-        if (!matches.isEmpty()) {
-            return Arrays.asList(matches.get(0).getTriggerPattern().split(","));
+    /**
+     * Search agentskills.io registry.
+     */
+    public List<Map<String, Object>> searchInRegistry(String query) {
+        log.info("Searching agentskills.io registry for: {}", query);
+        // Stub - in real implementation, call agentskills.io API
+        List<Map<String, Object>> results = new ArrayList<>();
+        Map<String, Object> skill1 = new HashMap<>();
+        skill1.put("name", "example-skill");
+        skill1.put("description", "Example skill from registry");
+        skill1.put("version", "1.0.0");
+        skill1.put("repository", "https://github.com/user/example-skill");
+        results.add(skill1);
+        return results;
+    }
+
+    /**
+     * Validate skill spec compliance.
+     */
+    public Map<String, Object> validateSpecCompliance(Skill skill) {
+        log.info("Validating skill spec compliance for: {}", skill.getName());
+        Map<String, Object> result = new HashMap<>();
+        List<String> errors = new ArrayList<>();
+
+        if (skill.getName() == null || skill.getName().isBlank()) {
+            errors.add("Missing required field: name");
         }
-        
-        String generatedSequence = llmService.chat("ollama", null, 
-            "Given the task: " + query + "\nSuggest a tool sequence (comma-separated tool names). " +
-            "Available tools: file_read, file_write, directory_read, bash, memory_read, memory_write, " +
-            "web_search, web_fetch, rlm_predict. Respond with just comma-separated tool names.",
-            null);
-        
-        if (generatedSequence != null) {
-            return Arrays.asList(generatedSequence.split(","));
+        if (skill.getDescription() == null || skill.getDescription().isBlank()) {
+            errors.add("Missing required field: description");
         }
-        return Arrays.asList("file_read", "bash");
+        if (skill.getVersion() == null || skill.getVersion().isBlank()) {
+            errors.add("Missing recommended field: version");
+        }
+        if (skill.getRepository() == null || skill.getRepository().isBlank()) {
+            errors.add("Missing recommended field: repository");
+        }
+
+        result.put("valid", errors.isEmpty());
+        result.put("errors", errors);
+        result.put("skill", Map.of(
+            "name", skill.getName(),
+            "version", skill.getVersion(),
+            "authors", skill.getAuthors(),
+            "tags", skill.getTags(),
+            "platforms", skill.getPlatforms(),
+            "repository", skill.getRepository(),
+            "docs", skill.getDocs()
+        ));
+        return result;
+    }
+
+    /**
+     * Sync skills from registry.
+     */
+    public Map<String, Object> syncFromRegistry() {
+        log.info("Syncing skills from agentskills.io registry...");
+        // Stub - in real implementation, fetch from registry and update local skills
+        return Map.of(
+            "status", "synced",
+            "count", 0,
+            "message", "Stub: would sync from agentskills.io registry"
+        );
+    }
+
+    /**
+     * Discover available skills from registry.
+     */
+    public List<Map<String, Object>> discoverFromRegistry() {
+        log.info("Discovering skills from agentskills.io registry...");
+        // Stub - in real implementation, list available skills
+        return searchInRegistry("");
     }
 
     public static class ToolCallInfo {
