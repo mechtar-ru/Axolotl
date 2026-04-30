@@ -54,7 +54,7 @@ class AgentControllerTest {
         WorkflowSchema schema = new WorkflowSchema();
         schema.setId("1");
         schema.setName("Test");
-        when(schemaService.getSchemasByUserId(null)).thenReturn(List.of(schema));
+        when(schemaService.getSchemas(null, null)).thenReturn(List.of(schema));
 
         mockMvc.perform(get("/api/schemas"))
             .andExpect(status().isOk())

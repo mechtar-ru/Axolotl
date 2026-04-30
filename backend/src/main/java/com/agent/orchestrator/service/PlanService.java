@@ -40,6 +40,10 @@ public class PlanService {
         return planRepository.findAllWorkspaceIds();
     }
 
+    public List<Plan> getAllPlans(String workspaceId) {
+        return planRepository.findAll(workspaceId);
+    }
+
     public Map<String, Object> getPlanSummary(String workspaceId, String format, TaskStatus statusFilter) {
         Plan plan = getPlan(workspaceId);
         List<Task> tasks = plan.getTasks();

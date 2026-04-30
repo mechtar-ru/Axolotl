@@ -10,6 +10,7 @@ import com.agent.orchestrator.service.AgentService;
 import com.agent.orchestrator.service.SchemaService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -63,9 +64,15 @@ public class AgentController {
     }
 
     @GetMapping("/schemas")
-    public List<WorkflowSchema> getAllSchemas() {
+    public List<WorkflowSchema> getAllSchemas(
+            @RequestParam(required = false) String workspaceId) {
         String userId = getCurrentUserId();
-        return schemaService.getSchemasByUserId(userId);
+        return schemaService.getSchemas(userId, workspaceId);
+    }
+
+    @GetMapping("/schemas/workspaces")
+    public List<String> getSchemaWorkspaces() {
+        return schemaService.getAllWorkspaceIds();
     }
 
     @GetMapping("/schemas/{id}")
@@ -74,10 +81,14 @@ public class AgentController {
     }
 
     @PostMapping("/schemas")
-    public WorkflowSchema createSchema(@RequestBody WorkflowSchema schema) {
+    public WorkflowSchema createSchema(@RequestBody WorkflowSchema schema,
+                                        @RequestParam(required = false) String workspaceId) {
         String userId = getCurrentUserId();
         if (userId != null) {
             schema.setUserId(userId);
+        }
+        if (workspaceId != null) {
+            schema.setWorkspaceId(workspaceId);
         }
         return schemaService.createSchema(schema);
     }
@@ -85,6 +96,19 @@ public class AgentController {
     @PutMapping("/schemas/{id}")
     public WorkflowSchema updateSchema(@PathVariable String id, @RequestBody WorkflowSchema schema) {
         return schemaService.updateSchema(id, schema);
+    }
+
+    @PutMapping("/schemas/{id}/workspace")
+    public ResponseEntity<Map<String, String>> moveSchemaToWorkspace(
+            @PathVariable String id, @RequestBody Map<String, String> request) {
+        WorkflowSchema schema = schemaService.getSchema(id);
+        if (schema == null) return ResponseEntity.notFound().build();
+        String ws = request.get("workspaceId");
+        if (ws != null) {
+            schema.setWorkspaceId(ws);
+            schemaService.updateSchema(id, schema);
+        }
+        return ResponseEntity.ok(Map.of("status", "moved", "workspaceId", ws != null ? ws : "default"));
     }
 
     @DeleteMapping("/schemas/{id}")

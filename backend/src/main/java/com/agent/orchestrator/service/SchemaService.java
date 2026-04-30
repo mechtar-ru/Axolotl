@@ -89,7 +89,19 @@ public class SchemaService {
     }
 
     public List<WorkflowSchema> getSchemasByUserId(String userId) {
-        return schemaRepository.findByUserId(userId);
+        return schemaRepository.findByUserId(userId, null);
+    }
+
+    public List<WorkflowSchema> getSchemasByWorkspace(String workspaceId) {
+        return schemaRepository.findByWorkspaceId(workspaceId);
+    }
+
+    public List<WorkflowSchema> getSchemas(String userId, String workspaceId) {
+        return schemaRepository.findByUserId(userId, workspaceId);
+    }
+
+    public List<String> getAllWorkspaceIds() {
+        return schemaRepository.findAllWorkspaceIds();
     }
 
     public WorkflowSchema getSchema(String id) {

@@ -8,11 +8,14 @@ export const useSchemaStore = defineStore('schema', () => {
   const currentSchema = ref<WorkflowSchema | null>(null);
   const loading = ref(false);
   const executionMode = ref<ExecutionMode>('EXECUTE');
+  const currentWorkspace = ref<string>('default');
+  const schemaWorkspaces = ref<string[]>(['default']);
 
-  async function loadSchemas() {
+  async function loadSchemas(workspaceId?: string) {
     loading.value = true;
     try {
-      const data = await schemaApi.getSchemas();
+      const ws = workspaceId ?? currentWorkspace.value;
+      const data = await schemaApi.getSchemas(ws);
       schemas.value = data;
       if (schemas.value.length > 0 && !currentSchema.value) {
         currentSchema.value = schemas.value[0]!;
@@ -22,6 +25,26 @@ export const useSchemaStore = defineStore('schema', () => {
     } finally {
       loading.value = false;
     }
+  }
+
+  async function loadWorkspaces() {
+    try {
+      const wsList = await schemaApi.getSchemaWorkspaces();
+      if (wsList.length > 0) {
+        schemaWorkspaces.value = wsList;
+        if (!wsList.includes(currentWorkspace.value)) {
+          currentWorkspace.value = wsList[0]!;
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки workspaces:', error);
+    }
+  }
+
+  async function setWorkspace(workspaceId: string) {
+    currentWorkspace.value = workspaceId;
+    currentSchema.value = null;
+    await loadSchemas(workspaceId);
   }
   
   async function createSchema(name: string) {
@@ -43,7 +66,7 @@ export const useSchemaStore = defineStore('schema', () => {
       createdAt: new Date().toISOString(),
     } as WorkflowSchema;
     try {
-      const created = await schemaApi.createSchema(newSchema);
+      const created = await schemaApi.createSchema(newSchema, currentWorkspace.value);
       schemas.value.push(created);
       currentSchema.value = created;
       return created;
@@ -108,7 +131,11 @@ export const useSchemaStore = defineStore('schema', () => {
     currentSchema,
     loading,
     executionMode,
+    currentWorkspace,
+    schemaWorkspaces,
     loadSchemas,
+    loadWorkspaces,
+    setWorkspace,
     createSchema,
     updateSchema,
     deleteSchema,

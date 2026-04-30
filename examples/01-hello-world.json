@@ -1,0 +1,132 @@
+{
+  "id": "hello-world-workflow",
+  "name": "Hello World Workflow",
+  "description": "A simple workflow that demonstrates the basic structure of Axolotl with a source, agent, and output node.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "source-1",
+      "type": "source",
+      "name": "Input Data",
+      "position": {
+        "x": 250,
+        "y": 100
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "Hello, World! This is test data flowing through the workflow.",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Text Processor",
+      "position": {
+        "x": 250,
+        "y": 250
+      },
+      "data": {
+        "systemPrompt": "You are a helpful assistant that processes text. Make the text more enthusiastic by adding excitement.",
+        "userPrompt": "Process this text: {{sourceData}}",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "name": "Final Result",
+      "position": {
+        "x": 250,
+        "y": 400
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "source-1",
+      "target": "agent-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-2",
+      "source": "agent-1",
+      "target": "output-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    }
+  ],
+  "defaultModel": "",
+  "metadata": {
+    "category": "demo",
+    "difficulty": "beginner"
+  },
+  "createdAt": "2026-04-28T00:00:00.000Z",
+  "updatedAt": "2026-04-28T00:00:00.000Z"
+}

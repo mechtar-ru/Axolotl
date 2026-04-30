@@ -1,0 +1,304 @@
+{
+  "id": "ai-research-assistant",
+  "name": "AI Research Assistant",
+  "description": "An advanced workflow demonstrating conditional logic, looping, and memory usage for research tasks.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "source-1",
+      "type": "source",
+      "name": "Research Topic",
+      "position": {
+        "x": 200,
+        "y": 100
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "The impact of renewable energy adoption on global economics",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Research Planner",
+      "position": {
+        "x": 200,
+        "y": 250
+      },
+      "data": {
+        "systemPrompt": "You are a research planning expert. Break down the research topic into key sub-questions and areas to investigate.",
+        "userPrompt": "Create a research plan for this topic: {{sourceData}}\nList 3-5 key sub-questions to explore.",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "memory-1",
+      "type": "memory",
+      "name": "Research Notes",
+      "position": {
+        "x": 400,
+        "y": 150
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "memory",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "agent-2",
+      "type": "agent",
+      "name": "Research Analyst",
+      "position": {
+        "x": 200,
+        "y": 400
+      },
+      "data": {
+        "systemPrompt": "You are a research analyst. Investigate each sub-question and provide detailed findings.",
+        "userPrompt": "Research this aspect: {{sourceData}}\nProvide detailed findings with key points and insights.",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "condition-1",
+      "type": "condition",
+      "name": "Quality Check",
+      "position": {
+        "x": 400,
+        "y": 300
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "Does the research provide sufficient depth and actionable insights? (yes/no)",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "agent-3",
+      "type": "agent",
+      "name": "Report Writer",
+      "position": {
+        "x": 200,
+        "y": 550
+      },
+      "data": {
+        "systemPrompt": "You are a technical writer. Create a comprehensive research report from the findings.",
+        "userPrompt": "Write a research report based on these findings: {{sourceData}}\nInclude executive summary, methodology, findings, and conclusions.",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "name": "Research Report",
+      "position": {
+        "x": 200,
+        "y": 700
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "source-1",
+      "target": "agent-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-2",
+      "source": "agent-1",
+      "target": "memory-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-3",
+      "source": "memory-1",
+      "target": "agent-2",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-4",
+      "source": "agent-2",
+      "target": "condition-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-5",
+      "source": "condition-1",
+      "target": "agent-3",
+      "sourcePort": "output-yes",
+      "targetPort": "input",
+      "type": "condition"
+    },
+    {
+      "id": "edge-6",
+      "source": "condition-1",
+      "target": "agent-2",
+      "sourcePort": "output-no",
+      "targetPort": "input",
+      "type": "control"
+    },
+    {
+      "id": "edge-7",
+      "source": "agent-3",
+      "target": "output-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    }
+  ],
+  "defaultModel": "",
+  "metadata": {
+    "category": "research",
+    "difficulty": "advanced"
+  },
+  "createdAt": "2026-04-28T00:00:00.000Z",
+  "updatedAt": "2026-04-28T00:00:00.000Z"
+}

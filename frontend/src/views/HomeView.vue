@@ -13,6 +13,14 @@
         </div>
       </div>
 
+      <!-- Workspace zone -->
+      <div class="sidebar-workspace-zone">
+        <select v-model="schemaStore.currentWorkspace" @change="onWorkspaceChange" class="workspace-select">
+          <option v-for="ws in schemaStore.schemaWorkspaces" :key="ws" :value="ws">{{ ws }}</option>
+        </select>
+        <button class="add-workspace-btn" @click="showCreateWorkspace = true" title="Создать workspace">＋</button>
+      </div>
+
       <!-- Schemas zone -->
       <div class="sidebar-schemas-zone">
         <div class="sidebar-section-header">
@@ -26,7 +34,8 @@
             :class="{ active: schemaStore.currentSchema?.id === schema.id }"
             @click="selectSchema(schema)"
           >
-            {{ schema.name }}
+            <span class="schema-name">{{ schema.name }}</span>
+            <button class="schema-delete-btn" @click.stop="onDeleteSchema(schema.id)" title="Удалить">✕</button>
           </li>
         </ul>
         <div class="sidebar-schemas-actions">
@@ -148,6 +157,18 @@
       </div>
     </AppModal>
 
+    <!-- Create workspace modal -->
+    <div v-if="showCreateWorkspace" class="workspace-create-modal">
+      <div class="workspace-create-content">
+        <div class="workspace-create-header">
+          <span>Новый workspace</span>
+          <button @click="showCreateWorkspace = false">✕</button>
+        </div>
+        <input v-model="newWorkspaceName" placeholder="Имя workspace" class="workspace-create-input" @keyup.enter="createWorkspace" />
+        <button @click="createWorkspace" class="workspace-create-btn">Создать</button>
+      </div>
+    </div>
+
     <PlanPanel
       :visible="showPlan"
       :schema-nodes="(schemaStore.currentSchema?.nodes || []).filter(n => n).map(n => ({ id: n.id, name: n.name, type: n.type }))"
@@ -198,6 +219,8 @@ const importText = ref('');
 const showPlan = ref(false);
 const showCommandPalette = ref(false);
 const showSearch = ref(false);
+const showCreateWorkspace = ref(false);
+const newWorkspaceName = ref('');
 const showOnboarding = ref(false);
 const showShortcuts = ref(false);
 const sidebarOpen = ref(false);
@@ -295,8 +318,35 @@ async function createFromTemplate(template: string) {
   router.push({ name: 'schema', params: { id: created.id } });
 }
 
+async function onWorkspaceChange() {
+  await schemaStore.setWorkspace(schemaStore.currentWorkspace);
+}
+
+async function createWorkspace() {
+  if (!newWorkspaceName.value.trim()) return;
+  const name = newWorkspaceName.value.trim();
+  try {
+    const res = await api.post('/plan/workspaces', { name });
+    if (res.data.status === 'created') {
+      await schemaStore.loadWorkspaces();
+      await schemaStore.setWorkspace(name);
+      showCreateWorkspace.value = false;
+      newWorkspaceName.value = '';
+      toast.success(`Workspace "${name}" создан`);
+    }
+  } catch (e) {
+    console.error('Failed to create workspace:', e);
+    toast.error('Ошибка создания workspace');
+  }
+}
+
+async function onDeleteSchema(id: string) {
+  if (!confirm('Удалить схему?')) return;
+  await schemaStore.deleteSchema(id);
+}
+
 onMounted(() => {
-  // schemaStore.loadSchemas(); // Уже вызывается в App.vue
+  schemaStore.loadWorkspaces();
 
   // Show onboarding if first time
   const onboardingStatus = localStorage.getItem('axolotl:onboarding');
@@ -706,21 +756,22 @@ body {
   width: 250px;
   background: var(--bg-secondary);
   padding: 0;
-  border-right: 1px solid rgba(123, 92, 255, 0.2);
+  border-right: 1px solid var(--border-accent);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .sidebar-brand-zone {
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(123, 92, 255, 0.15);
+  padding: var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .sidebar-logo {
@@ -737,9 +788,41 @@ body {
   background-clip: text;
 }
 
+.sidebar-workspace-zone {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: var(--space-1-5);
+  align-items: center;
+}
+
+.sidebar-workspace-zone .workspace-select {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.sidebar-workspace-zone .add-workspace-btn {
+  background: var(--accent-light);
+  border: none;
+  color: var(--accent);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .sidebar-schemas-zone {
   flex: 1;
-  padding: 16px 20px;
+  padding: var(--space-3) var(--space-4);
   overflow-y: auto;
 }
 
@@ -747,13 +830,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .sidebar-section-header h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .icon-btn {
@@ -778,18 +864,22 @@ body {
 }
 
 .sidebar li {
-  padding: 10px;
-  margin-bottom: 5px;
-  background: rgba(123, 92, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  background: var(--accent-light);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--transition-fast);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--text-md);
+  gap: var(--space-2);
 }
 
 .sidebar li:hover {
-  background: rgba(123, 92, 255, 0.2);
+  background: var(--bg-card-hover);
 }
 
 .sidebar li.active {
@@ -797,11 +887,33 @@ body {
   color: white;
 }
 
+.sidebar li .schema-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar li .schema-delete-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px;
+  line-height: 1;
+}
+
+.sidebar li:hover .schema-delete-btn {
+  display: block;
+}
+
 .sidebar-schemas-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 12px;
+  gap: var(--space-1-5);
+  margin-top: var(--space-3);
 }
 
 .compact-btn {
@@ -820,14 +932,76 @@ body {
 }
 
 .compact-btn:hover {
-  background: var(--bg-hover) !important;
+  background: var(--bg-card-hover) !important;
   opacity: 1 !important;
   transform: none !important;
 }
 
+.workspace-create-modal {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  right: var(--space-2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+
+.workspace-create-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  font-weight: 600;
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.workspace-create-header button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.workspace-create-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-2);
+}
+
+.workspace-create-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.workspace-create-btn {
+  width: 100%;
+  background: var(--accent);
+  border: none;
+  color: var(--text-inverse);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.workspace-create-btn:hover {
+  background: var(--accent-hover);
+}
+
 .sidebar-footer-zone {
-  padding: 16px 20px;
-  border-top: 1px solid rgba(123, 92, 255, 0.15);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
   margin-top: auto;
 }
 

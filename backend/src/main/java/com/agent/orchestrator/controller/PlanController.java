@@ -33,7 +33,10 @@ public class PlanController {
         return planService.listWorkspaces();
     }
 
-    // === Create workspace ===
+    @GetMapping("/all")
+    public List<Plan> getAllPlans(@RequestParam(defaultValue = "default") String workspaceId) {
+        return planService.getAllPlans(workspaceId);
+    }
 
     @PostMapping("/workspaces")
     public ResponseEntity<Map<String, Object>> createWorkspace(@RequestBody CreateWorkspaceRequest request) {

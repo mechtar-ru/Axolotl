@@ -1,0 +1,173 @@
+{
+  "id": "data-pipeline-workflow",
+  "name": "Data Processing Pipeline",
+  "description": "A workflow demonstrating data transformation with conditional logic and looping.",
+  "version": "1.0.0",
+  "nodes": [
+    {
+      "id": "source-1",
+      "type": "source",
+      "name": "Raw Data Input",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "{\"users\": [{\"name\": \"Alice\", \"age\": 25, \"score\": 85}, {\"name\": \"Bob\", \"age\": 30, \"score\": 92}, {\"name\": \"Charlie\", \"age\": 35, \"score\": 78}, {\"name\": \"Diana\", \"age\": 28, \"score\": 96}]}",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "json",
+        "filePath": "",
+        "fileFormat": "json",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Data Filter",
+      "position": {
+        "x": 300,
+        "y": 100
+      },
+      "data": {
+        "systemPrompt": "You are a data processing assistant. Filter the JSON data to only include users with score >= 90.",
+        "userPrompt": "Filter this JSON data: {{sourceData}}\nReturn only the filtered JSON array.",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "json",
+        "filePath": "",
+        "fileFormat": "json",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "agent-2",
+      "type": "agent",
+      "name": "Data Formatter",
+      "position": {
+        "x": 500,
+        "y": 100
+      },
+      "data": {
+        "systemPrompt": "Format the filtered data into a readable report.",
+        "userPrompt": "Create a summary report from this data: {{sourceData}}\nInclude count, average score, and list of names.",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "name": "Final Report",
+      "position": {
+        "x": 700,
+        "y": 100
+      },
+      "data": {
+        "systemPrompt": "",
+        "userPrompt": "",
+        "sourceData": "",
+        "sources": [],
+        "model": "",
+        "config": {},
+        "messages": [],
+        "result": "",
+        "condition": "",
+        "loopCondition": "",
+        "maxIterations": 10,
+        "nodeTimeMs": 0,
+        "outputType": "text",
+        "filePath": "",
+        "fileFormat": "text",
+        "subagentSchemaId": "",
+        "inputMapping": {},
+        "outputMapping": {},
+        "isStreaming": false
+      },
+      "status": "idle",
+      "progress": 0,
+      "executionStatus": "idle"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "source": "source-1",
+      "target": "agent-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-2",
+      "source": "agent-1",
+      "target": "agent-2",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    },
+    {
+      "id": "edge-3",
+      "source": "agent-2",
+      "target": "output-1",
+      "sourcePort": "output",
+      "targetPort": "input",
+      "type": "data"
+    }
+  ],
+  "defaultModel": "",
+  "metadata": {
+    "category": "data-processing",
+    "difficulty": "intermediate"
+  },
+  "createdAt": "2026-04-28T00:00:00.000Z",
+  "updatedAt": "2026-04-28T00:00:00.000Z"
+}

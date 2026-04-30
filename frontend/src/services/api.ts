@@ -48,8 +48,14 @@ api.interceptors.response.use(
 
 export const schemaApi = {
   // Схемы
-  async getSchemas(): Promise<WorkflowSchema[]> {
-    const response = await api.get('/schemas');
+  async getSchemas(workspaceId?: string): Promise<WorkflowSchema[]> {
+    const params = workspaceId ? { workspaceId } : {};
+    const response = await api.get('/schemas', { params });
+    return response.data;
+  },
+
+  async getSchemaWorkspaces(): Promise<string[]> {
+    const response = await api.get('/schemas/workspaces');
     return response.data;
   },
   
@@ -58,14 +64,20 @@ export const schemaApi = {
     return response.data;
   },
   
-  async createSchema(schema: WorkflowSchema): Promise<WorkflowSchema> {
-    const response = await api.post('/schemas', schema);
+  async createSchema(schema: WorkflowSchema, workspaceId?: string): Promise<WorkflowSchema> {
+    const response = await api.post('/schemas', schema, {
+      params: workspaceId ? { workspaceId } : {},
+    });
     return response.data;
   },
   
   async updateSchema(id: string, schema: WorkflowSchema): Promise<WorkflowSchema> {
     const response = await api.put(`/schemas/${id}`, schema);
     return response.data;
+  },
+
+  async moveSchemaToWorkspace(id: string, workspaceId: string): Promise<void> {
+    await api.put(`/schemas/${id}/workspace`, { workspaceId });
   },
   
   async deleteSchema(id: string): Promise<void> {
