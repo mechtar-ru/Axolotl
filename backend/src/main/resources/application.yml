@@ -39,6 +39,23 @@ axolotl:
       api-key: ${ZEN_API_KEY:}
       default-model: big-pickle
       timeout: 3600
+  tools:
+    defaults:
+      enabled:
+        - file_read
+        - file_write
+        - directory_read
+        - bash
+      permissions:
+        file_read: read
+        file_write: ask
+        directory_read: read
+        bash: ask
+        memory_read: read
+        memory_write: ask
+        web_search: allow
+        web_fetch: allow
+        web_parse_html: allow
   mcp:
     enabled: true
     path: /mcp

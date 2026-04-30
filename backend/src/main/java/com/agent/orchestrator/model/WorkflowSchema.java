@@ -12,6 +12,8 @@ public class WorkflowSchema {
     private String userId; // Multi-tenancy: owner
     private String workspaceId; // Workspace grouping
     private String defaultModel;
+    private List<String> defaultTools; // Default tools for agent nodes in this schema
+    private java.util.Map<String, String> defaultToolPermissions; // Default permissions: toolName -> permission
     private List<Node> nodes;
     private List<Edge> edges;
     private Map<String, Object> metadata;
@@ -48,6 +50,12 @@ public class WorkflowSchema {
 
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
+
+    public List<String> getDefaultTools() { return defaultTools; }
+    public void setDefaultTools(List<String> defaultTools) { this.defaultTools = defaultTools; }
+
+    public Map<String, String> getDefaultToolPermissions() { return defaultToolPermissions; }
+    public void setDefaultToolPermissions(Map<String, String> defaultToolPermissions) { this.defaultToolPermissions = defaultToolPermissions; }
 
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
