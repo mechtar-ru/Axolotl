@@ -26,16 +26,17 @@ def load_body(body_arg):
 
 def call(method, path, body=None):
     token = get_token()
-    data = json.dumps(body).encode() if body else None
-    req = urllib.request.Request(f"{BASE}{path}", data=data,
+    encoded_path = urllib.parse.quote(path, safe=':/?&=', encoding='utf-8')
+    data = json.dumps(body).encode('utf-8') if body else None
+    req = urllib.request.Request(f"{BASE}{encoded_path}", data=data,
                                   method=method,
                                   headers={"Authorization": f"Bearer {token}",
-                                           "Content-Type": "application/json"})
+                                           "Content-Type": "application/json; charset=utf-8"})
     try:
         resp = urllib.request.urlopen(req)
-        print(resp.read().decode())
+        print(resp.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
-        print(f"HTTP {e.code}: {e.read().decode()}")
+        print(f"HTTP {e.code}: {e.read().decode('utf-8')}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
