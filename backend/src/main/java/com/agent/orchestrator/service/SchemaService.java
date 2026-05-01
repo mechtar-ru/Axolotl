@@ -13,6 +13,7 @@ import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.repository.SchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.KnowledgeAugmentor;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -41,6 +42,7 @@ public class SchemaService {
     private final SchemaRepository schemaRepository;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
+    private final List<KnowledgeAugmentor> knowledgeAugmentors;
     private final MemPalaceClient memPalaceClient;
     private final PlanService planService;
     private final SettingsService settingsService;
@@ -62,6 +64,7 @@ public class SchemaService {
     public SchemaService(SchemaRepository schemaRepository,
             LlmService llmService,
             ExecutionWebSocketHandler webSocketHandler,
+            List<KnowledgeAugmentor> knowledgeAugmentors,
             MemPalaceClient memPalaceClient,
             PlanService planService,
             SettingsService settingsService,
@@ -70,6 +73,7 @@ public class SchemaService {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
+        this.knowledgeAugmentors = knowledgeAugmentors;
         this.memPalaceClient = memPalaceClient;
         this.planService = planService;
         this.settingsService = settingsService;
@@ -1335,14 +1339,14 @@ private String executeAgentNode(Node node, String schemaId) {
             systemPrompt = interpolateVariables(systemPrompt, currentSchema, predecessorResults);
         }
 
-        if (memPalaceClient.isEnabled()) {
-            String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
-            if (!memoryContext.isEmpty()) {
-                systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + memoryContext;
-            }
-            String skillsContext = memPalaceClient.getSkillsForPrompt(prompt, 3);
-            if (!skillsContext.isEmpty()) {
-                systemPrompt = (systemPrompt != null ? systemPrompt + skillsContext : skillsContext);
+        if (knowledgeAugmentors != null) {
+            for (KnowledgeAugmentor augmentor : knowledgeAugmentors) {
+                if (augmentor.isEnabled()) {
+                    String knowledge = augmentor.getKnowledgeForPrompt(prompt);
+                    if (!knowledge.isEmpty()) {
+                        systemPrompt = (systemPrompt != null ? systemPrompt + knowledge : knowledge);
+                    }
+                }
             }
         }
 
@@ -1398,14 +1402,14 @@ private String executeAgentNode(Node node, String schemaId) {
             systemPrompt += "\n\nКонтекст от предыдущих узлов:\n" + contextBlock;
         }
 
-        if (memPalaceClient.isEnabled()) {
-            String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
-            if (!memoryContext.isEmpty()) {
-                systemPrompt += "\n\n" + memoryContext;
-            }
-            String skillsContext = memPalaceClient.getSkillsForPrompt(prompt, 3);
-            if (!skillsContext.isEmpty()) {
-                systemPrompt += skillsContext;
+        if (knowledgeAugmentors != null) {
+            for (KnowledgeAugmentor augmentor : knowledgeAugmentors) {
+                if (augmentor.isEnabled()) {
+                    String knowledge = augmentor.getKnowledgeForPrompt(prompt);
+                    if (!knowledge.isEmpty()) {
+                        systemPrompt = (systemPrompt != null ? systemPrompt + knowledge : knowledge);
+                    }
+                }
             }
         }
 

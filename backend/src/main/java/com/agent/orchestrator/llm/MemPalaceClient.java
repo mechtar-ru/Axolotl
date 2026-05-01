@@ -23,7 +23,7 @@ import java.util.Set;
  * Provides search, add, and knowledge graph operations.
  */
 @Component
-public class MemPalaceClient {
+public class MemPalaceClient implements KnowledgeAugmentor {
 
     private static final Logger log = LoggerFactory.getLogger(MemPalaceClient.class);
 
@@ -235,6 +235,11 @@ public class MemPalaceClient {
         }
         sb.append("---\n");
         return sb.toString();
+    }
+
+    @Override
+    public String getKnowledgeForPrompt(String prompt) {
+        return getSkillsForPrompt(prompt, 5);
     }
 
     /**
@@ -463,31 +468,4 @@ public class MemPalaceClient {
         }
     }
 
-    /**
-     * Search MemPalace wing=axolotl room=skills for relevant skills, return formatted prompt block.
-     * Returns empty string if disabled or no results.
-     */
-    public String getSkillsForPrompt(String prompt, int limit) {
-        if (!enabled) {
-            return "";
-        }
-        try {
-            List<Map<String, Object>> results = search(prompt, "axolotl", "skills", limit);
-            if (results == null || results.isEmpty()) {
-                return "";
-            }
-            StringBuilder sb = new StringBuilder("## Relevant Skills\n");
-            for (Map<String, Object> r : results) {
-                String name = (String) r.getOrDefault("name", "unknown");
-                String content = (String) r.getOrDefault("content", "");
-                String desc = content.split("\n")[0].replaceAll("^#+\\s*", "").trim();
-                if (desc.length() > 100) desc = desc.substring(0, 100) + "...";
-                sb.append("- **").append(name).append("**: ").append(desc).append("\n");
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            log.warn("Skill lookup failed: {}", e.getMessage());
-            return "";
-        }
-    }
 }
