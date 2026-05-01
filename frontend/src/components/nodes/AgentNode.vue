@@ -209,6 +209,8 @@ onMounted(async () => {
       { value: 'openai', label: 'OpenAI (GPT-4)', group: 'OpenAI' },
       { value: 'anthropic', label: 'Anthropic (Claude)', group: 'Anthropic' },
       { value: 'deepseek', label: 'DeepSeek', group: 'DeepSeek' },
+      { value: 'zen', label: 'OpenCode Zen (big-pickle)', group: 'OpenCode Zen' },
+      { value: 'big-pickle', label: 'Big Pickle (free)', group: 'OpenCode Zen' },
     ];
   }
 });

@@ -5,6 +5,8 @@ import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.repository.SchemaRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.agent.orchestrator.service.ToolExecutor;
+import com.agent.orchestrator.service.MetricsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,12 +29,14 @@ class SchemaServiceTest {
     @Mock MemPalaceClient memPalaceClient;
     @Mock PlanService planService;
     @Mock SettingsService settingsService;
+    @Mock ToolExecutor toolExecutor;
+    @Mock MetricsService metricsService;
 
     SchemaService schemaService;
 
     @BeforeEach
     void setUp() {
-        schemaService = new SchemaService(schemaRepository, llmService, webSocketHandler, memPalaceClient, planService, settingsService);
+        schemaService = new SchemaService(schemaRepository, llmService, webSocketHandler, memPalaceClient, planService, settingsService, toolExecutor, metricsService);
     }
 
     // === Topological Sort / Execution Levels ===

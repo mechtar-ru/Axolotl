@@ -9,17 +9,18 @@ import renderer from 'vite-plugin-electron-renderer'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const isElectron = process.env.ELECTRON === 'true'
+const API_PORT = process.env.VITE_API_URL?.match(/:(\d+)/)?.[1] || '8082';
 
 export default defineConfig({
   server: {
     allowedHosts: ['slam-setback-swampland.ngrok-free.dev'],
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: `http://localhost:${API_PORT}`,
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:8080',
+        target: `ws://localhost:${API_PORT}`,
         ws: true,
       },
     },

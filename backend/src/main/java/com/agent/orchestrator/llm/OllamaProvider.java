@@ -33,7 +33,7 @@ public class OllamaProvider implements LlmProvider {
     @Value("${axolotl.llm.ollama.default-model:gemma4:e2b}")
     private String defaultModel;
 
-    @Value("${axolotl.llm.ollama.timeout:120}")
+    @Value("${axolotl.llm.ollama.timeout:3600}")
     private int timeoutSeconds;
 
     public OllamaProvider() {

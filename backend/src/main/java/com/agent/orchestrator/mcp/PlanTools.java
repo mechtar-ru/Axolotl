@@ -465,6 +465,7 @@ public class PlanTools {
                 case TODO -> "⬜";
                 case IN_PROGRESS -> "🔄";
                 case DONE -> "✅";
+                case COMPLETED -> "✅";
                 case BLOCKED -> "🚫";
             };
             String priorityIcon = switch (task.getPriority()) {

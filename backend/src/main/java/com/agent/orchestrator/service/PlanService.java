@@ -424,7 +424,6 @@ public class PlanService {
             }
         } catch (Exception e) {
             log.error("Ошибка инициализации плана: {}", e.getMessage());
-            createDefaultPlan(DEFAULT_WORKSPACE);
         }
     }
 

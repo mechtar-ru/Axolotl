@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Component
 public class ExecutionWebSocketHandler extends TextWebSocketHandler {
@@ -25,6 +26,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     private final Map<String, List<WebSocketSession>> sessions = new ConcurrentHashMap<>();
+    private final Map<String, ReentrantLock> sessionLocks = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -52,6 +54,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
                 sessionList.remove(session);
                 if (sessionList.isEmpty()) {
                     sessions.remove(schemaId);
+                    sessionLocks.remove(schemaId);
                 }
             }
             log.info("WebSocket отключен для схемы: {}", schemaId);
@@ -72,14 +75,20 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             log.warn("Нет активной WS сессии для схемы {}", schemaId);
             return;
         }
-        for (WebSocketSession session : sessionList) {
-            if (session.isOpen()) {
-                try {
-                    session.sendMessage(new TextMessage(jsonMessage));
-                } catch (IOException e) {
-                    log.error("Ошибка отправки WebSocket сообщения: {}", e.getMessage());
+        ReentrantLock lock = sessionLocks.computeIfAbsent(schemaId, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            for (WebSocketSession session : sessionList) {
+                if (session.isOpen()) {
+                    try {
+                        session.sendMessage(new TextMessage(jsonMessage));
+                    } catch (IOException e) {
+                        log.error("Ошибка отправки WebSocket сообщения: {}", e.getMessage());
+                    }
                 }
             }
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -237,10 +246,18 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             msg.put("plan", plan);
             String json = objectMapper.writeValueAsString(msg);
             for (var entry : sessions.entrySet()) {
-                for (WebSocketSession session : entry.getValue()) {
-                    if (session.isOpen()) {
-                        session.sendMessage(new TextMessage(json));
+                String schemaId = entry.getKey();
+                List<WebSocketSession> sessionList = entry.getValue();
+                ReentrantLock lock = sessionLocks.computeIfAbsent(schemaId, k -> new ReentrantLock());
+                lock.lock();
+                try {
+                    for (WebSocketSession session : sessionList) {
+                        if (session.isOpen()) {
+                            session.sendMessage(new TextMessage(json));
+                        }
                     }
+                } finally {
+                    lock.unlock();
                 }
             }
             log.info("План обновлён для workspace: {}", workspaceId);
