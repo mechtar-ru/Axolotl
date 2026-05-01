@@ -1340,6 +1340,10 @@ private String executeAgentNode(Node node, String schemaId) {
             if (!memoryContext.isEmpty()) {
                 systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + memoryContext;
             }
+            String skillsContext = memPalaceClient.getSkillsForPrompt(prompt, 3);
+            if (!skillsContext.isEmpty()) {
+                systemPrompt = (systemPrompt != null ? systemPrompt + skillsContext : skillsContext);
+            }
         }
 
         String result = llmService.streamingChat(model, systemPrompt, prompt, null,
@@ -1398,6 +1402,10 @@ private String executeAgentNode(Node node, String schemaId) {
             String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
             if (!memoryContext.isEmpty()) {
                 systemPrompt += "\n\n" + memoryContext;
+            }
+            String skillsContext = memPalaceClient.getSkillsForPrompt(prompt, 3);
+            if (!skillsContext.isEmpty()) {
+                systemPrompt += skillsContext;
             }
         }
 

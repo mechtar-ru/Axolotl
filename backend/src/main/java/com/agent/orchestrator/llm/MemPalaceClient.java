@@ -219,6 +219,24 @@ public class MemPalaceClient {
         return sb.toString();
     }
 
+    public String getSkillsForPrompt(String prompt, int limit) {
+        if (!enabled) return "";
+        List<Map<String, Object>> results = search(prompt, "axolotl", "skills", limit);
+        if (results.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n## Relevant Skills\n");
+        sb.append("Use these verified skill patterns when relevant to the task:\n\n");
+        for (Map<String, Object> r : results) {
+            String content = (String) r.get("content");
+            if (content != null && !content.isBlank()) {
+                sb.append("---\n");
+                sb.append(content.trim()).append("\n");
+            }
+        }
+        sb.append("---\n");
+        return sb.toString();
+    }
+
     /**
      * Get full taxonomy: wing → room → drawer count.
      */
@@ -375,5 +393,101 @@ public class MemPalaceClient {
 
         sb.append("\n[END NAVIGATION]");
         return sb.toString();
+    }
+
+    /**
+     * Import a skill from an OpenCode URL (raw SKILL.md or GitHub repo).
+     * Fetches the skill content, parses YAML frontmatter, and returns skill data.
+     * @param url The URL to the skill (raw SKILL.md or GitHub repo)
+     * @param source Source type (e.g., "opencode")
+     * @return Map with skill data: name, description, promptTemplate, source, sourceType
+     */
+    public Map<String, Object> importSkill(String url, String source) {
+        if (!enabled) {
+            throw new RuntimeException("MemPalace not enabled. Set axolotl.mempalace.enabled=true");
+        }
+
+        try {
+            // Fetch the SKILL.md content
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(10))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("Failed to fetch skill from " + url + ": HTTP " + response.statusCode());
+            }
+
+            String content = response.body();
+
+            // Parse YAML frontmatter (--- delimited)
+            Map<String, Object> skillData = new java.util.HashMap<>();
+            String promptTemplate = "";
+
+            if (content.startsWith("---")) {
+                int endMarker = content.indexOf("---", 3);
+                if (endMarker > 0) {
+                    String frontmatter = content.substring(3, endMarker).trim();
+                    promptTemplate = content.substring(endMarker + 3).trim();
+
+                    // Parse simple YAML key: value
+                    for (String line : frontmatter.split("\n")) {
+                        if (line.contains(":")) {
+                            String[] parts = line.split(":", 2);
+                            skillData.put(parts[0].trim(), parts[1].trim().replaceAll("^\"|\"$", ""));
+                        }
+                    }
+                }
+            } else {
+                promptTemplate = content;
+            }
+
+            // Set required fields
+            skillData.put("promptTemplate", promptTemplate);
+            skillData.put("source", source != null ? source : "opencode");
+            skillData.put("sourceType", "opencode");
+
+            if (!skillData.containsKey("name")) {
+                // Extract name from URL
+                String[] segments = url.split("/");
+                skillData.put("name", segments[segments.length - 1].replace(".md", ""));
+            }
+
+             return skillData;
+
+        } catch (Exception e) {
+            log.error("Skill import failed: {}", e.getMessage());
+            throw new RuntimeException("Skill import error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Search MemPalace wing=axolotl room=skills for relevant skills, return formatted prompt block.
+     * Returns empty string if disabled or no results.
+     */
+    public String getSkillsForPrompt(String prompt, int limit) {
+        if (!enabled) {
+            return "";
+        }
+        try {
+            List<Map<String, Object>> results = search(prompt, "axolotl", "skills", limit);
+            if (results == null || results.isEmpty()) {
+                return "";
+            }
+            StringBuilder sb = new StringBuilder("## Relevant Skills\n");
+            for (Map<String, Object> r : results) {
+                String name = (String) r.getOrDefault("name", "unknown");
+                String content = (String) r.getOrDefault("content", "");
+                String desc = content.split("\n")[0].replaceAll("^#+\\s*", "").trim();
+                if (desc.length() > 100) desc = desc.substring(0, 100) + "...";
+                sb.append("- **").append(name).append("**: ").append(desc).append("\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("Skill lookup failed: {}", e.getMessage());
+            return "";
+        }
     }
 }
