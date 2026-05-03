@@ -374,6 +374,9 @@ public class SchemaService {
         if (schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
                 node.setStatus(Node.NodeStatus.IDLE);
+                if (node.getData() != null) {
+                    node.getData().setResult(null);
+                }
             }
         }
 
@@ -574,6 +577,7 @@ public class SchemaService {
             }
             log.warn("Выполнение схемы отменено: {}", schema.getName());
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
+            schemaRepository.save(schema);
         } else {
             if (webSocketHandler != null) {
                 webSocketHandler.sendComplete(schema.getId(), totalTime, nodesCompleted);
@@ -584,6 +588,7 @@ public class SchemaService {
             }
             log.info("Выполнение схемы завершено: {} ({}мс, {}/{} узлов)", schema.getName(), totalTime, nodesCompleted, totalNodes);
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
+            schemaRepository.save(schema);
         }
     }
 
@@ -1063,14 +1068,32 @@ public class SchemaService {
                 result = executeSchemaBuilderNode(node, schemaId);
             }
 
-            // 90%: Формирование результата
+            // 90%: Verify result before storing
             if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 90, "Формирование результата");
-                webSocketHandler.sendLog(schemaId, "info", "Формирование результата", node.getId());
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 90, "Проверка результата");
             }
 
-            // Отправка результата
+            if (isErrorResult(result)) {
+                String verifyMsg = "Узел '" + node.getName() + "' вернул ошибку: " + truncate(result, 200);
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warning", "⚠️ " + verifyMsg, node.getId());
+                }
+                log.warn("Node {} produced error result: {}", node.getId(), truncate(result, 200));
+
+                node.setStatus(Node.NodeStatus.FAILED);
+                if (node.getData() != null) {
+                    node.getData().setResult(result);
+                }
+                nodeResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                        .put(node.getId(), result);
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendError(schemaId, node.getId(), verifyMsg);
+                }
+                return;
+            }
+
             if (webSocketHandler != null) {
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 95, "Формирование результата");
                 webSocketHandler.sendResult(schemaId, node.getId(), result);
             }
 
@@ -1374,7 +1397,10 @@ private String executeAgentNode(Node node, String schemaId) {
     private String executeToolAgentNode(Node node, String schemaId) {
         String agentType = node.getData().getAgentType();
         List<String> enabledTools = node.getData().getEnabledTools();
-        int maxToolCalls = node.getData().getMaxToolCalls() > 0 ? node.getData().getMaxToolCalls() : 10;
+        int configuredMax = node.getData().getMaxToolCalls();
+        int maxToolCalls = configuredMax > 0
+                ? configuredMax
+                : Integer.MAX_VALUE;
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Инициализация агента с инструментами");
@@ -1429,8 +1455,11 @@ private String executeAgentNode(Node node, String schemaId) {
             iterationCount++;
 
             if (webSocketHandler != null) {
+                String iterLabel = maxToolCalls == Integer.MAX_VALUE
+                        ? "Итерация " + iterationCount
+                        : "Итерация " + iterationCount + " из " + maxToolCalls;
                 webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20 + (toolCallCount * 5),
-                        "Итерация " + iterationCount + " из " + maxToolCalls);
+                        iterLabel);
                 webSocketHandler.sendLog(schemaId, "info", "Итерация " + iterationCount, node.getId());
             }
 
@@ -1543,7 +1572,13 @@ private String executeAgentNode(Node node, String schemaId) {
 
     private List<Map<String, Object>> parseToolCalls(String response) {
         List<Map<String, Object>> calls = new ArrayList<>();
-        if (response == null || !response.contains("tool_calls")) {
+        if (response == null) return calls;
+
+        if (response.contains("<|tool_call_begin|>")) {
+            return parseKimiToolCalls(response);
+        }
+
+        if (!response.contains("tool_calls")) {
             return calls;
         }
 
@@ -1560,6 +1595,45 @@ private String executeAgentNode(Node node, String schemaId) {
             }
         } catch (Exception e) {
             log.warn("Failed to parse tool calls: {}", e.getMessage());
+        }
+        return calls;
+    }
+
+    private List<Map<String, Object>> parseKimiToolCalls(String response) {
+        List<Map<String, Object>> calls = new ArrayList<>();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String[] segments = response.split("<\\|tool_call_begin\\|>");
+        for (String seg : segments) {
+            if (seg.trim().isEmpty()) continue;
+            try {
+                int nsEnd = seg.indexOf("<|tool_call_arg_begin|>");
+                if (nsEnd < 0) continue;
+                String nsPart = seg.substring(0, nsEnd).trim();
+                int colonIdx = nsPart.lastIndexOf(':');
+                String toolName = colonIdx > 0 ? nsPart.substring(nsPart.indexOf('.') + 1, colonIdx).trim() : nsPart.trim();
+                if (toolName.startsWith("functions.")) toolName = toolName.substring(10);
+
+                int argStart = nsEnd + "<|tool_call_arg_begin|>".length();
+                int argEnd = seg.indexOf("<|tool_call_arg_end|>", argStart);
+                if (argEnd < 0) argEnd = seg.indexOf("<|tool_call_end|>", argStart);
+                if (argEnd < 0) continue;
+
+                String argsStr = seg.substring(argStart, argEnd).trim();
+                Map<String, Object> args = new java.util.LinkedHashMap<>();
+                if (argsStr.startsWith("{")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> parsed = mapper.readValue(argsStr, Map.class);
+                    args.putAll(parsed);
+                }
+
+                Map<String, Object> call = new java.util.LinkedHashMap<>();
+                call.put("id", "call_" + calls.size());
+                call.put("name", toolName);
+                call.put("arguments", args);
+                calls.add(call);
+            } catch (Exception e) {
+                log.warn("Failed to parse Kimi tool call segment: {}", e.getMessage());
+            }
         }
         return calls;
     }
@@ -2149,6 +2223,36 @@ private String executeAgentNode(Node node, String schemaId) {
             schema.setEdges(schema.getEdges().stream().filter(e -> e != null && e.getId() != null).toList());
         }
         return schema;
+    }
+
+    private static final Set<String> ERROR_PREFIXES = Set.of(
+            "error:", "Error:", "ERROR:",
+            "timeout", "timed out",
+            "connection refused", "unreachable",
+            "No custom LLM endpoints", "RLM provider not enabled",
+            "Память недоступна", "Ничего не найдено"
+    );
+
+    private boolean isErrorResult(String result) {
+        if (result == null || result.isBlank()) return false;
+        String trimmed = result.trim();
+        return ERROR_PREFIXES.stream().anyMatch(trimmed::startsWith);
+    }
+
+    private String truncate(String s, int max) {
+        return s != null && s.length() > max ? s.substring(0, max) + "..." : s;
+    }
+
+    private int getDefaultMaxToolCalls(String agentType) {
+        if (agentType == null) return 10;
+        return switch (agentType) {
+            case "project-analyzer" -> 30;
+            case "coder" -> 20;
+            case "researcher" -> 15;
+            case "reviewer" -> 15;
+            case "assistant" -> 5;
+            default -> 10;
+        };
     }
 
     private String resolveModel(String nodeModel, WorkflowSchema schema) {

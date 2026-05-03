@@ -39,6 +39,14 @@ axolotl:
       api-key: ${ZEN_API_KEY:}
       default-model: big-pickle
       timeout: 3600
+    rlm:
+      enabled: ${AXOLOTL_RLM_ENABLED:false}
+      python-path: ${AXOLOTL_RLM_PYTHON:python3}
+      wrapper-script: '${AXOLOTL_RLM_WRAPPER:}'
+      default-model: ${AXOLOTL_RLM_MODEL:gpt-4o}
+      timeout: ${AXOLOTL_RLM_TIMEOUT:3600}
+      sandbox-type: ${AXOLOTL_RLM_SANDBOX:local}
+      max-depth: ${AXOLOTL_RLM_MAX_DEPTH:5}
   tools:
     defaults:
       enabled:
@@ -62,6 +70,10 @@ axolotl:
   mempalace:
     base-url: ${AXOLOTL_MEMPALACE_URL:http://localhost:5890}
     enabled: ${AXOLOTL_MEMPALACE_ENABLED:false}
+  plugins:
+    whitelist:
+      names: mempalace,btca,context7
+      managers: pip,npm,opm
 
 # OpenAPI / Swagger
 springdoc:
@@ -84,3 +96,10 @@ logging:
   level:
     com.agent.orchestrator: DEBUG
     org.springframework.web: INFO
+
+sentry:
+  dsn: ${SENTRY_DSN_BACKEND:}
+  traces-sample-rate: 1.0
+  send-default-pii: true
+  environment: ${SENTRY_ENVIRONMENT:development}
+  release: ${SENTRY_RELEASE:}
