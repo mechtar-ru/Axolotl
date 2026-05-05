@@ -51,6 +51,9 @@ public class CustomEndpointController {
         map.put("priority", endpoint.getPriority());
         map.put("createdAt", endpoint.getCreatedAt());
         map.put("lastUsedAt", endpoint.getLastUsedAt());
+        if (endpoint.getHeaders() != null && !endpoint.getHeaders().isEmpty()) {
+            map.put("headers", endpoint.getHeaders());
+        }
         // Mask API key: show only last 4 chars
         String key = endpoint.getApiKey();
         if (key != null && key.length() > 4) {

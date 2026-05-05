@@ -3,6 +3,7 @@ package com.agent.orchestrator.repository;
 import com.agent.orchestrator.config.DbConfig;
 import com.agent.orchestrator.model.CustomLlmEndpoint;
 import com.agent.orchestrator.service.EncryptionService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
@@ -19,6 +20,7 @@ public class CustomLlmEndpointRepository {
 
     private final String dbUrl;
     private final EncryptionService encryptionService;
+    private final ObjectMapper mapper = new ObjectMapper();
     private final Map<String, CustomLlmEndpoint> cache = new HashMap<>();
 
     public CustomLlmEndpointRepository(DbConfig dbConfig, EncryptionService encryptionService) {
@@ -47,7 +49,7 @@ public class CustomLlmEndpointRepository {
              Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             // Add columns if missing (migrations)
-            for (String col : new String[]{"auth_type", "priority", "last_used_at"}) {
+            for (String col : new String[]{"auth_type", "priority", "last_used_at", "headers"}) {
                 try { stmt.execute("ALTER TABLE custom_llm_endpoints ADD COLUMN " + col + " TEXT"); } catch (SQLException ignored) {}
             }
         } catch (SQLException e) {
@@ -84,12 +86,20 @@ public class CustomLlmEndpointRepository {
         String lastUsedAt = rs.getString("last_used_at");
         if (lastUsedAt != null) e.setLastUsedAt(Instant.parse(lastUsedAt));
         e.setPriority(rs.getInt("priority"));
+        String headersJson = rs.getString("headers");
+        if (headersJson != null && !headersJson.isBlank()) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, String> headers = mapper.readValue(headersJson, Map.class);
+                e.setHeaders(headers);
+            } catch (Exception ignored) {}
+        }
         return e;
     }
 
     public CustomLlmEndpoint save(CustomLlmEndpoint endpoint) {
         String sql = """
-            INSERT OR REPLACE INTO custom_llm_endpoints (id, name, base_url, api_key, model_name, auth_type, enabled, created_at, last_used_at, priority)
+            INSERT OR REPLACE INTO custom_llm_endpoints (id, name, base_url, api_key, model_name, auth_type, enabled, created_at, last_used_at, priority, headers)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
         try (Connection conn = DriverManager.getConnection(dbUrl);
@@ -104,6 +114,11 @@ public class CustomLlmEndpointRepository {
             pstmt.setString(8, endpoint.getCreatedAt() != null ? endpoint.getCreatedAt().toString() : Instant.now().toString());
             pstmt.setString(9, endpoint.getLastUsedAt() != null ? endpoint.getLastUsedAt().toString() : null);
             pstmt.setInt(10, endpoint.getPriority());
+            String headersJson = null;
+            if (endpoint.getHeaders() != null) {
+                try { headersJson = mapper.writeValueAsString(endpoint.getHeaders()); } catch (Exception ignored) {}
+            }
+            pstmt.setString(11, headersJson);
             pstmt.executeUpdate();
             cache.put(endpoint.getId(), endpoint);
         } catch (SQLException ex) {

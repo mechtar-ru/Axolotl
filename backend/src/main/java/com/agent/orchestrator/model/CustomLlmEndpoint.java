@@ -1,6 +1,7 @@
 package com.agent.orchestrator.model;
 
 import java.time.Instant;
+import java.util.Map;
 
 public class CustomLlmEndpoint {
     private String id;
@@ -13,6 +14,7 @@ public class CustomLlmEndpoint {
     private Instant createdAt;
     private Instant lastUsedAt;
     private int priority;
+    private Map<String, String> headers;
 
     public CustomLlmEndpoint() {
         this.id = java.util.UUID.randomUUID().toString();
@@ -51,4 +53,7 @@ public class CustomLlmEndpoint {
 
     public int getPriority() { return priority; }
     public void setPriority(int priority) { this.priority = priority; }
+
+    public Map<String, String> getHeaders() { return headers; }
+    public void setHeaders(Map<String, String> headers) { this.headers = headers; }
 }

@@ -91,6 +91,14 @@ export const schemaApi = {
   async stopSchema(id: string): Promise<void> {
     await api.post(`/schemas/${id}/stop`);
   },
+
+  async pauseSchema(id: string): Promise<void> {
+    await api.post(`/schemas/${id}/pause`);
+  },
+
+  async resumeSchema(id: string, amendedPrompt?: string): Promise<void> {
+    await api.post(`/schemas/${id}/resume`, amendedPrompt ? { amendedPrompt } : {});
+  },
   
   async exportToMermaid(id: string): Promise<string> {
     const response = await api.get(`/schemas/${id}/export/mermaid`);
@@ -120,6 +128,7 @@ export interface ProviderInfo {
   id?: string;
   authType?: string;
   enabled?: boolean;
+  lastUsedAt?: string;
 }
 
 export const settingsApi = {
@@ -171,6 +180,7 @@ export interface CustomLlmEndpoint {
   authType: string;
   enabled: boolean;
   priority: number;
+  headers?: Record<string, string>;
 }
 
 export const customEndpointApi = {

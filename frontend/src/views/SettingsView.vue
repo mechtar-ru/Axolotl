@@ -173,6 +173,16 @@
             </div>
 
             <div class="field">
+              <label>Custom Headers (JSON)</label>
+              <input
+                :value="ep.headers ? JSON.stringify(ep.headers) : ''"
+                class="field-input"
+                placeholder='{"X-Custom-Header": "value"}'
+                @input="updateCustomField(ep.id!, 'headers', ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+
+            <div class="field">
               <label class="toggle-label">
                 <input type="checkbox" :checked="ep.enabled" @change="updateCustomField(ep.id!, 'enabled', ($event.target as HTMLInputElement).checked)" />
                 Enabled
@@ -277,6 +287,7 @@ async function refreshProviders() {
 async function refreshCustomEndpoints() {
   try {
     customEndpoints.value = await customEndpointApi.list();
+    console.log('Loaded custom endpoints:', customEndpoints.value.length);
   } catch (e: any) {
     console.error('Failed to load custom endpoints:', e);
   }
@@ -322,13 +333,20 @@ function addCustomEndpoint() {
     authType: 'bearer',
     enabled: true,
     priority: 100,
+    headers: {},
   };
   customEndpoints.value.push(newEp);
 }
 
 function updateCustomField(id: string, field: string, value: any) {
   const ep = customEndpoints.value.find(e => e.id === id);
-  if (ep) (ep as any)[field] = value;
+  if (ep) {
+    if (field === 'headers' && typeof value === 'string') {
+      try { (ep as any)[field] = value ? JSON.parse(value) : {}; } catch { (ep as any)[field] = {}; }
+    } else {
+      (ep as any)[field] = value;
+    }
+  }
   if (customErrors[id]) delete customErrors[id];
 }
 
@@ -352,6 +370,8 @@ async function saveCustomEndpoint(ep: CustomLlmEndpoint) {
     if (idx >= 0) customEndpoints.value[idx] = saved;
     customEditedKeys[ep.id!] = '';
   } catch (e: any) {
+    // Name conflict - refresh list to sync
+    await refreshCustomEndpoints();
     if (e.response?.status === 409) {
       customErrors[ep.id!] = e.response.data?.error || 'Name already exists';
     } else {
