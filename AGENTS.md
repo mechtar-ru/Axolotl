@@ -112,14 +112,26 @@ Agent nodes can now query Neo4j directly using `graph_query` tool:
 
 ### SQLite → Neo4j Migration Plan
 
-Current SQLite tables to migrate to Neo4j:
+Current SQLite tables migrated to Neo4j:
 | Table | Status | Notes |
 |-------|--------|-------|
-| schemas | 🔄 Pending | Store as workflow nodes with edge dependencies |
-| plans | 🔄 Pending | Store as task nodes with plan relationships |
-| custom_llm_endpoints | 🔄 Pending | Store as LLM provider nodes |
-| provider_settings | 🔄 Pending | Store as config nodes |
-| users | ❌ Keep | Auth data, remains in SQLite |
+| schemas | ✅ Done | 16 WorkflowSchema nodes |
+| plans | ✅ Done | 2 Plan nodes |
+| custom_llm_endpoints | ✅ Done | 1 LlmEndpoint node |
+| provider_settings | ✅ Done | 5 ProviderConfig nodes |
+| users | ✅ Done | 3 User nodes (passwords hashed with SHA256) |
+
+**Migration script:** `scripts/migrate-to-neo4j.py`
+```bash
+source .venv/bin/activate
+python3 scripts/migrate-to-neo4j.py           # Run migration
+python3 scripts/migrate-to-neo4j.py --dry-run  # Preview
+python3 scripts/migrate-to-neo4j.py --skip-auth  # Skip users table
+```
+
+**Auth data handling:**
+- Passwords: hashed with SHA256 before storing in Neo4j
+- API keys: hashed with SHA256 (plaintext never stored)
 
 ### Graph API (Dirac-inspired Features)
 
