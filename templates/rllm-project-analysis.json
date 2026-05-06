@@ -1,14 +1,14 @@
 {
   "id": "tpl-rllm-project-analysis",
   "name": "RLLM Project Analysis",
-  "description": "Analyze project test folders (backend-next, frontend-next), suggest and implement changes using RLLM for structured output",
-  "version": "1.0",
+  "description": "Analyze project test folders using Transform nodes for field-based routing",
+  "version": "2.0",
   "defaultModel": "rlm",
   "metadata": {
     "template": true,
     "category": "analysis",
-    "tags": ["rllm", "analysis", "refactoring", "test-folders"],
-    "variant": "project-analysis"
+    "tags": ["rllm", "analysis", "refactoring", "transform-nodes"],
+    "variant": "project-analysis-v2"
   },
   "nodes": [
     {
@@ -17,11 +17,7 @@
       "name": "Analysis Request",
       "position": { "x": 100, "y": 200 },
       "data": {
-        "sourceData": "Target folders to analyze: backend-next/src/main/java, frontend-next/src. Leave empty for full analysis.",
-        "sources": [
-          { "id": "focus", "type": "text", "name": "Focus Areas", "content": "" },
-          { "id": "exclusions", "type": "text", "name": "Exclude Patterns", "content": "node_modules,target,dist,.git" }
-        ]
+        "sourceData": "Target folders to analyze: backend-next/src/main/java, frontend-next/src. Leave empty for full analysis."
       }
     },
     {
@@ -30,7 +26,8 @@
       "name": "Project Analyzer",
       "position": { "x": 350, "y": 200 },
       "data": {
-        "systemPrompt": "You are a Senior Software Architect using RLLM (Recursive Language Model) for structured project analysis.\n\n## Context\n**Project:** Axolotl - Visual AI Agent Orchestrator\n**Analysis Target:** Test folders - backend-next and frontend-next\n**Production Code:** backend/src/main/java, frontend/src\n\n## RLLM Signature\nUse this signature for structured output:\n```\ncodebase_analysis -> implementation_plan:str, db_changes:str, dependency_rework:str, summary:str\n```\n\n## Your Task\n\n### 1. Analyze Test Folders\n- Read backend-next/src/main/java for test implementations\n- Read frontend-next/src for test components\n- Compare with production code in backend/src and frontend/src\n\n### 2. Categorize Changes\n\n**A. Implementation Changes (DO implement now):**\n- Code refactoring in test folders\n- New utility functions\n- Test utilities and helpers\n- Component improvements\n\n**B. DB Schema Changes (DO NOT implement - store separately):**\n- New entities needed\n- Property changes\n- Index modifications\n- Migration requirements\n- Format: Output to separate node, NOT to test folders\n\n**C. Dependency Rework (Report only):**\n- Libraries needing updates\n- API changes required\n- Breaking changes impact\n- Version bump requirements\n\n### 3. Implementation Rules\n- Only modify files in backend-next/ and frontend-next/\n- NEVER modify production code (backend/, frontend/)\n- NEVER execute DB schema changes\n- Store DB change suggestions separately\n- Document all dependency impacts\n\n### 4. Store Results in Neo4j\nAfter analysis, store results using memory_write tool with format:\n```json\n{\"type\": \"project_analysis\", \"timestamp\": \"ISO8601\", \"summary\": \"...\", \"implementation_count\": N, \"db_changes_pending\": [...], \"dependencies_affected\": [...]}\n```\n\n## Output Requirements\nReturn structured analysis with:\n1. **implementation_plan** - What was/will be implemented in test folders\n2. **db_changes** - Schema changes needed (NOT implemented, stored separately)\n3. **dependency_rework** - Dependencies requiring rework with impact level\n4. **summary** - Human-readable summary\n\nFocus on high-value changes that improve the project's testability, maintainability, and architecture.",
+        "systemPrompt": "You are a Senior Software Architect using RLLM (Recursive Language Model) for structured project analysis.\n\n## Context\n**Project:** Axolotl - Visual AI Agent Orchestrator\n**Analysis Target:** Test folders - backend-next and frontend-next\n**Production Code:** backend/src/main/java, frontend/src\n\n## RLLM Signature\nUse this signature for structured output:\n```\ncodebase_analysis -> implementation_plan:str, db_changes:str, dependency_rework:str, summary:str\n```\n\nReturn JSON with all 4 fields.",
+        "userPrompt": "Analyze backend-next/src/main/java and frontend-next/src. Compare with production code in backend/src and frontend/src. Categorize into: implementation_plan, db_changes, dependency_rework, summary.",
         "model": "rlm",
         "config": {
           "tools": ["directory_read", "file_read", "grep", "git", "graph_query", "memory_write", "bash"],
@@ -39,12 +36,44 @@
       }
     },
     {
+      "id": "transform-summary",
+      "type": "transform",
+      "name": "Extract Summary",
+      "position": { "x": 600, "y": 150 },
+      "data": {
+        "transforms": [{"type": "jsonField", "config": {"field": "summary"}}],
+        "routes": [{"condition": "not empty", "targetNodeId": "out-1"}],
+        "fallbackValue": "No summary"
+      }
+    },
+    {
+      "id": "transform-db",
+      "type": "transform",
+      "name": "Extract DB Changes",
+      "position": { "x": 600, "y": 280 },
+      "data": {
+        "transforms": [{"type": "jsonField", "config": {"field": "db_changes"}}],
+        "routes": [{"condition": "not empty", "targetNodeId": "out-2"}],
+        "fallbackValue": "No DB changes"
+      }
+    },
+    {
+      "id": "transform-deps",
+      "type": "transform",
+      "name": "Extract Dependencies",
+      "position": { "x": 600, "y": 410 },
+      "data": {
+        "transforms": [{"type": "jsonField", "config": {"field": "dependency_rework"}}],
+        "routes": [{"condition": "not empty", "targetNodeId": "out-3"}],
+        "fallbackValue": "No dependency changes"
+      }
+    },
+    {
       "id": "out-1",
       "type": "output",
       "name": "Implementation Summary",
-      "position": { "x": 650, "y": 150 },
+      "position": { "x": 850, "y": 150 },
       "data": {
-        "outputType": "markdown",
         "sourceData": "Summary of implemented changes in test folders"
       }
     },
@@ -52,9 +81,8 @@
       "id": "out-2",
       "type": "output",
       "name": "Pending DB Changes",
-      "position": { "x": 650, "y": 280 },
+      "position": { "x": 850, "y": 280 },
       "data": {
-        "outputType": "markdown",
         "sourceData": "DB schema changes to review later (NOT implemented)"
       }
     },
@@ -62,17 +90,19 @@
       "id": "out-3",
       "type": "output",
       "name": "Dependency Report",
-      "position": { "x": 650, "y": 410 },
+      "position": { "x": 850, "y": 410 },
       "data": {
-        "outputType": "markdown",
         "sourceData": "Dependencies requiring rework with impact analysis"
       }
     }
   ],
   "edges": [
     { "id": "e1", "source": "src-1", "target": "agent-1", "type": "data" },
-    { "id": "e2", "source": "agent-1", "target": "out-1", "type": "data" },
-    { "id": "e3", "source": "agent-1", "target": "out-2", "type": "data" },
-    { "id": "e4", "source": "agent-1", "target": "out-3", "type": "data" }
+    { "id": "e2", "source": "agent-1", "target": "transform-summary", "type": "data" },
+    { "id": "e3", "source": "agent-1", "target": "transform-db", "type": "data" },
+    { "id": "e4", "source": "agent-1", "target": "transform-deps", "type": "data" },
+    { "id": "e5", "source": "transform-summary", "sourcePort": "not empty", "target": "out-1", "type": "data" },
+    { "id": "e6", "source": "transform-db", "sourcePort": "not empty", "target": "out-2", "type": "data" },
+    { "id": "e7", "source": "transform-deps", "sourcePort": "not empty", "target": "out-3", "type": "data" }
   ]
 }
