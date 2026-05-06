@@ -11,6 +11,17 @@ export interface Message {
 
 export type ExecutionMode = 'EXECUTE' | 'ANALYZE' | 'DRY_RUN';
 
+export interface TransformStep {
+  type: string;
+  config: Record<string, any>;
+}
+
+export interface TransformRoute {
+  condition: string;
+  targetNodeId: string;
+  targetPort?: string;
+}
+
 export interface NodeData {
   systemPrompt?: string;
   userPrompt?: string;
@@ -30,6 +41,9 @@ export interface NodeData {
   subagentSchemaId?: string;
   inputMapping?: Record<string, string>;
   outputMapping?: Record<string, string>;
+  transforms?: TransformStep[];
+  routes?: TransformRoute[];
+  fallbackValue?: string;
 }
 
 export interface SourceItem {
@@ -41,7 +55,7 @@ export interface SourceItem {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'transform' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder';
   parentId?: string;
   collapsed?: boolean;
   name: string;

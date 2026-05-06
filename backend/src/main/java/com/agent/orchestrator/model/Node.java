@@ -114,6 +114,11 @@ public class Node {
         private Map<String, String> inputMapping;
         private Map<String, String> outputMapping;
 
+        // Transform node fields
+        private List<TransformStep> transforms;
+        private String fallbackValue;
+        private List<TransformRoute> routes;
+
         // Tool-enabled agent fields
         private String agentType;
         private List<String> enabledTools;
@@ -146,6 +151,41 @@ public class Node {
 
         public Map<String, String> getOutputMapping() { return outputMapping; }
         public void setOutputMapping(Map<String, String> outputMapping) { this.outputMapping = outputMapping; }
+
+        public List<TransformStep> getTransforms() { return transforms; }
+        public void setTransforms(List<TransformStep> transforms) { this.transforms = transforms; }
+
+        public String getFallbackValue() { return fallbackValue; }
+        public void setFallbackValue(String fallbackValue) { this.fallbackValue = fallbackValue; }
+
+        public List<TransformRoute> getRoutes() { return routes; }
+        public void setRoutes(List<TransformRoute> routes) { this.routes = routes; }
+    }
+
+    public static class TransformStep {
+        private String type;
+        private Map<String, Object> config;
+
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+
+        public Map<String, Object> getConfig() { return config; }
+        public void setConfig(Map<String, Object> config) { this.config = config; }
+    }
+
+    public static class TransformRoute {
+        private String condition;
+        private String targetNodeId;
+        private String targetPort;
+
+        public String getCondition() { return condition; }
+        public void setCondition(String condition) { this.condition = condition; }
+
+        public String getTargetNodeId() { return targetNodeId; }
+        public void setTargetNodeId(String targetNodeId) { this.targetNodeId = targetNodeId; }
+
+        public String getTargetPort() { return targetPort; }
+        public void setTargetPort(String targetPort) { this.targetPort = targetPort; }
     }
     
     public static class Message {

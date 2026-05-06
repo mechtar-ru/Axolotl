@@ -58,6 +58,7 @@ public class SchemaService {
 
     // Convergence monitoring: track consecutive failures per node per execution
     private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
+    private TransformService transformService;
 
     public SchemaService(Neo4jSchemaRepository schemaRepository,
             LlmService llmService,
@@ -66,7 +67,8 @@ public class SchemaService {
             PlanService planService,
             SettingsService settingsService,
             ToolExecutor toolExecutor,
-            MetricsService metricsService) {
+            MetricsService metricsService,
+            TransformService transformService) {
         this.schemaRepository = schemaRepository;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -77,6 +79,7 @@ public class SchemaService {
         this.toolExecutor.setWebSocketHandler(webSocketHandler);
         this.toolExecutor.setLlmService(llmService);
         this.metricsService = metricsService;
+        this.transformService = transformService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -912,6 +915,68 @@ public class SchemaService {
                 if (webSocketHandler != null) {
                     webSocketHandler.sendLog(schemaId, "info",
                             "Условие '" + conditionExpr + "' = " + conditionResult, node.getId());
+                }
+
+            } else if ("transform".equals(node.getType())) {
+                log.info("Transform node {} starting", node.getId());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 30, "Применение трансформаций");
+                }
+
+                // Get input from predecessors
+                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+                String input = null;
+                if (!predResults.isEmpty()) {
+                    Object firstValue = predResults.values().iterator().next();
+                    input = firstValue != null ? firstValue.toString() : null;
+                }
+                log.info("Transform {} input: {}", node.getId(), input);
+
+                // Apply transforms
+                var transforms = node.getData() != null ? node.getData().getTransforms() : null;
+                log.info("Transform {} transforms: {}", node.getId(), transforms);
+                String transformed = transformService.applyTransforms(input, transforms);
+                log.info("Transform {} transformed: {}", node.getId(), transformed);
+
+                // Apply routes to determine which branch to take
+                var routes = node.getData() != null ? node.getData().getRoutes() : null;
+                log.info("Transform {} routes: {}", node.getId(), routes);
+                String matchedPort = null;
+                String routeResult = null;
+
+                if (routes != null && !routes.isEmpty()) {
+                    for (var route : routes) {
+                        String evaluated = transformService.evaluateRoute(transformed, route);
+                        log.info("Transform {} route {} evaluated: {}", node.getId(), route.getCondition(), evaluated);
+                        if (evaluated != null) {
+                            matchedPort = route.getCondition();
+                            routeResult = evaluated;
+                            break;
+                        }
+                    }
+                }
+
+                // If no route matched, use fallback
+                if (matchedPort == null) {
+                    String fallback = node.getData() != null ? node.getData().getFallbackValue() : null;
+                    if (fallback != null && !fallback.isEmpty()) {
+                        result = fallback;
+                    } else {
+                        result = transformed != null ? transformed : (input != null ? input : "");
+                    }
+                    matchedPort = "default";
+                } else {
+                    result = routeResult != null ? routeResult : transformed;
+                }
+
+                log.info("Transform {} result: {}, matchedPort: {}", node.getId(), result, matchedPort);
+
+                // Store the matched port for edge routing
+                conditionResults.put(schemaId + ":" + node.getId(), matchedPort);
+
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Transform applied, route: " + matchedPort, node.getId());
                 }
 
             } else if ("loop".equals(node.getType())) {

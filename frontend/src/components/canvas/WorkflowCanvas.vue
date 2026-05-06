@@ -50,6 +50,7 @@
             <div class="dropdown-section">
               <div class="dropdown-section-title">Логика</div>
               <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
+              <button @click="addNode('transform'); showAddMenu = false">⚡ Transform</button>
               <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
               <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
             </div>
@@ -145,6 +146,7 @@ import AgentNode from '../nodes/AgentNode.vue';
 import SourceNode from '../nodes/SourceNode.vue';
 import OutputNode from '../nodes/OutputNode.vue';
 import ConditionNode from '../nodes/ConditionNode.vue';
+import TransformNode from '../nodes/TransformNode.vue';
 import LoopNode from '../nodes/LoopNode.vue';
 import GroupNode from '../nodes/GroupNode.vue';
 import CommentNode from '../nodes/CommentNode.vue';
@@ -185,6 +187,7 @@ const nodeTypes = {
   source: markRaw(SourceNode),
   output: markRaw(OutputNode),
   condition: markRaw(ConditionNode),
+  transform: markRaw(TransformNode),
   loop: markRaw(LoopNode),
   group: markRaw(GroupNode),
   comment: markRaw(CommentNode),
@@ -744,6 +747,7 @@ function addNode(type: string, position?: { x: number; y: number }, nodeData?: R
     source: 'Входные данные',
     agent: 'Аналитик',
     condition: 'Условие',
+    transform: 'Трансформация',
     loop: 'Цикл',
     output: 'Результат',
     memory: 'Память',
@@ -768,6 +772,11 @@ function addNode(type: string, position?: { x: number; y: number }, nodeData?: R
   if (type === 'agent') newNode.data.userPrompt = '';
   if (type === 'source') newNode.data.sourceData = '';
   if (type === 'condition') newNode.data.condition = '';
+  if (type === 'transform') {
+    newNode.data.transforms = [];
+    newNode.data.routes = [];
+    newNode.data.fallbackValue = '';
+  }
 
   // Pre-fill default model for LLM-capable nodes
   if (type === 'agent' || type === 'schemabuilder') {
