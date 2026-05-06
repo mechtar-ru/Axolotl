@@ -43,4 +43,13 @@ public interface CodeMethodRepository extends Neo4jRepository<CodeMethod, Long> 
         RETURN m ORDER BY m.name LIMIT $limit
         """)
     List<CodeMethod> search(@Param("keyword") String keyword, @Param("limit") int limit);
+
+    @Query("MATCH (m:Method) WHERE m.body CONTAINS $pattern RETURN m LIMIT 50")
+    List<CodeMethod> findByBodyContaining(@Param("pattern") String pattern);
+
+    @Query("MATCH (m:Method) WHERE m.returnType = $returnType RETURN m LIMIT 50")
+    List<CodeMethod> findByReturnType(@Param("returnType") String returnType);
+
+    @Query("MATCH (m:Method) WHERE m.description CONTAINS $desc RETURN m LIMIT 50")
+    List<CodeMethod> findByDescriptionContaining(@Param("desc") String desc);
 }

@@ -53,6 +53,10 @@ axolotl:
     enabled: ${AXOLOTL_MEMPALACE_ENABLED:false}
   graph:
     enabled: ${AXOLOTL_GRAPH_ENABLED:true}
+    token-budget: ${AXOLOTL_GRAPH_TOKEN_BUDGET:2000}
+    batch-parallelism: ${AXOLOTL_GRAPH_BATCH_PARALLELISM:8}
+    batch-size: ${AXOLOTL_GRAPH_BATCH_SIZE:20}
+    codebase-path: ${AXOLOTL_GRAPH_CODEBASE_PATH:}
 
 # OpenAPI / Swagger
 springdoc:

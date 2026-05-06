@@ -13,6 +13,8 @@ import java.util.Optional;
 public interface CodeClassRepository extends Neo4jRepository<CodeClass, Long> {
     
     Optional<CodeClass> findByQualifiedName(String qualifiedName);
+
+    Optional<CodeClass> findByHash(String hash);
     
     List<CodeClass> findByNameContaining(String nameFragment);
     
@@ -38,4 +40,12 @@ public interface CodeClassRepository extends Neo4jRepository<CodeClass, Long> {
         RETURN c ORDER BY c.name LIMIT $limit
         """)
     List<CodeClass> search(@Param("keyword") String keyword, @Param("limit") int limit);
+
+    @Query("MATCH (c:Class) WHERE c.imports CONTAINS $importPattern RETURN c LIMIT 20")
+    List<CodeClass> findByImportsContaining(@Param("importPattern") String importPattern);
+
+    @Query("MATCH (c:Class) WHERE c.qualifiedName CONTAINS $qualifiedName RETURN c")
+    List<CodeClass> findByQualifiedNameContaining(@Param("qualifiedName") String qualifiedName);
+
+    List<CodeClass> findByNameContainingOrQualifiedNameContaining(String name, String qualifiedName);
 }
