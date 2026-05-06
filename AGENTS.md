@@ -88,6 +88,42 @@ source .venv/bin/activate && python3 scripts/api.py add-task "Title" "descriptio
 
 See `docs/NEO4J_MIGRATION.md` for Neo4j integration specification.
 
+### Graph API (Dirac-inspired Features)
+
+#### Endpoints
+- `POST /api/graph/load` — Load codebase into Neo4j
+- `GET /api/graph/class/{hash}` — Get class by 16-char hash
+- `POST /api/graph/hash/class` — Compute stable hash for class
+- `POST /api/graph/search/ast` — Search by AST patterns
+- `POST /api/graph/curate` — Get token-bounded context for LLM
+- `GET /api/graph/tiers` — Get import wave plan
+- `GET /api/graph/stats` — Graph statistics
+
+#### Hash-Anchored Edits
+Agents reference code by stable hash (16 hex chars):
+```java
+// Hash computed from class signature, stable on internal refactoring
+String hash = "038f2e49841afecb";
+// Use in prompts: "Update class with hash 038f2e49841afecb"
+```
+
+#### Context Curation
+```bash
+curl -X POST http://localhost:8082/api/graph/curate \
+  -H "Content-Type: application/json" \
+  -d '{"query": "authentication middleware", "tokenBudget": 2000}'
+```
+
+#### Configuration
+```yaml
+axolotl:
+  graph:
+    enabled: true
+    token-budget: 2000
+    batch-parallelism: 8
+    batch-size: 20
+```
+
 ## Testing
 
 ```bash
