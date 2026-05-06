@@ -1,0 +1,54 @@
+{
+  "id": "tpl-refactor-frontend-simple",
+  "name": "Frontend Refactoring (Simple)",
+  "description": "Simplified 3-node refactoring: single agent does analysis + refactoring + verification",
+  "version": "1.0",
+  "defaultModel": "ollama",
+  "metadata": {
+    "template": true,
+    "category": "refactoring",
+    "tags": ["frontend", "vue", "refactoring", "simple"],
+    "variant": "simple"
+  },
+  "nodes": [
+    {
+      "id": "src-1",
+      "type": "source",
+      "name": "Refactoring Instruction",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "sourceData": "Describe what to refactor in the frontend code. Include target files, goal, and constraints.",
+        "sources": [
+          { "id": "instruction", "type": "text", "name": "Instruction", "content": "" }
+        ]
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Refactoring Agent (All-in-One)",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "systemPrompt": "You are an all-in-one Refactoring Agent for a Vue 3 + TypeScript frontend.\n\nWorkspace is at the worktree path (default: workspacePath).\nAll paths are relative to workspacePath.\n\nFrontend conventions:\n- Vue 3 Composition API with <script setup lang=\"ts\">\n- TypeScript strict mode\n- Pinia stores in src/stores/\n- Components in src/components/\n- Vite build system\n\nTools available:\n- file_read: read target files\n- file_write: write refactored code\n- file_delete: remove obsolete files\n- file_move: rename/move files\n- grep: search patterns across codebase\n- git: status, diff, add (commit in separate step)\n- verify_build: run npm run build + type-check\n- memory_read: recall similar past refactorings\n\nProcess:\n1. Read and analyze the target files from the instruction\n2. Plan minimal, focused changes\n3. Apply the refactoring\n4. Run verify_build to check\n5. If build fails, revert with git checkout -- <file> and report\n6. If build passes, git add . and report summary",
+        "model": "ollama",
+        "config": {
+          "tools": ["file_read", "file_write", "file_delete", "file_move", "grep", "git", "verify_build", "memory_read"]
+        }
+      }
+    },
+    {
+      "id": "out-1",
+      "type": "output",
+      "name": "Refactoring Result",
+      "position": { "x": 700, "y": 200 },
+      "data": {
+        "outputType": "log",
+        "sourceData": "Refactoring complete. Build verified. Changes staged via git add. See agent output for details."
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "src-1", "target": "agent-1", "type": "data" },
+    { "id": "e2", "source": "agent-1", "target": "out-1", "type": "data" }
+  ]
+}

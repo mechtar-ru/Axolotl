@@ -57,10 +57,11 @@ public class GraphController {
     }
 
     @PostMapping("/load")
-    public ResponseEntity<Map<String, Object>> loadCodebase(@RequestParam(required = false) String path) {
+    public ResponseEntity<Map<String, Object>> loadCodebase(@RequestBody(required = false) Map<String, String> body) {
         try {
+            String path = body != null ? body.get("path") : null;
             Path targetPath = path != null ? Path.of(path) :
-                    Path.of(System.getProperty("user.dir") + "/backend/src/main/java");
+                    Path.of(System.getProperty("user.dir"), "src", "main", "java");
 
             ParallelCodebaseImporter.ImportResult result =
                     parallelImporter.importWithPlanMode(targetPath, "com.agent.orchestrator");

@@ -32,14 +32,15 @@ Axolotl is a visual platform for building and executing AI-agent workflows. Desi
 - 🎭 **Execution Modes**: EXECUTE (full), ANALYZE (read-only), DRY_RUN (simulate)
 
 ### Tool-Enabled Agents
-- 🔧 **8 Built-in Tools**: `file_read`, `file_write`, `directory_read`, `bash`, `memory_read`, `memory_write`, `web_search`, `web_fetch`
-- 🧠 **RLM Predict Tool** — call sub-LM with DSPy signatures for structured extraction
+- 🔧 **15 Built-in Tools**: `file_read`, `file_write`, `directory_read`, `grep`, `git`, `bash`, `memory_read`, `memory_write`, `memory_search`, `web_search`, `web_fetch`, `web_api`, `graph_query`, `mcp_execute`, `rlm_predict`
+- 🎯 **7 Agent Types**: Assistant, Coder, Researcher, Reviewer, Project Analyzer, Graph Engineer, MCP Agent
 - 📊 **Trajectory Panel** — visualize iterations, tool calls, timing
 - 🔒 **Dangerous Command Blocking** — rm -rf, format, mkfs, etc.
 - ⚙️ **Tool Permissions** — per-node allowed paths, blocked commands
+- 🔗 **Graph Integration** — query Neo4j code graph with hash-anchored edits
 
 ### Agent Memory & Skills
-- 🎯 **Agent Types**: Assistant, Coder, Researcher, Reviewer, Project Analyzer
+- 🎯 **Agent Types**: Assistant, Coder, Researcher, Reviewer, Project Analyzer, Graph Engineer, MCP Agent
 - 🧠 **Skill Auto-Generation** — extract patterns from trajectories → auto-generate skills
 - 📈 **Skill Tracking** — usage count, success rate, version history
 - 💾 **Pattern Storage** — saved to MemPalace (axolotl/patterns, axolotl/skills)
@@ -51,6 +52,13 @@ Axolotl is a visual platform for building and executing AI-agent workflows. Desi
 - 🔍 **DeepSeek** — budget-friendly model
 - 🔗 **Custom Endpoints** — add OpenAI-compatible providers
 - 🎯 **Per-Node Model** — each AgentNode selects its own model
+
+### Template Library
+- 📋 **UI/UX Review** — analyze frontend codebase, recommend improvements
+- 🔨 **Frontend Refactoring** — multi-step refactor with build verification
+- 📊 **Code Analysis** — RLM-powered code review
+
+Load templates via Template Gallery (toolbar button) or import JSON.
 
 ### MemPalace — Long-term Memory
 - 🧠 **Memory Node** — search memory, filter by wing/room

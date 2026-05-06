@@ -1,0 +1,83 @@
+{
+  "id": "tpl-rlm-kimi-code-analysis",
+  "name": "Axolotl Code Analysis (RLM + Kimi)",
+  "description": "Deep codebase analysis using Recursive Language Model with Kimi — scans code, performs recursive reasoning, generates structured report",
+  "version": "1.0",
+  "defaultModel": "rlm:kimi-latest",
+  "metadata": {
+    "template": true,
+    "category": "analysis",
+    "tags": ["rlm", "kimi", "code-analysis", "recursive-reasoning", "axolotl"]
+  },
+  "nodes": [
+    {
+      "id": "src-1",
+      "type": "source",
+      "name": "Analysis Target",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "sourceData": "Describe what to analyze in the Axolotl codebase. E.g. 'Analyze the LLM provider architecture' or 'Review the execution pipeline in SchemaService'",
+        "sources": [
+          { "id": "instruction", "type": "text", "name": "Analysis Target", "content": "" }
+        ]
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Code Scanner",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "systemPrompt": "You are a Code Scanner agent for the Axolotl project (visual AI-agent orchestration app).\n\nAxolotl is a Spring Boot 3.2 + Vue 3 app. Key paths:\n- Backend: src/main/java/com/agent/orchestrator/\n  - controller/ (REST endpoints)\n  - service/ (business logic, SchemaService is the core)\n  - llm/ (LLM providers: Ollama, OpenAI, Anthropic, DeepSeek, RLM)\n  - model/ (domain objects)\n  - config/ (security, JWT, WebSocket)\n- Frontend: frontend/src/\n  - components/canvas/ (WorkflowCanvas)\n  - components/nodes/ (node types)\n  - stores/ (Pinia)\n  - composables/ (useWebSocket etc)\n\nTools: file_read, grep, directory_read, memory_read\n\nRead the target code, collect all relevant files, and produce a comprehensive summary of:\n1. File list with paths\n2. Key classes/functions found\n3. Dependencies between modules\n4. Code patterns and conventions used",
+        "model": "ollama",
+        "config": {
+          "tools": ["file_read", "grep", "directory_read", "memory_read"]
+        }
+      }
+    },
+    {
+      "id": "agent-2",
+      "type": "agent",
+      "name": "RLM Deep Analyzer (Kimi)",
+      "position": { "x": 700, "y": 200 },
+      "data": {
+        "systemPrompt": "You are a Deep Code Analysis agent powered by RLM (Recursive Language Model) with Kimi.\n\nRLM gives you a REPL environment where you can write and execute Python code. You have access to:\n- llm_query(prompt): recursively call another LLM to analyze sub-problems\n- FINAL_VAR(value): set your final answer\n- context variable: accumulates knowledge across iterations\n\nYour analysis approach:\n1. Parse the code summary from the previous step\n2. Identify architectural patterns, potential issues, and improvement opportunities\n3. Use llm_query() to deep-dive into specific areas (e.g., \"Analyze error handling in SchemaService\")\n4. Build a structured analysis with evidence from the code\n5. Assess code quality on: correctness, maintainability, performance, security\n\nProduce a comprehensive analysis covering:\n- Architecture overview\n- Strengths and weaknesses\n- Specific code issues with file:line references\n- Improvement recommendations (prioritized)\n- Risk assessment",
+        "model": "rlm:kimi-latest",
+        "userPrompt": "Analyze the following Axolotl code:\\n\\n{{prev_result}}\\n\\nUse recursive reasoning to provide deep insights. Call FINAL_VAR() with your structured analysis.",
+        "config": {
+          "tools": ["memory_read", "memory_write"]
+        }
+      }
+    },
+    {
+      "id": "agent-3",
+      "type": "agent",
+      "name": "Report Generator",
+      "position": { "x": 1000, "y": 200 },
+      "data": {
+        "systemPrompt": "You are a Report Generator. Take the deep analysis from the previous RLM step and format it into a clean, readable Markdown report.\n\nStructure the report as:\n# Code Analysis Report\n\n## Summary\n(2-3 sentence executive summary)\n\n## Architecture Overview\n(Key components and their relationships)\n\n## Findings\n### ✅ Strengths\n### ⚠️ Issues Found\n### 🔧 Improvement Recommendations\n\n## Risk Assessment\n(High/Medium/Low with justification)\n\n## Conclusion\n\nKeep the report concise but thorough. Use bullet points and code references where appropriate.",
+        "model": "ollama",
+        "userPrompt": "Format this analysis into a structured Markdown report:\\n\\n{{prev_result}}",
+        "config": {
+          "tools": []
+        }
+      }
+    },
+    {
+      "id": "out-1",
+      "type": "output",
+      "name": "Analysis Report",
+      "position": { "x": 1300, "y": 200 },
+      "data": {
+        "outputType": "log",
+        "sourceData": "Code analysis complete. See the Report Generator output above for the full analysis."
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "src-1", "target": "agent-1", "type": "data" },
+    { "id": "e2", "source": "agent-1", "target": "agent-2", "type": "data" },
+    { "id": "e3", "source": "agent-2", "target": "agent-3", "type": "data" },
+    { "id": "e4", "source": "agent-3", "target": "out-1", "type": "data" }
+  ]
+}

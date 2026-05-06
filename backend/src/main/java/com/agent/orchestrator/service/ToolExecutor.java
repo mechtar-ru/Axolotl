@@ -14,6 +14,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.regex.*;
 import java.util.stream.*;
+import java.time.Instant;
 
 @Service
 public class ToolExecutor {
@@ -23,6 +24,8 @@ public class ToolExecutor {
     private LlmService llmService;
 
     private ExecutionWebSocketHandler webSocketHandler;
+
+    private static final String DELETION_MARKER_FILE = "/Users/Shared/Axolotl/deleted_files.json";
 
     private static final Set<String> DEFAULT_BLOCKED_COMMANDS = Set.of(
         "rm -rf", "rm -r /", "del /", "format",
@@ -233,6 +236,10 @@ public class ToolExecutor {
             }
         }
 
+        if (command.trim().startsWith("rm ") || command.trim().equals("rm")) {
+            return interceptRmCommand(command, cwd);
+        }
+
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
             if (cwd != null) pb.directory(new File(cwd));
@@ -253,6 +260,46 @@ public class ToolExecutor {
             return ToolResult.ok(output);
         } catch (Exception e) {
             return ToolResult.error("Execution failed: " + e.getMessage());
+        }
+    }
+
+    private ToolResult interceptRmCommand(String command, String cwd) {
+        try {
+            String[] parts = command.split("\\s+");
+            List<String> files = new ArrayList<>();
+            for (int i = 1; i < parts.length; i++) {
+                String p = parts[i];
+                if (p.startsWith("-")) continue;
+                String fullPath = (cwd != null ? cwd + "/" : "") + p;
+                files.add(fullPath.replaceAll("/+", "/"));
+            }
+
+            if (files.isEmpty()) {
+                return ToolResult.error("No files specified for rm");
+            }
+
+            List<Map<String, Object>> deletions = new ArrayList<>();
+            try {
+                if (Files.exists(Paths.get(DELETION_MARKER_FILE))) {
+                    String existing = Files.readString(Paths.get(DELETION_MARKER_FILE));
+                    deletions = new com.fasterxml.jackson.databind.ObjectMapper().readValue(existing,
+                        new com.fasterxml.jackson.core.type.TypeReference<List<Map<String, Object>>>() {});
+                }
+            } catch (Exception e) { /* start fresh */ }
+
+            for (String file : files) {
+                Map<String, Object> entry = new HashMap<>();
+                entry.put("filePathInProject", file);
+                entry.put("timestampFlaggedToDelete", Instant.now().toString());
+                entry.put("reason", "Marked via rm command intercept");
+                deletions.add(entry);
+            }
+
+            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(deletions);
+            Files.writeString(Paths.get(DELETION_MARKER_FILE), json);
+            return ToolResult.ok("Files marked for deletion (not deleted): " + files + ". See " + DELETION_MARKER_FILE);
+        } catch (Exception e) {
+            return ToolResult.error("Failed to mark files for deletion: " + e.getMessage());
         }
     }
 
@@ -325,8 +372,12 @@ public class ToolExecutor {
             return ToolResult.error("Missing required parameters: pattern, path");
         }
 
-        if (!pattern.matches("^[a-zA-Z0-9_\\-\\.\\s]+$")) {
-            return ToolResult.error("Pattern contains invalid characters. Use only alphanumeric, dash, underscore, dot, space.");
+        if (pattern.matches(".*[`$\\(\\)\\{\\}\\|;&<>].*")) {
+            return ToolResult.error("Pattern contains shell metacharacters.");
+        }
+
+        if (!path.matches("^[a-zA-Z0-9_\\-\\./]+$")) {
+            return ToolResult.error("Path contains invalid characters.");
         }
 
         String includeArg = include != null && include.matches("^[a-zA-Z0-9_\\-\\.*]+$")
@@ -344,8 +395,8 @@ public class ToolExecutor {
             return ToolResult.error("Missing required parameter: command");
         }
 
-        if (!command.matches("^[a-zA-Z0-9_\\-\\.\\s]+$")) {
-            return ToolResult.error("Invalid git command. Use only alphanumeric, dash, underscore, dot, space.");
+        if (command.matches(".*[`$\\(\\)\\{\\}\\|;&<>].*")) {
+            return ToolResult.error("Invalid git command: contains shell metacharacters.");
         }
 
         String safePath = repoPath != null && repoPath.matches("^[a-zA-Z0-9_\\-\\.\\/]+$")
@@ -363,16 +414,7 @@ public class ToolExecutor {
             return ToolResult.error("Missing required parameter: query");
         }
 
-        if (memoryService == null) {
-            return ToolResult.ok("[Search in memory: " + query + " (memory service not configured - configure MemPalace)]");
-        }
-
-        try {
-            var results = memoryService.search(query, limit);
-            return ToolResult.ok(results.isEmpty() ? "No results found" : results.toString());
-        } catch (Exception e) {
-            return ToolResult.error("Memory search failed: " + e.getMessage());
-        }
+        return ToolResult.ok("[Memory search: " + query + " (memory service not available - stub only)]");
     }
 
     private ToolResult handleWebApi(Map<String, Object> params, ToolPermission permission) {

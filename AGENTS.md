@@ -10,6 +10,8 @@ scripts/dev.sh start        # Compile + start backend (kills old)
 scripts/dev.sh stop         # Kill backend
 scripts/dev.sh logs [N]     # Tail last N lines
 scripts/dev.sh execute ID   # Execute schema
+scripts/update-graph.sh [path]  # Load/update codebase in Neo4j graph
+scripts/setup-graph-hook.sh   # Install git hook to auto-update graph on commit
 ```
 
 ### Manual Backend
@@ -87,6 +89,16 @@ source .venv/bin/activate && python3 scripts/api.py add-task "Title" "descriptio
 ## Neo4j Graph Storage
 
 See `docs/NEO4J_MIGRATION.md` for Neo4j integration specification.
+
+### Graph Update Helper
+
+After commits or code changes, update the Neo4j graph:
+```bash
+scripts/update-graph.sh [path]     # Load/update codebase (default: backend/src/main/java)
+scripts/setup-graph-hook.sh        # Install git hook for auto-update on commit
+```
+
+The git hook runs `update-graph.sh` in background after each `git commit`.
 
 ### Graph API (Dirac-inspired Features)
 

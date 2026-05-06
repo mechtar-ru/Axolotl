@@ -1,0 +1,116 @@
+{
+  "id": "tpl-refactor-frontend",
+  "name": "Frontend Refactoring",
+  "description": "Self-editing workflow: analyze, refactor, verify and commit frontend code changes using worktree",
+  "version": "1.0",
+  "defaultModel": "ollama",
+  "metadata": {
+    "template": true,
+    "category": "refactoring",
+    "tags": ["frontend", "vue", "refactoring", "self-editing"]
+  },
+  "nodes": [
+    {
+      "id": "src-1",
+      "type": "source",
+      "name": "Refactoring Instruction",
+      "position": { "x": 100, "y": 200 },
+      "data": {
+        "sourceData": "Describe what to refactor in the frontend code. Include target files or directories, the goal of the refactoring, and any constraints.",
+        "sources": [
+          { "id": "instruction", "type": "text", "name": "Instruction", "content": "" }
+        ]
+      }
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Code Analyzer",
+      "position": { "x": 400, "y": 200 },
+      "data": {
+        "systemPrompt": "You are a Code Analyzer agent. Your job is to read and understand the target frontend code structure.\n\nWorkspace is at the worktree path (default: workspacePath).\nAll paths are relative to workspacePath.\n\nFrontend conventions:\n- Vue 3 Composition API with <script setup lang=\"ts\">\n- TypeScript strict mode\n- Pinia stores in src/stores/\n- Components in src/components/\n- Vite build system\n\nUse these tools:\n- file_read: read target files\n- grep: search for patterns across the codebase\n- directory_read: list directory contents\n- memory_read: recall similar past refactorings from MemPalace\n\nReturn a structured analysis: file list, identified issues, suggested approach.",
+        "model": "ollama",
+        "config": {
+          "tools": ["file_read", "grep", "directory_read", "memory_read"]
+        }
+      }
+    },
+    {
+      "id": "agent-2",
+      "type": "agent",
+      "name": "Refactoring Agent",
+      "position": { "x": 700, "y": 200 },
+      "data": {
+        "systemPrompt": "You are a Refactoring Agent. Take the analysis from the previous node and perform the actual code changes.\n\nWorkspace is at the worktree path (default: workspacePath).\nAll paths are relative to workspacePath.\nFrontend conventions:\n- Vue 3 Composition API with <script setup lang=\"ts\">\n- TypeScript strict mode\n- Pinia stores in src/stores/\n- Components in src/components/\n- Match existing code style\n\nUse these tools:\n- file_read: read files before editing\n- file_write: write refactored code\n- file_delete: remove obsolete files\n- file_move: rename/move files\n- grep: verify patterns after changes\n- git: check status, diff, add files (commit happens in a later node)\n\nImportant:\n- Make minimal, focused changes\n- Preserve existing functionality\n- Follow Vue 3 Composition API patterns\n- Run git add on changed files but do NOT commit yet.",
+        "model": "ollama",
+        "config": {
+          "tools": ["file_read", "file_write", "file_delete", "file_move", "grep", "git"]
+        }
+      }
+    },
+    {
+      "id": "agent-3",
+      "type": "agent",
+      "name": "Verification Agent",
+      "position": { "x": 1000, "y": 200 },
+      "data": {
+        "systemPrompt": "You are a Verification Agent. Verify the refactoring didn't break the build.\n\nWorkspace frontend path: workspacePath + \"/frontend\" (default: ./frontend)\n\nUse the verify_build tool to run:\n- npm run build\n- npm run type-check\n\nIf build fails:\n- Analyze the error output\n- Use git tool to revert problematic files: git checkout -- <file>\n- Report what failed and what was reverted\n\nIf build passes:\n- Summarize what was verified\n- Confirm the refactoring is safe to commit",
+        "model": "ollama",
+        "config": {
+          "tools": ["verify_build", "git"]
+        }
+      }
+    },
+    {
+      "id": "cond-1",
+      "type": "condition",
+      "name": "Build Passed?",
+      "position": { "x": 1300, "y": 200 },
+      "data": {
+        "condition": "Check the verification result from the previous node. If it contains BUILD: PASS or similar success indicator, return true. If it contains BUILD: FAIL or errors, return false."
+      }
+    },
+    {
+      "id": "agent-4",
+      "type": "agent",
+      "name": "Commit Agent",
+      "position": { "x": 1600, "y": 100 },
+      "data": {
+        "systemPrompt": "You are a Commit Agent. The refactoring has been verified and the build passes.\n\nWorkspace is at the worktree path.\n\nUse the git tool to:\n1. git add . (stage all changes)\n2. git commit -m \"<descriptive message describing the refactoring>\"\n\nCommit message guidelines:\n- Start with 'refactor(frontend):'\n- Briefly describe what was refactored\n- Mention key changes made\n- Keep it under 50 chars for subject line",
+        "model": "ollama",
+        "config": {
+          "tools": ["git"]
+        }
+      }
+    },
+    {
+      "id": "out-1",
+      "type": "output",
+      "name": "Refactoring Failed",
+      "position": { "x": 1600, "y": 300 },
+      "data": {
+        "outputType": "log",
+        "sourceData": "The refactoring failed verification. See the error details from the Verification Agent above. Files were automatically reverted using git checkout."
+      }
+    },
+    {
+      "id": "out-2",
+      "type": "output",
+      "name": "Refactoring Complete",
+      "position": { "x": 1900, "y": 100 },
+      "data": {
+        "outputType": "log",
+        "sourceData": "Refactoring completed successfully. Build verified. Changes committed to the worktree."
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "src-1", "target": "agent-1", "type": "data" },
+    { "id": "e2", "source": "agent-1", "target": "agent-2", "type": "data" },
+    { "id": "e3", "source": "agent-2", "target": "agent-3", "type": "data" },
+    { "id": "e4", "source": "agent-3", "target": "cond-1", "type": "data" },
+    { "id": "e5", "source": "cond-1", "target": "agent-4", "type": "condition", "sourcePort": "true" },
+    { "id": "e6", "source": "cond-1", "target": "out-1", "type": "condition", "sourcePort": "false" },
+    { "id": "e7", "source": "agent-4", "target": "out-2", "type": "data" }
+  ]
+}

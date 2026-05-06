@@ -16,13 +16,13 @@ public class GraphMcpTools {
 
     public Map<String, Object> loadCodebase(Map<String, Object> args) {
         String path = (String) args.get("path");
-        var response = graphController.loadCodebase(path);
-        return Map.of(
-                "content", List.of(Map.of(
-                        "type", "text",
-                        "text", response.getBody().toString()
-                ))
-        );
+        var response = graphController.loadCodebase(Map.of("path", path));
+        Map<String, Object> result = new HashMap<>();
+        Map<String, Object> contentMap = new HashMap<>();
+        contentMap.put("type", "text");
+        contentMap.put("text", response.getBody() != null ? response.getBody().toString() : "Error");
+        result.put("content", List.of(contentMap));
+        return result;
     }
 
     public Map<String, Object> getClassByHash(Map<String, Object> args) {

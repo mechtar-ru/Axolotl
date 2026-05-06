@@ -71,3 +71,28 @@ Copy `.env.example` to `.env`. Key variables:
 - `VITE_WS_URL` — WebSocket URL (frontend)
 - `SPRING_PROFILE` — Spring profile (`docker` for PostgreSQL)
 - `POSTGRES_*` — PostgreSQL credentials
+
+## Templates
+
+Located in `/templates/`:
+- `ui-ux-review.json` — Analyze frontend codebase and provide UI/UX recommendations
+- `refactor-frontend.json` — Multi-step refactoring workflow
+- `rlm-kimi-code-analysis.json` — Code analysis with RLM
+
+## Graph API (Neo4j Integration)
+
+When Neo4j is enabled (axolotl.graph.enabled=true):
+- `POST /api/graph/load` — Load codebase into Neo4j
+- `GET /api/graph/class/{hash}` — Get class by 16-char hash
+- `POST /api/graph/curate` — Get token-bounded context for LLM
+- `GET /api/graph/tiers` — Get import wave plan
+
+### Agent Tools
+
+New tools available in AgentNode:
+- file_read, file_write, directory_read, grep, git, bash
+- memory_read, memory_write, memory_search
+- web_search, web_fetch, web_api
+- graph_query (Neo4j), mcp_execute
+
+Agent types: assistant, coder, researcher, reviewer, project-analyzer, graph-engineer, mcp-agent
