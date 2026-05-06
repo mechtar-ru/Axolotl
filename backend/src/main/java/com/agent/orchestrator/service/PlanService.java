@@ -1,7 +1,7 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.*;
-import com.agent.orchestrator.repository.PlanRepository;
+import com.agent.orchestrator.graph.repository.Neo4jPlanRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
@@ -17,10 +17,10 @@ public class PlanService {
 
     private static final String DEFAULT_WORKSPACE = "default";
 
-    private final PlanRepository planRepository;
+    private final Neo4jPlanRepository planRepository;
     private final ExecutionWebSocketHandler webSocketHandler;
 
-    public PlanService(PlanRepository planRepository, ExecutionWebSocketHandler webSocketHandler) {
+    public PlanService(Neo4jPlanRepository planRepository, ExecutionWebSocketHandler webSocketHandler) {
         this.planRepository = planRepository;
         this.webSocketHandler = webSocketHandler;
         initDefaultPlan();
@@ -29,7 +29,7 @@ public class PlanService {
     // === Core operations ===
 
     public Plan getPlan(String workspaceId) {
-        Plan plan = planRepository.findByWorkspaceId(workspaceId);
+        Plan plan = planRepository.findFirstByWorkspaceId(workspaceId);
         if (plan == null) {
             plan = createDefaultPlan(workspaceId);
         }
@@ -275,7 +275,7 @@ public class PlanService {
             for (Task dep : new ArrayList<>(dependents)) {
                 deleteTask(workspaceId, dep.getId(), true);
                 // Reload plan after recursive delete
-                plan = planRepository.findByWorkspaceId(workspaceId);
+                plan = planRepository.findFirstByWorkspaceId(workspaceId);
             }
         } else {
             // Remove this task from dependencies of other tasks
@@ -414,7 +414,7 @@ public class PlanService {
 
     protected void initDefaultPlan() {
         try {
-            Plan existing = planRepository.findByWorkspaceId(DEFAULT_WORKSPACE);
+            Plan existing = planRepository.findFirstByWorkspaceId(DEFAULT_WORKSPACE);
             if (existing == null) {
                 createDefaultPlan(DEFAULT_WORKSPACE);
                 log.info("Создан новый план для workspace: {}", DEFAULT_WORKSPACE);
@@ -450,7 +450,8 @@ public class PlanService {
     }
 
     public Plan getPlanBySchemaId(String schemaId) {
-        return planRepository.findBySchemaId(schemaId);
+        List<Plan> plans = planRepository.findBySchemaId(schemaId);
+        return plans.isEmpty() ? null : plans.get(0);
     }
 
     public Plan getPlanById(String planId) {
@@ -458,7 +459,8 @@ public class PlanService {
     }
 
     public Plan importSchemaAsSubPlan(String workspaceId, String parentPlanId, String schemaId) {
-        Plan existing = planRepository.findBySchemaId(schemaId);
+        List<Plan> existingPlans = planRepository.findBySchemaId(schemaId);
+        Plan existing = existingPlans.isEmpty() ? null : existingPlans.get(0);
         if (existing != null) {
             return existing;
         }

@@ -3,7 +3,7 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.*;
-import com.agent.orchestrator.repository.SchemaRepository;
+import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.agent.orchestrator.service.ToolExecutor;
 import com.agent.orchestrator.service.MetricsService;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class SchemaServiceTest {
 
-    @Mock SchemaRepository schemaRepository;
+    @Mock Neo4jSchemaRepository schemaRepository;
     @Mock LlmService llmService;
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock MemPalaceClient memPalaceClient;

@@ -112,14 +112,18 @@ Agent nodes can now query Neo4j directly using `graph_query` tool:
 
 ### SQLite → Neo4j Migration Plan
 
-Current SQLite tables migrated to Neo4j:
-| Table | Status | Notes |
-|-------|--------|-------|
-| schemas | ✅ Done | 16 WorkflowSchema nodes |
-| plans | ✅ Done | 2 Plan nodes |
-| custom_llm_endpoints | ✅ Done | 1 LlmEndpoint node |
-| provider_settings | ✅ Done | 5 ProviderConfig nodes |
-| users | ✅ Done | 3 User nodes (passwords hashed with SHA256) |
+**Dual-DB Architecture:**
+- **SQLite** — operational CRUD (schemas, plans, endpoints, auth)
+- **Neo4j** — graph queries, codebase analysis, AI features
+
+Data was migrated to Neo4j for reference/analysis, but operational services still use SQLite:
+| Table | Neo4j Backup | Operational |
+|-------|--------------|-------------|
+| schemas | ✅ 16 nodes | SQLite |
+| plans | ✅ 2 nodes | SQLite |
+| custom_llm_endpoints | ✅ 1 node | SQLite |
+| provider_settings | ✅ 5 nodes | SQLite |
+| users | ✅ 3 nodes | SQLite (auth) |
 
 **Migration script:** `scripts/migrate-to-neo4j.py`
 ```bash
@@ -129,9 +133,11 @@ python3 scripts/migrate-to-neo4j.py --dry-run  # Preview
 python3 scripts/migrate-to-neo4j.py --skip-auth  # Skip users table
 ```
 
-**Auth data handling:**
-- Passwords: hashed with SHA256 before storing in Neo4j
-- API keys: hashed with SHA256 (plaintext never stored)
+**Neo4j used for:**
+- Codebase graph (classes, methods, relationships)
+- Graph query tool in agent nodes
+- Context curation for LLM prompts
+- Batch planning with import tiers
 
 ### Graph API (Dirac-inspired Features)
 

@@ -11,7 +11,7 @@ import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.Tool.ToolResult;
-import com.agent.orchestrator.repository.SchemaRepository;
+import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
@@ -38,7 +38,7 @@ public class SchemaService {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaService.class);
 
-    private final SchemaRepository schemaRepository;
+    private final Neo4jSchemaRepository schemaRepository;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final MemPalaceClient memPalaceClient;
@@ -59,7 +59,7 @@ public class SchemaService {
     // Convergence monitoring: track consecutive failures per node per execution
     private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
 
-    public SchemaService(SchemaRepository schemaRepository,
+    public SchemaService(Neo4jSchemaRepository schemaRepository,
             LlmService llmService,
             ExecutionWebSocketHandler webSocketHandler,
             MemPalaceClient memPalaceClient,

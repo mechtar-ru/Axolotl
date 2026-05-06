@@ -9,7 +9,8 @@ public class WorkflowSchema {
     private String name;
     private String description;
     private String version = "1.0";
-    private String userId; // Multi-tenancy: owner
+    private String userId;
+    private String workspaceId;
     private String defaultModel;
     private List<Node> nodes;
     private List<Edge> edges;
@@ -32,6 +33,8 @@ public class WorkflowSchema {
 
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
+    public String getWorkspaceId() { return workspaceId; }
+    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
 
     public String getDefaultModel() { return defaultModel; }
     public void setDefaultModel(String defaultModel) { this.defaultModel = defaultModel; }

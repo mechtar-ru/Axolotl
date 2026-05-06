@@ -15,29 +15,19 @@ public class WorkflowSchema {
     @Property("data")
     private String data;
 
-    @Property("createdAt")
-    private String createdAt;
-
-    @Property("updatedAt")
-    private String updatedAt;
-
     @Property("userId")
     private String userId;
 
     @Property("workspaceId")
     private String workspaceId;
 
-    public WorkflowSchema() {}
+    @Property("createdAt")
+    private String createdAt;
 
-    public WorkflowSchema(String id, String name, String data, String createdAt, String updatedAt, String userId, String workspaceId) {
-        this.id = id;
-        this.name = name;
-        this.data = data;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.userId = userId;
-        this.workspaceId = workspaceId;
-    }
+    @Property("updatedAt")
+    private String updatedAt;
+
+    public WorkflowSchema() {}
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -45,12 +35,12 @@ public class WorkflowSchema {
     public void setName(String name) { this.name = name; }
     public String getData() { return data; }
     public void setData(String data) { this.data = data; }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
-    public String getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
     public String getUserId() { return userId; }
     public void setUserId(String userId) { this.userId = userId; }
     public String getWorkspaceId() { return workspaceId; }
     public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+    public String getCreatedAt() { return createdAt; }
+    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    public String getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
 }
