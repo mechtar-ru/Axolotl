@@ -1,6 +1,7 @@
 package com.agent.orchestrator.graph.loader;
 
 import com.agent.orchestrator.graph.hasher.CodeEntityHasher;
+import com.agent.orchestrator.graph.metrics.GraphMetricsService;
 import com.agent.orchestrator.graph.model.*;
 import com.agent.orchestrator.graph.repository.*;
 import com.agent.orchestrator.graph.scheduler.BatchPlanner;
@@ -32,6 +33,7 @@ public class ParallelCodebaseImporter {
     private final CodeFieldRepository fieldRepo;
     private final CodeEntityHasher hasher;
     private final BatchPlanner batchPlanner;
+    private final GraphMetricsService metrics;
     private final JavaParser javaParser;
     private final ExecutorService executor;
 
@@ -41,13 +43,15 @@ public class ParallelCodebaseImporter {
             CodeMethodRepository methodRepo,
             CodeFieldRepository fieldRepo,
             CodeEntityHasher hasher,
-            BatchPlanner batchPlanner) {
+            BatchPlanner batchPlanner,
+            GraphMetricsService metrics) {
         this.packageRepo = packageRepo;
         this.classRepo = classRepo;
         this.methodRepo = methodRepo;
         this.fieldRepo = fieldRepo;
         this.hasher = hasher;
         this.batchPlanner = batchPlanner;
+        this.metrics = metrics;
 
         ParserConfiguration config = new ParserConfiguration().setStoreTokens(true);
         this.javaParser = new JavaParser(config);
@@ -106,6 +110,10 @@ public class ParallelCodebaseImporter {
         long duration = System.currentTimeMillis() - start;
         log.info("Import complete: {} classes, {} methods, {} fields in {}ms",
                 classesLoaded.get(), methodsLoaded.get(), fieldsLoaded.get(), duration);
+
+        if (metrics != null) {
+            metrics.recordImport(duration);
+        }
 
         return new ImportResult(
                 classesLoaded.get(),

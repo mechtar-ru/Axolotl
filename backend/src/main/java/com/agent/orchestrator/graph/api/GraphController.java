@@ -4,6 +4,7 @@ import com.agent.orchestrator.graph.context.ContextCurationService;
 import com.agent.orchestrator.graph.hasher.CodeEntityHasher;
 import com.agent.orchestrator.graph.loader.CodebaseLoader;
 import com.agent.orchestrator.graph.loader.ParallelCodebaseImporter;
+import com.agent.orchestrator.graph.metrics.GraphMetricsService;
 import com.agent.orchestrator.graph.scheduler.BatchPlanner;
 import com.agent.orchestrator.graph.search.AstPatternSearchService;
 import com.agent.orchestrator.graph.model.CodeClass;
@@ -32,6 +33,7 @@ public class GraphController {
     private final AstPatternSearchService astSearch;
     private final BatchPlanner batchPlanner;
     private final ContextCurationService contextCuration;
+    private final GraphMetricsService metrics;
 
     public GraphController(
             CodeClassRepository classRepo,
@@ -41,7 +43,8 @@ public class GraphController {
             CodeEntityHasher hasher,
             AstPatternSearchService astSearch,
             BatchPlanner batchPlanner,
-            ContextCurationService contextCuration) {
+            ContextCurationService contextCuration,
+            GraphMetricsService metrics) {
         this.classRepo = classRepo;
         this.methodRepo = methodRepo;
         this.codebaseLoader = codebaseLoader;
@@ -50,6 +53,7 @@ public class GraphController {
         this.astSearch = astSearch;
         this.batchPlanner = batchPlanner;
         this.contextCuration = contextCuration;
+        this.metrics = metrics;
     }
 
     @PostMapping("/load")
@@ -189,5 +193,22 @@ public class GraphController {
                 "classes", classCount,
                 "methods", methods.size()
         ));
+    }
+
+    @GetMapping("/metrics")
+    public ResponseEntity<Map<String, Object>> getMetrics() {
+        return ResponseEntity.ok(metrics.getSummary());
+    }
+
+    public Map<String, Object> getStatsInternal() {
+        long classCount = classRepo.count();
+        List<CodeMethod> methods = methodRepo.findAll();
+        BatchPlanner.BatchPlan plan = batchPlanner.computeImportTiers();
+        return Map.of(
+                "classes", classCount,
+                "methods", methods.size(),
+                "waves", plan.waves().size(),
+                "totalEntities", plan.totalEntities()
+        );
     }
 }
