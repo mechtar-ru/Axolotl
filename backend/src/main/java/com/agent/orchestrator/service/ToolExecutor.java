@@ -73,6 +73,30 @@ public class ToolExecutor {
             {"type":"object","properties":{"signature":{"type":"string","description":"DSPy signature (e.g. 'input -> output)"},"task":{"type":"string","description":"Task instruction"},"data":{"type":"string","description":"Input data"}},"required":["signature","task","data"]}
             """, ToolCategory.EXECUTION));
 
+        registerTool(new Tool("grep", "Grep", "Search for pattern in files (regex)", """
+            {"type":"object","properties":{"pattern":{"type":"string","description":"Regex pattern"},"path":{"type":"string","description":"Directory to search"},"include":{"type":"string","description":"File pattern (e.g. *.java)"}},"required":["pattern","path"]}
+            """, ToolCategory.FILE_SYSTEM));
+
+        registerTool(new Tool("git", "Git", "Execute git commands", """
+            {"type":"object","properties":{"command":{"type":"string","description":"Git command (status, diff, log, etc.)"},"repoPath":{"type":"string","description":"Repository path"}},"required":["command"]}
+            """, ToolCategory.EXECUTION));
+
+        registerTool(new Tool("memory_search", "Memory Search", "Search memory store by keywords", """
+            {"type":"object","properties":{"query":{"type":"string","description":"Search query"},"limit":{"type":"number","description":"Max results"}},"required":["query"]}
+            """, ToolCategory.MEMORY));
+
+        registerTool(new Tool("web_api", "Web API", "Call REST API with JSON", """
+            {"type":"object","properties":{"url":{"type":"string","description":"API endpoint URL"},"method":{"type":"string","description":"HTTP method (GET, POST, etc.)"},"headers":{"type":"object","description":"Request headers"},"body":{"type":"object","description":"Request body"}},"required":["url"]}
+            """, ToolCategory.HTTP));
+
+        registerTool(new Tool("graph_query", "Graph Query", "Query Neo4j code graph", """
+            {"type":"object","properties":{"query":{"type":"string","description":"Cypher query or natural language"},"type":{"type":"string","description":"Query type (search, curate, impact)"}},"required":["query"]}
+            """, ToolCategory.GRAPH));
+
+        registerTool(new Tool("mcp_execute", "MCP Execute", "Execute MCP tool", """
+            {"type":"object","properties":{"server":{"type":"string","description":"MCP server name"},"tool":{"type":"string","description":"Tool name"},"args":{"type":"object","description":"Tool arguments"}},"required":["server","tool"]}
+            """, ToolCategory.MCP));
+
         handlers.put("file_read", this::handleFileRead);
         handlers.put("file_write", this::handleFileWrite);
         handlers.put("directory_read", this::handleDirectoryRead);
@@ -82,6 +106,12 @@ public class ToolExecutor {
         handlers.put("web_search", this::handleWebSearch);
         handlers.put("web_fetch", this::handleWebFetch);
         handlers.put("rlm_predict", this::handleRlmPredict);
+        handlers.put("grep", this::handleGrep);
+        handlers.put("git", this::handleGit);
+        handlers.put("memory_search", this::handleMemorySearch);
+        handlers.put("web_api", this::handleWebApi);
+        handlers.put("graph_query", this::handleGraphQuery);
+        handlers.put("mcp_execute", this::handleMcpExecute);
     }
 
     public void registerTool(Tool tool) {
@@ -284,6 +314,87 @@ public class ToolExecutor {
         } catch (Exception e) {
             return ToolResult.error("RLM predict failed: " + e.getMessage());
         }
+    }
+
+    private ToolResult handleGrep(Map<String, Object> params, ToolPermission permission) {
+        String pattern = (String) params.get("pattern");
+        String path = (String) params.get("path");
+        String include = (String) params.get("include");
+
+        if (pattern == null || path == null) {
+            return ToolResult.error("Missing required parameters: pattern, path");
+        }
+
+        String cmd = "grep -r" + (include != null ? " --include=" + include : "") + " '" + pattern + "' " + path + " 2>/dev/null | head -50";
+        return handleBash(Map.of("command", cmd, "timeout", 30), permission);
+    }
+
+    private ToolResult handleGit(Map<String, Object> params, ToolPermission permission) {
+        String command = (String) params.get("command");
+        String repoPath = (String) params.get("repoPath");
+
+        if (command == null) {
+            return ToolResult.error("Missing required parameter: command");
+        }
+
+        String fullCmd = "cd " + (repoPath != null ? repoPath : ".") + " && git " + command;
+        return handleBash(Map.of("command", fullCmd, "timeout", 30), permission);
+    }
+
+    private ToolResult handleMemorySearch(Map<String, Object> params, ToolPermission permission) {
+        String query = (String) params.get("query");
+        Integer limit = params.get("limit") != null ? (Integer) params.get("limit") : 10;
+
+        if (query == null) {
+            return ToolResult.error("Missing required parameter: query");
+        }
+
+        if (memoryService == null) {
+            return ToolResult.ok("[Search in memory: " + query + " (memory service not configured - configure MemPalace)]");
+        }
+
+        try {
+            var results = memoryService.search(query, limit);
+            return ToolResult.ok(results.isEmpty() ? "No results found" : results.toString());
+        } catch (Exception e) {
+            return ToolResult.error("Memory search failed: " + e.getMessage());
+        }
+    }
+
+    private ToolResult handleWebApi(Map<String, Object> params, ToolPermission permission) {
+        String url = (String) params.get("url");
+        String method = params.get("method") != null ? (String) params.get("method") : "GET";
+        Object body = params.get("body");
+        Object headers = params.get("headers");
+
+        if (url == null) {
+            return ToolResult.error("Missing required parameter: url");
+        }
+
+        return ToolResult.ok("[Web API call: " + method + " " + url + " - implement with HTTP client]");
+    }
+
+    private ToolResult handleGraphQuery(Map<String, Object> params, ToolPermission permission) {
+        String query = (String) params.get("query");
+        String type = params.get("type") != null ? (String) params.get("type") : "search";
+
+        if (query == null) {
+            return ToolResult.error("Missing required parameter: query");
+        }
+
+        return ToolResult.ok("[Graph query: " + query + " (type: " + type + ") - Neo4j integration required]");
+    }
+
+    private ToolResult handleMcpExecute(Map<String, Object> params, ToolPermission permission) {
+        String server = (String) params.get("server");
+        String tool = (String) params.get("tool");
+        Object args = params.get("args");
+
+        if (server == null || tool == null) {
+            return ToolResult.error("Missing required parameters: server, tool");
+        }
+
+        return ToolResult.ok("[MCP execute: " + server + ":" + tool + " - implement with MCP client]");
     }
 
     @FunctionalInterface

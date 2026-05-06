@@ -45,6 +45,8 @@ public class Tool {
         EXECUTION,
         MEMORY,
         HTTP,
+        GRAPH,
+        MCP,
         CUSTOM
     }
 
