@@ -1,0 +1,14 @@
+# Evolve Manifest
+# Records each component edit with prediction
+
+edits:
+  - id: "evolve-1777890144425"
+    type: "improvement"
+    description: "Add retry for bash timeout"
+    files: [[harness/middleware/retry.py]]
+    prediction:
+      fixes: []
+      regresses: []
+    rationale: "Terminal-Bench logs show 3 bash timeouts"
+    status: "pending"
+

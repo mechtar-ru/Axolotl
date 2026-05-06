@@ -24,6 +24,12 @@ spring:
           model: gpt-4o
           temperature: 0.7
 
+  neo4j:
+    uri: ${NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${NEO4J_USERNAME:neo4j}
+      password: ${NEO4J_PASSWORD:neo4j}
+
 axolotl:
   db:
     path: ${AXOLOTL_DB_PATH:schema.db}
@@ -45,6 +51,8 @@ axolotl:
   mempalace:
     base-url: ${AXOLOTL_MEMPALACE_URL:http://localhost:5890}
     enabled: ${AXOLOTL_MEMPALACE_ENABLED:false}
+  graph:
+    enabled: ${AXOLOTL_GRAPH_ENABLED:true}
 
 # OpenAPI / Swagger
 springdoc:

@@ -1,0 +1,1 @@
+{"runId":"test-schema_1777889979078","schemaId":"test-schema","timestamp":"Mon May 04 13:19:39 MSK 2026","outcome":"PASS","rootCause":"","toolCalls":[{"tool":"bash","args":"ls","result":"files listed"}],"tokensUsed":1500,"durationMs":5000}

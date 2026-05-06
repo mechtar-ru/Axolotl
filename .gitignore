@@ -35,3 +35,7 @@ dist-electron/
 # OS
 Thumbs.db
 .DS_Store
+
+# Test instances
+backend-next/
+frontend-next/

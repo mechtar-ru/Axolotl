@@ -1,0 +1,31 @@
+# Axolotl Tool Specifications
+# Each tool has: id, name, description, parameters (JSON Schema)
+tools:
+  - id: file_read
+    name: Read File
+    description: Read contents of a file
+    parameters:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Path to file
+      required: [path]
+  - id: file_write
+    name: Write File
+    description: Write content to a file
+  - id: bash
+    name: Bash
+    description: Execute a bash command
+  - id: memory_read
+    name: Memory Read
+    description: Query from memory store
+  - id: memory_write
+    name: Memory Write
+    description: Write to memory store
+  - id: web_search
+    name: Web Search
+    description: Search the web
+  - id: web_fetch
+    name: Web Fetch
+    description: Fetch a URL
