@@ -6,6 +6,9 @@ import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.agent.orchestrator.llm.LlmService;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Result;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -22,6 +25,7 @@ public class ToolExecutor {
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
     private final ExecutorService executorService = Executors.newCachedThreadPool();
     private LlmService llmService;
+    private Driver neo4jDriver;
 
     private ExecutionWebSocketHandler webSocketHandler;
 
@@ -37,6 +41,15 @@ public class ToolExecutor {
 
     public ToolExecutor() {
         registerDefaultTools();
+    }
+
+    public void setNeo4jDriver(Driver driver) {
+        this.neo4jDriver = driver;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setNeo4jDriverAuto(Driver driver) {
+        this.neo4jDriver = driver;
     }
 
     private void registerDefaultTools() {
@@ -438,7 +451,30 @@ public class ToolExecutor {
             return ToolResult.error("Missing required parameter: query");
         }
 
-        return ToolResult.ok("[Graph query: " + query + " (type: " + type + ") - Neo4j integration required]");
+        if (neo4jDriver == null) {
+            return ToolResult.error("Neo4j driver not configured");
+        }
+
+        try (Session session = neo4jDriver.session()) {
+            Result result = session.run(query);
+            List<String> rows = new ArrayList<>();
+            while (result.hasNext()) {
+                var record = result.next();
+                StringBuilder sb = new StringBuilder();
+                for (var key : record.keys()) {
+                    if (sb.length() > 0) sb.append(" | ");
+                    sb.append(key).append(": ").append(record.get(key));
+                }
+                rows.add(sb.toString());
+            }
+
+            if (rows.isEmpty()) {
+                return ToolResult.ok("No results found for query: " + query);
+            }
+            return ToolResult.ok("Results (" + rows.size() + "):\n" + String.join("\n", rows));
+        } catch (Exception e) {
+            return ToolResult.error("Graph query failed: " + e.getMessage());
+        }
     }
 
     private ToolResult handleMcpExecute(Map<String, Object> params, ToolPermission permission) {

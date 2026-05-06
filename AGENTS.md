@@ -100,6 +100,27 @@ scripts/setup-graph-hook.sh        # Install git hook for auto-update on commit
 
 The git hook runs `update-graph.sh` in background after each `git commit`.
 
+### Graph Query Tool (for Agent Nodes)
+
+Agent nodes can now query Neo4j directly using `graph_query` tool:
+```json
+{
+  "query": "MATCH (c:Class) RETURN c.name LIMIT 10",
+  "type": "search"
+}
+```
+
+### SQLite → Neo4j Migration Plan
+
+Current SQLite tables to migrate to Neo4j:
+| Table | Status | Notes |
+|-------|--------|-------|
+| schemas | 🔄 Pending | Store as workflow nodes with edge dependencies |
+| plans | 🔄 Pending | Store as task nodes with plan relationships |
+| custom_llm_endpoints | 🔄 Pending | Store as LLM provider nodes |
+| provider_settings | 🔄 Pending | Store as config nodes |
+| users | ❌ Keep | Auth data, remains in SQLite |
+
 ### Graph API (Dirac-inspired Features)
 
 #### Endpoints
