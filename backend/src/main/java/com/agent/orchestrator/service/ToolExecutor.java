@@ -325,7 +325,14 @@ public class ToolExecutor {
             return ToolResult.error("Missing required parameters: pattern, path");
         }
 
-        String cmd = "grep -r" + (include != null ? " --include=" + include : "") + " '" + pattern + "' " + path + " 2>/dev/null | head -50";
+        if (!pattern.matches("^[a-zA-Z0-9_\\-\\.\\s]+$")) {
+            return ToolResult.error("Pattern contains invalid characters. Use only alphanumeric, dash, underscore, dot, space.");
+        }
+
+        String includeArg = include != null && include.matches("^[a-zA-Z0-9_\\-\\.*]+$")
+            ? " --include=" + include
+            : "";
+        String cmd = "grep -rE" + includeArg + " \"" + pattern + "\" " + path + " 2>/dev/null | head -50";
         return handleBash(Map.of("command", cmd, "timeout", 30), permission);
     }
 
@@ -337,7 +344,14 @@ public class ToolExecutor {
             return ToolResult.error("Missing required parameter: command");
         }
 
-        String fullCmd = "cd " + (repoPath != null ? repoPath : ".") + " && git " + command;
+        if (!command.matches("^[a-zA-Z0-9_\\-\\.\\s]+$")) {
+            return ToolResult.error("Invalid git command. Use only alphanumeric, dash, underscore, dot, space.");
+        }
+
+        String safePath = repoPath != null && repoPath.matches("^[a-zA-Z0-9_\\-\\.\\/]+$")
+            ? repoPath
+            : ".";
+        String fullCmd = "cd " + safePath + " && git " + command;
         return handleBash(Map.of("command", fullCmd, "timeout", 30), permission);
     }
 
