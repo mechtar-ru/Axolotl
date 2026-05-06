@@ -37,17 +37,32 @@
             ＋ Добавить <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>
           </button>
           <div v-if="showAddMenu" class="add-dropdown">
-            <button @click="addNode('source'); showAddMenu = false">📥 Source</button>
-            <button @click="addNode('agent'); showAddMenu = false">🤖 Agent</button>
-            <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
-            <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
-            <button @click="addNode('output'); showAddMenu = false">📤 Output</button>
-            <button @click="addNode('guardrail'); showAddMenu = false">🛡️ Guardrail</button>
-            <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
-            <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
-            <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
-            <button @click="addNode('schemabuilder'); showAddMenu = false">🏗️ SchemaBuilder</button>
-            <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Данные</div>
+              <button @click="addNode('source'); showAddMenu = false">📥 Source</button>
+              <button @click="addNode('output'); showAddMenu = false">📤 Output</button>
+            </div>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Агенты</div>
+              <button @click="addNode('agent'); showAddMenu = false">🤖 Agent</button>
+              <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
+            </div>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Логика</div>
+              <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
+              <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
+              <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
+            </div>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Интеграция</div>
+              <button @click="addNode('guardrail'); showAddMenu = false">🛡️ Guardrail</button>
+              <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
+              <button @click="addNode('schemabuilder'); showAddMenu = false">🏗️ SchemaBuilder</button>
+            </div>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Утилиты</div>
+              <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
+            </div>
           </div>
         </div>
         <div class="toolbar-separator"></div>
@@ -1431,6 +1446,23 @@ function ungroupSelectedNode() {
 
 .add-dropdown button:hover {
   background: var(--bg-hover, #3d3d5c);
+}
+.add-dropdown .dropdown-section {
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+.add-dropdown .dropdown-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+.add-dropdown .dropdown-section-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted, #666);
+  padding: 4px 8px;
+  letter-spacing: 0.5px;
 }
 
 .execution-panel {

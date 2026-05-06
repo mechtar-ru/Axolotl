@@ -65,10 +65,12 @@
             <option value="researcher">Исследователь</option>
             <option value="reviewer">Ревьюер</option>
             <option value="project-analyzer">Анализатор проекта</option>
+            <option value="graph-engineer">Инженер графа</option>
+            <option value="mcp-agent">MCP агент</option>
             <option value="custom">Свой</option>
           </select>
           <div class="tools-checklist">
-            <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox">
+            <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox" :title="tool.desc">
               <input
                 type="checkbox"
                 :checked="localEnabledTools?.includes(tool.id)"
@@ -169,23 +171,30 @@ const localEnabledTools = ref<string[]>(props.data.enabledTools || []);
 const localMaxToolCalls = ref(props.data.maxToolCalls || 10);
 
 const availableTools = [
-  { id: 'file_read', name: 'Чтение файла', icon: '📄', category: 'file' },
-  { id: 'file_write', name: 'Запись файла', icon: '💾', category: 'file' },
-  { id: 'directory_read', name: 'Список файлов', icon: '📁', category: 'file' },
-  { id: 'bash', name: 'Bash', icon: '⌨️', category: 'exec' },
-  { id: 'memory_read', name: 'Чтение памяти', icon: '🧠', category: 'memory' },
-  { id: 'memory_write', name: 'Запись в память', icon: '💭', category: 'memory' },
-  { id: 'web_search', name: 'Веб-поиск', icon: '🔍', category: 'web' },
-  { id: 'web_fetch', name: 'Загрузка URL', icon: '🌐', category: 'web' },
-  { id: 'web_parse_html', name: 'HTML парсинг', icon: '📝', category: 'web' },
+  { id: 'file_read', name: 'Чтение файла', icon: '📄', category: 'file', desc: 'Читать содержимое файлов' },
+  { id: 'file_write', name: 'Запись файла', icon: '💾', category: 'file', desc: 'Создавать и изменять файлы' },
+  { id: 'directory_read', name: 'Список файлов', icon: '📁', category: 'file', desc: 'Просмотр структуры директорий' },
+  { id: 'grep', name: 'Поиск в файлах', icon: '🔎', category: 'file', desc: 'Поиск текста по файлам (regex)' },
+  { id: 'git', name: 'Git', icon: '🔀', category: 'exec', desc: 'Git операции (status, diff, log)' },
+  { id: 'bash', name: 'Bash', icon: '⌨️', category: 'exec', desc: 'Выполнение shell команд' },
+  { id: 'memory_read', name: 'Чтение памяти', icon: '🧠', category: 'memory', desc: 'Читать из памяти агента' },
+  { id: 'memory_write', name: 'Запись в память', icon: '💭', category: 'memory', desc: 'Сохранять в память агента' },
+  { id: 'memory_search', name: 'Поиск в памяти', icon: '🔍', category: 'memory', desc: 'Поиск по ключевым словам' },
+  { id: 'web_search', name: 'Веб-поиск', icon: '🔍', category: 'web', desc: 'Поиск в интернете' },
+  { id: 'web_fetch', name: 'Загрузка URL', icon: '🌐', category: 'web', desc: 'Скачать содержимое страницы' },
+  { id: 'web_api', name: 'Web API', icon: '🌍', category: 'web', desc: 'Вызов REST API (JSON)' },
+  { id: 'graph_query', name: 'Граф кода', icon: '🔗', category: 'graph', desc: 'Запросы к Neo4j графу' },
+  { id: 'mcp_execute', name: 'MCP Tools', icon: '🔌', category: 'mcp', desc: 'Выполнение MCP инструментов' },
 ];
 
 const agentTypePresets: Record<string, { tools: string[], systemPrompt: string }> = {
   assistant: { tools: [], systemPrompt: 'Ты ассистент.' },
-  coder: { tools: ['file_read', 'file_write', 'bash'], systemPrompt: 'Ты программист. Пиши чистый код с тестами.' },
-  researcher: { tools: ['web_search', 'web_fetch', 'directory_read'], systemPrompt: 'Ты исследователь. Собирай информацию и анализируй.' },
-  reviewer: { tools: ['file_read', 'directory_read', 'bash'], systemPrompt: 'Ты ревьюер. Анализируй код, ищи баги и улучшения.' },
-  'project-analyzer': { tools: ['directory_read', 'file_read', 'memory_write'], systemPrompt: 'Ты аналитик проекта. Анализируй архитектуру, зависимости, паттерны. Предлагай улучшения.' },
+  coder: { tools: ['file_read', 'file_write', 'bash', 'grep'], systemPrompt: 'Ты программист. Пиши чистый код с тестами. Используй grep для поиска.' },
+  researcher: { tools: ['web_search', 'web_fetch', 'web_api', 'directory_read'], systemPrompt: 'Ты исследователь. Собирай информацию, анализируй данные из API.' },
+  reviewer: { tools: ['file_read', 'directory_read', 'git', 'bash'], systemPrompt: 'Ты ревьюер. Анализируй код, ищи баги, проверяй git diff.' },
+  'project-analyzer': { tools: ['directory_read', 'file_read', 'grep', 'memory_write'], systemPrompt: 'Ты аналитик проекта. Анализируй архитектуру, зависимости, паттерны. Предлагай улучшения.' },
+  'graph-engineer': { tools: ['directory_read', 'file_read', 'graph_query', 'memory_write'], systemPrompt: 'Ты инженер графа кода. Используй Neo4j для анализа структуры проекта, поиска зависимостей, хэш-анкорных правок.' },
+  'mcp-agent': { tools: ['mcp_execute', 'memory_read', 'memory_write'], systemPrompt: 'Ты MCP агент. Выполняй инструменты через MCP протокол. Координируй работу с внешними сервисами.' },
 };
 
 onMounted(async () => {
