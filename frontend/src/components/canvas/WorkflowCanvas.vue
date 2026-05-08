@@ -1,7 +1,17 @@
 <template>
   <div class="canvas-container">
-    <div class="schema-name" @click="editSchemaName">
-      <span class="schema-title" @click.stop="editSchemaName">📝 {{ schema.name }}</span>
+    <div class="schema-name">
+      <template v-if="showRenameInput">
+        <input
+          v-model="renameValue"
+          class="schema-rename-input"
+          @keydown.enter="confirmRename"
+          @keydown.escape="cancelRename"
+          @blur="confirmRename"
+          @click.stop
+        />
+      </template>
+      <span v-else class="schema-title" @click.stop="editSchemaName">📝 {{ schema.name }}</span>
       <div class="schema-actions" @click.stop>
         <select v-model="executionMode" class="mode-selector" title="Режим выполнения">
           <option value="EXECUTE">▶️ Execute</option>
@@ -1074,12 +1084,30 @@ function onNodeDragStop(event: NodeDragEvent) {
 
 // === Auto-save on node data changes (debounced) ===
 
+const showRenameInput = ref(false);
+const renameValue = ref('');
+
 function editSchemaName() {
-  const newName = prompt('Введите новое имя схемы:', props.schema.name);
-  if (newName && newName.trim()) {
+  renameValue.value = props.schema.name;
+  showRenameInput.value = true;
+  nextTick(() => {
+    const input = document.querySelector<HTMLInputElement>('.schema-rename-input');
+    input?.focus();
+    input?.select();
+  });
+}
+
+function confirmRename() {
+  const newName = renameValue.value.trim();
+  if (newName && newName !== props.schema.name) {
     pushUndo();
-    emit('update', { ...props.schema, name: newName.trim() });
+    emit('update', { ...props.schema, name: newName });
   }
+  showRenameInput.value = false;
+}
+
+function cancelRename() {
+  showRenameInput.value = false;
 }
 
 // === PNG/SVG Export ===
@@ -1310,6 +1338,21 @@ function ungroupSelectedNode() {
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+}
+.schema-rename-input {
+  font-size: inherit;
+  font-weight: 700;
+  font-family: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  width: 200px;
+}
+.schema-rename-input:focus {
+  border-color: #42b883;
 }
 
 .schema-actions {
