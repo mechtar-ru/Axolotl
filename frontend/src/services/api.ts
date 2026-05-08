@@ -19,25 +19,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-login as tech user on 401, redirect to /login on second failure
+// On 401, clear auth state and redirect to login
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
-    if (error.response?.status === 401 && !originalRequest._retried) {
-      originalRequest._retried = true;
-      try {
-        const res = await api.post('/auth/login', { username: 'tech', password: 'tech' });
-        const token = res.data.token;
-        localStorage.setItem('axolotl_token', token);
-        localStorage.setItem('axolotl_username', 'tech');
-        localStorage.setItem('axolotl_role', 'tech');
-        originalRequest.headers.Authorization = `Bearer ${token}`;
-        return api(originalRequest);
-      } catch {
-        localStorage.removeItem('axolotl_token');
-        localStorage.removeItem('axolotl_username');
-        localStorage.removeItem('axolotl_role');
+    if (error.response?.status === 401) {
+      localStorage.removeItem('axolotl_token');
+      localStorage.removeItem('axolotl_username');
+      localStorage.removeItem('axolotl_role');
+      // Avoid redirect loop if already on login page
+      if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
     }

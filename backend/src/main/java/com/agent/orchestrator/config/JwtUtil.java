@@ -18,9 +18,7 @@ import java.util.Date;
 public class JwtUtil {
 
     private static final Logger log = LoggerFactory.getLogger(JwtUtil.class);
-    private static final String DEFAULT_SECRET = "axolotl-secret-key-must-be-at-least-32-chars-long-for-hs256";
-
-    @Value("${axolotl.jwt.secret}")
+    @Value("${axolotl.jwt.secret:}")
     private String secret;
 
     @Value("${axolotl.jwt.expiration:86400000}")

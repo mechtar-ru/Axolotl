@@ -269,7 +269,7 @@ function redo() {
 
 const schemaStore = useSchemaStore();
 const toast = useToast();
-const { connect, disconnect, isConnected } = useWebSocket();
+const { connect, connectAsync, disconnect, isConnected } = useWebSocket();
 const isExecuting = ref(false);
 const executionMode = ref<ExecutionMode>(schemaStore.executionMode);
 watch(executionMode, (mode) => schemaStore.setExecutionMode(mode));
@@ -311,7 +311,9 @@ onMounted(async () => {
       }
     }
     defaultModelOptions.value = opts;
-  } catch {}
+  } catch (e) {
+    console.warn('Failed to load providers for model selector:', e);
+  }
 });
 
 function updateSchemaDefaultModel() {
@@ -449,11 +451,9 @@ function deleteEdge(edgeId: string) {
 }
 
 function onNodeClick(event: NodeMouseEvent) {
-  console.log('Node clicked:', event.node.id);
   ctxMenu.value.visible = false;
   const nodeId = event.node.id;
   if (event.event?.shiftKey) {
-    // Multi-select with Shift+click
     const newSet = new Set(selectedNodeIds.value);
     if (newSet.has(nodeId)) newSet.delete(nodeId);
     else newSet.add(nodeId);
@@ -463,7 +463,13 @@ function onNodeClick(event: NodeMouseEvent) {
   }
   selectedNodeId.value = nodeId;
   selectedEdgeId.value = null;
-  convertToFlowElements();
+  // Update selection class on elements without full rebuild
+  elements.value = elements.value.map(el => {
+    if ('position' in el) {
+      return { ...el, selected: (el as any).id === nodeId };
+    }
+    return { ...el, selected: (el as any).id === selectedEdgeId.value };
+  });
 }
 
 function onEdgeClick(event: EdgeMouseEvent) {
@@ -535,10 +541,14 @@ function onNodeContextMenu(event: NodeMouseEvent) {
 function startRenameFromCtx() {
   ctxMenu.value.visible = false;
   const nodeId = ctxMenu.value.nodeId;
-  const el = elements.value.find((e: any) => e.id === nodeId);
-  if (el && (el as any).data?.onRename) {
-    const newName = prompt('Новое имя:', (el as any).data?.name || '');
-    if (newName?.trim()) (el as any).data.onRename(newName.trim());
+  const node = (props.schema.nodes || []).find(n => n.id === nodeId);
+  if (!node) return;
+  const newName = prompt('Новое имя:', node.name || '');
+  if (newName?.trim()) {
+    const updatedNodes = (props.schema.nodes || []).map(n =>
+      n.id === nodeId ? { ...n, name: newName.trim() } : n
+    );
+    emit('update', { ...props.schema, nodes: updatedNodes });
   }
 }
 
@@ -846,7 +856,7 @@ async function executeSchema() {
 
   try {
     console.log('🔌 Подключение к WebSocket...');
-    connect(props.schema.id, {
+    await connectAsync(props.schema.id, {
       onProgress: (data) => {
         console.log('📊 Progress callback:', data);
         updateNodeProgress(data.nodeId, data.status, data.progress);
@@ -883,10 +893,9 @@ async function executeSchema() {
       },
       onMetrics: (data) => {
         console.log('📈 Metrics callback:', data);
-        // Обновляем локальные метрики из WebSocket
         totalNodes.value = data.totalNodes;
         completedNodes.value = data.completedNodes;
-        elapsedSeconds.value = data.elapsedTime / 1000; // конвертируем в секунды
+        elapsedSeconds.value = data.elapsedTime / 1000;
         executionProgress.value = data.totalNodes > 0 ? (data.completedNodes / data.totalNodes) * 100 : 100;
       },
       onWave: (data: { waveNumber: number; nodeIds: string[]; status: string }) => {
@@ -905,7 +914,6 @@ async function executeSchema() {
         pushLog(`Время: ${data.durationMs}мс`, 'info', data.nodeId);
       },
       onToken: (data) => {
-        // Append streaming tokens to node result in real-time, show typing animation
         const updatedNodes = (props.schema.nodes || []).map(n => {
           if (n.id === data.nodeId) {
             const currentResult = n.data?.result || '';
@@ -926,15 +934,6 @@ async function executeSchema() {
         }
       },
     });
-
-    console.log('⏳ Ожидание подключения WebSocket...');
-    const wsTimeout = Date.now() + 5000;
-    while (!isConnected.value) {
-      if (Date.now() > wsTimeout) {
-        throw new Error('WebSocket connection timeout');
-      }
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
     console.log('✅ WebSocket подключен, отправка запроса на выполнение...');
 
     console.log('📤 Отправка запроса на выполнение...');

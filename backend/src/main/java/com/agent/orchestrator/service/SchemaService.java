@@ -21,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.graalvm.polyglot.Context;
-import org.graalvm.polyglot.Value;
 
 import java.time.Instant;
 import java.util.*;
@@ -51,6 +50,7 @@ public class SchemaService {
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> nodeResults = new ConcurrentHashMap<>();
     private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
+    private final Object executionHistoryLock = new Object();
     private static final int MAX_HISTORY = 100;
     private static final int MAX_NODE_RESTARTS = 3;
     private final ExecutorService executionExecutor = Executors.newFixedThreadPool(
@@ -88,11 +88,21 @@ public class SchemaService {
     }
 
     public List<WorkflowSchema> getAllSchemas() {
-        return schemaRepository.findAll();
+        log.info("getAllSchemas() called - fetching from Neo4j");
+        List<WorkflowSchema> schemas = schemaRepository.findAll();
+        log.info("Returned {} schemas from repository", schemas.size());
+        return schemas;
     }
 
     public List<WorkflowSchema> getSchemasByUserId(String userId) {
-        return schemaRepository.findByUserId(userId);
+        if (userId != null && !userId.isBlank()) {
+            List<WorkflowSchema> userSchemas = schemaRepository.findByUserId(userId);
+            if (!userSchemas.isEmpty()) {
+                return userSchemas;
+            }
+        }
+        // Fallback: return all schemas (single-user or admin mode)
+        return schemaRepository.findAll();
     }
 
     public WorkflowSchema getSchema(String id) {
@@ -399,18 +409,22 @@ public class SchemaService {
     }
 
     public List<ExecutionRecord> getExecutionHistory(String schemaId) {
-        return executionHistory.stream()
-                .filter(r -> schemaId.equals(r.getSchemaId()))
-                .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
-                .limit(50)
-                .collect(Collectors.toList());
+        synchronized (executionHistoryLock) {
+            return executionHistory.stream()
+                    .filter(r -> schemaId.equals(r.getSchemaId()))
+                    .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
+                    .limit(50)
+                    .collect(Collectors.toList());
+        }
     }
 
     public List<ExecutionRecord> getAllExecutionHistory() {
-        return executionHistory.stream()
-                .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
-                .limit(50)
-                .collect(Collectors.toList());
+        synchronized (executionHistoryLock) {
+            return executionHistory.stream()
+                    .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
+                    .limit(50)
+                    .collect(Collectors.toList());
+        }
     }
 
     private void recordExecution(WorkflowSchema schema, long startTime, long totalTimeMs,
@@ -698,9 +712,9 @@ public class SchemaService {
         try (Context ctx = Context.newBuilder("js")
                 .allowAllAccess(false)
                 .build()) {
-            Value bindings = ctx.getBindings("js");
+            org.graalvm.polyglot.Value bindings = ctx.getBindings("js");
             context.forEach(bindings::putMember);
-            Value result = ctx.eval("js", "Boolean(" + expression + ")");
+            org.graalvm.polyglot.Value result = ctx.eval("js", "Boolean(" + expression + ")");
             return result.asBoolean();
         } catch (Exception e) {
             log.error("Ошибка вычисления условия '{}': {}", expression, e.getMessage());
@@ -714,15 +728,19 @@ public class SchemaService {
             return results;
         }
         Map<String, String> cached = nodeResults.getOrDefault(schema.getId(), Map.of());
+        log.info("collectPredecessorResults: cached size for {} = {}", schema.getId(), cached.size());
+        
         for (Edge edge : schema.getEdges()) {
             if (nodeId.equals(edge.getTarget())) {
                 String sourceId = edge.getSource();
                 // Check in-memory cache first, then fall back to node data
                 String result = cached.get(sourceId);
+                log.info("collectPredecessorResults: edge {}->{}, cached result: {}", sourceId, nodeId, result != null ? result.substring(0, Math.min(100, result.length())) : "null");
                 if (result == null) {
                     for (Node n : schema.getNodes()) {
                         if (sourceId.equals(n.getId()) && n.getData() != null && n.getData().getResult() != null) {
                             result = n.getData().getResult();
+                            log.info("collectPredecessorResults: fallback to node data for {}, len={}", sourceId, result.length());
                             break;
                         }
                     }
@@ -1082,15 +1100,20 @@ public class SchemaService {
 
             } else if ("fallback".equals(node.getType())) {
                 // Fallback: execute only if predecessor failed
-                var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
+                WorkflowSchema fallbackSchema = schemaRepository.findById(schemaId);
+                var predResults = collectPredecessorResults(fallbackSchema, node.getId());
                 // Check if any predecessor failed
                 boolean predecessorFailed = false;
-                if (schemaRepository.findById(schemaId).getNodes() != null) {
-                    for (Edge edge : schemaRepository.findById(schemaId).getEdges()) {
-                        if (node.getId().equals(edge.getTarget())) {
-                            for (Node n : schemaRepository.findById(schemaId).getNodes()) {
-                                if (n.getId().equals(edge.getSource()) && n.getStatus() == Node.NodeStatus.FAILED) {
-                                    predecessorFailed = true;
+                if (fallbackSchema != null && fallbackSchema.getNodes() != null) {
+                    List<Node> fallbackNodes = fallbackSchema.getNodes();
+                    List<Edge> fallbackEdges = fallbackSchema.getEdges();
+                    if (fallbackEdges != null) {
+                        for (Edge edge : fallbackEdges) {
+                            if (node.getId().equals(edge.getTarget())) {
+                                for (Node n : fallbackNodes) {
+                                    if (n.getId().equals(edge.getSource()) && n.getStatus() == Node.NodeStatus.FAILED) {
+                                        predecessorFailed = true;
+                                    }
                                 }
                             }
                         }
@@ -1123,12 +1146,12 @@ public class SchemaService {
                 webSocketHandler.sendResult(schemaId, node.getId(), result);
             }
 
-            // Store result on node data for downstream nodes
+            // Store result in cache first (thread-safe), then on node data
+            nodeResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                    .put(node.getId(), result);
             if (node.getData() != null) {
                 node.getData().setResult(result);
             }
-            nodeResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
-                    .put(node.getId(), result);
 
             // 100%: Завершено
             if (webSocketHandler != null) {
@@ -1609,10 +1632,20 @@ private String executeAgentNode(Node node, String schemaId) {
         ToolPermission permission = null;
         if (node.getData().getToolPermissions() != null) {
             for (ToolPermission tp : node.getData().getToolPermissions()) {
-                if (tp.getToolId().equals(toolId)) {
+                // Handle null toolId - try matching by index or enabled tools
+                if (tp.getToolId() != null && tp.getToolId().equals(toolId)) {
                     permission = tp;
                     break;
                 }
+            }
+        }
+
+        // Fallback: if no permission found but toolId is in enabledTools, create permission
+        if (permission == null) {
+            List<String> enabledTools = node.getData().getEnabledTools();
+            if (enabledTools != null && enabledTools.contains(toolId)) {
+                permission = new ToolPermission(toolId);
+                permission.setEnabled(true);
             }
         }
 
@@ -1672,6 +1705,24 @@ private String executeAgentNode(Node node, String schemaId) {
         return result;
     }
 
+    private static final java.util.Set<String> BLOCKED_COMMAND_PATTERNS = java.util.Set.of(
+            "rm -rf /", "mkfs", "dd if=", ":(){ :|:&", "> /dev/sd", "format ", "del /f /s /q c:",
+            "shutdown", "reboot", "init 0", "init 6", "halt", "poweroff");
+
+    private String sanitizeCommand(String command) {
+        String lower = command.toLowerCase().trim();
+        for (String blocked : BLOCKED_COMMAND_PATTERNS) {
+            if (lower.contains(blocked.toLowerCase())) {
+                throw new SecurityException("Command blocked: contains dangerous pattern '" + blocked + "'");
+            }
+        }
+        // Block shell expansions that can escape sandboxing
+        if (lower.contains("$(rm ") || lower.contains("`rm ") || lower.contains("/dev/null >")) {
+            throw new SecurityException("Command blocked: contains dangerous shell expansion");
+        }
+        return command;
+    }
+
     private String executeCommandNode(Node node, String schemaId) {
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Выполнение команды");
@@ -1686,6 +1737,15 @@ private String executeAgentNode(Node node, String schemaId) {
 
         if (command == null || command.isBlank()) {
             return "Ошибка: команда не указана";
+        }
+
+        try {
+            command = sanitizeCommand(command);
+        } catch (SecurityException e) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "error", "Command blocked: " + e.getMessage(), node.getId());
+            }
+            return "Blocked: " + e.getMessage();
         }
 
         try {
@@ -1736,6 +1796,21 @@ private String executeAgentNode(Node node, String schemaId) {
         }
     }
 
+    @org.springframework.beans.factory.annotation.Value("${axolotl.sandbox.allowedWriteDirs:.}")
+    private java.util.List<String> allowedWriteDirs;
+
+    private boolean isPathAllowed(String filePath) {
+        if (allowedWriteDirs == null || allowedWriteDirs.isEmpty()) return true; // no restrictions configured
+        try {
+            java.nio.file.Path resolved = java.nio.file.Path.of(filePath).toAbsolutePath().normalize();
+            for (String dir : allowedWriteDirs) {
+                java.nio.file.Path allowedBase = java.nio.file.Path.of(dir).toAbsolutePath().normalize();
+                if (resolved.startsWith(allowedBase)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
     private String executeFileWriteNode(Node node, String schemaId) {
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Запись в файл");
@@ -1748,6 +1823,16 @@ private String executeAgentNode(Node node, String schemaId) {
 
         if (filePath == null || filePath.isBlank()) {
             return "Ошибка: путь к файлу не указан";
+        }
+
+        // Block path traversal
+        String normalizedPath = java.nio.file.Path.of(filePath).toAbsolutePath().normalize().toString();
+        if (filePath.contains("..") || !isPathAllowed(normalizedPath)) {
+            String msg = "Access denied: path outside allowed directories — " + filePath;
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "error", msg, node.getId());
+            }
+            return msg;
         }
 
         var predResults = collectPredecessorResults(schemaRepository.findById(schemaId), node.getId());
@@ -1778,8 +1863,31 @@ private String executeAgentNode(Node node, String schemaId) {
 
     private static final int MAX_SUBAGENT_DEPTH = 5;
 
+    private void validateUrl(String url) {
+        try {
+            java.net.URI uri = java.net.URI.create(url);
+            String scheme = uri.getScheme();
+            if (scheme == null || (!scheme.equals("http") && !scheme.equals("https"))) {
+                throw new SecurityException("Only http/https URLs allowed");
+            }
+            String host = uri.getHost();
+            if (host == null || host.isEmpty()) {
+                throw new SecurityException("URL must have a valid host");
+            }
+            // Block internal/private network addresses
+            java.net.InetAddress address = java.net.InetAddress.getByName(host);
+            if (address.isLoopbackAddress() || address.isSiteLocalAddress()
+                    || address.isLinkLocalAddress() || address.isAnyLocalAddress()) {
+                throw new SecurityException("Access to internal network addresses is blocked");
+            }
+        } catch (java.net.UnknownHostException e) {
+            throw new SecurityException("Cannot resolve host: " + e.getMessage());
+        }
+    }
+
     private String fetchUrlContent(String url) {
         try {
+            validateUrl(url);
             java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
                     .connectTimeout(java.time.Duration.ofSeconds(10))
                     .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
@@ -1924,12 +2032,38 @@ private String executeAgentNode(Node node, String schemaId) {
 
     private static final String SCHEMA_BUILDER_SYSTEM_PROMPT = """
             You are a workflow architect. Given an analysis/result text, design an Axolotl workflow schema.
+            
+            CRITICAL PATH RULES:
+            - If input mentions "backend-next" or "frontend-next" or "-next", you MUST use these exact paths:
+              * /backend-next/ NOT /backend/
+              * /Users/evgenijtihomirov/git/Axolotl/Axolotl/backend-next/ NOT /Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/
+              * Use FULL paths starting with /Users/evgenijtihomirov/git/Axolotl/Axolotl/...
+            
+            For generated schemas, ALWAYS set model to "minimax-max" (powerful) or "minimax-m2.5-free" (simple).
+            Avoid using openai models unless explicitly requested.
+            
             Respond ONLY with valid JSON, no markdown fences:
             {
               "name": "Schema name",
               "description": "What this workflow does",
               "nodes": [
-                {"id": "n1", "type": "source|agent|output|condition|loop|memory|guardrail|human|fallback", "name": "Node name", "position": {"x": 100, "y": 200}, "data": {"userPrompt": "...", "systemPrompt": "..."}}
+                {
+                  "id": "n1",
+                  "type": "source|agent|output|condition|loop|memory|guardrail|human|fallback|schemabuilder",
+                  "name": "Node name",
+                  "position": {"x": 100, "y": 200},
+                  "data": {
+                    "userPrompt": "...",
+                    "systemPrompt": "...",
+                    "model": "minimax-max",
+                    "agentType": "coder|assistant|researcher|reviewer",
+                    "enabledTools": ["file_read", "file_write", "directory_read", "grep", "bash"],
+                    "maxToolCalls": 50,
+                    "toolPermissions": [
+                      {"toolId": "file_read", "allowedPaths": ["/full/path/**"], "enabled": true}
+                    ]
+                  }
+                }
               ],
               "edges": [
                 {"source": "n1", "target": "n2"}
@@ -1938,7 +2072,9 @@ private String executeAgentNode(Node node, String schemaId) {
             }
             Rules:
             - Use agent nodes with detailed userPrompt and systemPrompt
-            - Typical flow: source → agent → output
+            - For tool-enabled agents, ALWAYS specify enabledTools array and toolPermissions
+            - Tools: file_read, file_write, directory_read, grep, git, bash, memory_read, memory_write, memory_search, web_search, web_fetch
+            - Typical flow for implementation: source -> agent (read files) -> agent (apply changes) -> agent (test)
             - Position nodes with reasonable spacing (x increments of 300)
             - Each node needs a unique id (n1, n2, n3...)
             """;
@@ -2074,6 +2210,31 @@ private String executeAgentNode(Node node, String schemaId) {
                     JsonNode d = n.get("data");
                     if (d.has("userPrompt")) data.setUserPrompt(d.get("userPrompt").asText());
                     if (d.has("systemPrompt")) data.setSystemPrompt(d.get("systemPrompt").asText());
+                    if (d.has("model")) data.setModel(d.get("model").asText());
+                    if (d.has("agentType")) data.setAgentType(d.get("agentType").asText());
+                    if (d.has("enabledTools") && d.get("enabledTools").isArray()) {
+                        List<String> tools = new ArrayList<>();
+                        for (JsonNode t : d.get("enabledTools")) tools.add(t.asText());
+                        data.setEnabledTools(tools);
+                    }
+                    if (d.has("maxToolCalls")) data.setMaxToolCalls(d.get("maxToolCalls").asInt());
+                    // Note: config parsing skipped - complex nested objects handled separately if needed
+                    // Parse toolPermissions
+                    if (d.has("toolPermissions") && d.get("toolPermissions").isArray()) {
+                        List<ToolPermission> tps = new ArrayList<>();
+                        for (JsonNode tpNode : d.get("toolPermissions")) {
+                            ToolPermission tp = new ToolPermission();
+                            if (tpNode.has("toolId")) tp.setToolId(tpNode.get("toolId").asText());
+                            if (tpNode.has("enabled")) tp.setEnabled(tpNode.get("enabled").asBoolean());
+                            if (tpNode.has("allowedPaths") && tpNode.get("allowedPaths").isArray()) {
+                                Set<String> paths = new java.util.HashSet<>();
+                                for (JsonNode p : tpNode.get("allowedPaths")) paths.add(p.asText());
+                                tp.setAllowedPaths(paths);
+                            }
+                            tps.add(tp);
+                        }
+                        data.setToolPermissions(tps);
+                    }
                     schemaNode.setData(data);
                 }
                 nodes.add(schemaNode);

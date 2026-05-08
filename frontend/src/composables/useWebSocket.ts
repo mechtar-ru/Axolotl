@@ -25,6 +25,8 @@ export function useWebSocket() {
   let reconnectTimeout: number | null = null;
   let currentSchemaId: string | null = null;
   let callbacks: WebSocketCallbacks | null = null;
+  let connectResolve: (() => void) | null = null;
+  let connectReject: ((reason: string) => void) | null = null;
 
   const connect = (schemaId: string, wsCallbacks: WebSocketCallbacks) => {
     try {
@@ -46,6 +48,9 @@ export function useWebSocket() {
         isConnected.value = true;
         reconnectAttempts.value = 0;
         console.log('🔌 WebSocket подключен');
+        connectResolve?.();
+        connectResolve = null;
+        connectReject = null;
       };
 
       ws.value.onmessage = (event) => {
@@ -117,7 +122,30 @@ export function useWebSocket() {
 
       ws.value.onerror = (error) => {
         console.error('WebSocket ошибка:', error);
+        connectReject?.('WebSocket connection failed');
+        connectResolve = null;
+        connectReject = null;
       };
+    } catch (error) {
+      console.error('Ошибка создания WebSocket:', error);
+      connectReject?.('WebSocket creation failed');
+    }
+  };
+
+  const connectAsync = (schemaId: string, wsCallbacks: WebSocketCallbacks): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      connectResolve = resolve;
+      connectReject = reject;
+      connect(schemaId, wsCallbacks);
+      // Timeout after 5s
+      setTimeout(() => {
+        if (connectReject) {
+          connectReject('WebSocket connection timeout');
+          connectResolve = null;
+          connectReject = null;
+        }
+      }, 5000);
+    });
     } catch (error) {
       console.error('Ошибка создания WebSocket:', error);
     }
@@ -143,6 +171,7 @@ export function useWebSocket() {
 
   return {
     connect,
+    connectAsync,
     disconnect,
     isConnected: readonly(isConnected),
   };
