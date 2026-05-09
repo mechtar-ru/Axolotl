@@ -208,17 +208,11 @@ watch(() => visibleProp.visible, (v) => {
 
 <style scoped>
 .memory-graph-panel {
-  position: fixed;
-  right: 0;
-  top: 0;
-  width: 360px;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: rgba(19, 19, 31, 0.97);
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  z-index: 950;
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(12px);
   overflow-y: auto;
 }
 

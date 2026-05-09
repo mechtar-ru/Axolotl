@@ -308,22 +308,16 @@ function handleScroll() {
 
 <style scoped>
 .execution-panel {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  width: 380px;
-  max-height: 500px;
+  width: 100%;
+  height: 100%;
   background: rgba(30, 30, 46, 0.95);
   color: #eee;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  border-radius: 0;
   padding: 16px;
-  z-index: 1000;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
 }
 
 .execution-panel__header {

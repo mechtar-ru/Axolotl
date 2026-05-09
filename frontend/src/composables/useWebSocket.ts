@@ -146,9 +146,6 @@ export function useWebSocket() {
         }
       }, 5000);
     });
-    } catch (error) {
-      console.error('Ошибка создания WebSocket:', error);
-    }
   };
 
   const disconnect = () => {

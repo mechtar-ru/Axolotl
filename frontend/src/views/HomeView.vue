@@ -34,7 +34,7 @@
           <button @click="exportJson" class="compact-btn">📦 JSON</button>
           <button @click="triggerJsonImport" class="compact-btn">📂 JSON</button>
           <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="importJson" />
-          <button @click="showPlan = !showPlan" class="compact-btn">📋 План</button>
+          <button @click="panelStore.toggle('plan')" class="compact-btn">📋 План</button>
         </div>
       </div>
 
@@ -52,7 +52,7 @@
     </div>
 
     <div class="main-content">
-      <div class="canvas-container">
+      <div class="canvas-area">
         <div v-if="!schemaStore.currentSchema" class="empty-state">
           <img src="../assets/logo.svg" alt="Axolotl" class="empty-state__logo" />
           <h1 class="empty-state__title">Визуальная оркестрация AI-агентов</h1>
@@ -118,9 +118,15 @@
           @export="handleExportMermaid"
         />
       </div>
-    </div>
 
-    <!-- Модальное окно экспорта -->
+      <RightPanel
+        :schema-nodes="(schemaStore.currentSchema?.nodes || []).filter(n => n).map(n => ({ id: n.id, name: n.name, type: n.type }))"
+        :schema-id="schemaStore.currentSchema?.id"
+        @stop-execution="handleStopExecution"
+        @highlight-node="highlightCanvasNode"
+        @template-create="onTemplateCreate"
+      />
+    </div>
     <AppModal v-model="showMermaid" title="📊 Mermaid диаграмма">
       <pre>{{ mermaidCode }}</pre>
       <div class="modal-buttons">
@@ -148,14 +154,6 @@
       </div>
     </AppModal>
 
-    <PlanPanel
-      :visible="showPlan"
-      :schema-nodes="(schemaStore.currentSchema?.nodes || []).filter(n => n).map(n => ({ id: n.id, name: n.name, type: n.type }))"
-      :schema-id="schemaStore.currentSchema?.id"
-      @close="showPlan = false"
-      @highlight-node="highlightCanvasNode"
-    />
-
     <CommandPalette v-model="showCommandPalette" @execute="handleCommand" />
 
     <ShortcutsOverlay v-model="showShortcuts" />
@@ -174,9 +172,11 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useSchemaStore } from '../stores/schemaStore';
 import { useAuthStore } from '../stores/authStore';
+import { usePanelStore } from '../stores/panelStore';
 import { useToast } from '../composables/useToast';
+import { provideExecutionState, type ExecutionState } from '../composables/useExecutionState';
 import WorkflowCanvas from '../components/canvas/WorkflowCanvas.vue';
-import PlanPanel from '../components/plan/PlanPanel.vue';
+import RightPanel from '../components/panels/RightPanel.vue';
 import CommandPalette from '../components/ui/CommandPalette.vue';
 import OnboardingModal from '../components/ui/OnboardingModal.vue';
 import AppModal from '../components/ui/AppModal.vue';
@@ -188,6 +188,7 @@ const router = useRouter();
 const route = useRoute();
 const schemaStore = useSchemaStore();
 const authStore = useAuthStore();
+const panelStore = usePanelStore();
 const toast = useToast();
 const showMermaid = ref(false);
 const showImport = ref(false);
@@ -195,12 +196,24 @@ const mermaidCode = ref('');
 const showPython = ref(false);
 const pythonCode = ref('');
 const importText = ref('');
-const showPlan = ref(false);
 const showCommandPalette = ref(false);
 const showSearch = ref(false);
 const showOnboarding = ref(false);
 const showShortcuts = ref(false);
 const sidebarOpen = ref(false);
+
+// Execution state (provided to RightPanel via provide/inject)
+const executionState: ExecutionState = {
+  isExecuting: ref(false),
+  progress: ref(0),
+  elapsedSeconds: ref(0),
+  totalNodes: ref(0),
+  completedNodes: ref(0),
+  logs: ref<any[]>([]),
+  totalTokens: ref<number | undefined>(undefined),
+  estimatedCost: ref<number | undefined>(undefined),
+};
+provideExecutionState(executionState);
 
 // Resizable sidebar
 const sidebarWidth = ref(250);
@@ -394,6 +407,15 @@ async function handleExecute() {
   toast.success('Выполнение запущено!');
 }
 
+function handleStopExecution() {
+  window.dispatchEvent(new CustomEvent('axolotl:stop-execution'));
+}
+
+function onTemplateCreate(schema: any) {
+  // Handled by WorkflowCanvas via custom event
+  window.dispatchEvent(new CustomEvent('axolotl:template-create', { detail: schema }));
+}
+
 async function handleExportMermaid() {
   if (schemaStore.currentSchema) {
     mermaidCode.value = await schemaApi.exportToMermaid(schemaStore.currentSchema.id);
@@ -466,7 +488,7 @@ async function handleCommand(action: string) {
       await handleSave();
       break;
     case 'toggle-plan':
-      showPlan.value = !showPlan.value;
+      panelStore.toggle('plan');
       break;
     case 'settings':
       goToSettings();
@@ -881,15 +903,17 @@ body {
 .main-content {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   background: #1a1a2e;
+  overflow: hidden;
 }
 
-.canvas-container {
+.canvas-area {
   flex: 1;
   background: #1a1a2e;
   position: relative;
   overflow: hidden;
+  min-width: 0;
 }
 
 .empty-state {

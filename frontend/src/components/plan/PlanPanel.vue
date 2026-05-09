@@ -764,17 +764,11 @@ loadPlan();
 
 <style scoped>
 .plan-panel {
-  position: fixed;
-  left: 250px;
-  top: 0;
-  width: 280px;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background: rgba(22, 33, 62, 0.95);
-  border-right: 1px solid rgba(255,255,255,0.08);
-  z-index: 900;
   display: flex;
   flex-direction: column;
-  backdrop-filter: blur(10px);
 }
 
 .plan-header {

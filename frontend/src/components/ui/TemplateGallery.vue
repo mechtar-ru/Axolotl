@@ -1,61 +1,59 @@
 <template>
-  <div v-if="visible" class="template-gallery-overlay" @click.self="$emit('close')">
-    <div class="template-gallery">
-      <div class="gallery-header">
-        <span class="gallery-title">Workflow Templates</span>
-        <button class="close-btn" @click="$emit('close')">✕</button>
-      </div>
+  <div v-if="visible" class="template-gallery">
+    <div class="gallery-header">
+      <span class="gallery-title">Workflow Templates</span>
+      <button class="close-btn" @click="$emit('close')">✕</button>
+    </div>
 
-      <div v-if="loading" class="gallery-loading">Loading templates...</div>
+    <div v-if="loading" class="gallery-loading">Loading templates...</div>
 
-      <div v-else-if="error" class="gallery-error">
-        {{ error }}
-        <button @click="loadTemplates">Retry</button>
-      </div>
+    <div v-else-if="error" class="gallery-error">
+      {{ error }}
+      <button @click="loadTemplates">Retry</button>
+    </div>
 
-      <div v-else class="gallery-grid">
-        <div
-          v-for="t in templates"
-          :key="t.id"
-          class="template-card"
-          @click="selectTemplate(t)"
-        >
-          <div class="template-icon">{{ t.icon }}</div>
-          <div class="template-info">
-            <div class="template-name">{{ t.name }}</div>
-            <div class="template-desc">{{ t.description }}</div>
-            <div class="template-meta">
-              {{ (t.nodes || []).length }} nodes · {{ (t.edges || []).length }} connections
-            </div>
+    <div v-else class="gallery-grid">
+      <div
+        v-for="t in templates"
+        :key="t.id"
+        class="template-card"
+        @click="selectTemplate(t)"
+      >
+        <div class="template-icon">{{ t.icon }}</div>
+        <div class="template-info">
+          <div class="template-name">{{ t.name }}</div>
+          <div class="template-desc">{{ t.description }}</div>
+          <div class="template-meta">
+            {{ (t.nodes || []).length }} nodes · {{ (t.edges || []).length }} connections
           </div>
-          <button class="use-btn" @click.stop="selectTemplate(t)">Use</button>
         </div>
+        <button class="use-btn" @click.stop="selectTemplate(t)">Use</button>
       </div>
+    </div>
 
-      <!-- Variables form -->
-      <div v-if="selectedTemplate?.variables?.length" class="variables-form">
-        <div class="var-header">Configure: {{ selectedTemplate.name }}</div>
-        <div v-for="v in selectedTemplate.variables" :key="v.name" class="var-field">
-          <label class="var-label">{{ v.name }} <span v-if="v.required">*</span></label>
-          <div class="var-desc">{{ v.description }}</div>
-          <textarea
-            v-if="v.name === 'features'"
-            v-model="variables[v.name]"
-            :placeholder="'Describe features to plan...'"
-            rows="4"
-            class="var-input"
-          />
-          <input
-            v-else
-            v-model="variables[v.name]"
-            :placeholder="v.description"
-            class="var-input"
-          />
-        </div>
-        <button class="create-btn" @click="createFromTemplate" :disabled="!allRequiredFilled">
-          Create Workflow
-        </button>
+    <!-- Variables form -->
+    <div v-if="selectedTemplate?.variables?.length" class="variables-form">
+      <div class="var-header">Configure: {{ selectedTemplate.name }}</div>
+      <div v-for="v in selectedTemplate.variables" :key="v.name" class="var-field">
+        <label class="var-label">{{ v.name }} <span v-if="v.required">*</span></label>
+        <div class="var-desc">{{ v.description }}</div>
+        <textarea
+          v-if="v.name === 'features'"
+          v-model="variables[v.name]"
+          :placeholder="'Describe features to plan...'"
+          rows="4"
+          class="var-input"
+        />
+        <input
+          v-else
+          v-model="variables[v.name]"
+          :placeholder="v.description"
+          class="var-input"
+        />
       </div>
+      <button class="create-btn" @click="createFromTemplate" :disabled="!allRequiredFilled">
+        Create Workflow
+      </button>
     </div>
   </div>
 </template>
@@ -175,14 +173,14 @@ function createFromTemplate() {
 </script>
 
 <style scoped>
-.template-gallery-overlay {
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center;
-  z-index: 1000;
-}
 .template-gallery {
-  background: #1a1a2e; border: 1px solid #333; border-radius: 12px;
-  width: 600px; max-height: 80vh; overflow-y: auto; color: #e0e0e0;
+  width: 100%;
+  height: 100%;
+  background: #1a1a2e;
+  overflow-y: auto;
+  color: #e0e0e0;
+  display: flex;
+  flex-direction: column;
 }
 .gallery-header {
   display: flex; justify-content: space-between; align-items: center;

@@ -85,9 +85,10 @@
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
-          <button class="toolbar-btn" @click="showHistory = !showHistory" title="История выполнений">📜</button>
-          <button class="toolbar-btn" @click="showMemoryGraph = !showMemoryGraph" title="Граф памяти">🧠</button>
-          <button class="toolbar-btn" @click="showTemplateGallery = true" title="Шаблоны">🏗️</button>
+          <button class="toolbar-btn" @click="panelStore.toggle('history')" title="История выполнений">📜</button>
+          <button class="toolbar-btn" @click="panelStore.toggle('memory')" title="Граф памяти">🧠</button>
+          <button class="toolbar-btn" @click="panelStore.toggle('templates')" title="Шаблоны">🏗️</button>
+          <button class="toolbar-btn" @click="panelStore.toggle('plan')" title="План">📋</button>
           <button class="toolbar-btn" @click="exportAsImage" title="Сохранить как PNG">📷</button>
         </div>
         <div class="toolbar-separator"></div>
@@ -102,21 +103,9 @@
       </div>
     </VueFlow>
 
-    <ExecutionPanel ref="executionPanelRef" :visible="isExecuting || showExecutionPanel" :is-executing="isExecuting"
-      :progress="executionProgress" :elapsed-seconds="elapsedSeconds" :total-nodes="totalNodes"
-      :completed-nodes="completedNodes" :logs="executionLogs" :total-tokens="executionTotalTokens"
-      :estimated-cost="executionEstimatedCost" @stop="stopExecution" @close="closeExecutionPanel"
-      @highlight-node="highlightNode" />
-
     <PromptEditorModal :visible="showPromptEditor" :node-name="promptEditorNodeName"
       :user-prompt="promptEditorUserPrompt" :system-prompt="promptEditorSystemPrompt" @close="showPromptEditor = false"
       @save="onPromptEditorSave" />
-
-    <ExecutionHistory :visible="showHistory" :schema-id="schema.id" @close="showHistory = false" />
-
-    <MemoryGraphView :visible="showMemoryGraph" @close="showMemoryGraph = false" />
-
-    <TemplateGallery :visible="showTemplateGallery" @close="showTemplateGallery = false" @create="onTemplateCreate" />
 
     <!-- Floating memory result cards -->
     <MemoryResultCard v-for="card in memoryResultCards" :key="card.id"
@@ -167,16 +156,14 @@ import FallbackNode from '../nodes/FallbackNode.vue';
 import SubagentNode from '../nodes/SubagentNode.vue';
 import SchemaBuilderNode from '../nodes/SchemaBuilderNode.vue';
 import CustomEdge from '../edges/CustomEdge.vue';
-import ExecutionPanel from '../execution/ExecutionPanel.vue';
 import AppModal from '../ui/AppModal.vue';
 import NodeContextMenu from './NodeContextMenu.vue';
 import PromptEditorModal from '../editor/PromptEditorModal.vue';
-import ExecutionHistory from '../execution/ExecutionHistory.vue';
-import MemoryGraphView from '../memory/MemoryGraphView.vue';
-import TemplateGallery from '../ui/TemplateGallery.vue';
 import MemoryResultCard from '../nodes/MemoryResultCard.vue';
 import { useWebSocket } from '../../composables/useWebSocket';
 import { useSchemaStore } from '../../stores/schemaStore';
+import { usePanelStore } from '../../stores/panelStore';
+import { useExecutionState } from '../../composables/useExecutionState';
 import { useToast } from '../../composables/useToast';
 import { schemaApi, settingsApi } from '../../services/api';
 import { toPng } from 'html-to-image';
@@ -218,8 +205,6 @@ const selectedNodeId = ref<string | null>(null);
 const selectedEdgeId = ref<string | null>(null);
 const selectedNodeIds = ref<Set<string>>(new Set());
 const showDeleteConfirm = ref(false);
-const showExecutionPanel = ref(false);
-const executionPanelRef = ref<InstanceType<typeof ExecutionPanel> | null>(null);
 const showSearch = ref(false);
 const searchQuery = ref('');
 let nextNodeOffset = 0;
@@ -227,13 +212,10 @@ const copiedNode = ref<FlowNode | null>(null);
 const searchInput = ref<HTMLInputElement | null>(null);
 const showPromptEditor = ref(false);
 const promptEditorNodeId = ref<string | null>(null);
-const showHistory = ref(false);
 const showAddMenu = ref(false);
 const ctxMenu = ref<{ visible: boolean; x: number; y: number; nodeId: string; nodeType: string }>({
   visible: false, x: 0, y: 0, nodeId: '', nodeType: ''
 });
-const showMemoryGraph = ref(false);
-const showTemplateGallery = ref(false);
 const memoryResultCards = ref<Array<{ id: string; wing: string; room: string; content: string; score?: number; x: number; y: number }>>([]);
 
 // Undo/Redo
@@ -278,6 +260,7 @@ function redo() {
 }
 
 const schemaStore = useSchemaStore();
+const panelStore = usePanelStore();
 const toast = useToast();
 const { connect, connectAsync, disconnect, isConnected } = useWebSocket();
 const isExecuting = ref(false);
@@ -294,6 +277,19 @@ const executionEstimatedCost = ref(0);
 const executionStartTime = ref(0);
 const elapsedSeconds = ref(0);
 let timerInterval: number | null = null;
+
+// Sync execution state to parent via inject/provide
+const execState = useExecutionState();
+if (execState) {
+  watch(isExecuting, v => execState.isExecuting.value = v);
+  watch(executionProgress, v => execState.progress.value = v);
+  watch(elapsedSeconds, v => execState.elapsedSeconds.value = v);
+  watch(totalNodes, v => execState.totalNodes.value = v);
+  watch(completedNodes, v => execState.completedNodes.value = v);
+  watch(executionLogs, v => execState.logs.value = v);
+  watch(executionTotalTokens, v => execState.totalTokens.value = v || undefined);
+  watch(executionEstimatedCost, v => execState.estimatedCost.value = v || undefined);
+}
 
 const schemaDefaultModel = ref(props.schema.defaultModel || '');
 const defaultModelOptions = ref<{ value: string; label: string; group: string }[]>([]);
@@ -729,6 +725,12 @@ function handleKeyDown(event: KeyboardEvent) {
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('axolotl:highlight-node', handleExternalHighlight);
+  window.addEventListener('axolotl:template-create', ((e: Event) => {
+    onTemplateCreate((e as CustomEvent).detail);
+  }) as EventListener);
+  window.addEventListener('axolotl:stop-execution', (() => {
+    stopExecution();
+  }) as EventListener);
 });
 
 onUnmounted(() => {
@@ -856,7 +858,7 @@ async function executeSchema() {
 
   console.log('✅ Начало выполнения схемы:', props.schema.id);
   isExecuting.value = true;
-  showExecutionPanel.value = true;
+  panelStore.open('exec');
   executionProgress.value = 0;
   totalNodes.value = props.schema.nodes?.length || 0;
   completedNodes.value = 0;
@@ -964,7 +966,7 @@ function saveSchema() {
 }
 
 async function onTemplateCreate(templateData: any) {
-  showTemplateGallery.value = false;
+  panelStore.close();
   try {
     const created = await schemaStore.createSchema(templateData.name || 'New Workflow');
     if (created) {
@@ -998,7 +1000,7 @@ async function stopExecution() {
 }
 
 function closeExecutionPanel() {
-  showExecutionPanel.value = false;
+  panelStore.close();
 }
 
 function highlightNode(nodeId: string) {
@@ -1514,71 +1516,6 @@ function ungroupSelectedNode() {
   color: var(--text-muted, #666);
   padding: 4px 8px;
   letter-spacing: 0.5px;
-}
-
-.execution-panel {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 320px;
-  max-height: 420px;
-  background: rgba(20, 22, 34, 0.96);
-  color: #eee;
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-  padding: 16px;
-  z-index: 1100;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.execution-panel__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.stop-btn {
-  background: #ff5e5e;
-  border: none;
-  color: #fff;
-  border-radius: 8px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.stop-btn:hover {
-  background: #ff4040;
-}
-
-.execution-panel__stats {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  color: #cbd5ff;
-}
-
-.execution-panel__logs {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  background: rgba(12, 14, 24, 0.95);
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.execution-panel__log-entry {
-  font-size: 12px;
-  line-height: 1.4;
-  color: #d8d8e8;
-  margin-bottom: 6px;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 .modal-buttons {
