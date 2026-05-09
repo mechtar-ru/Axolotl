@@ -194,6 +194,7 @@ const nodeTypes = {
   fallback: markRaw(FallbackNode),
   subagent: markRaw(SubagentNode),
   schemabuilder: markRaw(SchemaBuilderNode),
+  schemaBuilder: markRaw(SchemaBuilderNode),
 } as any;
 
 const edgeTypes = {
@@ -912,8 +913,6 @@ async function executeSchema() {
       },
       onWave: (data: { waveNumber: number; nodeIds: string[]; status: string }) => {
         console.log('🌊 Wave callback:', data);
-        const waveStatus = data.status as 'pending' | 'running' | 'completed';
-        executionPanelRef.value?.updateWave(data.waveNumber, data.nodeIds, waveStatus);
         pushLog(`Волна ${data.waveNumber + 1}: ${data.status}`, 'info', '');
       },
       onNodeTime: (data) => {

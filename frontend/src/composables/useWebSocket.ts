@@ -99,11 +99,11 @@ export function useWebSocket() {
               callbacks?.onTrajectoryComplete?.(data);
               break;
             default:
-              console.warn('Unknown message type:', data.type);
+              // Silently ignore unknown types (plan_updated, etc.)
+              break;
           }
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
-          callbacks?.onLog?.(`Invalid WS payload: ${event.data}`);
         }
       };
 
