@@ -43,7 +43,7 @@
 
       <div class="toolbar-panel">
         <div class="toolbar-group toolbar-add">
-          <button class="toolbar-btn toolbar-add-btn" @click="showAddMenu = !showAddMenu" title="Добавить узел">
+          <button class="toolbar-btn toolbar-add-btn" @click.stop="showAddMenu = !showAddMenu" title="Добавить узел">
             ＋ Добавить <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>
           </button>
           <div v-if="showAddMenu" class="add-dropdown">
@@ -78,18 +78,18 @@
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
-          <button class="toolbar-btn" @click="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
-          <button class="toolbar-btn" @click="ungroupSelectedNode"
+          <button class="toolbar-btn" @click.stop="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
+          <button class="toolbar-btn" @click.stop="ungroupSelectedNode"
             :disabled="!selectedNodeId || !(props.schema.nodes || []).find(n => n.id === selectedNodeId)?.parentId"
             title="Разгруппировать">📤 Разгрупп.</button>
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
-          <button class="toolbar-btn" @click="panelStore.toggle('history')" title="История выполнений">📜</button>
-          <button class="toolbar-btn" @click="panelStore.toggle('memory')" title="Граф памяти">🧠</button>
-          <button class="toolbar-btn" @click="panelStore.toggle('templates')" title="Шаблоны">🏗️</button>
-          <button class="toolbar-btn" @click="panelStore.toggle('plan')" title="План">📋</button>
-          <button class="toolbar-btn" @click="exportAsImage" title="Сохранить как PNG">📷</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('history')" title="История выполнений">📜</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('memory')" title="Граф памяти">🧠</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('templates')" title="Шаблоны">🏗️</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('plan')" title="План">📋</button>
+          <button class="toolbar-btn" @click.stop="exportAsImage" title="Сохранить как PNG">📷</button>
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
@@ -859,7 +859,7 @@ async function executeSchema() {
 
   console.log('✅ Начало выполнения схемы:', props.schema.id);
   isExecuting.value = true;
-  panelStore.open('exec');
+    panelStore.open('exec');
   executionProgress.value = 0;
   totalNodes.value = props.schema.nodes?.length || 0;
   completedNodes.value = 0;
