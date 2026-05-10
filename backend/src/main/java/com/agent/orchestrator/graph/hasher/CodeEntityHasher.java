@@ -85,7 +85,7 @@ public class CodeEntityHasher {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash).substring(0, 16);
+            return HexFormat.of().formatHex(hash).substring(0, 24);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
@@ -93,5 +93,40 @@ public class CodeEntityHasher {
 
     public String computeStableHash(String entityType, String qualifiedName, String signature) {
         return sha256(entityType + ":" + qualifiedName + ":" + signature);
+    }
+
+    /**
+     * Check if two different entities produce the same hash (collision detection).
+     * This helps detect hash truncation collisions.
+     *
+     * @param entityType1 The type of the first entity (e.g., "class", "method", "field")
+     * @param qualifiedName1 The qualified name of the first entity
+     * @param signature1 The signature content for the first entity
+     * @param entityType2 The type of the second entity
+     * @param qualifiedName2 The qualified name of the second entity
+     * @param signature2 The signature content for the second entity
+     * @return A CollisionResult indicating whether a collision was detected
+     */
+    public CollisionResult detectCollision(
+            String entityType1, String qualifiedName1, String signature1,
+            String entityType2, String qualifiedName2, String signature2) {
+        String hash1 = computeStableHash(entityType1, qualifiedName1, signature1);
+        String hash2 = computeStableHash(entityType2, qualifiedName2, signature2);
+
+        boolean collision = hash1.equals(hash2)
+                && !(entityType1.equals(entityType2)
+                     && qualifiedName1.equals(qualifiedName2)
+                     && signature1.equals(signature2));
+
+        return new CollisionResult(hash1, hash2, collision);
+    }
+
+    public record CollisionResult(String hash1, String hash2, boolean collisionFound) {
+        public String message() {
+            if (collisionFound) {
+                return "COLLISION DETECTED: " + hash1 + " == " + hash2;
+            }
+            return "No collision: " + hash1 + " != " + hash2;
+        }
     }
 }

@@ -28,8 +28,8 @@ public class Neo4jSchemaRepository {
     public List<WorkflowSchema> findAll() {
         List<WorkflowSchema> result = new ArrayList<>();
         try (Session session = driver.session()) {
-            // Return ALL schemas - caller filters by userId if needed
-            Result rs = session.run("MATCH (s:WorkflowSchema) RETURN s.id, s.name, s.data, s.userId, s.createdAt, s.updatedAt");
+            // Read only from the JSON blob (single source of truth)
+            Result rs = session.run("MATCH (s:WorkflowSchema) RETURN s.data");
             int count = 0;
             while (rs.hasNext()) {
                 var record = rs.next();
@@ -77,18 +77,14 @@ public class Neo4jSchemaRepository {
     public void save(WorkflowSchema schema) {
         try (Session session = driver.session()) {
             String json = mapper.writeValueAsString(schema);
+            // Single source of truth: only store the JSON blob, not duplicate properties as node attributes
             session.run("""
                 MERGE (s:WorkflowSchema {id: $id})
-                SET s.name = $name, s.data = $data, s.userId = $userId, s.workspaceId = $workspaceId, s.createdAt = $createdAt, s.updatedAt = $updatedAt
-                """, 
+                SET s.data = $data
+                """,
                 org.neo4j.driver.Values.parameters(
                     "id", schema.getId(),
-                    "name", schema.getName() != null ? schema.getName() : "",
-                    "data", json,
-                    "userId", schema.getUserId() != null ? schema.getUserId() : "default",
-                    "workspaceId", schema.getWorkspaceId() != null ? schema.getWorkspaceId() : "default",
-                    "createdAt", schema.getCreatedAt() != null ? schema.getCreatedAt() : "",
-                    "updatedAt", schema.getUpdatedAt() != null ? schema.getUpdatedAt() : ""
+                    "data", json
                 ));
         } catch (Exception e) {
             log.error("Error saving schema: {}", e.getMessage());
@@ -118,5 +114,68 @@ public class Neo4jSchemaRepository {
             }
         }
         return 0;
+    }
+
+    /**
+     * Check consistency between JSON blob data and node-level properties.
+     * Logs warnings for any discrepancies found.
+     * @return number of schemas with inconsistencies
+     */
+    public int consistencyCheck() {
+        int inconsistencies = 0;
+        try (Session session = driver.session()) {
+            Result rs = session.run("""
+                MATCH (s:WorkflowSchema)
+                RETURN s.id as id, s.name as name, s.userId as userId,
+                       s.workspaceId as workspaceId, s.createdAt as createdAt,
+                       s.updatedAt as updatedAt, s.data as data
+                """);
+            while (rs.hasNext()) {
+                var record = rs.next();
+                String id = record.get("id").asString();
+                String dataJson = record.get("data").asString();
+                String nodeName = record.get("name").isNull() ? null : record.get("name").asString();
+                String nodeUserId = record.get("userId").isNull() ? null : record.get("userId").asString();
+                String nodeWorkspaceId = record.get("workspaceId").isNull() ? null : record.get("workspaceId").asString();
+                String nodeCreatedAt = record.get("createdAt").isNull() ? null : record.get("createdAt").asString();
+                String nodeUpdatedAt = record.get("updatedAt").isNull() ? null : record.get("updatedAt").asString();
+
+                try {
+                    WorkflowSchema schema = mapper.readValue(dataJson, WorkflowSchema.class);
+                    
+                    if (nodeName != null && !nodeName.equals(schema.getName())) {
+                        log.warn("Inconsistency [{}]: node name='{}' vs blob name='{}'", id, nodeName, schema.getName());
+                        inconsistencies++;
+                    }
+                    if (nodeUserId != null && !nodeUserId.equals(schema.getUserId())) {
+                        log.warn("Inconsistency [{}]: node userId='{}' vs blob userId='{}'", id, nodeUserId, schema.getUserId());
+                        inconsistencies++;
+                    }
+                    if (nodeWorkspaceId != null && !nodeWorkspaceId.equals(schema.getWorkspaceId())) {
+                        log.warn("Inconsistency [{}]: node workspaceId='{}' vs blob workspaceId='{}'", id, nodeWorkspaceId, schema.getWorkspaceId());
+                        inconsistencies++;
+                    }
+                    if (nodeCreatedAt != null && !nodeCreatedAt.equals(schema.getCreatedAt())) {
+                        log.warn("Inconsistency [{}]: node createdAt='{}' vs blob createdAt='{}'", id, nodeCreatedAt, schema.getCreatedAt());
+                        inconsistencies++;
+                    }
+                    if (nodeUpdatedAt != null && !nodeUpdatedAt.equals(schema.getUpdatedAt())) {
+                        log.warn("Inconsistency [{}]: node updatedAt='{}' vs blob updatedAt='{}'", id, nodeUpdatedAt, schema.getUpdatedAt());
+                        inconsistencies++;
+                    }
+                } catch (Exception e) {
+                    log.warn("Cannot parse data blob for schema {}: {}", id, e.getMessage());
+                    inconsistencies++;
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error during consistency check: {}", e.getMessage(), e);
+        }
+        if (inconsistencies > 0) {
+            log.warn("Consistency check complete: {} schemas with inconsistencies", inconsistencies);
+        } else {
+            log.info("Consistency check complete: all schemas are consistent");
+        }
+        return inconsistencies;
     }
 }

@@ -90,7 +90,7 @@ class CodeEntityHasherTest {
         String hash1 = hasher.hashMethod(method, "com.example.Calculator");
 
         assertNotNull(hash1);
-        assertEquals(16, hash1.length(), "SHA-256 truncated to 16 chars");
+        assertEquals(24, hash1.length(), "SHA-256 truncated to 24 chars");
     }
 
     @Test
@@ -141,7 +141,50 @@ class CodeEntityHasherTest {
     void testHashFormat() {
         String hash = hasher.computeStableHash("class", "com.example.Test", "signature");
         assertNotNull(hash);
-        assertEquals(16, hash.length());
-        assertTrue(hash.matches("[0-9a-f]+"), "Should be hex string");
+        assertEquals(24, hash.length());
+        assertTrue(hash.matches("[0-9a-f]{24}"), "Should be 24-char hex string");
+    }
+
+    @Test
+    void testHashIs24Chars() throws Exception {
+        String code = """
+            package com.example;
+            public class Test { }
+            """;
+        CompilationUnit cu = parser.parse(code).getResult().orElseThrow();
+        var clazz = cu.getClassByName("Test").orElseThrow();
+        String hash = hasher.hashClass(clazz, "com.example");
+        assertEquals(24, hash.length(), "Hash should be truncated to 24 hex chars");
+        assertTrue(hash.matches("[0-9a-f]{24}"), "Should be 24-char hex string");
+    }
+
+    @Test
+    void testCollisionDetection_noCollision() {
+        var result = hasher.detectCollision(
+                "class", "com.example.ClassA", "public class A {}",
+                "class", "com.example.ClassB", "public class B {}"
+        );
+        assertFalse(result.collisionFound(), "Different classes should not collide");
+        assertNotNull(result.hash1());
+        assertNotNull(result.hash2());
+    }
+
+    @Test
+    void testCollisionDetection_sameEntityIsNotCollision() {
+        var result = hasher.detectCollision(
+                "class", "com.example.Test", "same signature",
+                "class", "com.example.Test", "same signature"
+        );
+        assertFalse(result.collisionFound(), "Same entity should not be a collision");
+    }
+
+    @Test
+    void testCollisionDetection_differentTypesSameName() {
+        // Class and method with same qualified name are different entities
+        var result = hasher.detectCollision(
+                "class", "com.example.Test", "class sig",
+                "method", "com.example.Test", "method sig"
+        );
+        assertFalse(result.collisionFound(), "Different types should not collide");
     }
 }

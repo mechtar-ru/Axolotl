@@ -36,6 +36,7 @@ public class ParallelCodebaseImporter {
     private final GraphMetricsService metrics;
     private final JavaParser javaParser;
     private final ExecutorService executor;
+    private final AstDependencyResolver astDependencyResolver;
 
     public ParallelCodebaseImporter(
             CodePackageRepository packageRepo,
@@ -44,7 +45,8 @@ public class ParallelCodebaseImporter {
             CodeFieldRepository fieldRepo,
             CodeEntityHasher hasher,
             BatchPlanner batchPlanner,
-            GraphMetricsService metrics) {
+            GraphMetricsService metrics,
+            AstDependencyResolver astDependencyResolver) {
         this.packageRepo = packageRepo;
         this.classRepo = classRepo;
         this.methodRepo = methodRepo;
@@ -52,10 +54,18 @@ public class ParallelCodebaseImporter {
         this.hasher = hasher;
         this.batchPlanner = batchPlanner;
         this.metrics = metrics;
+        this.astDependencyResolver = astDependencyResolver;
 
         ParserConfiguration config = new ParserConfiguration().setStoreTokens(true);
         this.javaParser = new JavaParser(config);
         this.executor = Executors.newFixedThreadPool(PARALLELISM);
+    }
+
+    /**
+     * Expose the class registry for other components that need direct access.
+     */
+    public Map<String, CodeClass> getClassRegistry() {
+        return astDependencyResolver.getClassRegistry();
     }
 
     public record ImportResult(
@@ -296,23 +306,75 @@ public class ParallelCodebaseImporter {
     }
 
     private void createDependencies() {
-        List<CodeClass> classes = classRepo.findAll();
-        for (CodeClass c : classes) {
-            String astBody = c.getAstBody();
-            if (astBody == null) continue;
+        try {
+            Map<String, Set<CodeClass>> deps = astDependencyResolver.resolveAllDependencies();
+            
+            // Cycle detection: check for self-referential cycles
+            detectAndLogCycles(deps);
+            
+            // Save all updated entities in batch
+            classRepo.saveAll(astDependencyResolver.getClassRegistry().values());
+            log.info("Dependencies resolved using AST analysis");
+        } catch (Exception e) {
+            log.error("Failed to resolve dependencies: {}", e.getMessage(), e);
+        }
+    }
 
-            Set<CodeClass> deps = new HashSet<>();
-            for (CodeClass other : classes) {
-                if (!other.getQualifiedName().equals(c.getQualifiedName())) {
-                    if (astBody.contains(other.getName()) ||
-                            astBody.contains(other.getQualifiedName())) {
-                        deps.add(other);
-                    }
+    /**
+     * Detect and log cycles in the dependency graph.
+     * Uses DFS-based cycle detection and breaks self-referential cycles.
+     */
+    void detectAndLogCycles(Map<String, Set<CodeClass>> deps) {
+        int cyclesFound = 0;
+        
+        for (String className : deps.keySet()) {
+            Set<String> visited = new HashSet<>();
+            Set<String> recursionStack = new HashSet<>();
+            
+            if (hasCycle(className, deps, visited, recursionStack)) {
+                log.warn("Cycle detected involving class: {}", className);
+                cyclesFound++;
+                // Break the cycle by removing self-referential dependencies
+                Set<CodeClass> classDeps = deps.get(className);
+                if (classDeps != null) {
+                    classDeps.removeIf(dep -> dep.getQualifiedName().equals(className));
+                    log.info("Broken self-reference for: {}", className);
                 }
             }
-            c.setDependencies(deps);
-            classRepo.save(c);
         }
+        
+        if (cyclesFound > 0) {
+            log.info("Cycle detection complete: {} cycles found and broken", cyclesFound);
+        }
+    }
+
+    private boolean hasCycle(String node, Map<String, Set<CodeClass>> graph,
+                              Set<String> visited, Set<String> recursionStack) {
+        if (recursionStack.contains(node)) {
+            return true;
+        }
+        if (visited.contains(node)) {
+            return false;
+        }
+        
+        visited.add(node);
+        recursionStack.add(node);
+        
+        Set<CodeClass> neighbors = graph.get(node);
+        if (neighbors != null) {
+            for (CodeClass neighbor : neighbors) {
+                if (neighbor != null && hasCycle(neighbor.getQualifiedName(), graph, visited, recursionStack)) {
+                    return true;
+                }
+            }
+        }
+        
+        recursionStack.remove(node);
+        return false;
+    }
+
+    public Map<String, Set<CodeClass>> getResolvedDependencies() {
+        return astDependencyResolver.resolveAllDependencies();
     }
 
     private List<Path> discoverJavaFiles(Path directory) throws IOException {

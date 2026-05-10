@@ -17,7 +17,10 @@ public class ContextCurationService {
     private static final Logger log = LoggerFactory.getLogger(ContextCurationService.class);
 
     private static final int DEFAULT_TOKEN_BUDGET = 2000;
-    private static final double TOKEN_PER_CHAR = 0.25;
+    // 0.33 chars/token for mixed code+English (was 0.25, underestimates Java source)
+    private static final double TOKEN_PER_CHAR = 0.33;
+    // Additional safety margin for code-heavy content (generics, symbols)
+    private static final double CODE_SAFETY_MARGIN = 1.2;
 
     private final CodeClassRepository classRepo;
     private final CodeMethodRepository methodRepo;
@@ -38,6 +41,9 @@ public class ContextCurationService {
     public CurationResult curateForQuery(String query, int tokenBudget, List<String> recentHashes) {
         int budget = tokenBudget > 0 ? tokenBudget : DEFAULT_TOKEN_BUDGET;
         int maxChars = (int) (budget / TOKEN_PER_CHAR);
+
+        // Apply safety margin for code-heavy content (Java generics, symbols inflate token count)
+        maxChars = (int) (maxChars / CODE_SAFETY_MARGIN);
 
         String[] tokens = query.toLowerCase().split("\\s+");
 
@@ -105,8 +111,9 @@ public class ContextCurationService {
             String entityText = formatEntity(e);
             if (currentChars + entityText.length() > maxChars) {
                 int remaining = maxChars - currentChars;
-                if (remaining < 100) break;
-                entityText = entityText.substring(0, remaining) + "...\n";
+                if (remaining < 50) break;
+                // Truncate at last syntactic boundary to avoid broken code
+                entityText = truncateAtBoundary(entityText, remaining);
             }
 
             prompt.append(entityText).append("\n");
@@ -119,7 +126,37 @@ public class ContextCurationService {
             }
         }
 
-        int estimatedTokens = (int) (currentChars * TOKEN_PER_CHAR);
+        int estimatedTokens = countTokens(prompt.toString());
+        // Also compute char-based estimate as upper bound safety fallback
+        int charBasedEstimate = (int) (currentChars * TOKEN_PER_CHAR);
+        estimatedTokens = Math.max(estimatedTokens, charBasedEstimate);
+
+        // Post-check: if estimation exceeds budget, trim last entity
+        if (estimatedTokens > budget) {
+            log.warn("Token estimate {} exceeds budget {}, trimming last entity", estimatedTokens, budget);
+            // Remove the last entity we added
+            String promptStr = prompt.toString();
+            int lastEntityStart = promptStr.lastIndexOf("## ");
+            if (lastEntityStart > 0) {
+                prompt.setLength(lastEntityStart);
+                // Remove trailing whitespace
+                while (prompt.length() > 0 && prompt.charAt(prompt.length()-1) == '\n') {
+                    prompt.setLength(prompt.length()-1);
+                }
+                prompt.append("\n");
+                currentChars = prompt.length();
+                estimatedTokens = countTokens(prompt.toString());
+                charBasedEstimate = (int) (currentChars * TOKEN_PER_CHAR);
+                estimatedTokens = Math.max(estimatedTokens, charBasedEstimate);
+                // Remove last hash from the appropriate list
+                if (!classHashes.isEmpty() && promptStr.contains(classHashes.get(classHashes.size()-1))) {
+                    classHashes.remove(classHashes.size()-1);
+                } else if (!methodHashes.isEmpty()) {
+                    methodHashes.remove(methodHashes.size()-1);
+                }
+                log.info("After trimming, estimated tokens: {}", estimatedTokens);
+            }
+        }
 
         return new CurationResult(
                 prompt.toString(),
@@ -144,7 +181,47 @@ public class ContextCurationService {
         double score = 0.0;
         if (m.getName() != null && m.getName().toLowerCase().contains(q)) score += 0.5;
         if (m.getDescription() != null && m.getDescription().toLowerCase().contains(q)) score += 0.3;
+        // Also check method body and return type for relevance
+        if (m.getBody() != null && m.getBody().toLowerCase().contains(q)) score += 0.15;
+        if (m.getReturnType() != null && m.getReturnType().toLowerCase().contains(q)) score += 0.05;
         return score;
+    }
+
+        private String truncateAtBoundary(String text, int maxLength) {
+        if (text.length() <= maxLength) return text;
+        String truncated = text.substring(0, maxLength);
+        // Try to break at newline
+        for (int i = maxLength - 1; i > maxLength / 2; i--) {
+            char c = truncated.charAt(i);
+            if (c == '\n') {
+                return truncated.substring(0, i) + "\n";
+            }
+        }
+        // Fallback: space boundary
+        int lastSpace = truncated.lastIndexOf(' ');
+        if (lastSpace > maxLength / 2) {
+            return truncated.substring(0, lastSpace);
+        }
+        return truncated;
+    }
+
+    /**
+     * Count tokens using a simple regex tokenizer for more accurate estimation
+     * than char-based heuristics. Splits on whitespace and punctuation boundaries
+     * for a rough token count.
+     */
+    static int countTokens(String text) {
+        if (text == null || text.isEmpty()) return 0;
+        String[] parts = text.split("(?<=\\s)|(?=\\s)|(?<=\\W)|(?=\\W)");
+        int count = 0;
+        for (String part : parts) {
+            if (!part.isBlank()) {
+                int len = part.trim().length();
+                if (len == 0) continue;
+                count += Math.max(1, (len + 3) / 4);
+            }
+        }
+        return Math.max(1, count);
     }
 
     private double calculateCentrality(CodeClass c) {

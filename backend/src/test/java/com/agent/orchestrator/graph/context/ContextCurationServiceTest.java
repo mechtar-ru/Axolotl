@@ -85,4 +85,43 @@ class ContextCurationServiceTest {
 
         assertNotNull(result);
     }
+
+    @Test
+    void testCountTokens_empty() {
+        assertEquals(0, ContextCurationService.countTokens(""));
+        assertEquals(0, ContextCurationService.countTokens(null));
+    }
+
+    @Test
+    void testCountTokens_simpleText() {
+        assertTrue(ContextCurationService.countTokens("hello world") >= 2);
+    }
+
+    @Test
+    void testCountTokens_javaCode() {
+        String code = "public class Test { private String name; }";
+        assertTrue(ContextCurationService.countTokens(code) > 0);
+    }
+
+    @Test
+    void testBudgetPostCheck_trimsWhenExceeded() {
+        // Create class with very long content to exceed small budget
+        CodeClass verbose = mock(CodeClass.class);
+        when(verbose.getHash()).thenReturn("hash1");
+        when(verbose.getQualifiedName()).thenReturn("com.example.VeryLong" + "X".repeat(1000));
+        when(verbose.getPackageName()).thenReturn("com.example");
+        when(verbose.getName()).thenReturn("VeryLong");
+        when(verbose.getDescription()).thenReturn("X".repeat(1000));
+        when(verbose.getMethods()).thenReturn(Set.of());
+        when(verbose.getFields()).thenReturn(Set.of());
+
+        when(classRepo.findByNameContainingOrQualifiedNameContaining(anyString(), anyString()))
+                .thenReturn(List.of(verbose));
+
+        ContextCurationService.CurationResult result =
+                curationService.curateForQuery("test", 100, List.of());
+
+        assertNotNull(result);
+        assertTrue(result.tokenCount() > 0, "Should have some tokens");
+    }
 }

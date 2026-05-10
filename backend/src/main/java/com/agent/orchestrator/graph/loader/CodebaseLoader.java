@@ -16,10 +16,19 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Stream;
 
+import static java.util.regex.Pattern.compile;
+
 @Component
 public class CodebaseLoader {
     
     private static final Logger log = LoggerFactory.getLogger(CodebaseLoader.class);
+    
+    // Packages to exclude when loading the Axolotl codebase itself
+    // These are tool-internal packages, not user/analyzed code
+    private static final List<String> EXCLUDED_PACKAGES = List.of(
+        "com.agent.orchestrator.graph",
+        "com.agent.orchestrator.config"
+    );
     
     private final CodePackageRepository packageRepo;
     private final CodeClassRepository classRepo;
@@ -51,6 +60,7 @@ public class CodebaseLoader {
             List<Path> javaFiles = stream
                     .filter(p -> p.toString().endsWith(".java"))
                     .filter(p -> !p.toString().contains("/test/"))
+                    .filter(p -> !isExcludedPath(p))
                     .toList(); // Load all files
             
             log.info("Found {} Java files to parse", javaFiles.size());
@@ -191,11 +201,42 @@ public class CodebaseLoader {
             return 0;
         }
         
+        log.info("Excluding tool-internal packages: {}", EXCLUDED_PACKAGES);
+        
         try {
             return loadDirectory(backendSrc, "com.agent.orchestrator");
         } catch (IOException e) {
             log.error("Failed to load backend: {}", e.getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Check if a file path matches an excluded package.
+     */
+    private boolean isExcludedPath(Path filePath) {
+        String path = filePath.toString().replace("\\", "/");
+        for (String excluded : EXCLUDED_PACKAGES) {
+            String pkgPath = excluded.replace('.', '/');
+            if (path.contains(pkgPath)) {
+                log.debug("Excluding {} (matches {})", filePath.getFileName(), excluded);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Public accessor for the exclusion list.
+     */
+    public List<String> getExcludedPackages() {
+        return EXCLUDED_PACKAGES;
+    }
+
+    /**
+     * Package-private: check if a path matches exclusion (for testing).
+     */
+    boolean isExcluded(Path filePath) {
+        return isExcludedPath(filePath);
     }
 }
