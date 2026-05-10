@@ -200,24 +200,24 @@ function createFromTemplate() {
   border: 1px solid #333; border-radius: 8px; cursor: pointer;
   transition: background 0.2s;
 }
-.template-card:hover { background: rgba(255,255,255,0.05); border-color: #00bcd4; }
+.template-card:hover { background: rgba(255,255,255,0.05); border-color: var(--accent); }
 .template-icon { font-size: 28px; }
 .template-info { flex: 1; }
 .template-name { font-size: 14px; font-weight: 600; }
 .template-desc { font-size: 12px; color: #aaa; margin-top: 2px; }
 .template-meta { font-size: 11px; color: #666; margin-top: 4px; }
 .use-btn {
-  background: #00bcd4; border: none; color: white; padding: 6px 14px;
+  background: var(--accent); border: none; color: white; padding: 6px 14px;
   border-radius: 6px; cursor: pointer; font-size: 12px;
 }
-.use-btn:hover { background: #0097a7; }
+.use-btn:hover { background: var(--accent-hover); }
 
 .variables-form {
   padding: 16px; border-top: 1px solid #333;
 }
 .var-header { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 .var-field { margin-bottom: 10px; }
-.var-label { font-size: 12px; font-weight: 600; color: #00bcd4; }
+.var-label { font-size: 12px; font-weight: 600; color: var(--accent); }
 .var-label span { color: #ff5252; }
 .var-desc { font-size: 11px; color: #888; margin-bottom: 4px; }
 .var-input {
@@ -225,11 +225,11 @@ function createFromTemplate() {
   border-radius: 6px; padding: 8px 10px; font-size: 13px; box-sizing: border-box;
   font-family: inherit;
 }
-.var-input:focus { border-color: #00bcd4; outline: none; }
+.var-input:focus { border-color: var(--accent); outline: none; }
 .create-btn {
-  width: 100%; background: #00bcd4; border: none; color: white; padding: 10px;
+  width: 100%; background: var(--accent); border: none; color: white; padding: 10px;
   border-radius: 6px; cursor: pointer; font-size: 14px; margin-top: 8px;
 }
 .create-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.create-btn:not(:disabled):hover { background: #0097a7; }
+.create-btn:not(:disabled):hover { background: var(--accent-hover); }
 </style>

@@ -19,7 +19,12 @@
           <h2>📋 Schemas</h2>
           <button class="icon-btn" @click="createNewSchema" title="New Schema">＋</button>
         </div>
-        <ul>
+        <div v-if="schemaStore.loading" class="sidebar-loading">
+          <div class="sidebar-skeleton"></div>
+          <div class="sidebar-skeleton"></div>
+          <div class="sidebar-skeleton"></div>
+        </div>
+        <ul v-else>
           <li
             v-for="schema in schemaStore.schemas"
             :key="schema.id"
@@ -122,6 +127,13 @@
           @save="handleSave"
           @export="handleExportMermaid"
         />
+        <!-- Auto-save indicator -->
+        <div v-if="schemaStore.currentSchema" class="save-indicator" :class="'save-indicator--' + saveState">
+          <span v-if="saveState === 'saving'" class="save-indicator__icon">⟳</span>
+          <span v-else-if="saveState === 'saved'" class="save-indicator__icon">✓</span>
+          <span v-else class="save-indicator__icon">○</span>
+          <span class="save-indicator__text">{{ saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved' : 'Unsaved' }}</span>
+        </div>
       </div>
 
       <RightPanel
@@ -175,6 +187,12 @@
       v-model="showSchemaBuilder"
       @schema-created="onSchemaBuilderResult"
     />
+
+    <CoachmarkOverlay
+      :visible="showCoachmarks"
+      @done="showCoachmarks = false"
+      @skip="showCoachmarks = false"
+    />
   </div>
 </template>
 
@@ -193,6 +211,7 @@ import OnboardingModal from '../components/ui/OnboardingModal.vue';
 import AppModal from '../components/ui/AppModal.vue';
 import ShortcutsOverlay from '../components/ui/ShortcutsOverlay.vue';
 import SchemaBuilderModal from '../components/ui/SchemaBuilderModal.vue';
+import CoachmarkOverlay from '../components/ui/CoachmarkOverlay.vue';
 import type { WorkflowSchema } from '../types';
 import { schemaApi, api } from '../services/api';
 
@@ -213,7 +232,11 @@ const showSearch = ref(false);
 const showOnboarding = ref(false);
 const showShortcuts = ref(false);
 const showSchemaBuilder = ref(false);
+const showCoachmarks = ref(false);
 const sidebarOpen = ref(false);
+
+// Auto-save indicator state
+const saveState = ref<'saved' | 'saving' | 'unsaved'>('saved');
 
 // Execution state (provided to RightPanel via provide/inject)
 const executionState: ExecutionState = {
@@ -338,6 +361,17 @@ onMounted(() => {
     showOnboarding.value = true;
   }
 
+  // Show coachmarks if onboarding is complete but tour not yet seen
+  const coachmarkStatus = localStorage.getItem('axolotl:coachmarks');
+  if (onboardingStatus === 'done' && !coachmarkStatus) {
+    // Small delay to let canvas render
+    setTimeout(() => {
+      if (schemaStore.currentSchema) {
+        showCoachmarks.value = true;
+      }
+    }, 800);
+  }
+
   // Global keyboard shortcuts
   document.addEventListener('keydown', (e: KeyboardEvent) => {
     // '?' opens shortcuts overlay (only when not in input/textarea)
@@ -346,6 +380,17 @@ onMounted(() => {
       showShortcuts.value = !showShortcuts.value;
     }
   });
+});
+
+// Show coachmarks when user navigates to a schema after onboarding
+watch(() => schemaStore.currentSchema, (schema) => {
+  if (schema && !showCoachmarks.value && !showOnboarding.value) {
+    const onboardingDone = localStorage.getItem('axolotl:onboarding') === 'done';
+    const coachmarkSeen = localStorage.getItem('axolotl:coachmarks');
+    if (onboardingDone && !coachmarkSeen) {
+      setTimeout(() => { showCoachmarks.value = true; }, 600);
+    }
+  }
 });
 
 watch(() => route.params.id, (newId) => {
@@ -424,8 +469,15 @@ function goToSettings() {
 
 async function handleSave() {
   if (schemaStore.currentSchema) {
-    await schemaStore.updateSchema(schemaStore.currentSchema);
-    toast.success('Schema saved');
+    saveState.value = 'saving';
+    try {
+      await schemaStore.updateSchema(schemaStore.currentSchema);
+      saveState.value = 'saved';
+      toast.success('Schema saved');
+      setTimeout(() => { if (saveState.value === 'saved') saveState.value = 'unsaved'; }, 2000);
+    } catch {
+      saveState.value = 'unsaved';
+    }
   }
 }
 
@@ -485,11 +537,21 @@ function handleSchemaUpdate(updatedSchema: WorkflowSchema) {
     updatedSchema.nodes = updatedSchema.nodes.filter(n => n != null && n.id);
   }
   schemaStore.updateCurrentSchema(updatedSchema);
+  // Track unsaved state
+  saveState.value = 'unsaved';
   // Debounced auto-save (500ms)
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  saveTimer = setTimeout(async () => {
     if (schemaStore.currentSchema) {
-      schemaStore.updateSchema(schemaStore.currentSchema);
+      saveState.value = 'saving';
+      try {
+        await schemaStore.updateSchema(schemaStore.currentSchema);
+        saveState.value = 'saved';
+        // Auto-reset saved indicator after 2s
+        setTimeout(() => { if (saveState.value === 'saved') saveState.value = 'unsaved'; }, 2000);
+      } catch {
+        saveState.value = 'unsaved';
+      }
     }
   }, 500);
 }
@@ -930,6 +992,61 @@ body {
 }
 .logout-btn:hover {
   opacity: 0.9 !important;
+}
+
+.sidebar-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+.sidebar-skeleton {
+  height: 38px;
+  background: var(--bg-card, rgba(255,255,255,0.06));
+  border-radius: var(--radius-sm, 6px);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* Auto-save indicator */
+.save-indicator {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  transition: all 0.3s ease;
+  z-index: 100;
+  pointer-events: none;
+}
+.save-indicator--saved {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+.save-indicator--saving {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+.save-indicator--unsaved {
+  background: rgba(158, 158, 158, 0.15);
+  color: #aaa;
+}
+.save-indicator__icon {
+  font-size: 14px;
+}
+@keyframes save-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.save-indicator--saving .save-indicator__icon {
+  animation: save-spin 1s linear infinite;
 }
 
 .main-content {

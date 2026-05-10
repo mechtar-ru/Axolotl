@@ -24,7 +24,7 @@
           <option value="DRY_RUN">🎭 Dry Run</option>
         </select>
         <button class="run-schema-btn" @click.stop="executeSchema" :disabled="isExecuting">
-          ▶ {{ executionMode === 'EXECUTE' ? 'Run' : executionMode === 'ANALYZE' ? 'Analyze' : 'Simulate' }}
+          ▶ {{ executionMode === 'EXECUTE' ? 'Run' : executionMode === 'ANALYZE' ? 'Analyze' : 'Dry Run' }}
         </button>
         <button class="save-schema-btn" @click.stop="saveSchema">💾 Save</button>
         <button class="export-schema-btn" @click.stop="exportSchema">📊 Export</button>
@@ -46,7 +46,7 @@
         <button class="search-close" @click="showSearch = false; searchQuery = ''">✕</button>
       </div>
 
-      <div class="toolbar-panel">
+      <div class="toolbar-panel" data-coachmark="toolbar">
         <div class="toolbar-group toolbar-add">
           <button class="toolbar-btn toolbar-add-btn" @click.stop="showAddMenu = !showAddMenu" title="Add node">
             ＋ Add <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>

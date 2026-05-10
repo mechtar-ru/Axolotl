@@ -206,8 +206,8 @@ function stopResize() {
 }
 .right-panel__tab.active {
   opacity: 1;
-  border-left-color: #00bcd4;
-  background: rgba(0, 188, 212, 0.08);
+  border-left-color: var(--accent);
+  background: var(--accent-light);
 }
 
 .right-panel__tab--close {
