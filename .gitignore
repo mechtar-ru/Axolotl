@@ -28,6 +28,9 @@ dist-electron/
 *.db-shm
 *.db-wal
 
+# Python virtual env
+.venv/
+
 # Environment
 .env
 !.env.example
