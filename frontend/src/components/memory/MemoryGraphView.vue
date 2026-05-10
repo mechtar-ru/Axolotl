@@ -1,14 +1,14 @@
 <template>
   <div v-if="visible" class="memory-graph-panel">
     <div class="memory-graph-header">
-      <span>🧠 Граф памяти</span>
+      <span>🧠 Memory Graph</span>
       <div class="header-actions">
         <button class="refresh-btn" @click="loadGraph" :disabled="loading">🔄</button>
         <button class="close-btn" @click="$emit('close')">✕</button>
       </div>
     </div>
 
-    <div v-if="loading" class="loading-state">Загрузка графа...</div>
+    <div v-if="loading" class="loading-state">Loading graph...</div>
     <div v-else-if="error" class="error-state">{{ error }}</div>
 
     <div v-else class="memory-graph-body">
@@ -26,13 +26,13 @@
           <span class="wing-count">{{ wingRooms[wing]?.length || 0 }} rooms</span>
         </div>
         <div v-if="wings.length === 0" class="empty-state">
-          Нет сохранённых воспоминаний. Запустите схему с агентом — результаты сохранятся автоматически.
+          No saved memories. Run a schema with an agent — results are saved automatically.
         </div>
       </div>
 
       <!-- Rooms for selected wing -->
       <div v-if="selectedWing" class="rooms-section">
-        <h3>Комнаты: {{ selectedWing }}</h3>
+        <h3>Rooms: {{ selectedWing }}</h3>
         <div class="rooms-list">
           <div
             v-for="room in wingRooms[selectedWing] || []"
@@ -48,7 +48,7 @@
 
       <!-- Drawers (memory entries) -->
       <div v-if="selectedRoom" class="drawers-section">
-        <h3>{{ selectedRoom }} — {{ drawers.length }} записей</h3>
+        <h3>{{ selectedRoom }} — {{ drawers.length }} records</h3>
         <div class="drawers-list">
           <div
             v-for="drawer in drawers"
@@ -67,7 +67,7 @@
 
       <!-- Tunnels (connections between wings) -->
       <div v-if="selectedWing && tunnels.length > 0" class="tunnels-section">
-        <h3>🔗 Туннели (связи с другими крыльями)</h3>
+        <h3>🔗 Tunnels (connections to other wings)</h3>
         <div class="tunnels-list">
           <div
             v-for="tunnel in tunnels"
@@ -93,7 +93,7 @@
           <pre class="drawer-content">{{ viewingDrawer.content }}</pre>
         </div>
         <div v-if="viewingDrawer.sourceFile" class="drawer-modal-footer">
-          Источник: {{ viewingDrawer.sourceFile }}
+          Source: {{ viewingDrawer.sourceFile }}
         </div>
       </div>
     </div>
@@ -141,7 +141,7 @@ async function loadGraph() {
       wingRooms.value[wing] = Object.keys(rooms).sort();
     }
   } catch (e: any) {
-    error.value = 'Ошибка загрузки графа: ' + (e.message || e);
+    error.value = 'Error loading graph: ' + (e.message || e);
   } finally {
     loading.value = false;
   }

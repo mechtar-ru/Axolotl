@@ -10,7 +10,7 @@
     <textarea
       v-model="localText"
       class="comment-text"
-      placeholder="Заметка..."
+      placeholder="Note..."
       @mousedown.stop
       @mouseup.stop
     />

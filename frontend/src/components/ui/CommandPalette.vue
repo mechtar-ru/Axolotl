@@ -8,7 +8,7 @@
             ref="inputRef"
             v-model="query"
             class="command-palette__input"
-            placeholder="Введите команду или найдите узел..."
+            placeholder="Type a command or find a node..."
             autofocus
             @input="filterCommands"
           />
@@ -30,7 +30,7 @@
             <kbd v-if="cmd.shortcut" class="command-palette__shortcut">{{ cmd.shortcut }}</kbd>
           </div>
           <div v-if="filteredCommands.length === 0" class="command-palette__empty">
-            Ничего не найдено
+            Nothing found
           </div>
         </div>
       </div>
@@ -61,16 +61,16 @@ interface Command {
 }
 
 const allCommands = computed<Command[]>(() => [
-  { id: 'new-schema', icon: '✨', title: 'Новая схема', description: 'Создать пустую схему', shortcut: '⌘N', action: 'new-schema' },
-  { id: 'execute', icon: '▶️', title: 'Выполнить схему', description: 'Запустить текущую схему', shortcut: '⌘↵', action: 'execute' },
-  { id: 'save', icon: '💾', title: 'Сохранить схему', shortcut: '⌘S', action: 'save' },
-  { id: 'plan', icon: '📋', title: 'Открыть план', action: 'toggle-plan' },
-  { id: 'settings', icon: '⚙️', title: 'Настройки', action: 'settings' },
-  { id: 'export-mermaid', icon: '📊', title: 'Экспорт Mermaid', action: 'export-mermaid' },
-  { id: 'export-json', icon: '📦', title: 'Экспорт JSON', action: 'export-json' },
-  { id: 'import', icon: '📥', title: 'Импорт схемы', action: 'import' },
-  { id: 'memory', icon: '🧠', title: 'Поиск в MemPalace', action: 'memory-search' },
-  { id: 'zoom-fit', icon: '🔍', title: 'Вместить всё', shortcut: '⌘0', action: 'zoom-fit' },
+  { id: 'new-schema', icon: '✨', title: 'New Schema', description: 'Create empty schema', shortcut: '⌘N', action: 'new-schema' },
+  { id: 'execute', icon: '▶️', title: 'Execute Schema', description: 'Run the current schema', shortcut: '⌘↵', action: 'execute' },
+  { id: 'save', icon: '💾', title: 'Save Schema', shortcut: '⌘S', action: 'save' },
+  { id: 'plan', icon: '📋', title: 'Open Plan', action: 'toggle-plan' },
+  { id: 'settings', icon: '⚙️', title: 'Settings', action: 'settings' },
+  { id: 'export-mermaid', icon: '📊', title: 'Export Mermaid', action: 'export-mermaid' },
+  { id: 'export-json', icon: '📦', title: 'Export JSON', action: 'export-json' },
+  { id: 'import', icon: '📥', title: 'Import Schema', action: 'import' },
+  { id: 'memory', icon: '🧠', title: 'Search MemPalace', action: 'memory-search' },
+  { id: 'zoom-fit', icon: '🔍', title: 'Fit All', shortcut: '⌘0', action: 'zoom-fit' },
 ]);
 
 const filteredCommands = ref<Command[]>(allCommands.value);

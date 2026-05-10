@@ -7,43 +7,72 @@
         :style="{ top: `${y}px`, left: `${x}px` }"
         @click.stop
       >
-        <button class="ctx-item" @click="$emit('rename')">
-          ✏️ Переименовать
-        </button>
-        <button class="ctx-item" @click="$emit('duplicate')">
-          📋 Дублировать
-        </button>
-        <button class="ctx-item" @click="$emit('toggleCollapse')">
-          {{ collapsed ? '▼ Развернуть' : '▶ Свернуть' }}
-        </button>
-        <button v-if="canEditPrompt" class="ctx-item" @click="$emit('editPrompt')">
-          ✏️ Редактор промпта
-        </button>
-        <div class="ctx-separator"></div>
-        <button class="ctx-item ctx-item-danger" @click="$emit('delete')">
-          🗑 Удалить
-        </button>
+        <div v-if="renaming" class="ctx-rename">
+          <input
+            ref="renameInput"
+            v-model="renameValue"
+            class="ctx-rename-input"
+            @keydown.enter="$emit('rename', renameValue)"
+            @keydown.escape="renaming = false"
+            @blur="renaming = false"
+          />
+        </div>
+        <template v-else>
+          <button class="ctx-item" @click="startRename">
+            ✏️ Rename
+          </button>
+          <button class="ctx-item" @click="$emit('duplicate')">
+            📋 Duplicate
+          </button>
+          <button class="ctx-item" @click="$emit('toggleCollapse')">
+            {{ collapsed ? '▼ Expand' : '▶ Collapse' }}
+          </button>
+          <button v-if="canEditPrompt" class="ctx-item" @click="$emit('editPrompt')">
+            ✏️ Prompt Editor
+          </button>
+          <div class="ctx-separator"></div>
+          <button class="ctx-item ctx-item-danger" @click="$emit('delete')">
+            🗑 Delete
+          </button>
+        </template>
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { ref, nextTick, watch } from 'vue';
+
+const props = defineProps<{
   visible: boolean;
   x: number;
   y: number;
   collapsed?: boolean;
   canEditPrompt?: boolean;
+  nodeName?: string;
 }>();
 
-defineEmits<{
-  (e: 'rename'): void;
+const emit = defineEmits<{
+  (e: 'rename', newName: string): void;
   (e: 'duplicate'): void;
   (e: 'delete'): void;
   (e: 'toggleCollapse'): void;
   (e: 'editPrompt'): void;
 }>();
+
+const renaming = ref(false);
+const renameValue = ref('');
+const renameInput = ref<HTMLInputElement | null>(null);
+
+function startRename() {
+  renameValue.value = props.nodeName || '';
+  renaming.value = true;
+  nextTick(() => renameInput.value?.focus());
+}
+
+watch(() => props.visible, (v) => {
+  if (!v) renaming.value = false;
+});
 </script>
 
 <style scoped>
@@ -91,10 +120,26 @@ defineEmits<{
   margin: 4px 0;
 }
 
+.ctx-rename {
+  padding: 4px;
+}
+
+.ctx-rename-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
 .ctx-enter-active,
 .ctx-leave-active {
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
+
 .ctx-enter-from,
 .ctx-leave-to {
   opacity: 0;

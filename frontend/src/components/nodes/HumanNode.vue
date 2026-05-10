@@ -1,6 +1,6 @@
 <template>
   <div class="node human-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Удалить">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete">✕</button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">👤</span>
@@ -10,22 +10,22 @@
       <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
     </div>
     <div v-if="expanded" class="node-content">
-      <textarea v-model="localPrompt" placeholder="Вопрос/инструкция для человека...&#10;Например: Подтвердите результат: содержит ли ответ корректные данные?" rows="3" @mousedown.stop @mouseup.stop />
+      <textarea v-model="localPrompt" placeholder="Question/instruction for human...&#10;Example: Confirm result: does the response contain valid data?" rows="3" @mousedown.stop @mouseup.stop />
       <div v-if="props.data.executionStatus === 'running' && !approved" class="approval-panel">
         <div class="approval-context" v-if="props.data.result">{{ props.data.result }}</div>
         <div class="approval-buttons">
-          <button class="approve-btn" @click="approve">✅ Подтвердить</button>
-          <button class="reject-btn" @click="reject">❌ Отклонить</button>
+          <button class="approve-btn" @click="approve">✅ Approve</button>
+          <button class="reject-btn" @click="reject">❌ Reject</button>
         </div>
-        <textarea v-model="feedback" placeholder="Комментарий (опционально)..." rows="2" class="feedback-input" />
+        <textarea v-model="feedback" placeholder="Comment (optional)..." rows="2" class="feedback-input" />
       </div>
-      <div v-if="approved === true" class="status-badge approved">Подтверждено</div>
-      <div v-if="approved === false" class="status-badge rejected">Отклонено</div>
+      <div v-if="approved === true" class="status-badge approved">Approved</div>
+      <div v-if="approved === false" class="status-badge rejected">Rejected</div>
       <div v-if="props.data.result && approved !== false" class="node-result">
-        <strong>Результат:</strong>
+        <strong>Result:</strong>
         <div>{{ props.data.result }}</div>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -85,7 +85,7 @@ function approve() {
 }
 function reject() {
   approved.value = false;
-  props.data.onUpdate?.({ config: { ...(props.data.config || {}), approved: false, feedback: feedback.value }, result: 'Отклонено: ' + (feedback.value || 'без комментария') });
+  props.data.onUpdate?.({ config: { ...(props.data.config || {}), approved: false, feedback: feedback.value }, result: 'Rejected: ' + (feedback.value || 'no comment') });
 }
 </script>
 

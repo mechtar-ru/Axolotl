@@ -4,7 +4,7 @@
       v-if="isSelected"
       class="delete-btn"
       @click.stop="handleDelete"
-      title="Удалить узел"
+      title="Delete node"
     >
       ✕
     </button>
@@ -31,10 +31,11 @@
       <button class="node-expand" @click="toggleExpand">
         {{ expanded ? '▼' : '▶' }}
       </button>
+      <span v-if="!expanded" class="node-badge">max {{ localMaxIterations }}</span>
     </div>
 
     <div v-if="expanded" class="node-content">
-      <label class="field-label">Условие выхода:</label>
+      <label class="field-label">Exit condition:</label>
       <textarea
         v-model="localLoopCondition"
         placeholder="iterations < 10"
@@ -42,7 +43,7 @@
         @mousedown.stop
         @mouseup.stop
       />
-      <label class="field-label">Макс. итераций:</label>
+      <label class="field-label">Max iterations:</label>
       <input
         v-model.number="localMaxIterations"
         type="number"
@@ -56,7 +57,7 @@
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
       </div>
       <div v-if="props.data.result !== undefined && props.data.result !== null" class="node-result">
-        <strong>Результат:</strong> {{ props.data.result }}
+        <strong>Result:</strong> {{ props.data.result }}
       </div>
     </div>
 

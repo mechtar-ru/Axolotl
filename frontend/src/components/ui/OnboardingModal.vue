@@ -2,14 +2,15 @@
   <div v-if="visible" class="onboarding-overlay">
     <div class="onboarding-card">
       <div class="onboarding-header">
-        <h1>🧬 Добро пожаловать в Axolotl!</h1>
-        <p>Визуальная оркестрация AI-агентов</p>
+        <h1>Welcome to Axolotl!</h1>
+        <p>Visual AI agent orchestration</p>
       </div>
 
       <div class="onboarding-body">
+        <!-- Step 1: Choose provider -->
         <div class="step" v-if="step === 1">
-          <h2>Выберите AI провайдера</h2>
-          <p class="step-desc">Это будет модель по умолчанию для новых агентов</p>
+          <h2>Choose AI Provider</h2>
+          <p class="step-desc">This will be the default model for new agents</p>
 
           <div class="provider-options">
             <button
@@ -23,46 +24,68 @@
               <span class="provider-name">{{ getProviderLabel(provider.name) }}</span>
               <span class="provider-model">{{ provider.defaultModel }}</span>
               <span class="provider-status" :class="provider.available ? 'online' : 'offline'">
-                {{ provider.available ? '✓ Доступен' : '✗ Недоступен' }}
+                {{ provider.available ? 'Available' : 'Unavailable' }}
               </span>
             </button>
 
             <div v-if="availableProviders.length === 0" class="no-providers">
-              <p>⚠️ Нет доступных провайдеров</p>
-              <p class="hint">Убедитесь что Ollama запущен или добавьте API ключи в настройках</p>
+              <p>No providers available</p>
+              <p class="hint">Make sure Ollama is running or add API keys in Settings</p>
             </div>
           </div>
         </div>
 
+        <!-- Step 2: Core node types guide -->
         <div class="step" v-if="step === 2">
-          <h2>🎉 Готово!</h2>
-          <p class="step-desc">Выбран провайдер: <strong>{{ getProviderLabel(selectedProvider) }}</strong></p>
-          <p class="model-chosen">Модель: <code>{{ selectedModel }}</code></p>
+          <h2>Core Building Blocks</h2>
+          <p class="step-desc">Workflows are built from 5 basic node types</p>
+
+          <div class="node-guide">
+            <div class="node-guide-item" v-for="node in coreNodes" :key="node.type">
+              <span class="node-guide-icon">{{ node.icon }}</span>
+              <div class="node-guide-info">
+                <span class="node-guide-name">{{ node.name }}</span>
+                <span class="node-guide-desc">{{ node.desc }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="more-nodes-hint">
+            More types available via the <strong>+ Add</strong> menu on canvas
+          </div>
+        </div>
+
+        <!-- Step 3: Ready -->
+        <div class="step" v-if="step === 3">
+          <h2>Ready to go!</h2>
+          <p class="step-desc">Provider: <strong>{{ getProviderLabel(selectedProvider) }}</strong></p>
+          <p class="model-chosen">Model: <code>{{ selectedModel }}</code></p>
 
           <div class="quick-start">
-            <h3>Быстрый старт:</h3>
+            <h3>Quick start:</h3>
             <ol>
-              <li>Создайте новую схему</li>
-              <li>Добавьте узлы Source → Agent → Output</li>
-              <li>Соедините их связями</li>
-              <li>Нажмите ▶ Выполнить</li>
+              <li>Create a new schema or pick a template</li>
+              <li>Add nodes: Source → Agent → Output</li>
+              <li>Connect them with edges</li>
+              <li>Press ▶ Run</li>
             </ol>
           </div>
         </div>
       </div>
 
       <div class="onboarding-footer">
-        <button v-if="step === 1" class="btn-skip" @click="skipOnboarding">Пропустить</button>
+        <button v-if="step > 1" class="btn-back" @click="step--">Back</button>
+        <button v-if="step === 1" class="btn-skip" @click="skipOnboarding">Skip</button>
         <button
-          v-if="step === 1"
+          v-if="step < 3"
           class="btn-primary"
-          :disabled="!selectedProvider"
-          @click="step = 2"
+          :disabled="step === 1 && !selectedProvider"
+          @click="step++"
         >
-          Далее →
+          Next
         </button>
-        <button v-if="step === 2" class="btn-primary" @click="finishOnboarding">
-          Начать работу 🚀
+        <button v-if="step === 3" class="btn-primary" @click="finishOnboarding">
+          Start Building
         </button>
       </div>
     </div>
@@ -86,6 +109,14 @@ const emit = defineEmits<{
 const step = ref(1);
 const providers = ref<ProviderInfo[]>([]);
 const selectedProvider = ref('');
+
+const coreNodes = [
+  { type: 'source', icon: '📥', name: 'Source', desc: 'Input data — text, file, URL, or memory' },
+  { type: 'agent', icon: '🤖', name: 'Agent', desc: 'LLM call with optional tool use' },
+  { type: 'condition', icon: '⚖️', name: 'Condition', desc: 'Branch based on logic (if/else)' },
+  { type: 'transform', icon: '⚡', name: 'Transform', desc: 'Extract, route, or reshape data' },
+  { type: 'output', icon: '📤', name: 'Output', desc: 'Write result to file, memory, or log' },
+];
 
 const availableProviders = computed(() =>
   providers.value.filter(p => p.available || p.name === 'ollama')
@@ -129,7 +160,6 @@ function finishOnboarding() {
 onMounted(async () => {
   try {
     providers.value = await settingsApi.getProviders();
-    // Auto-select first available
     if (availableProviders.value.length > 0 && !selectedProvider.value) {
       selectedProvider.value = availableProviders.value[0]!.name;
     }
@@ -159,7 +189,7 @@ onMounted(async () => {
   border: 1px solid rgba(108, 99, 255, 0.3);
   border-radius: 16px;
   padding: 32px;
-  max-width: 520px;
+  max-width: 540px;
   width: 90%;
   max-height: 85vh;
   overflow-y: auto;
@@ -205,7 +235,7 @@ onMounted(async () => {
   gap: 10px;
 }
 
-.provider.option {
+.provider-option {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -220,96 +250,73 @@ onMounted(async () => {
   width: 100%;
 }
 
-.provider.option:hover {
+.provider-option:hover {
   border-color: #6c63ff;
   background: rgba(108, 99, 255, 0.1);
 }
 
-.provider.option.selected {
+.provider-option.selected {
   border-color: #6c63ff;
   background: rgba(108, 99, 255, 0.15);
   box-shadow: 0 0 12px rgba(108, 99, 255, 0.3);
 }
 
-.provider-icon {
-  font-size: 24px;
+.provider-icon { font-size: 24px; }
+.provider-name { flex: 1; font-weight: 600; font-size: 14px; }
+.provider-model { font-size: 12px; color: #6c63ff; font-family: monospace; }
+
+.provider-status { font-size: 11px; padding: 3px 8px; border-radius: 4px; }
+.provider-status.online { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
+.provider-status.offline { background: rgba(244, 67, 54, 0.2); color: #f44336; }
+
+.no-providers { text-align: center; padding: 20px; color: #888; }
+.no-providers .hint { font-size: 12px; color: #666; margin-top: 8px; }
+
+/* Node guide */
+.node-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.provider-name {
-  flex: 1;
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.provider-model {
-  font-size: 12px;
-  color: #6c63ff;
-  font-family: monospace;
-}
-
-.provider-status {
-  font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 4px;
-}
-
-.provider-status.online {
-  background: rgba(76, 175, 80, 0.2);
-  color: #4caf50;
-}
-
-.provider-status.offline {
-  background: rgba(244, 67, 54, 0.2);
-  color: #f44336;
-}
-
-.no-providers {
-  text-align: center;
-  padding: 20px;
-  color: #888;
-}
-
-.no-providers .hint {
-  font-size: 12px;
-  color: #666;
-  margin-top: 8px;
-}
-
-.model-chosen {
-  font-size: 14px;
-  color: #e0e0e0;
-  margin: 12px 0 20px;
-}
-
-.model-chosen code {
-  background: #2d2d44;
-  padding: 2px 8px;
-  border-radius: 4px;
-  color: #6c63ff;
-}
-
-.quick-start {
+.node-guide-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
   background: #2d2d44;
   border-radius: 8px;
-  padding: 16px;
+  border-left: 3px solid #6c63ff;
 }
 
-.quick-start h3 {
-  font-size: 14px;
-  color: #e0e0e0;
-  margin: 0 0 12px;
+.node-guide-icon { font-size: 22px; }
+
+.node-guide-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.quick-start ol {
-  margin: 0;
-  padding-left: 20px;
+.node-guide-name { font-size: 14px; font-weight: 600; color: #e0e0e0; }
+.node-guide-desc { font-size: 12px; color: #888; }
+
+.more-nodes-hint {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: rgba(108, 99, 255, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
   color: #aaa;
-  font-size: 13px;
+  text-align: center;
 }
 
-.quick-start li {
-  margin-bottom: 6px;
-}
+.model-chosen { font-size: 14px; color: #e0e0e0; margin: 12px 0 20px; }
+.model-chosen code { background: #2d2d44; padding: 2px 8px; border-radius: 4px; color: #6c63ff; }
+
+.quick-start { background: #2d2d44; border-radius: 8px; padding: 16px; }
+.quick-start h3 { font-size: 14px; color: #e0e0e0; margin: 0 0 12px; }
+.quick-start ol { margin: 0; padding-left: 20px; color: #aaa; font-size: 13px; }
+.quick-start li { margin-bottom: 6px; }
 
 .onboarding-footer {
   display: flex;
@@ -332,15 +339,21 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: #5a52e0;
-  transform: translateY(-1px);
+.btn-primary:hover:not(:disabled) { background: #5a52e0; transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-back {
+  padding: 12px 20px;
+  background: transparent;
+  color: #888;
+  border: 1px solid #4a4a6a;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
 }
 
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
+.btn-back:hover { background: rgba(255, 255, 255, 0.05); }
 
 .btn-skip {
   padding: 12px 20px;
@@ -353,7 +366,5 @@ onMounted(async () => {
   transition: all 0.2s;
 }
 
-.btn-skip:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
+.btn-skip:hover { background: rgba(255, 255, 255, 0.05); }
 </style>

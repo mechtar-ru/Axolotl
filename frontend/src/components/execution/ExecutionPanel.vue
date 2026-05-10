@@ -1,9 +1,9 @@
 <template>
   <div v-if="visible" class="execution-panel">
     <div class="execution-panel__header">
-      <span>Выполнение схемы</span>
+      <span>Schema Execution</span>
       <div class="execution-panel__buttons">
-        <button class="stop-btn" @click="stopExecution" :disabled="!isExecuting">Остановить</button>
+        <button class="stop-btn" @click="stopExecution" :disabled="!isExecuting">Stop</button>
         <button class="close-btn" @click="closePanel">✕</button>
       </div>
     </div>
@@ -20,13 +20,13 @@
     </div>
 
     <div class="execution-panel__stats">
-      <div>Узлов: {{ completedNodes }}/{{ totalNodes }}</div>
-      <div>Скорость: {{ nodesPerSecond.toFixed(1) }} уз/с</div>
-      <div v-if="completedNodes > 0">Ср: {{ avgNodeTime }}мс/уз</div>
+      <div>Nodes: {{ completedNodes }}/{{ totalNodes }}</div>
+      <div>Speed: {{ nodesPerSecond.toFixed(1) }} n/s</div>
+      <div v-if="completedNodes > 0">Avg: {{ avgNodeTime }}ms</div>
     </div>
 
     <div class="execution-panel__tokens">
-      <span v-if="(totalTokens ?? 0) > 0">{{ (totalTokens ?? 0).toLocaleString() }} токенов</span>
+      <span v-if="(totalTokens ?? 0) > 0">{{ (totalTokens ?? 0).toLocaleString() }} tokens</span>
       <span v-if="(estimatedCost ?? 0) > 0" class="cost">~${{ (estimatedCost ?? 0).toFixed(4) }}</span>
     </div>
 
@@ -37,14 +37,14 @@
         :class="{ active: activeTab === 'logs' }"
         @click="activeTab = 'logs'"
       >
-        📋 Логи
+        📋 Logs
       </button>
       <button
         class="tab-btn"
         :class="{ active: activeTab === 'trajectory' }"
         @click="activeTab = 'trajectory'"
       >
-        🎯 Траектория
+        🎯 Trajectory
         <span v-if="trajectoryStats.toolCalls > 0" class="tab-badge">
           {{ trajectoryStats.totalIterations }}·{{ trajectoryStats.toolCalls }}
         </span>
@@ -54,7 +54,7 @@
     <!-- Waves section -->
     <div v-if="waves.length > 0" class="execution-panel__waves">
       <div class="waves-header">
-        <span>🌊 Волны</span>
+        <span>Waves</span>
         <span class="waves-count">{{ waves.length }}</span>
       </div>
       <div class="waves-list">
@@ -65,9 +65,9 @@
           :class="'wave-' + wave.status"
           @click="$emit('highlight-wave', wave.nodeIds)"
         >
-          <span class="wave-number">Волна {{ i + 1 }}</span>
+          <span class="wave-number">Wave {{ i + 1 }}</span>
           <span class="wave-status">{{ waveStatusIcon(wave.status) }} {{ waveStatusLabel(wave.status) }}</span>
-          <span class="wave-nodes">{{ wave.nodeIds.length }} узлов</span>
+          <span class="wave-nodes">{{ waveNodeNames(wave.nodeIds) }}</span>
         </div>
       </div>
     </div>
@@ -89,7 +89,7 @@
     <!-- Trajectory Tab -->
     <div v-if="activeTab === 'trajectory'" class="execution-panel__trajectory" ref="trajectoryContainer">
       <div v-if="trajectory.length === 0" class="trajectory-empty">
-        Траектория будет отображаться здесь при выполнении агента с инструментами
+        Trajectory will appear here when an agent with tools executes
       </div>
       <div v-else class="trajectory-list">
         <div
@@ -98,7 +98,7 @@
           class="trajectory-iteration"
         >
           <div class="iter-header">
-            <span class="iter-number">Итерация {{ iter.iteration }}</span>
+            <span class="iter-number">Iteration {{ iter.iteration }}</span>
             <span class="iter-duration">{{ iter.durationMs }}ms</span>
             <span v-if="iter.toolCalls > 0" class="iter-tools">🔧 {{ iter.toolCalls }}</span>
           </div>
@@ -112,8 +112,8 @@
           </div>
         </div>
         <div v-if="trajectoryStats.totalIterations > 0" class="trajectory-summary">
-          <span>📊 {{ trajectoryStats.totalIterations }} итераций</span>
-          <span>🔧 {{ trajectoryStats.toolCalls }} инструментов</span>
+          <span>📊 {{ trajectoryStats.totalIterations }} iterations</span>
+          <span>🔧 {{ trajectoryStats.toolCalls }} tools</span>
           <span>⏱ {{ trajectoryStats.totalTimeMs }}ms</span>
         </div>
       </div>
@@ -157,6 +157,7 @@ const props = defineProps<{
   logs: LogEntry[];
   totalTokens?: number;
   estimatedCost?: number;
+  nodeNameMap?: Record<string, string>;
 }>();
 const emit = defineEmits<{
   (e: 'stop'): void;
@@ -274,7 +275,13 @@ function waveStatusIcon(status: string): string {
 }
 
 function waveStatusLabel(status: string): string {
-  return { pending: 'ожидает', running: 'выполняется', completed: 'завершена' }[status] || status;
+  return { pending: 'pending', running: 'running', completed: 'done' }[status] || status;
+}
+
+function waveNodeNames(nodeIds: string[]): string {
+  const map = props.nodeNameMap || {};
+  const names = nodeIds.map(id => map[id] || id.slice(0, 8));
+  return names.join(', ');
 }
 
 // Called from parent when wave update received via WebSocket

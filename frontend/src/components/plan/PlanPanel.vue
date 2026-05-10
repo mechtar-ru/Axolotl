@@ -1,7 +1,7 @@
 <template>
   <div v-if="visible" class="plan-panel">
     <div class="plan-header">
-      <span>📋 План</span>
+      <span>📋 Plan</span>
       <button class="close-btn" @click="$emit('close')">✕</button>
     </div>
 
@@ -10,18 +10,18 @@
       <select v-model="selectedWorkspace" @change="onWorkspaceChange" class="workspace-select">
         <option v-for="ws in workspaces" :key="ws" :value="ws">{{ ws }}</option>
       </select>
-      <button class="add-workspace-btn" @click="showCreateWorkspace = true" title="Создать workspace">➕</button>
+      <button class="add-workspace-btn" @click="showCreateWorkspace = true" title="Create workspace">➕</button>
     </div>
 
     <!-- Create workspace modal -->
     <div v-if="showCreateWorkspace" class="create-workspace-modal">
       <div class="create-workspace-content">
         <div class="create-workspace-header">
-          <span>Новый workspace</span>
+          <span>New workspace</span>
           <button @click="showCreateWorkspace = false">✕</button>
         </div>
-        <input v-model="newWorkspaceName" placeholder="Имя workspace" class="workspace-input" @keyup.enter="createWorkspace" />
-        <button @click="createWorkspace" class="create-btn">Создать</button>
+        <input v-model="newWorkspaceName" placeholder="Workspace name" class="workspace-input" @keyup.enter="createWorkspace" />
+        <button @click="createWorkspace" class="create-btn">Create</button>
       </div>
     </div>
 
@@ -38,7 +38,7 @@
       </button>
     </div>
 
-    <div v-if="loading" class="plan-loading">Загрузка...</div>
+    <div v-if="loading" class="plan-loading">Loading...</div>
 
     <div v-else-if="error" class="plan-error">
       {{ error }}
@@ -50,7 +50,7 @@
         <div class="plan-add-row">
           <textarea
             v-model="newTask"
-            placeholder="Задачи (каждая с новой строки)...&#10;Напр: Сделать тесты | HIGH&#10;      Обновить docs | LOW"
+            placeholder="Tasks (one per line)...&#10;E.g.: Add tests | HIGH&#10;      Update docs | LOW"
             class="plan-textarea"
             rows="3"
             @keydown.ctrl.enter="addBatchTasks"
@@ -59,7 +59,7 @@
             <button class="add-btn" @click="addBatchTasks" :disabled="!parsedTaskCount">
               +{{ parsedTaskCount > 1 ? parsedTaskCount : '' }}
             </button>
-            <button class="browse-btn" @click="browseFolder" title="Выбрать папку">📂</button>
+            <button class="browse-btn" @click="browseFolder" title="Select folder">📂</button>
           </div>
         </div>
       </div>
@@ -67,7 +67,7 @@
       <!-- Node link dropdown -->
       <div v-if="linkingTaskIndex !== null && schemaNodes && schemaNodes.length > 0" class="node-picker-dropdown">
         <div class="node-picker-header">
-          <span>Связать задачу с узлом:</span>
+          <span>Link task to node:</span>
           <button class="node-picker-close" @click="linkingTaskIndex = null">✕</button>
         </div>
         <div class="node-picker-list">
@@ -83,14 +83,14 @@
           </div>
         </div>
         <button class="unlink-btn" @click="unlinkNode(linkingTaskIndex)" v-if="tasks[linkingTaskIndex]?.nodeId">
-          Убрать связь
+          Remove link
         </button>
       </div>
 
       <!-- Acceptance criteria editor -->
       <div v-if="criteriaEditIndex !== null" class="criteria-editor">
         <div class="criteria-editor-header">
-          <span>Критерии приёмки: {{ tasks[criteriaEditIndex]?.title }}</span>
+          <span>Acceptance criteria: {{ tasks[criteriaEditIndex]?.title }}</span>
           <button class="criteria-close" @click="criteriaEditIndex = null">✕</button>
         </div>
         <div class="criteria-list">
@@ -109,7 +109,7 @@
               v-if="tasks[criteriaEditIndex]"
               v-model="tasks[criteriaEditIndex]!.acceptanceCriteria![i]"
               class="criteria-input"
-              placeholder="Критерий..."
+              placeholder="Criterion..."
               @change="saveCriteria(criteriaEditIndex)"
             />
             <button class="criteria-delete" @click="removeCriterion(criteriaEditIndex, i)">✕</button>
@@ -119,10 +119,10 @@
           <input
             v-model="newCriterion"
             class="criteria-new-input"
-            placeholder="Новый критерий..."
+            placeholder="New criterion..."
             @keyup.enter="addCriterion(criteriaEditIndex)"
           />
-          <button class="criteria-add-btn" @click="addCriterion(criteriaEditIndex)">+ Добавить</button>
+          <button class="criteria-add-btn" @click="addCriterion(criteriaEditIndex)">+ Add</button>
         </div>
       </div>
 
@@ -150,7 +150,7 @@
                 </span>
               </div>
               <!-- Acceptance criteria indicator -->
-              <span v-if="task.acceptanceCriteria && task.acceptanceCriteria.length > 0" class="criteria-indicator" :title="`${criteriaMetCount(i)}/${task.acceptanceCriteria.length} критериев выполнено`">
+              <span v-if="task.acceptanceCriteria && task.acceptanceCriteria.length > 0" class="criteria-indicator" :title="`${criteriaMetCount(i)}/${task.acceptanceCriteria.length} criteria met`">
                 <span class="criteria-bar">
                   <span class="criteria-fill" :style="{ width: criteriaPercent(i) + '%' }"></span>
                 </span>
@@ -162,11 +162,11 @@
               <span class="task-priority" @click.stop="cyclePriority(i)" :title="task.priority">
                 {{ priorityIcon(task.priority) }}
               </span>
-              <span class="task-link" @click.stop="toggleNodeLink(i)" :title="task.nodeId ? 'Перейти к узлу' : 'Связать с узлом'">
+              <span class="task-link" @click.stop="toggleNodeLink(i)" :title="task.nodeId ? 'Go to node' : 'Link to node'">
                 🔗
               </span>
-              <button class="task-criteria-btn" @click.stop="criteriaEditIndex = i" title="Критерии приёмки">📋</button>
-              <button class="task-delete" @click.stop="deleteTask(i)" title="Удалить">✕</button>
+              <button class="task-criteria-btn" @click.stop="criteriaEditIndex = i" title="Acceptance criteria">📋</button>
+              <button class="task-delete" @click.stop="deleteTask(i)" title="Delete">✕</button>
             </div>
           </div>
           <!-- Expanded detail -->
@@ -199,7 +199,7 @@
       </div>
 
       <div class="plan-footer">
-        <button class="export-plan-btn" @click="exportPlan">📄 Экспорт Markdown</button>
+        <button class="export-plan-btn" @click="exportPlan">📄 Export Markdown</button>
       </div>
     </div>
   </div>
@@ -247,10 +247,10 @@ const expandedTask = ref<number | null>(null);
 // Level filter
 type PlanLevel = 'all' | 'project' | 'current' | 'child';
 const levels = [
-  { value: 'project' as PlanLevel, label: 'Общее' },
-  { value: 'current' as PlanLevel, label: 'Текущий' },
-  { value: 'child' as PlanLevel, label: 'Дочерние' },
-  { value: 'all' as PlanLevel, label: 'Все' },
+  { value: 'project' as PlanLevel, label: 'General' },
+  { value: 'current' as PlanLevel, label: 'Current' },
+  { value: 'child' as PlanLevel, label: 'Child' },
+  { value: 'all' as PlanLevel, label: 'All' },
 ];
 const selectedLevel = ref<PlanLevel>('project');
 
@@ -445,7 +445,7 @@ async function loadPlan() {
       }));
     }
   } catch (e: any) {
-    error.value = 'Ошибка загрузки плана: ' + (e.message || e);
+    error.value = 'Error loading plan: ' + (e.message || e);
   } finally {
     loading.value = false;
   }
@@ -480,7 +480,7 @@ async function addBatchTasks() {
     }
     newTask.value = '';
   } catch (e: any) {
-    error.value = 'Ошибка добавления: ' + (e.message || e);
+    error.value = 'Error adding: ' + (e.message || e);
   }
 }
 
@@ -507,7 +507,7 @@ async function updateTaskRemote(taskId: string, updates: { status?: string; prio
       throw new Error(err.message || `HTTP ${response.status}`);
     }
   } catch (e: any) {
-    error.value = 'Ошибка обновления: ' + (e.message || e);
+    error.value = 'Error updating: ' + (e.message || e);
   }
 }
 
@@ -522,7 +522,7 @@ async function cycleStatus(i: number) {
   if (nextStatus === 'DONE' && task.acceptanceCriteria && task.acceptanceCriteria.length > 0) {
     const metCount = criteriaMetCount(i);
     if (metCount < task.acceptanceCriteria.length) {
-      if (!confirm(`Не все критерии выполнены (${metCount}/${task.acceptanceCriteria.length}). Всё равно отметить как DONE?`)) {
+      if (!confirm(`Not all criteria met (${metCount}/${task.acceptanceCriteria.length}). Mark as DONE anyway?`)) {
         return;
       }
     }
@@ -562,7 +562,7 @@ async function deleteTask(i: number) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     tasks.value.splice(i, 1);
   } catch (e: any) {
-    error.value = 'Ошибка удаления: ' + (e.message || e);
+    error.value = 'Error deleting: ' + (e.message || e);
   }
 }
 
@@ -712,7 +712,7 @@ function exportPlan() {
   const lines = tasks.value.map(t =>
     `- [${t.status === 'DONE' ? 'x' : ' '}] ${t.title}${t.nodeId ? ` → ${t.nodeId}` : ''}`
   );
-  const text = `# План\n\n${lines.join('\n')}`;
+  const text = `# Plan\n\n${lines.join('\n')}`;
   const blob = new Blob([text], { type: 'text/markdown' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

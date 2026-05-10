@@ -4,7 +4,7 @@
       v-if="isSelected"
       class="delete-btn"
       @click.stop="handleDelete"
-      title="Удалить узел"
+      title="Delete node"
     >
       ✕
     </button>
@@ -118,7 +118,7 @@
               />
               <button class="step-remove" @click="removeTransform(idx)">✕</button>
             </div>
-            <button class="add-step-btn" @click="addTransform">+ Add Transform</button>
+            <button class="add-step-btn" @click="addTransform">+ Add Step</button>
           </div>
 
           <div class="routes-section">
@@ -129,11 +129,10 @@
                 placeholder="not empty / empty / iserror"
                 @input="updateRoutes"
               />
-              <input
-                v-model="route.targetNodeId"
-                placeholder="target node id"
-                @input="updateRoutes"
-              />
+              <select v-model="route.targetNodeId" @change="updateRoutes" class="route-target-select">
+                <option value="">Select target...</option>
+                <option v-for="n in schemaNodes" :key="n.id" :value="n.id">{{ n.name }}</option>
+              </select>
               <button class="step-remove" @click="removeRoute(idx)">✕</button>
             </div>
             <button class="add-step-btn" @click="addRoute">+ Add Route</button>
@@ -143,7 +142,7 @@
             <label>Fallback:</label>
             <input
               v-model="localFallback"
-              placeholder="default value if no route matches"
+              placeholder="Default value if no route matches"
               @input="updateFallback"
             />
           </div>
@@ -191,6 +190,7 @@ const props = defineProps<{
     result?: string;
     progress?: number;
     executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
+    schemaNodes?: Array<{ id: string; name: string; type: string }>;
     onUpdate?: (updates: any) => void;
     onRename?: (name: string) => void;
     onDelete?: () => void;
@@ -210,6 +210,7 @@ const localFallback = ref(props.data.fallbackValue || '');
 const nameInput = ref<HTMLInputElement | null>(null);
 
 const isSelected = computed(() => props.selected === true);
+const schemaNodes = computed(() => props.data.schemaNodes || []);
 const statusColor = computed(() => {
   switch (props.data.executionStatus) {
     case 'running': return '#ffa500';
@@ -380,8 +381,17 @@ function handleDelete() {
   gap: 8px;
   margin-bottom: 8px;
 }
-.route-row input {
+.route-row input, .route-target-select {
   flex: 1;
+}
+.route-target-select {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  max-width: 140px;
 }
 .fallback-section {
   display: flex;

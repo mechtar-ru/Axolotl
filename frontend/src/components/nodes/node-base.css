@@ -227,6 +227,16 @@
   text-align: right;
 }
 
+.node-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+  font-weight: 400;
+}
+
 .model-select {
   width: 100%;
   background: var(--bg-primary);

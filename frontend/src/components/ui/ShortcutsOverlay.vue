@@ -1,5 +1,5 @@
 <template>
-  <AppModal v-model="visible" title="⌨️ Горячие клавиши">
+  <AppModal v-model="visible" title="Keyboard Shortcuts">
     <div class="shortcuts-list">
       <div v-for="group in groups" :key="group.title" class="shortcut-group">
         <h4>{{ group.title }}</h4>
@@ -29,35 +29,35 @@ const mod = isMac ? '⌘' : 'Ctrl';
 
 const groups = [
   {
-    title: 'Общие',
+    title: 'General',
     items: [
-      { key: `${mod}+K`, label: 'Палитра команд' },
-      { key: `${mod}+S`, label: 'Сохранить схему' },
-      { key: `${mod}+N`, label: 'Новая схема' },
-      { key: '?', label: 'Показать горячие клавиши' },
-      { key: 'Escape', label: 'Закрыть панель/модальное окно' },
+      { key: `${mod}+K`, label: 'Command Palette' },
+      { key: `${mod}+S`, label: 'Save Schema' },
+      { key: `${mod}+N`, label: 'New Schema' },
+      { key: '?', label: 'Show Keyboard Shortcuts' },
+      { key: 'Escape', label: 'Close Panel / Modal' },
     ],
   },
   {
-    title: 'Редактор',
+    title: 'Editor',
     items: [
-      { key: `${mod}+F`, label: 'Поиск узлов' },
-      { key: `${mod}+E`, label: 'Открыть редактор промпта' },
-      { key: 'Ctrl+G', label: 'Группировать узлы' },
-      { key: 'Delete', label: 'Удалить выбранный узел' },
+      { key: `${mod}+F`, label: 'Search Nodes' },
+      { key: `${mod}+E`, label: 'Open Prompt Editor' },
+      { key: 'Ctrl+G', label: 'Group Nodes' },
+      { key: 'Delete', label: 'Delete Selected Node' },
     ],
   },
   {
-    title: 'Выполнение',
+    title: 'Execution',
     items: [
-      { key: `${mod}+Enter`, label: 'Запустить схему' },
-      { key: `${mod}.`, label: 'Остановить выполнение' },
+      { key: `${mod}+Enter`, label: 'Run Schema' },
+      { key: `${mod}.`, label: 'Stop Execution' },
     ],
   },
   {
     title: 'Electron',
     items: [
-      { key: `${mod}+Shift+A`, label: 'Показать/скрыть окно' },
+      { key: `${mod}+Shift+A`, label: 'Show/Hide Window' },
     ],
   },
 ];

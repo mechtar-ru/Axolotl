@@ -4,7 +4,7 @@
       v-if="isSelected"
       class="delete-btn"
       @click.stop="handleDelete"
-      title="Удалить узел"
+      title="Delete node"
     >
       ✕
     </button>
@@ -32,16 +32,16 @@
     </div>
     <div v-if="expanded" class="node-content">
       <div class="output-config">
-        <label class="config-label">Тип вывода:</label>
+        <label class="config-label">Output type:</label>
         <select v-model="outputType" class="config-select" @change="updateConfig">
-          <option value="log">📋 Лог (панель)</option>
-          <option value="file">💾 Файл</option>
-          <option value="memory">🧠 Память (MemPalace)</option>
+          <option value="log">📋 Log (panel)</option>
+          <option value="file">💾 File</option>
+          <option value="memory">🧠 Memory (MemPalace)</option>
         </select>
       </div>
       <template v-if="outputType === 'file'">
         <div class="output-config">
-          <label class="config-label">Путь:</label>
+          <label class="config-label">Path:</label>
           <input
             v-model="filePath"
             class="config-input"
@@ -50,9 +50,9 @@
           />
         </div>
         <div class="output-config">
-          <label class="config-label">Формат:</label>
+          <label class="config-label">Format:</label>
           <select v-model="fileFormat" class="config-select" @change="updateConfig">
-            <option value="text">Текст</option>
+            <option value="text">Text</option>
             <option value="markdown">Markdown</option>
             <option value="json">JSON</option>
           </select>
@@ -80,7 +80,7 @@
       </template>
       <template v-if="props.data.result">
         <button class="result-toggle" @click="resultExpanded = !resultExpanded">
-          {{ resultExpanded ? '▼ Результат' : '▶ Результат' }}
+          {{ resultExpanded ? '▼ Result' : '▶ Result' }}
         </button>
         <div v-if="resultExpanded" class="node-result">
           <span v-if="outputType === 'file' && props.data.executionStatus === 'completed'" class="file-saved">✅ {{ props.data.result }}</span>
@@ -91,7 +91,7 @@
         <div class="progress-fill" :style="{ width: `${props.data.progress}%` }"></div>
         <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>

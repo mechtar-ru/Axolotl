@@ -7,15 +7,15 @@
     </div>
     <div class="node-body">
       <div v-if="targetSchemaName" class="target-schema">
-        <span class="label">Цель:</span>
+        <span class="label">Target:</span>
         <span class="value">{{ targetSchemaName }}</span>
       </div>
       <div v-else class="no-target">
-        ⚠️ Не выбрана схема
+        ⚠️ No schema selected
       </div>
       <div v-if="data.inputMapping && Object.keys(data.inputMapping).length > 0" class="mapping-info">
-        <span class="label">Входы:</span>
-        <span class="value">{{ Object.keys(data.inputMapping).length }} маппингов</span>
+        <span class="label">Inputs:</span>
+        <span class="value">{{ Object.keys(data.inputMapping).length }} mappings</span>
       </div>
     </div>
     <div v-if="result" class="node-result">
@@ -23,7 +23,7 @@
     </div>
     <div v-if="status === 'running'" class="running-indicator">
       <span class="pulse"></span>
-      Выполняется...
+      Running...
     </div>
   </div>
 </template>

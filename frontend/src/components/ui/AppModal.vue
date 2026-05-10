@@ -9,7 +9,7 @@
       >
         <div v-if="title" class="app-modal-header">
           <h3>{{ title }}</h3>
-          <button class="app-modal-close" @click="close" title="Закрыть (Esc)">✕</button>
+          <button class="app-modal-close" @click="close" title="Close (Esc)">✕</button>
         </div>
         <slot />
       </div>

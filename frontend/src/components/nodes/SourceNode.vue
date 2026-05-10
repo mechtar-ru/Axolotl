@@ -1,6 +1,6 @@
 <template>
   <div class="node source-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Удалить узел">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete node">✕</button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">{{ typeIcon }}</span>
@@ -27,20 +27,20 @@
 
       <!-- TEXT mode -->
       <template v-if="sourceType === 'text'">
-        <textarea v-model="localSourceData" placeholder="Введите данные или перетащите файл..." rows="4" />
+        <textarea v-model="localSourceData" placeholder="Enter data or drop a file..." rows="4" />
       </template>
 
       <!-- MEMORY mode -->
       <template v-if="sourceType === 'memory'">
         <div class="search-row">
-          <input v-model="searchQuery" placeholder="Поиск в памяти..." class="search-input" @keyup.enter="searchMemory" />
+          <input v-model="searchQuery" placeholder="Search memory..." class="search-input" @keyup.enter="searchMemory" />
           <button class="search-btn" @click="searchMemory" :disabled="searching">🔍</button>
         </div>
         <div class="filter-row">
           <input v-model="filterWing" placeholder="Wing" class="filter-input" />
           <input v-model="filterRoom" placeholder="Room" class="filter-input" />
         </div>
-        <div v-if="searching" class="search-status">Поиск...</div>
+        <div v-if="searching" class="search-status">Searching...</div>
         <div v-if="results.length > 0" class="results-list">
           <div v-for="(r, i) in results" :key="i" class="result-card" @click="selectResult(r)">
             <div class="result-wing">{{ r.wing }}/{{ r.room }}</div>
@@ -48,16 +48,16 @@
           </div>
         </div>
         <div v-if="selectedMemory" class="selected-memory">
-          <strong>Выбрано:</strong>
+          <strong>Selected:</strong>
           <div class="memory-content">{{ selectedMemory.content }}</div>
-          <button class="pin-btn" @click="pinMemory">📌 Использовать</button>
+          <button class="pin-btn" @click="pinMemory">📌 Use</button>
         </div>
       </template>
 
       <!-- FILE mode -->
       <template v-if="sourceType === 'file'">
         <div class="file-zone" @click="triggerFileInput">
-          <span v-if="!fileName">📁 Нажмите или перетащите файл</span>
+          <span v-if="!fileName">📁 Click or drop a file</span>
           <span v-else class="file-loaded">📄 {{ fileName }}</span>
         </div>
         <input ref="fileInput" type="file" class="hidden-input" @change="handleFileSelect" />
@@ -69,10 +69,10 @@
           <input v-model="urlInput" placeholder="https://example.com/data" class="url-input" @keyup.enter="fetchUrl" />
           <button class="fetch-btn" @click="fetchUrl" :disabled="fetching">🌐</button>
         </div>
-        <div v-if="fetching" class="search-status">Загрузка...</div>
+        <div v-if="fetching" class="search-status">Loading...</div>
         <div v-if="urlPreview" class="url-preview">
           <button class="result-toggle" @click="urlPreviewExpanded = !urlPreviewExpanded">
-            {{ urlPreviewExpanded ? '▼ Предпросмотр' : '▶ Предпросмотр' }}
+            {{ urlPreviewExpanded ? '▼ Preview' : '▶ Preview' }}
           </button>
           <div v-if="urlPreviewExpanded" class="preview-content">{{ truncate(urlPreview, 500) }}</div>
         </div>
@@ -108,13 +108,13 @@
       </div>
       <template v-if="props.data.result">
         <button class="result-toggle" @click="resultExpanded = !resultExpanded">
-          {{ resultExpanded ? '▼ Результат' : '▶ Результат' }}
+          {{ resultExpanded ? '▼ Result' : '▶ Result' }}
         </button>
         <div v-if="resultExpanded" class="node-result">
           <div>{{ props.data.result }}</div>
         </div>
       </template>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -133,11 +133,11 @@ interface MemoryResult {
 }
 
 const sourceTypes = [
-  { value: 'text', icon: '📝', label: 'Текст' },
-  { value: 'memory', icon: '🧠', label: 'Память' },
-  { value: 'file', icon: '📁', label: 'Файл' },
+  { value: 'text', icon: '📝', label: 'Text' },
+  { value: 'memory', icon: '🧠', label: 'Memory' },
+  { value: 'file', icon: '📁', label: 'File' },
   { value: 'url', icon: '🌐', label: 'URL' },
-  { value: 'project', icon: '📂', label: 'Проект' },
+  { value: 'project', icon: '📂', label: 'Project' },
 ];
 
 const props = defineProps<{
@@ -318,11 +318,11 @@ async function fetchUrl() {
       localSourceData.value = data.content;
       urlPreview.value = data.content;
     } else {
-      urlPreview.value = 'Ошибка: ' + (data.error || 'Unknown error');
+      urlPreview.value = 'Error: ' + (data.error || 'Unknown error');
     }
   } catch (e) {
     console.error('URL fetch failed:', e);
-    urlPreview.value = 'Ошибка загрузки';
+    urlPreview.value = 'Fetch error';
   } finally {
     fetching.value = false;
   }

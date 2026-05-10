@@ -1,12 +1,12 @@
 <template>
   <div class="settings-page">
     <div class="settings-header">
-      <button class="back-btn" @click="goBack">← Назад</button>
-      <h1>⚙️ Настройки</h1>
+      <button class="back-btn" @click="goBack">← Back</button>
+      <h1>⚙️ Settings</h1>
     </div>
 
     <div class="settings-content">
-      <div v-if="loading" class="loading">Загрузка...</div>
+      <div v-if="loading" class="loading">Loading...</div>
 
       <div v-else-if="error" class="error">{{ error }}</div>
 
@@ -15,13 +15,13 @@
         <div class="provider-card user-default-card">
           <div class="provider-header">
             <span style="font-size: 20px;">🎯</span>
-            <h2>Модель по умолчанию</h2>
+            <h2>Default Model</h2>
           </div>
           <div class="provider-fields">
             <div class="field">
-              <label>Использовать для новых узлов и схем</label>
+              <label>Use for new nodes &amp; schemas</label>
               <select v-model="userDefaultModel" class="field-input" @change="saveUserDefaultModel">
-                <option value="">Авто (Ollama)</option>
+                <option value="">Auto (Ollama)</option>
                 <optgroup v-for="group in allModelGroups" :key="group.name" :label="group.name">
                   <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </optgroup>
@@ -35,7 +35,7 @@
           <div class="provider-header">
             <span class="status-dot" :class="provider.available ? 'online' : 'offline'"></span>
             <h2>{{ getProviderLabel(provider.name) }}</h2>
-            <span class="status-text">{{ provider.available ? 'Подключен' : 'Недоступен' }}</span>
+            <span class="status-text">{{ provider.available ? 'Connected' : 'Unavailable' }}</span>
             <button class="refresh-btn" @click="refreshProviders">🔄</button>
           </div>
 
@@ -50,7 +50,7 @@
                   class="field-input"
                   @input="editedKeys[provider.name] = ($event.target as HTMLInputElement).value"
                 />
-                <button class="toggle-vis" @click="showKeys[provider.name] = !showKeys[provider.name]" title="Показать/скрыть">
+                <button class="toggle-vis" @click="showKeys[provider.name] = !showKeys[provider.name]" title="Show/Hide">
                   {{ showKeys[provider.name] ? '🙈' : '👁' }}
                 </button>
               </div>
@@ -67,31 +67,31 @@
             </div>
 
             <div class="field">
-              <label>Модель по умолчанию</label>
+              <label>Default Model</label>
               <select
                 :value="editedModels[provider.name] ?? provider.defaultModel ?? ''"
                 class="field-input"
                 @change="editedModels[provider.name] = ($event.target as HTMLSelectElement).value"
               >
-                <option value="">Авто</option>
+                <option value="">Auto</option>
                 <option v-for="m in provider.models" :key="m" :value="m">{{ m }}</option>
               </select>
             </div>
 
             <div class="field-actions">
               <button class="save-btn" @click="saveProvider(provider.name)" :disabled="saving[provider.name]">
-                {{ saving[provider.name] ? 'Сохранение...' : '💾 Сохранить' }}
+                {{ saving[provider.name] ? 'Saving...' : '💾 Save' }}
               </button>
               <button class="test-btn" @click="testProvider(provider.name)" :disabled="testing[provider.name]">
-                {{ testing[provider.name] ? 'Проверка...' : '🔍 Тест' }}
+                {{ testing[provider.name] ? 'Testing...' : '🔍 Test' }}
               </button>
               <span v-if="testResults[provider.name]" class="test-result" :class="testResults[provider.name]?.ok ? 'test-ok' : 'test-fail'">
-                {{ testResults[provider.name]?.ok ? '✅ Доступен' : '❌ ' + testResults[provider.name]?.msg }}
+                {{ testResults[provider.name]?.ok ? '✅ Available' : '❌ ' + testResults[provider.name]?.msg }}
               </span>
             </div>
 
             <div v-if="provider.models.length > 0" class="field">
-              <label>Доступные модели</label>
+              <label>Available Models</label>
               <div class="model-list">
                 <span v-for="model in provider.models" :key="model" class="model-tag">{{ model }}</span>
               </div>
@@ -100,7 +100,7 @@
         </div>
 
         <div v-if="builtInProviders.length === 0" class="empty">
-          Провайдеры не найдены. Убедитесь что Ollama запущен.
+          No providers found. Make sure Ollama is running.
         </div>
 
         <!-- Custom LLM endpoints -->
@@ -143,7 +143,7 @@
                   class="field-input"
                   @input="customEditedKeys[ep.id!] = ($event.target as HTMLInputElement).value"
                 />
-                <button class="toggle-vis" @click="customShowKeys[ep.id!] = !customShowKeys[ep.id!]" title="Показать/скрыть">
+                <button class="toggle-vis" @click="customShowKeys[ep.id!] = !customShowKeys[ep.id!]" title="Show/Hide">
                   {{ customShowKeys[ep.id!] ? '🙈' : '👁' }}
                 </button>
               </div>
@@ -181,15 +181,15 @@
 
             <div class="field-actions">
               <button class="save-btn" @click="saveCustomEndpoint(ep)" :disabled="customSaving[ep.id!]">
-                {{ customSaving[ep.id!] ? 'Сохранение...' : '💾 Сохранить' }}
+                {{ customSaving[ep.id!] ? 'Saving...' : '💾 Save' }}
               </button>
               <button class="test-btn" @click="testCustomEndpoint(ep)" :disabled="customTesting[ep.id!]">
-                {{ customTesting[ep.id!] ? 'Проверка...' : '🔍 Тест' }}
+                {{ customTesting[ep.id!] ? 'Testing...' : '🔍 Test' }}
               </button>
               <span v-if="customTestResults[ep.id!]" class="test-result" :class="customTestResults[ep.id!]?.success ? 'test-ok' : 'test-fail'">
                 {{ customTestResults[ep.id!]?.success ? '✅ OK' : '❌ ' + customTestResults[ep.id!]?.message }}
               </span>
-              <button class="delete-btn" @click="deleteCustomEndpoint(ep.id!)" title="Удалить">🗑</button>
+              <button class="delete-btn" @click="deleteCustomEndpoint(ep.id!)" title="Delete">🗑</button>
             </div>
           </div>
         </div>
@@ -246,7 +246,7 @@ async function saveUserDefaultModel() {
   try {
     await settingsApi.setUserDefaultModel(userDefaultModel.value);
   } catch (e: any) {
-    error.value = 'Ошибка сохранения: ' + (e.message || e);
+    error.value = 'Save error: ' + (e.message || e);
   }
 }
 
@@ -268,7 +268,7 @@ async function refreshProviders() {
   try {
     providers.value = await settingsApi.getProviders();
   } catch (e: any) {
-    error.value = 'Ошибка загрузки провайдеров: ' + (e.message || e);
+    error.value = 'Error loading providers: ' + (e.message || e);
   } finally {
     loading.value = false;
   }
@@ -293,7 +293,7 @@ async function saveProvider(name: string) {
     await refreshProviders();
     editedKeys[name] = '';
   } catch (e: any) {
-    error.value = 'Ошибка сохранения: ' + (e.message || e);
+    error.value = 'Save error: ' + (e.message || e);
   } finally {
     saving[name] = false;
   }
@@ -304,9 +304,9 @@ async function testProvider(name: string) {
   testResults[name] = null;
   try {
     const result = await settingsApi.testProvider(name);
-    testResults[name] = { ok: result.available, msg: result.available ? 'OK' : 'Нет ключа или недоступен' };
+    testResults[name] = { ok: result.available, msg: result.available ? 'OK' : 'No key or unavailable' };
   } catch (e: any) {
-    testResults[name] = { ok: false, msg: e.message || 'Ошибка' };
+    testResults[name] = { ok: false, msg: e.message || 'Error' };
   } finally {
     testing[name] = false;
   }

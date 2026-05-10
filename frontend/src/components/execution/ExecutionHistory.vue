@@ -1,7 +1,7 @@
 <template>
   <div v-if="visible" class="history-panel">
     <div class="history-header">
-      <span>История выполнений</span>
+      <span>Execution History</span>
       <button class="close-btn" @click="$emit('close')">✕</button>
     </div>
     <div class="history-list">
@@ -17,7 +17,7 @@
           <span class="history-time">{{ formatTime(record.totalTimeMs) }}</span>
         </div>
         <div class="history-item-details">
-          <span>{{ record.completedNodes }}/{{ record.totalNodes }} узлов</span>
+          <span>{{ record.completedNodes }}/{{ record.totalNodes }} nodes</span>
           <span class="history-date">{{ formatDate(record.startTime) }}</span>
         </div>
         <div v-if="selectedId === record.id && record.nodeResults" class="history-nodes">
@@ -29,7 +29,7 @@
         </div>
       </div>
       <div v-if="history.length === 0" class="history-empty">
-        Нет выполнений
+        No executions
       </div>
     </div>
   </div>
@@ -70,7 +70,7 @@ function statusIcon(status: string) {
 }
 
 function formatTime(ms: number): string {
-  if (ms < 1000) return ms + 'мс';
+  if (ms < 1000) return ms + 'ms';
   return (ms / 1000).toFixed(1) + 'с';
 }
 

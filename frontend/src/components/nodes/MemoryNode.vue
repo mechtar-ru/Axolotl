@@ -1,6 +1,6 @@
 <template>
   <div class="node memory-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Удалить">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete">✕</button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">🧠</span>
@@ -12,7 +12,7 @@
 
     <div v-if="expanded" class="node-content">
       <div class="search-row">
-        <input v-model="searchQuery" placeholder="Поиск в памяти..." class="search-input" @keyup.enter="searchMemory" />
+        <input v-model="searchQuery" placeholder="Search memory..." class="search-input" @keyup.enter="searchMemory" />
         <button class="search-btn" @click="searchMemory" :disabled="searching">🔍</button>
       </div>
 
@@ -21,7 +21,7 @@
         <input v-model="filterRoom" placeholder="Room" class="filter-input" />
       </div>
 
-      <div v-if="searching" class="search-status">Поиск...</div>
+      <div v-if="searching" class="search-status">Searching...</div>
 
       <div v-if="results.length > 0" class="results-list">
         <div v-for="(r, i) in results" :key="i" class="result-card" @click="selectResult(r)">
@@ -31,16 +31,16 @@
       </div>
 
       <div v-if="selectedMemory" class="selected-memory">
-        <strong>Выбрано:</strong>
+        <strong>Selected:</strong>
         <div class="memory-content">{{ selectedMemory.content }}</div>
-        <button class="pin-btn" @click="pinToOutput">📌 Вывести в результат</button>
+        <button class="pin-btn" @click="pinToOutput">📌 Output to result</button>
       </div>
 
       <div v-if="props.data.result" class="node-result">
-        <strong>Результат:</strong>
+        <strong>Result:</strong>
         <div>{{ props.data.result }}</div>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
 
     <Handle type="source" :position="Position.Bottom" />

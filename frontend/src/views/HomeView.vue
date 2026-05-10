@@ -16,8 +16,8 @@
       <!-- Schemas zone -->
       <div class="sidebar-schemas-zone">
         <div class="sidebar-section-header">
-          <h2>📋 Схемы</h2>
-          <button class="icon-btn" @click="createNewSchema" title="Новая схема">＋</button>
+          <h2>📋 Schemas</h2>
+          <button class="icon-btn" @click="createNewSchema" title="New Schema">＋</button>
         </div>
         <ul>
           <li
@@ -34,16 +34,16 @@
           <button @click="exportJson" class="compact-btn">📦 JSON</button>
           <button @click="triggerJsonImport" class="compact-btn">📂 JSON</button>
           <input ref="jsonFileInput" type="file" accept=".json" style="display:none" @change="importJson" />
-          <button @click="panelStore.toggle('plan')" class="compact-btn">📋 План</button>
+          <button @click="panelStore.toggle('plan')" class="compact-btn">📋 Plan</button>
         </div>
       </div>
 
       <!-- Footer zone -->
       <div class="sidebar-footer-zone">
-        <button @click="goToSettings" class="sidebar-footer-btn">⚙️ Настройки</button>
+        <button @click="goToSettings" class="sidebar-footer-btn">⚙️ Settings</button>
         <div class="user-info">
           <span class="user-name">👤 {{ authStore.username }}</span>
-          <button @click="logout" class="logout-btn">Выйти</button>
+          <button @click="logout" class="logout-btn">Log out</button>
         </div>
       </div>
 
@@ -55,12 +55,12 @@
       <div class="canvas-area">
         <div v-if="!schemaStore.currentSchema" class="empty-state">
           <img src="../assets/logo.svg" alt="Axolotl" class="empty-state__logo" />
-          <h1 class="empty-state__title">Визуальная оркестрация AI-агентов</h1>
-          <p class="empty-state__subtitle">Создавайте схемы выполнения AI-агентов визуально</p>
+          <h1 class="empty-state__title">Visual AI Agent Orchestration</h1>
+          <p class="empty-state__subtitle">Build AI agent execution flows visually</p>
 
           <!-- Templates section -->
           <div class="templates-section">
-            <h3 class="templates-title">Начать с шаблона</h3>
+            <h3 class="templates-title">Start with a template</h3>
             <div class="template-cards">
               <button class="template-card" @click="createFromTemplate('ai-pipeline')">
                 <span class="template-card__icon">🤖</span>
@@ -82,11 +82,11 @@
 
           <!-- Recent schemas -->
           <div v-if="recentSchemas.length > 0" class="recent-section">
-            <h3 class="recent-title">Недавние схемы</h3>
+            <h3 class="recent-title">Recent Schemas</h3>
             <div class="recent-cards">
               <button v-for="s in recentSchemas" :key="s.id" class="recent-card" @click="selectSchema(s)">
                 <span class="recent-card__name">{{ s.name }}</span>
-                <span class="recent-card__nodes">{{ (s.nodes || []).length }} узлов</span>
+                <span class="recent-card__nodes">{{ (s.nodes || []).length }} nodes</span>
               </button>
             </div>
           </div>
@@ -94,23 +94,23 @@
           <div class="empty-state__actions">
             <button class="action-card" @click="createNewSchema">
               <span class="action-card__icon">✨</span>
-              <span class="action-card__title">Новая схема</span>
-              <span class="action-card__desc">Пустой холст для вашей идеи</span>
+              <span class="action-card__title">New Schema</span>
+              <span class="action-card__desc">Blank canvas for your idea</span>
             </button>
             <button class="action-card action-card--highlight" @click="showSchemaBuilder = true">
               <span class="action-card__icon">🏗️</span>
               <span class="action-card__title">Schema Builder</span>
-              <span class="action-card__desc">Опиши приложение — AI создаст схему</span>
+              <span class="action-card__desc">Describe your app — AI builds the flow</span>
             </button>
             <button class="action-card" @click="createDemoSchema">
               <span class="action-card__icon">📖</span>
-              <span class="action-card__title">Демо-схема</span>
-              <span class="action-card__desc">Source → Agent → Output с Memory</span>
+              <span class="action-card__title">Demo Schema</span>
+              <span class="action-card__desc">Source → Agent → Output with Memory</span>
             </button>
             <button class="action-card" @click="showImport = true">
               <span class="action-card__icon">📥</span>
-              <span class="action-card__title">Импорт</span>
-              <span class="action-card__desc">JSON или Mermaid формат</span>
+              <span class="action-card__title">Import</span>
+              <span class="action-card__desc">JSON or Mermaid format</span>
             </button>
           </div>
         </div>
@@ -127,35 +127,36 @@
       <RightPanel
         :schema-nodes="(schemaStore.currentSchema?.nodes || []).filter(n => n).map(n => ({ id: n.id, name: n.name, type: n.type }))"
         :schema-id="schemaStore.currentSchema?.id"
+        :node-name-map="nodeNameMap"
         @stop-execution="handleStopExecution"
         @highlight-node="highlightCanvasNode"
         @template-create="onTemplateCreate"
       />
     </div>
-    <AppModal v-model="showMermaid" title="📊 Mermaid диаграмма">
+    <AppModal v-model="showMermaid" title="📊 Mermaid Diagram">
       <pre>{{ mermaidCode }}</pre>
       <div class="modal-buttons">
-        <button @click="copyToClipboard">📋 Скопировать</button>
-        <button @click="saveToFile">💾 Сохранить</button>
+        <button @click="copyToClipboard">📋 Copy</button>
+        <button @click="saveToFile">💾 Save</button>
         <button @click="exportPython" class="btn-python">🐍 Python</button>
       </div>
     </AppModal>
 
-    <!-- Модальное окно Python экспорта -->
-    <AppModal v-model="showPython" title="🐍 Python скрипт" :large="true">
+    <!-- Python Export Modal -->
+    <AppModal v-model="showPython" title="🐍 Python Script" :large="true">
       <pre class="python-code">{{ pythonCode }}</pre>
       <div class="modal-buttons">
-        <button @click="copyPythonToClipboard">📋 Скопировать</button>
-        <button @click="savePythonToFile">💾 Сохранить .py</button>
+        <button @click="copyPythonToClipboard">📋 Copy</button>
+        <button @click="savePythonToFile">💾 Save .py</button>
       </div>
     </AppModal>
 
-    <!-- Модальное окно импорта -->
-    <AppModal v-model="showImport" title="📥 Импорт Mermaid схемы">
-      <textarea v-model="importText" placeholder="Вставьте Mermaid код..." rows="10"></textarea>
+    <!-- Import Modal -->
+    <AppModal v-model="showImport" title="📥 Import Mermaid">
+      <textarea v-model="importText" placeholder="Paste Mermaid code..." rows="10"></textarea>
       <div class="modal-buttons">
-        <button @click="importFromMermaid">📥 Импортировать</button>
-        <button @click="showImport = false">❌ Отмена</button>
+        <button @click="importFromMermaid">📥 Import</button>
+        <button @click="showImport = false">❌ Cancel</button>
       </div>
     </AppModal>
 
@@ -233,6 +234,14 @@ const MIN_SIDEBAR = 180;
 const MAX_SIDEBAR = 400;
 let isResizing = false;
 
+const nodeNameMap = computed(() => {
+  const map: Record<string, string> = {};
+  for (const n of (schemaStore.currentSchema?.nodes || [])) {
+    if (n?.id) map[n.id] = n.name || n.id;
+  }
+  return map;
+});
+
 function startResize() {
   isResizing = true;
   document.addEventListener('mousemove', onResize);
@@ -269,9 +278,9 @@ async function createFromTemplate(template: string) {
     'ai-pipeline': {
       name: '🤖 AI Pipeline',
       nodes: [
-        { id: 'source-1', type: 'source', name: 'Входные данные', position: { x: 100, y: 200 }, data: { sourceData: 'Введите текст для анализа' } },
-        { id: 'agent-1', type: 'agent', name: 'AI Агент', position: { x: 400, y: 200 }, data: { userPrompt: 'Проанализируйте следующие данные:', provider: 'ollama' } },
-        { id: 'output-1', type: 'output', name: 'Результат', position: { x: 700, y: 200 }, data: {} },
+        { id: 'source-1', type: 'source', name: 'Input', position: { x: 100, y: 200 }, data: { sourceData: 'Enter text for analysis' } },
+        { id: 'agent-1', type: 'agent', name: 'AI Agent', position: { x: 400, y: 200 }, data: { userPrompt: 'Analyze the following data:', provider: 'ollama' } },
+        { id: 'output-1', type: 'output', name: 'Result', position: { x: 700, y: 200 }, data: {} },
       ],
       edges: [
         { id: 'e1', source: 'source-1', target: 'agent-1', type: 'data' },
@@ -281,10 +290,10 @@ async function createFromTemplate(template: string) {
     'rag': {
       name: '🧠 RAG Pipeline',
       nodes: [
-        { id: 'source-1', type: 'source', name: 'Запрос', position: { x: 100, y: 200 }, data: { sourceData: 'Ваш вопрос' } },
-        { id: 'memory-1', type: 'memory', name: 'Поиск в памяти', position: { x: 100, y: 400 }, data: { sourceData: 'Контекст по запросу' } },
-        { id: 'agent-1', type: 'agent', name: 'AI Агент', position: { x: 450, y: 300 }, data: { userPrompt: 'Ответьте на вопрос, используя контекст:', provider: 'ollama' } },
-        { id: 'output-1', type: 'output', name: 'Ответ', position: { x: 750, y: 300 }, data: {} },
+        { id: 'source-1', type: 'source', name: 'Query', position: { x: 100, y: 200 }, data: { sourceData: 'Your question' } },
+        { id: 'memory-1', type: 'memory', name: 'Memory Search', position: { x: 100, y: 400 }, data: { sourceData: 'Context by query' } },
+        { id: 'agent-1', type: 'agent', name: 'AI Agent', position: { x: 450, y: 300 }, data: { userPrompt: 'Answer using context:', provider: 'ollama' } },
+        { id: 'output-1', type: 'output', name: 'Answer', position: { x: 750, y: 300 }, data: {} },
       ],
       edges: [
         { id: 'e1', source: 'source-1', target: 'agent-1', type: 'data' },
@@ -295,11 +304,11 @@ async function createFromTemplate(template: string) {
     'condition': {
       name: '⚖️ Condition Branch',
       nodes: [
-        { id: 'source-1', type: 'source', name: 'Вход', position: { x: 100, y: 250 }, data: { sourceData: 'Текст для классификации' } },
-        { id: 'condition-1', type: 'condition', name: 'Классификатор', position: { x: 350, y: 250 }, data: { condition: 'input.length > 50' } },
-        { id: 'agent-a', type: 'agent', name: 'Детальный анализ', position: { x: 650, y: 100 }, data: { userPrompt: 'Выполни детальный анализ:', provider: 'ollama' } },
-        { id: 'agent-b', type: 'agent', name: 'Быстрый ответ', position: { x: 650, y: 400 }, data: { userPrompt: 'Дай краткий ответ:', provider: 'ollama' } },
-        { id: 'output-1', type: 'output', name: 'Результат', position: { x: 950, y: 250 }, data: {} },
+        { id: 'source-1', type: 'source', name: 'Input', position: { x: 100, y: 250 }, data: { sourceData: 'Text to classify' } },
+        { id: 'condition-1', type: 'condition', name: 'Classifier', position: { x: 350, y: 250 }, data: { condition: 'input.length > 50' } },
+        { id: 'agent-a', type: 'agent', name: 'Detailed Analysis', position: { x: 650, y: 100 }, data: { userPrompt: 'Perform detailed analysis:', provider: 'ollama' } },
+        { id: 'agent-b', type: 'agent', name: 'Quick Response', position: { x: 650, y: 400 }, data: { userPrompt: 'Give a brief answer:', provider: 'ollama' } },
+        { id: 'output-1', type: 'output', name: 'Result', position: { x: 950, y: 250 }, data: {} },
       ],
       edges: [
         { id: 'e1', source: 'source-1', target: 'condition-1', type: 'data' },
@@ -321,7 +330,7 @@ async function createFromTemplate(template: string) {
 }
 
 onMounted(() => {
-  // schemaStore.loadSchemas(); // Уже вызывается в App.vue
+  // schemaStore.loadSchemas(); // Already called in App.vue
 
   // Show onboarding if first time
   const onboardingStatus = localStorage.getItem('axolotl:onboarding');
@@ -354,32 +363,33 @@ function selectSchema(schema: WorkflowSchema) {
 
 function onSchemaBuilderResult(schema: WorkflowSchema) {
   schemaStore.loadSchemas();
+  toast.success('Schema created from builder');
   router.push({ name: 'schema', params: { id: schema.id } });
 }
 
 async function createNewSchema() {
-  const created = await schemaStore.createSchema('Новая схема');
+  const created = await schemaStore.createSchema('New Schema');
   router.push({ name: 'schema', params: { id: created.id } });
 }
 
 async function createDemoSchema() {
-  const created = await schemaStore.createSchema('🤖 Демо: AI Pipeline');
+  const created = await schemaStore.createSchema('🤖 Demo: AI Pipeline');
   
   // Add demo nodes and edges
   const nodes = [
     {
       id: 'source-1',
       type: 'source' as const,
-      name: 'Входные данные',
+      name: 'Input',
       position: { x: 100, y: 200 },
-      data: { prompt: 'Опиши задачу: написать документацию для API' }
+      data: { prompt: 'Describe task: write API documentation' }
     },
     {
       id: 'agent-1',
       type: 'agent' as const,
-      name: 'AI Агент',
+      name: 'AI Agent',
       position: { x: 400, y: 200 },
-      data: { prompt: 'Создай подробную документацию для API', provider: 'openai', model: 'gpt-4' }
+      data: { prompt: 'Create detailed API documentation', provider: 'openai', model: 'gpt-4' }
     },
     {
       id: 'memory-1',
@@ -391,7 +401,7 @@ async function createDemoSchema() {
     {
       id: 'output-1',
       type: 'output' as const,
-      name: 'Результат',
+      name: 'Result',
       position: { x: 700, y: 200 },
       data: {}
     }
@@ -415,13 +425,13 @@ function goToSettings() {
 async function handleSave() {
   if (schemaStore.currentSchema) {
     await schemaStore.updateSchema(schemaStore.currentSchema);
-    toast.success('Схема сохранена');
+    toast.success('Schema saved');
   }
 }
 
 async function handleExecute() {
   await schemaStore.executeCurrentSchema();
-  toast.success('Выполнение запущено!');
+    toast.success('Execution started!');
 }
 
 function handleStopExecution() {
@@ -454,7 +464,7 @@ async function exportPython() {
 
 async function copyPythonToClipboard() {
   await navigator.clipboard.writeText(pythonCode.value);
-  toast.success('Скопировано!');
+    toast.success('Copied!');
 }
 
 function savePythonToFile() {
@@ -533,7 +543,7 @@ async function handleCommand(action: string) {
 
 async function copyToClipboard() {
   await navigator.clipboard.writeText(mermaidCode.value);
-  alert('Скопировано!');
+  alert('Copied!');
 }
 
 function saveToFile() {
@@ -549,7 +559,7 @@ function saveToFile() {
 async function importFromMermaid() {
   const text = importText.value;
   if (!text.trim()) {
-    toast.error('Введите Mermaid код для импорта');
+    toast.error('Enter Mermaid code to import');
     return;
   }
 
@@ -597,12 +607,12 @@ async function importFromMermaid() {
     }
   }
 
-  if (nodes.length === 0) { toast.error('Не удалось распознать узлы'); return; }
+  if (nodes.length === 0) { toast.error('Could not recognize nodes'); return; }
 
   const newSchema: WorkflowSchema = {
     id: `imported-${Date.now()}`,
-    name: `Импортированная схема (${new Date().toLocaleTimeString()})`,
-    description: `Импортировано из Mermaid. Узлов: ${nodes.length}, Связей: ${edges.length}`,
+    name: `Imported schema (${new Date().toLocaleTimeString()})`,
+    description: `Imported from Mermaid. Nodes: ${nodes.length}, Edges: ${edges.length}`,
     version: '1.0', nodes, edges, createdAt: new Date().toISOString(),
   };
 
@@ -638,12 +648,12 @@ async function importJson(event: Event) {
     delete (schema as any).id;
     delete (schema as any).createdAt;
     delete (schema as any).updatedAt;
-    const created = await schemaStore.createSchema(schema.name || 'Импортированная');
+    const created = await schemaStore.createSchema(schema.name || 'Imported');
     Object.assign(created, { ...schema, id: created.id, name: created.name });
     await schemaStore.updateSchema(created);
     router.push({ name: 'schema', params: { id: created.id } });
   } catch (e) {
-    toast.error('Ошибка импорта JSON: ' + (e as Error).message);
+    toast.error('JSON import error: ' + (e as Error).message);
   }
 }
 

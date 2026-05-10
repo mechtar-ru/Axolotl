@@ -4,7 +4,7 @@
       v-if="isSelected" 
       class="delete-btn" 
       @click.stop="handleDelete"
-      title="Удалить узел"
+      title="Delete node"
     >
       ✕
     </button>
@@ -31,15 +31,16 @@
       <button class="node-expand" @click="toggleExpand">
         {{ expanded ? '▼' : '▶' }}
       </button>
-      <button v-if="expanded" class="prompt-editor-btn" @click="openFullEditor" title="Полный редактор (Ctrl+E)">
+      <button v-if="expanded" class="prompt-editor-btn" @click="openFullEditor" title="Full editor (Ctrl+E)">
         ✏️
       </button>
+      <span v-if="!expanded && localPrompt" class="node-badge">{{ truncate(localPrompt, 30) }}</span>
     </div>
     
     <div v-if="expanded" class="node-content">
       <textarea
         v-model="localPrompt"
-        placeholder="Введите промпт для агента..."
+        placeholder="Enter agent prompt..."
         rows="5"
         @mousedown.stop
         @mouseup.stop
@@ -48,7 +49,7 @@
         v-model="localModel"
         class="model-select"
       >
-        <option value="">По умолчанию</option>
+        <option value="">Default</option>
         <optgroup v-for="group in modelGroups" :key="group.name" :label="group.name">
           <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </optgroup>
@@ -56,18 +57,18 @@
       <div class="tools-section">
         <div class="tools-header" @click="toolsExpanded = !toolsExpanded">
           <span>{{ toolsExpanded ? '▼' : '▶' }}</span>
-          <span>Инструменты ({{ localEnabledTools?.length || 0 }})</span>
+          <span>Tools ({{ localEnabledTools?.length || 0 }})</span>
         </div>
         <div v-if="toolsExpanded" class="tools-body">
           <select v-model="localAgentType" class="agent-type-select">
-            <option value="assistant">Ассистент</option>
-            <option value="coder">Кодер</option>
-            <option value="researcher">Исследователь</option>
-            <option value="reviewer">Ревьюер</option>
-            <option value="project-analyzer">Анализатор проекта</option>
-            <option value="graph-engineer">Инженер графа</option>
-            <option value="mcp-agent">MCP агент</option>
-            <option value="custom">Свой</option>
+            <option value="assistant">Assistant</option>
+            <option value="coder">Coder</option>
+            <option value="researcher">Researcher</option>
+            <option value="reviewer">Reviewer</option>
+            <option value="project-analyzer">Project Analyzer</option>
+            <option value="graph-engineer">Graph Engineer</option>
+            <option value="mcp-agent">MCP Agent</option>
+            <option value="custom">Custom</option>
           </select>
           <div class="tools-checklist">
             <label v-for="tool in availableTools" :key="tool.id" class="tool-checkbox" :title="tool.desc">
@@ -81,7 +82,7 @@
             </label>
           </div>
           <div class="tool-limit">
-            <label>Лимит вызовов:</label>
+            <label>Call limit:</label>
             <input
               type="number"
               v-model.number="localMaxToolCalls"
@@ -98,11 +99,11 @@
       </div>
       <template v-if="props.data.result">
         <button class="result-toggle" @click="resultExpanded = !resultExpanded">
-          {{ resultExpanded ? '▼ Результат' : '▶ Результат' }}
+          {{ resultExpanded ? '▼ Result' : '▶ Result' }}
         </button>
         <div v-if="resultExpanded" class="node-result">
           <div>{{ props.data.result }}</div>
-          <button class="copy-result-btn" @click.stop="copyResult" title="Скопировать">📋</button>
+          <button class="copy-result-btn" @click.stop="copyResult" title="Copy">📋</button>
         </div>
       </template>
       <div v-if="props.data.isStreaming" class="typing-indicator">
@@ -110,7 +111,7 @@
         <span class="typing-dot"></span>
         <span class="typing-dot"></span>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
     
     <Handle type="source" :position="Position.Bottom" />
@@ -157,7 +158,7 @@ function copyResult() {
   }
 }
 
-const expanded = ref(false);
+const expanded = ref(true);
 const editingName = ref(false);
 const localName = ref(props.data.name);
 const localPrompt = ref(props.data.userPrompt || '');
@@ -171,30 +172,30 @@ const localEnabledTools = ref<string[]>(props.data.enabledTools || []);
 const localMaxToolCalls = ref(props.data.maxToolCalls || 10);
 
 const availableTools = [
-  { id: 'file_read', name: 'Чтение файла', icon: '📄', category: 'file', desc: 'Читать содержимое файлов' },
-  { id: 'file_write', name: 'Запись файла', icon: '💾', category: 'file', desc: 'Создавать и изменять файлы' },
-  { id: 'directory_read', name: 'Список файлов', icon: '📁', category: 'file', desc: 'Просмотр структуры директорий' },
-  { id: 'grep', name: 'Поиск в файлах', icon: '🔎', category: 'file', desc: 'Поиск текста по файлам (regex)' },
-  { id: 'git', name: 'Git', icon: '🔀', category: 'exec', desc: 'Git операции (status, diff, log)' },
-  { id: 'bash', name: 'Bash', icon: '⌨️', category: 'exec', desc: 'Выполнение shell команд' },
-  { id: 'memory_read', name: 'Чтение памяти', icon: '🧠', category: 'memory', desc: 'Читать из памяти агента' },
-  { id: 'memory_write', name: 'Запись в память', icon: '💭', category: 'memory', desc: 'Сохранять в память агента' },
-  { id: 'memory_search', name: 'Поиск в памяти', icon: '🔍', category: 'memory', desc: 'Поиск по ключевым словам' },
-  { id: 'web_search', name: 'Веб-поиск', icon: '🔍', category: 'web', desc: 'Поиск в интернете' },
-  { id: 'web_fetch', name: 'Загрузка URL', icon: '🌐', category: 'web', desc: 'Скачать содержимое страницы' },
-  { id: 'web_api', name: 'Web API', icon: '🌍', category: 'web', desc: 'Вызов REST API (JSON)' },
-  { id: 'graph_query', name: 'Граф кода', icon: '🔗', category: 'graph', desc: 'Запросы к Neo4j графу' },
-  { id: 'mcp_execute', name: 'MCP Tools', icon: '🔌', category: 'mcp', desc: 'Выполнение MCP инструментов' },
+  { id: 'file_read', name: 'Read File', icon: '📄', category: 'file', desc: 'Read file contents' },
+  { id: 'file_write', name: 'Write File', icon: '💾', category: 'file', desc: 'Create and modify files' },
+  { id: 'directory_read', name: 'List Files', icon: '📁', category: 'file', desc: 'Browse directory structure' },
+  { id: 'grep', name: 'Search Files', icon: '🔎', category: 'file', desc: 'Search text across files (regex)' },
+  { id: 'git', name: 'Git', icon: '🔀', category: 'exec', desc: 'Git operations (status, diff, log)' },
+  { id: 'bash', name: 'Bash', icon: '⌨️', category: 'exec', desc: 'Execute shell commands' },
+  { id: 'memory_read', name: 'Read Memory', icon: '🧠', category: 'memory', desc: 'Read from agent memory' },
+  { id: 'memory_write', name: 'Write Memory', icon: '💭', category: 'memory', desc: 'Save to agent memory' },
+  { id: 'memory_search', name: 'Search Memory', icon: '🔍', category: 'memory', desc: 'Search by keywords' },
+  { id: 'web_search', name: 'Web Search', icon: '🔍', category: 'web', desc: 'Search the web' },
+  { id: 'web_fetch', name: 'Fetch URL', icon: '🌐', category: 'web', desc: 'Download page contents' },
+  { id: 'web_api', name: 'Web API', icon: '🌍', category: 'web', desc: 'Call REST APIs (JSON)' },
+  { id: 'graph_query', name: 'Code Graph', icon: '🔗', category: 'graph', desc: 'Query Neo4j code graph' },
+  { id: 'mcp_execute', name: 'MCP Tools', icon: '🔌', category: 'mcp', desc: 'Execute MCP tools' },
 ];
 
 const agentTypePresets: Record<string, { tools: string[], systemPrompt: string }> = {
-  assistant: { tools: [], systemPrompt: 'Ты ассистент.' },
-  coder: { tools: ['file_read', 'file_write', 'bash', 'grep'], systemPrompt: 'Ты программист. Пиши чистый код с тестами. Используй grep для поиска.' },
-  researcher: { tools: ['web_search', 'web_fetch', 'web_api', 'directory_read'], systemPrompt: 'Ты исследователь. Собирай информацию, анализируй данные из API.' },
-  reviewer: { tools: ['file_read', 'directory_read', 'git', 'bash'], systemPrompt: 'Ты ревьюер. Анализируй код, ищи баги, проверяй git diff.' },
-  'project-analyzer': { tools: ['directory_read', 'file_read', 'grep', 'memory_write'], systemPrompt: 'Ты аналитик проекта. Анализируй архитектуру, зависимости, паттерны. Предлагай улучшения.' },
-  'graph-engineer': { tools: ['directory_read', 'file_read', 'graph_query', 'memory_write'], systemPrompt: 'Ты инженер графа кода. Используй Neo4j для анализа структуры проекта, поиска зависимостей, хэш-анкорных правок.' },
-  'mcp-agent': { tools: ['mcp_execute', 'memory_read', 'memory_write'], systemPrompt: 'Ты MCP агент. Выполняй инструменты через MCP протокол. Координируй работу с внешними сервисами.' },
+  assistant: { tools: [], systemPrompt: 'You are a helpful assistant.' },
+  coder: { tools: ['file_read', 'file_write', 'bash', 'grep'], systemPrompt: 'You are a programmer. Write clean code with tests. Use grep for searching.' },
+  researcher: { tools: ['web_search', 'web_fetch', 'web_api', 'directory_read'], systemPrompt: 'You are a researcher. Gather information, analyze data from APIs.' },
+  reviewer: { tools: ['file_read', 'directory_read', 'git', 'bash'], systemPrompt: 'You are a code reviewer. Analyze code, find bugs, check git diff.' },
+  'project-analyzer': { tools: ['directory_read', 'file_read', 'grep', 'memory_write'], systemPrompt: 'You are a project analyzer. Analyze architecture, dependencies, patterns. Suggest improvements.' },
+  'graph-engineer': { tools: ['directory_read', 'file_read', 'graph_query', 'memory_write'], systemPrompt: 'You are a code graph engineer. Use Neo4j to analyze project structure, find dependencies.' },
+  'mcp-agent': { tools: ['mcp_execute', 'memory_read', 'memory_write'], systemPrompt: 'You are an MCP agent. Execute tools via MCP protocol. Coordinate work with external services.' },
 };
 
 onMounted(async () => {
@@ -208,7 +209,7 @@ onMounted(async () => {
           opts.push({ value: model, label: model, group });
         }
       } else {
-        opts.push({ value: p.name, label: `${group} (по умолчанию)`, group });
+        opts.push({ value: p.name, label: `${group} (default)`, group });
       }
     }
     providerOptions.value = opts;
@@ -303,6 +304,10 @@ function toggleTool(toolId: string) {
 
 function toggleExpand() {
   expanded.value = !expanded.value;
+}
+
+function truncate(str: string, len: number): string {
+  return str.length > len ? str.substring(0, len) + '...' : str;
 }
 
 function openFullEditor() {

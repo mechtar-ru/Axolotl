@@ -1,5 +1,10 @@
 <template>
   <div class="canvas-container">
+    <!-- Provider warning -->
+    <div v-if="!hasProviders" class="provider-warning" @click="goToSettings">
+      ⚠ No LLM provider configured. Click here to open Settings.
+    </div>
+
     <div class="schema-name">
       <template v-if="showRenameInput">
         <input
@@ -13,17 +18,17 @@
       </template>
       <span v-else class="schema-title" @click.stop="editSchemaName">📝 {{ schema.name }}</span>
       <div class="schema-actions" @click.stop>
-        <select v-model="executionMode" class="mode-selector" title="Режим выполнения">
-          <option value="EXECUTE">▶️ Execute</option>
+        <select v-model="executionMode" class="mode-selector" title="Execution mode">
+          <option value="EXECUTE">▶ Execute</option>
           <option value="ANALYZE">🔍 Analyze</option>
           <option value="DRY_RUN">🎭 Dry Run</option>
         </select>
         <button class="run-schema-btn" @click.stop="executeSchema" :disabled="isExecuting">
-          ▶️ {{ executionMode === 'EXECUTE' ? 'Выполнить' : executionMode === 'ANALYZE' ? 'Анализ' : 'Симуляция' }}
+          ▶ {{ executionMode === 'EXECUTE' ? 'Run' : executionMode === 'ANALYZE' ? 'Analyze' : 'Simulate' }}
         </button>
-        <button class="save-schema-btn" @click.stop="saveSchema">💾 Сохранить</button>
-        <button class="export-schema-btn" @click.stop="exportSchema">📊 Экспорт</button>
-        <button class="delete-schema-btn" @click.stop="confirmDeleteSchema" title="Удалить схему">🗑</button>
+        <button class="save-schema-btn" @click.stop="saveSchema">💾 Save</button>
+        <button class="export-schema-btn" @click.stop="exportSchema">📊 Export</button>
+        <button class="delete-schema-btn" @click.stop="confirmDeleteSchema" title="Delete schema">🗑</button>
       </div>
     </div>
 
@@ -36,65 +41,66 @@
       <MiniMap :node-color="minimapNodeColor" :mask-color="'rgba(0,0,0,0.3)'" :pannable="true" :zoomable="true" />
 
       <div v-if="showSearch" class="search-panel">
-        <input ref="searchInput" v-model="searchQuery" placeholder="Поиск узлов..." class="search-input"
+        <input ref="searchInput" v-model="searchQuery" placeholder="Search nodes..." class="search-input"
           @keydown.escape="showSearch = false; searchQuery = ''" />
         <button class="search-close" @click="showSearch = false; searchQuery = ''">✕</button>
       </div>
 
       <div class="toolbar-panel">
         <div class="toolbar-group toolbar-add">
-          <button class="toolbar-btn toolbar-add-btn" @click.stop="showAddMenu = !showAddMenu" title="Добавить узел">
-            ＋ Добавить <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>
+          <button class="toolbar-btn toolbar-add-btn" @click.stop="showAddMenu = !showAddMenu" title="Add node">
+            ＋ Add <span class="chevron">{{ showAddMenu ? '▲' : '▼' }}</span>
           </button>
           <div v-if="showAddMenu" class="add-dropdown">
             <div class="dropdown-section">
-              <div class="dropdown-section-title">Данные</div>
+              <div class="dropdown-section-title">Data</div>
               <button @click="addNode('source'); showAddMenu = false">📥 Source</button>
               <button @click="addNode('output'); showAddMenu = false">📤 Output</button>
             </div>
             <div class="dropdown-section">
-              <div class="dropdown-section-title">Агенты</div>
+              <div class="dropdown-section-title">Agents</div>
               <button @click="addNode('agent'); showAddMenu = false">🤖 Agent</button>
               <button @click="addNode('subagent'); showAddMenu = false">🤝 Subagent</button>
             </div>
             <div class="dropdown-section">
-              <div class="dropdown-section-title">Логика</div>
+              <div class="dropdown-section-title">Logic</div>
               <button @click="addNode('condition'); showAddMenu = false">⚖️ Condition</button>
               <button @click="addNode('transform'); showAddMenu = false">⚡ Transform</button>
               <button @click="addNode('loop'); showAddMenu = false">🔄 Loop</button>
               <button @click="addNode('fallback'); showAddMenu = false">🔄 Fallback</button>
             </div>
             <div class="dropdown-section">
-              <div class="dropdown-section-title">Интеграция</div>
+              <div class="dropdown-section-title">Integration</div>
               <button @click="addNode('guardrail'); showAddMenu = false">🛡️ Guardrail</button>
               <button @click="addNode('human'); showAddMenu = false">👤 Human</button>
               <button @click="addNode('schemabuilder'); showAddMenu = false">🏗️ SchemaBuilder</button>
             </div>
             <div class="dropdown-section">
-              <div class="dropdown-section-title">Утилиты</div>
-              <button @click="addNode('comment'); showAddMenu = false">📝 Заметка</button>
+              <div class="dropdown-section-title">Utilities</div>
+              <button @click="addNode('comment'); showAddMenu = false">📝 Note</button>
             </div>
           </div>
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
-          <button class="toolbar-btn" @click.stop="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Группировать (Ctrl+G)">📦 Группа</button>
+          <button class="toolbar-btn" @click.stop="groupSelectedNodes" :disabled="selectedNodeIds.size < 2" title="Group (Ctrl+G)">📦 Group</button>
           <button class="toolbar-btn" @click.stop="ungroupSelectedNode"
             :disabled="!selectedNodeId || !(props.schema.nodes || []).find(n => n.id === selectedNodeId)?.parentId"
-            title="Разгруппировать">📤 Разгрупп.</button>
+            title="Ungroup">📤 Ungroup</button>
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
-          <button class="toolbar-btn" @click.stop="panelStore.toggle('history')" title="История выполнений">📜</button>
-          <button class="toolbar-btn" @click.stop="panelStore.toggle('memory')" title="Граф памяти">🧠</button>
-          <button class="toolbar-btn" @click.stop="panelStore.toggle('templates')" title="Шаблоны">🏗️</button>
-          <button class="toolbar-btn" @click.stop="panelStore.toggle('plan')" title="План">📋</button>
-          <button class="toolbar-btn" @click.stop="exportAsImage" title="Сохранить как PNG">📷</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('history')" title="Execution History">📜</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('memory')" title="Memory Graph">🧠</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('templates')" title="Templates">🏗️</button>
+          <button class="toolbar-btn" @click.stop="panelStore.toggle('plan')" title="Plan">📋</button>
+          <button class="toolbar-btn" @click.stop="exportAsImage" title="Save as PNG">📷</button>
+          <button class="toolbar-btn toolbar-shortcuts-btn" @click.stop="$emit('toggle-shortcuts')" title="Keyboard Shortcuts (?)">?</button>
         </div>
         <div class="toolbar-separator"></div>
         <div class="toolbar-group">
-          <select class="toolbar-model-select" v-model="schemaDefaultModel" @change="updateSchemaDefaultModel" title="Модель по умолчанию для схемы">
-            <option value="">Модель: авто</option>
+          <select class="toolbar-model-select" v-model="schemaDefaultModel" @change="updateSchemaDefaultModel" title="Default model for schema">
+            <option value="">Model: auto</option>
             <optgroup v-for="group in defaultModelGroups" :key="group.name" :label="group.name">
               <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </optgroup>
@@ -112,11 +118,11 @@
       :result="{ wing: card.wing, room: card.room, content: card.content, score: card.score }"
       :initial-position="{ x: card.x, y: card.y }" @close="closeMemoryCard(card.id)" @pin="pinMemoryResult" />
 
-    <AppModal v-model="showDeleteConfirm" title="Удалить схему?">
-      <p>Вы действительно хотите удалить схему "{{ schema.name }}"? Это действие нельзя отменить.</p>
+    <AppModal v-model="showDeleteConfirm" title="Delete schema?">
+      <p>Are you sure you want to delete "{{ schema.name }}"? This cannot be undone.</p>
       <div class="modal-buttons">
-        <button @click="deleteSchema" class="delete-confirm-btn">Да, удалить</button>
-        <button @click="showDeleteConfirm = false">Отмена</button>
+        <button @click="deleteSchema" class="delete-confirm-btn">Yes, delete</button>
+        <button @click="showDeleteConfirm = false">Cancel</button>
       </div>
     </AppModal>
 
@@ -125,7 +131,8 @@
       :x="ctxMenu.x"
       :y="ctxMenu.y"
       :can-edit-prompt="ctxMenu.nodeType === 'agent'"
-      @rename="startRenameFromCtx"
+      :node-name="ctxMenuNodeName"
+      @rename="handleCtxRename"
       @duplicate="duplicateNode"
       @delete="deleteSelectedNode"
       @toggle-collapse="toggleCollapseCtx"
@@ -167,6 +174,7 @@ import { useExecutionState } from '../../composables/useExecutionState';
 import { useToast } from '../../composables/useToast';
 import { schemaApi, settingsApi } from '../../services/api';
 import { toPng } from 'html-to-image';
+import { useRouter } from 'vue-router';
 
 const props = defineProps<{
   schema: WorkflowSchema;
@@ -264,6 +272,7 @@ const schemaStore = useSchemaStore();
 const panelStore = usePanelStore();
 const toast = useToast();
 const { connect, connectAsync, disconnect, isConnected } = useWebSocket();
+const router = useRouter();
 const isExecuting = ref(false);
 const executionMode = ref<ExecutionMode>(schemaStore.executionMode);
 watch(executionMode, (mode) => schemaStore.setExecutionMode(mode));
@@ -294,6 +303,11 @@ if (execState) {
 
 const schemaDefaultModel = ref(props.schema.defaultModel || '');
 const defaultModelOptions = ref<{ value: string; label: string; group: string }[]>([]);
+const hasProviders = ref(true);
+
+function goToSettings() {
+  router.push({ name: 'settings' });
+}
 
 const defaultModelGroups = computed(() => {
   const groups: Record<string, { value: string; label: string }[]> = {};
@@ -308,6 +322,8 @@ const defaultModelGroups = computed(() => {
 onMounted(async () => {
   try {
     const providers = await settingsApi.getProviders();
+    const available = providers.filter((p: any) => p.available);
+    hasProviders.value = available.length > 0;
     const opts: { value: string; label: string; group: string }[] = [];
     for (const p of providers) {
       const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
@@ -319,6 +335,7 @@ onMounted(async () => {
     }
     defaultModelOptions.value = opts;
   } catch (e) {
+    hasProviders.value = false;
     console.warn('Failed to load providers for model selector:', e);
   }
 });
@@ -412,6 +429,7 @@ function convertToFlowElements() {
       onMemoryResults: node.type === 'memory' ? (nodeId: string, results: any[]) => {
         showMemoryResults(nodeId, results);
       } : undefined,
+      schemaNodes: (props.schema.nodes || []).map(n => ({ id: n.id, name: n.name, type: n.type })),
     },
   }));
 
@@ -547,10 +565,17 @@ function onNodeContextMenu(event: NodeMouseEvent) {
 
 function startRenameFromCtx() {
   ctxMenu.value.visible = false;
+  // Handled via NodeContextMenu inline rename now
+}
+
+const ctxMenuNodeName = computed(() => {
+  const node = (props.schema.nodes || []).find(n => n.id === ctxMenu.value.nodeId);
+  return node?.name || '';
+});
+
+function handleCtxRename(newName: string) {
+  ctxMenu.value.visible = false;
   const nodeId = ctxMenu.value.nodeId;
-  const node = (props.schema.nodes || []).find(n => n.id === nodeId);
-  if (!node) return;
-  const newName = prompt('Новое имя:', node.name || '');
   if (newName?.trim()) {
     const updatedNodes = (props.schema.nodes || []).map(n =>
       n.id === nodeId ? { ...n, name: newName.trim() } : n
@@ -567,7 +592,7 @@ function duplicateNode() {
     ...node,
     id: `node-${Date.now()}`,
     position: { x: (node.position?.x || 0) + 40, y: (node.position?.y || 0) + 40 },
-    data: { ...node.data, name: `${node.name} (копия)` },
+    data: { ...node.data, name: `${node.name} (copy)` },
   };
   delete newNode.data.onRename;
   delete newNode.data.onDelete;
@@ -767,19 +792,19 @@ function generateUniqueName(baseName: string): string {
 
 function addNode(type: string, position?: { x: number; y: number }, nodeData?: Record<string, any>) {
   const nameMap = {
-    source: 'Входные данные',
-    agent: 'Аналитик',
-    condition: 'Условие',
-    transform: 'Трансформация',
-    loop: 'Цикл',
-    output: 'Результат',
-    memory: 'Память',
-    guardrail: 'Валидация',
-    human: 'Человек',
-    fallback: 'Резервный путь',
-    comment: 'Заметка',
+    source: 'Input Data',
+    agent: 'Analyst',
+    condition: 'Condition',
+    transform: 'Transform',
+    loop: 'Loop',
+    output: 'Output',
+    memory: 'Memory',
+    guardrail: 'Validation',
+    human: 'Human',
+    fallback: 'Fallback',
+    comment: 'Note',
   };
-  const baseName = nameMap[type as keyof typeof nameMap] || 'Новый узел';
+  const baseName = nameMap[type as keyof typeof nameMap] || 'New Node';
   const uniqueName = generateUniqueName(baseName);
 
   const offset = nextNodeOffset;
@@ -865,7 +890,7 @@ async function executeSchema() {
   completedNodes.value = 0;
   resetExecutionPanel();
   startTimer();
-  pushLog('Запрошено начало выполнения схемы', 'info');
+  pushLog('Schema execution requested', 'info');
 
   try {
     console.log('🔌 Подключение к WebSocket...');
@@ -886,23 +911,23 @@ async function executeSchema() {
       onResult: (data) => {
         console.log('📋 Result callback:', data);
         updateNodeResult(data.nodeId, data.result);
-        pushLog(`результат получен`, 'success', data.nodeId);
+        pushLog(`result received`, 'success', data.nodeId);
       },
       onError: (data) => {
         console.log('❌ Error callback:', data);
         updateNodeStatus(data.nodeId, 'failed');
-        pushLog(`ошибка: ${data.error}`, 'error', data.nodeId);
+        pushLog(`error: ${data.error}`, 'error', data.nodeId);
         disconnect();
         isExecuting.value = false;
         stopTimer();
       },
       onComplete: (data) => {
         console.log('✅ Complete callback:', data);
-        pushLog(`Выполнение завершено: ${data.nodesCompleted}/${totalNodes.value} узлов`, 'success');
+        pushLog(`Execution complete: ${data.nodesCompleted}/${totalNodes.value} nodes`, 'success');
         disconnect();
         isExecuting.value = false;
         stopTimer();
-        toast.success(`Выполнение завершено! Время: ${data.totalTime}мс, узлов: ${data.nodesCompleted}`);
+        toast.success(`Execution complete! Time: ${data.totalTime}ms, nodes: ${data.nodesCompleted}`);
       },
       onMetrics: (data) => {
         console.log('📈 Metrics callback:', data);
@@ -913,7 +938,7 @@ async function executeSchema() {
       },
       onWave: (data: { waveNumber: number; nodeIds: string[]; status: string }) => {
         console.log('🌊 Wave callback:', data);
-        pushLog(`Волна ${data.waveNumber + 1}: ${data.status}`, 'info', '');
+        pushLog(`Wave ${data.waveNumber + 1}: ${data.status}`, 'info', '');
       },
       onNodeTime: (data) => {
         console.log('⏱ Node time:', data);
@@ -922,7 +947,7 @@ async function executeSchema() {
           n.id === data.nodeId ? { ...n, data: { ...n.data, nodeTimeMs: data.durationMs } } : n
         );
         emit('update', { ...props.schema, nodes: updatedNodes });
-        pushLog(`Время: ${data.durationMs}мс`, 'info', data.nodeId);
+        pushLog(`Time: ${data.durationMs}ms`, 'info', data.nodeId);
       },
       onToken: (data) => {
         const updatedNodes = (props.schema.nodes || []).map(n => {
@@ -953,10 +978,10 @@ async function executeSchema() {
 
   } catch (error) {
     console.error('❌ Ошибка выполнения:', error);
-    pushLog('Ошибка запуска выполнения схемы', 'error');
+    pushLog('Error starting schema execution', 'error');
     isExecuting.value = false;
     stopTimer();
-    toast.error('Ошибка выполнения схемы');
+    toast.error('Schema execution error');
   }
 }
 
@@ -986,15 +1011,15 @@ function exportSchema() {
 async function stopExecution() {
   if (!props.schema.id) return;
   try {
-    pushLog('Запрошена остановка выполнения', 'warning');
+    pushLog('Execution stop requested', 'warning');
     await schemaApi.stopSchema(props.schema.id);
     disconnect();
     isExecuting.value = false;
     stopTimer();
-    pushLog('Запрос на остановку отправлен', 'info');
+    pushLog('Stop request sent', 'info');
   } catch (error) {
     console.error('❌ Ошибка остановки выполнения:', error);
-    pushLog('Ошибка отправки запроса на остановку', 'error');
+    pushLog('Error sending stop request', 'error');
   }
 }
 
@@ -1251,7 +1276,7 @@ function groupSelectedNodes() {
   const groupNode: FlowNode = {
     id: groupId,
     type: 'group',
-    name: 'Группа',
+    name: 'Group',
     position: { x: minX - 30, y: minY - 40 },
     data: {},
     status: 'idle',
@@ -1306,7 +1331,7 @@ function ungroupSelectedNode() {
 </script>
 
 <style>
-/* Глобальный стиль для подсветки найденных узлов (scoped не работает внутри Vue Flow) */
+/* Global style for highlighting found nodes (scoped doesn't work inside Vue Flow) */
 .vue-flow .search-match {
   box-shadow: 0 0 0 3px #6c63ff, 0 0 20px rgba(108, 99, 255, 0.4) !important;
   z-index: 100;
@@ -1318,6 +1343,32 @@ function ungroupSelectedNode() {
   width: 100%;
   height: 100vh;
   position: relative;
+}
+
+.provider-warning {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  padding: 8px 16px;
+  background: rgba(255, 152, 0, 0.15);
+  border-bottom: 1px solid rgba(255, 152, 0, 0.4);
+  color: #ffab40;
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.provider-warning:hover {
+  background: rgba(255, 152, 0, 0.25);
+}
+
+.toolbar-shortcuts-btn {
+  font-weight: bold;
+  font-family: monospace;
+  font-size: 14px !important;
 }
 
 .schema-name {

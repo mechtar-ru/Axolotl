@@ -1,6 +1,6 @@
 <template>
   <div class="node guardrail-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Удалить">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete">✕</button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">🛡️</span>
@@ -10,17 +10,17 @@
       <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
     </div>
     <div v-if="expanded" class="node-content">
-      <textarea v-model="localRules" placeholder="Правила валидации (по одной на строку)...&#10;Например: ответ должен содержать числа&#10;ответ должен быть короче 500 символов" rows="4" @mousedown.stop @mouseup.stop />
+      <textarea v-model="localRules" placeholder="Validation rules (one per line)...&#10;Example: response must contain numbers&#10;response must be shorter than 500 chars" rows="4" @mousedown.stop @mouseup.stop />
       <select v-model="localMode" class="mode-select">
-        <option value="validate">Проверка (блокировать при ошибке)</option>
-        <option value="transform">Трансформация (применить правило)</option>
-        <option value="filter">Фильтр (пропустить только совпадения)</option>
+        <option value="validate">Validate (block on error)</option>
+        <option value="transform">Transform (apply rule)</option>
+        <option value="filter">Filter (pass only matches)</option>
       </select>
       <div v-if="props.data.result" class="node-result">
-        <strong>Результат:</strong>
+        <strong>Result:</strong>
         <div>{{ props.data.result }}</div>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>

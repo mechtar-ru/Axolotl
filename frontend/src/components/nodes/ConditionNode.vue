@@ -4,7 +4,7 @@
       v-if="isSelected"
       class="delete-btn"
       @click.stop="handleDelete"
-      title="Удалить узел"
+      title="Delete node"
     >
       ✕
     </button>
@@ -35,12 +35,13 @@
             <button class="node-expand" @click="toggleExpand">
               {{ expanded ? '▼' : '▶' }}
             </button>
+            <span v-if="!expanded && localCondition" class="node-badge">{{ truncate(localCondition, 25) }}</span>
           </div>
 
           <div v-if="expanded" class="node-content">
             <textarea
               v-model="localCondition"
-              placeholder="Условие: data.value > 10"
+              placeholder="Condition: data.value > 10"
               rows="3"
               @mousedown.stop
               @mouseup.stop
@@ -50,7 +51,7 @@
               <span class="progress-text">{{ Math.round(props.data.progress) }}%</span>
             </div>
             <div v-if="props.data.result !== undefined && props.data.result !== null" class="node-result">
-              <strong>Результат:</strong> {{ props.data.result }}
+              <strong>Result:</strong> {{ props.data.result }}
             </div>
           </div>
         </div>
@@ -93,6 +94,10 @@ const editingName = ref(false);
 const localName = ref(props.data.name);
 const localCondition = ref(props.data.condition || '');
 const nameInput = ref<HTMLInputElement | null>(null);
+
+function truncate(str: string, len: number): string {
+  return str.length > len ? str.substring(0, len) + '...' : str;
+}
 
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {

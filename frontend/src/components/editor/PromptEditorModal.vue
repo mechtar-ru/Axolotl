@@ -2,9 +2,9 @@
   <div v-if="visible" class="prompt-modal-overlay" @click.self="close">
     <div class="prompt-modal">
       <div class="prompt-modal-header">
-        <span>Редактор промпта — {{ nodeName }}</span>
+        <span>Prompt Editor — {{ nodeName }}</span>
         <div class="prompt-modal-actions">
-          <button class="template-btn" @click="showTemplates = !showTemplates">Шаблоны</button>
+          <button class="template-btn" @click="showTemplates = !showTemplates">Templates</button>
           <button class="close-btn" @click="close">✕</button>
         </div>
       </div>
@@ -22,35 +22,35 @@
 
       <div class="prompt-modal-body">
         <div v-if="systemPrompt !== undefined" class="field-group">
-          <label>Системный промпт</label>
+          <label>System Prompt</label>
           <textarea
             v-model="localSystemPrompt"
             class="prompt-textarea"
-            placeholder="Определи роль и поведение агента..."
+            placeholder="Define the agent's role and behavior..."
             rows="6"
           />
         </div>
         <div class="field-group">
-          <label>Пользовательский промпт</label>
+          <label>User Prompt</label>
           <textarea
             ref="promptArea"
             v-model="localPrompt"
             class="prompt-textarea main-prompt"
-            placeholder="Введите промпт... Доступны переменные: {{input}}, {{prev_result}}, {{node:имя_узла}}"
+            placeholder="Enter prompt... Available: {{input}}, {{prev_result}}, {{node:node_name}}"
             rows="14"
           />
         </div>
         <div class="variables-hint">
-          <span class="hint-label">Переменные:</span>
+          <span class="hint-label">Variables:</span>
           <button class="var-btn" @click="insertVar('\{\{input\}\}')">&#123;&#123;input&#125;&#125;</button>
           <button class="var-btn" @click="insertVar('\{\{prev_result\}\}')">&#123;&#123;prev_result&#125;&#125;</button>
-          <button class="var-btn" @click="insertVar('\{\{node:имя\}\}')">&#123;&#123;node:...&#125;&#125;</button>
+          <button class="var-btn" @click="insertVar('\{\{node:name\}\}')">&#123;&#123;node:...&#125;&#125;</button>
         </div>
       </div>
 
       <div class="prompt-modal-footer">
-        <span class="char-count">{{ localPrompt.length }} символов</span>
-        <button class="save-btn" @click="save">Сохранить</button>
+        <span class="char-count">{{ localPrompt.length }} chars</span>
+        <button class="save-btn" @click="save">Save</button>
       </div>
     </div>
   </div>
@@ -60,14 +60,14 @@
 import { ref, watch } from 'vue';
 
 const templates = [
-  { name: 'Анализ', emoji: '🔍', text: 'Проанализируй следующие данные и выдели ключевые моменты:\n\n{{input}}' },
-  { name: 'Суммаризация', emoji: '📋', text: 'Сделай краткое резюме следующего текста на русском языке:\n\n{{input}}' },
-  { name: 'Перевод', emoji: '🌍', text: 'Переведи следующий текст на русский язык, сохранив стиль и тон оригинала:\n\n{{input}}' },
-  { name: 'Извлечение', emoji: '🎯', text: 'Извлеки из текста все ключевые сущности (имена, даты, суммы, организации):\n\n{{input}}' },
-  { name: 'Генерация', emoji: '✨', text: 'На основе следующих данных сгенерируй подробный ответ:\n\n{{input}}' },
-  { name: 'Код-ревью', emoji: '💻', text: 'Проверь следующий код на ошибки, уязвимости и предложи улучшения:\n\n{{input}}' },
-  { name: 'Сравнение', emoji: '⚖️', text: 'Сравни данные из двух источников и найди сходства и различия:\n\nИсточник 1: {{input}}\nИсточник 2: {{prev_result}}' },
-  { name: 'FAQ', emoji: '❓', text: 'Ответь на вопрос, основываясь на предоставленном контексте. Если ответа нет в контексте, так и скажи.\n\nКонтекст: {{input}}\nВопрос: ' },
+  { name: 'Analysis', emoji: '🔍', text: 'Analyze the following data and extract key points:\n\n{{input}}' },
+  { name: 'Summarization', emoji: '📋', text: 'Make a brief summary of the following text:\n\n{{input}}' },
+  { name: 'Translation', emoji: '🌍', text: 'Translate the following text, preserving style and tone:\n\n{{input}}' },
+  { name: 'Extraction', emoji: '🎯', text: 'Extract all key entities (names, dates, amounts, organizations):\n\n{{input}}' },
+  { name: 'Generation', emoji: '✨', text: 'Generate a detailed response based on the following data:\n\n{{input}}' },
+  { name: 'Code Review', emoji: '💻', text: 'Review the following code for bugs, vulnerabilities, and improvements:\n\n{{input}}' },
+  { name: 'Comparison', emoji: '⚖️', text: 'Compare data from two sources and find similarities and differences:\n\nSource 1: {{input}}\nSource 2: {{prev_result}}' },
+  { name: 'FAQ', emoji: '❓', text: 'Answer the question based on the provided context. If the answer is not in the context, say so.\n\nContext: {{input}}\nQuestion: ' },
 ];
 
 const props = defineProps<{

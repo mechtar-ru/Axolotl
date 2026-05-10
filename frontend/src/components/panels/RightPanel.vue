@@ -10,8 +10,11 @@
         :class="{ active: panelStore.activeTab === tab.id }"
         @click="panelStore.open(tab.id)"
         :title="tab.label"
-      >{{ tab.icon }}</button>
-      <button class="right-panel__tab right-panel__tab--close" @click="panelStore.close()" title="Закрыть">✕</button>
+      >
+        <span class="right-panel__tab-icon">{{ tab.icon }}</span>
+        <span class="right-panel__tab-label">{{ tab.label }}</span>
+      </button>
+      <button class="right-panel__tab right-panel__tab--close" @click="panelStore.close()" title="Close">✕</button>
     </div>
 
     <div class="right-panel__content">
@@ -28,6 +31,7 @@
           :logs="execState?.logs.value ?? []"
           :total-tokens="execState?.totalTokens.value"
           :estimated-cost="execState?.estimatedCost.value"
+          :node-name-map="nodeNameMap"
           @stop="$emit('stop-execution')"
           @close="panelStore.close()"
           @highlight-node="$emit('highlight-node', $event)"
@@ -93,6 +97,7 @@ const execState = useExecutionState();
 defineProps<{
   schemaNodes?: Array<{ id: string; name: string; type: string }>;
   schemaId?: string;
+  nodeNameMap?: Record<string, string>;
 }>();
 
 defineEmits<{
@@ -107,11 +112,11 @@ defineEmits<{
 const execPanelRef = ref<InstanceType<typeof ExecutionPanel> | null>(null);
 
 const tabs = [
-  { id: 'exec' as const, icon: '▶️', label: 'Выполнение' },
-  { id: 'plan' as const, icon: '📋', label: 'План' },
-  { id: 'memory' as const, icon: '🧠', label: 'Память' },
-  { id: 'history' as const, icon: '📜', label: 'История' },
-  { id: 'templates' as const, icon: '🏗️', label: 'Шаблоны' },
+  { id: 'exec' as const, icon: '▶', label: 'Exec' },
+  { id: 'plan' as const, icon: '📋', label: 'Plan' },
+  { id: 'memory' as const, icon: '🧠', label: 'Memory' },
+  { id: 'history' as const, icon: '📜', label: 'History' },
+  { id: 'templates' as const, icon: '🏗', label: 'Templates' },
 ];
 
 // Resize handle
@@ -151,6 +156,7 @@ function stopResize() {
   position: relative;
   flex-shrink: 0;
   backdrop-filter: blur(10px);
+  min-width: 200px;
 }
 
 .right-panel__resize-handle {
@@ -169,7 +175,7 @@ function stopResize() {
 .right-panel__tabs {
   display: flex;
   flex-direction: column;
-  width: 36px;
+  width: 72px;
   flex-shrink: 0;
   background: rgba(15, 20, 40, 0.6);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
@@ -178,18 +184,22 @@ function stopResize() {
 
 .right-panel__tab {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 72px;
+  padding: 6px 0;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
   opacity: 0.5;
   transition: all 0.15s;
   border-left: 2px solid transparent;
+  gap: 2px;
 }
+
+.right-panel__tab-icon { font-size: 14px; }
+.right-panel__tab-label { font-size: 9px; color: var(--text-secondary, #aaa); text-transform: uppercase; letter-spacing: 0.3px; }
 .right-panel__tab:hover {
   opacity: 0.8;
   background: rgba(255, 255, 255, 0.05);

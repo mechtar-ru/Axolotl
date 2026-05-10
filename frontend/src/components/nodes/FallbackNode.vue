@@ -1,6 +1,6 @@
 <template>
   <div class="node fallback-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Удалить">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete">✕</button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
       <span class="node-icon">🔄</span>
@@ -10,13 +10,13 @@
       <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
     </div>
     <div v-if="expanded" class="node-content">
-      <textarea v-model="localPrompt" placeholder="Запасной промпт при ошибке...&#10;Выполняется если предшествующий узел завершился с ошибкой." rows="3" @mousedown.stop @mouseup.stop />
-      <div class="fallback-hint">Выполняется только при ошибке предшественника</div>
+      <textarea v-model="localPrompt" placeholder="Fallback prompt on error...&#10;Executes when preceding node fails." rows="3" @mousedown.stop @mouseup.stop />
+      <div class="fallback-hint">Only runs on predecessor error</div>
       <div v-if="props.data.result" class="node-result">
-        <strong>Результат:</strong>
+        <strong>Result:</strong>
         <div>{{ props.data.result }}</div>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>

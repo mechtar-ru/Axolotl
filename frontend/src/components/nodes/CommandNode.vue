@@ -44,7 +44,7 @@
       <span class="typing-dot"></span>
       <span class="typing-dot"></span>
     </div>
-    <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}мс</div>
+    <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
     
     <Handle type="source" :position="Position.Bottom" />
   </div>

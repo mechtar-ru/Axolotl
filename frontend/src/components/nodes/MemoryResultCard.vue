@@ -9,13 +9,13 @@
     <div class="card-header">
       <span class="card-wing">{{ result.wing }}/{{ result.room }}</span>
       <span v-if="result.score !== undefined" class="card-score">score: {{ result.score.toFixed(2) }}</span>
-      <button class="card-close" @click="emit('close')" title="Закрыть">✕</button>
+      <button class="card-close" @click="emit('close')" title="Close">✕</button>
     </div>
     <div class="card-body">
       <p class="card-text">{{ result.content }}</p>
     </div>
     <div class="card-actions">
-      <button class="card-action" @click="emit('pin', result)">📌 Превратить в узел</button>
+      <button class="card-action" @click="emit('pin', result)">📌 Turn into node</button>
     </div>
   </div>
 </template>

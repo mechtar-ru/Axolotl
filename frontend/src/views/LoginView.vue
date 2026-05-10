@@ -4,27 +4,27 @@
       <div class="login-header">
         <img src="../assets/logo.svg" alt="Axolotl" class="login-logo" />
         <h1>Axolotl</h1>
-        <p>Визуальный конструктор AI-агентов</p>
+        <p>Visual AI Agent Builder</p>
       </div>
 
       <div v-if="error" class="login-error">{{ error }}</div>
 
       <div class="login-form">
         <div class="field">
-          <label>Имя пользователя</label>
-          <input v-model="username" type="text" placeholder="Введите логин" @keyup.enter="login" autofocus />
+          <label>Username</label>
+          <input v-model="username" type="text" placeholder="Enter username" @keyup.enter="login" autofocus />
         </div>
         <div class="field">
-          <label>Пароль</label>
-          <input v-model="password" type="password" placeholder="Введите пароль" @keyup.enter="login" />
+          <label>Password</label>
+          <input v-model="password" type="password" placeholder="Enter password" @keyup.enter="login" />
         </div>
         <button class="login-btn" @click="login" :disabled="loading">
-          {{ loading ? 'Вход...' : 'Войти' }}
+          {{ loading ? 'Signing in...' : 'Sign in' }}
         </button>
       </div>
 
       <div v-if="showHint" class="login-hint">
-        По умолчанию: admin / admin
+        Default: admin / admin
       </div>
     </div>
   </div>
@@ -50,7 +50,7 @@ async function login() {
     await authStore.login(username.value, password.value);
     router.push('/');
   } catch (e: any) {
-    error.value = e.response?.data?.error || e.message || 'Ошибка входа';
+    error.value = e.response?.data?.error || e.message || 'Login error';
     showHint.value = true;
   } finally {
     loading.value = false;
