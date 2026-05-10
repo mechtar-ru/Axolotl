@@ -9,8 +9,8 @@
       <div class="onboarding-body">
         <!-- Step 1: Choose provider -->
         <div class="step" v-if="step === 1">
-          <h2>Choose AI Provider</h2>
-          <p class="step-desc">This will be the default model for new agents</p>
+          <h2>Let's build your first AI workflow</h2>
+          <p class="step-desc">First, pick an AI provider. This will be the default model for new agents.</p>
 
           <div class="provider-options">
             <button
@@ -35,41 +35,70 @@
           </div>
         </div>
 
-        <!-- Step 2: Core node types guide -->
+        <!-- Step 2: Pick a starting point -->
         <div class="step" v-if="step === 2">
-          <h2>Core Building Blocks</h2>
-          <p class="step-desc">Workflows are built from 5 basic node types</p>
+          <h2>Pick a starting point</h2>
+          <p class="step-desc">Choose a template to get started instantly, or start from scratch</p>
 
-          <div class="node-guide">
-            <div class="node-guide-item" v-for="node in coreNodes" :key="node.type">
-              <span class="node-guide-icon">{{ node.icon }}</span>
-              <div class="node-guide-info">
-                <span class="node-guide-name">{{ node.name }}</span>
-                <span class="node-guide-desc">{{ node.desc }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="more-nodes-hint">
-            More types available via the <strong>+ Add</strong> menu on canvas
+          <div class="template-options">
+            <button
+              class="template-option"
+              :class="{ selected: selectedTemplate === 'ai-pipeline' }"
+              @click="selectedTemplate = 'ai-pipeline'"
+            >
+              <span class="template-option__icon">🤖</span>
+              <span class="template-option__title">AI Pipeline</span>
+              <span class="template-option__desc">Source → Agent → Output — a complete AI flow ready to run</span>
+            </button>
+            <button
+              class="template-option"
+              :class="{ selected: selectedTemplate === 'rag' }"
+              @click="selectedTemplate = 'rag'"
+            >
+              <span class="template-option__icon">🧠</span>
+              <span class="template-option__title">RAG Pipeline</span>
+              <span class="template-option__desc">Source → Memory → Agent → Output — answer from context</span>
+            </button>
+            <button
+              class="template-option"
+              :class="{ selected: selectedTemplate === 'blank' }"
+              @click="selectedTemplate = 'blank'"
+            >
+              <span class="template-option__icon">✨</span>
+              <span class="template-option__title">Blank Canvas</span>
+              <span class="template-option__desc">Start from scratch — full control over every node</span>
+            </button>
           </div>
         </div>
 
         <!-- Step 3: Ready -->
         <div class="step" v-if="step === 3">
-          <h2>Ready to go!</h2>
-          <p class="step-desc">Provider: <strong>{{ getProviderLabel(selectedProvider) }}</strong></p>
-          <p class="model-chosen">Model: <code>{{ selectedModel }}</code></p>
+          <h2>You're all set!</h2>
+          <p class="step-desc">
+            <template v-if="selectedTemplate !== 'blank'">
+              We'll create a <strong>{{ getTemplateLabel(selectedTemplate) }}</strong> and open it for you.
+            </template>
+            <template v-else>
+              We'll open a blank canvas ready for your ideas.
+            </template>
+          </p>
 
-          <div class="quick-start">
-            <h3>Quick start:</h3>
-            <ol>
-              <li>Create a new schema or pick a template</li>
-              <li>Add nodes: Source → Agent → Output</li>
-              <li>Connect them with edges</li>
-              <li>Press ▶ Run</li>
-            </ol>
+          <div class="summary-card">
+            <div class="summary-row">
+              <span class="summary-label">Provider</span>
+              <span class="summary-value">{{ getProviderLabel(selectedProvider) }}</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Model</span>
+              <span class="summary-value"><code>{{ selectedModel }}</code></span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Starting point</span>
+              <span class="summary-value">{{ selectedTemplate === 'blank' ? 'Blank canvas' : getTemplateLabel(selectedTemplate) }}</span>
+            </div>
           </div>
+
+          <p class="next-steps-hint">You can always change the provider or model later in Settings.</p>
         </div>
       </div>
 
@@ -102,21 +131,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
-  complete: [provider: string, model: string];
+  complete: [provider: string, model: string, template: string];
   skip: [];
 }>();
 
 const step = ref(1);
 const providers = ref<ProviderInfo[]>([]);
 const selectedProvider = ref('');
-
-const coreNodes = [
-  { type: 'source', icon: '📥', name: 'Source', desc: 'Input data — text, file, URL, or memory' },
-  { type: 'agent', icon: '🤖', name: 'Agent', desc: 'LLM call with optional tool use' },
-  { type: 'condition', icon: '⚖️', name: 'Condition', desc: 'Branch based on logic (if/else)' },
-  { type: 'transform', icon: '⚡', name: 'Transform', desc: 'Extract, route, or reshape data' },
-  { type: 'output', icon: '📤', name: 'Output', desc: 'Write result to file, memory, or log' },
-];
+const selectedTemplate = ref('ai-pipeline');
 
 const availableProviders = computed(() =>
   providers.value.filter(p => p.available || p.name === 'ollama')
@@ -132,6 +154,15 @@ function getProviderIcon(name: string): string {
     ollama: '🦙', openai: '🤖', anthropic: '🧠', deepseek: '🔍',
   };
   return icons[name] || '⚡';
+}
+
+function getTemplateLabel(template: string): string {
+  const labels: Record<string, string> = {
+    'ai-pipeline': 'AI Pipeline',
+    'rag': 'RAG Pipeline',
+    'blank': 'Blank Canvas',
+  };
+  return labels[template] || template;
 }
 
 function getProviderLabel(name: string): string {
@@ -153,7 +184,7 @@ function skipOnboarding() {
 function finishOnboarding() {
   localStorage.setItem('axolotl:onboarding', 'done');
   localStorage.setItem('axolotl:default-provider', selectedProvider.value);
-  emit('complete', selectedProvider.value, selectedModel.value);
+  emit('complete', selectedProvider.value, selectedModel.value, selectedTemplate.value);
   emit('close');
 }
 
@@ -271,6 +302,76 @@ onMounted(async () => {
 
 .no-providers { text-align: center; padding: 20px; color: #888; }
 .no-providers .hint { font-size: 12px; color: #666; margin-top: 8px; }
+
+/* Template options */
+.template-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.template-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  background: #2d2d44;
+  border: 2px solid #4a4a6a;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #eee;
+  text-align: left;
+  width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.template-option:hover {
+  border-color: #6c63ff;
+  background: rgba(108, 99, 255, 0.1);
+}
+
+.template-option.selected {
+  border-color: #6c63ff;
+  background: rgba(108, 99, 255, 0.15);
+  box-shadow: 0 0 12px rgba(108, 99, 255, 0.3);
+}
+
+.template-option__icon { font-size: 28px; }
+.template-option__title { font-size: 14px; font-weight: 600; color: #e0e0e0; }
+.template-option__desc { font-size: 12px; color: #888; line-height: 1.4; }
+
+/* Summary card */
+.summary-card {
+  background: #2d2d44;
+  border-radius: 10px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.summary-row + .summary-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.summary-label { font-size: 13px; color: #888; }
+.summary-value { font-size: 13px; color: #e0e0e0; font-weight: 500; }
+.summary-value code { background: #1e1e2e; padding: 2px 8px; border-radius: 4px; color: #6c63ff; }
+
+.next-steps-hint {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  margin: 0;
+}
 
 /* Node guide */
 .node-guide {

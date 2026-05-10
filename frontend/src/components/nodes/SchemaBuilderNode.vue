@@ -23,7 +23,7 @@
         </label>
       </div>
       <div v-if="!result" class="config-hint">
-        Feed agent result → generates new workflow schema
+        Feed agent result → generates new schema
       </div>
     </div>
     <div v-if="result" class="node-result">

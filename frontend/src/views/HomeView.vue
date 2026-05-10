@@ -543,7 +543,7 @@ async function handleCommand(action: string) {
 
 async function copyToClipboard() {
   await navigator.clipboard.writeText(mermaidCode.value);
-  alert('Copied!');
+  toast.success('Copied!');
 }
 
 function saveToFile() {
@@ -662,10 +662,15 @@ function logout() {
   router.push('/login');
 }
 
-function handleOnboardingComplete(provider: string, model: string) {
-  console.log(`Onboarding: selected ${provider} with model ${model}`);
-  // Store default model preference
+function handleOnboardingComplete(provider: string, model: string, template: string) {
   localStorage.setItem('axolotl:default-model', `${provider}/${model}`);
+  toast.success(`Ready! Opening ${template === 'blank' ? 'blank canvas' : template}...`);
+  // Create a schema from the selected template so onboarding isn't a dead-end
+  if (template !== 'blank') {
+    createFromTemplate(template);
+  } else {
+    createNewSchema();
+  }
 }
 
 function handleOnboardingSkip() {

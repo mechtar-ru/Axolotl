@@ -1,7 +1,7 @@
 <template>
   <div v-if="visible" class="template-gallery">
     <div class="gallery-header">
-      <span class="gallery-title">Workflow Templates</span>
+      <span class="gallery-title">Schema Templates</span>
       <button class="close-btn" @click="$emit('close')">✕</button>
     </div>
 
@@ -52,7 +52,7 @@
         />
       </div>
       <button class="create-btn" @click="createFromTemplate" :disabled="!allRequiredFilled">
-        Create Workflow
+        Create Schema
       </button>
     </div>
   </div>
