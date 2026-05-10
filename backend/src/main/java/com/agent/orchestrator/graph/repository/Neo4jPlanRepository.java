@@ -40,10 +40,28 @@ public class Neo4jPlanRepository {
 
     public Plan findFirstByWorkspaceId(String workspaceId) {
         try (Session session = driver.session()) {
-            Result rs = session.run("MATCH (p:Plan {workspaceId: $workspaceId}) RETURN p.data LIMIT 1", 
+            Result rs = session.run("""
+                MATCH (p:Plan {workspaceId: $workspaceId})
+                RETURN p.data, p.tasksJson
+                ORDER BY 
+                    CASE WHEN p.tasksJson IS NOT NULL THEN 2 
+                         WHEN p.data IS NOT NULL AND size(p.data) > 500 THEN 1 
+                         ELSE 0 END DESC
+                LIMIT 1
+                """,
                 org.neo4j.driver.Values.parameters("workspaceId", workspaceId));
             if (rs.hasNext()) {
-                return mapper.readValue(rs.next().get("p.data").asString(), Plan.class);
+                var record = rs.next();
+                String json = record.get("p.tasksJson").isNull() 
+                    ? record.get("p.data").asString() 
+                    : "{\"tasks\":" + record.get("p.tasksJson").asString() + "}";
+                if (json != null && !json.isBlank()) {
+                    json = json.trim();
+                    if (json.startsWith("[")) {
+                        return null;
+                    }
+                    return mapper.readValue(json, Plan.class);
+                }
             }
         } catch (Exception e) {
             log.error("Error loading plan: {}", e.getMessage());
@@ -67,6 +85,8 @@ public class Neo4jPlanRepository {
     public void save(Plan plan) {
         try (Session session = driver.session()) {
             String json = mapper.writeValueAsString(plan);
+            String createdAt = plan.getCreatedAt() != null ? plan.getCreatedAt().toString() : "";
+            String updatedAt = plan.getUpdatedAt() != null ? plan.getUpdatedAt().toString() : "";
             session.run("""
                 MERGE (p:Plan {id: $id})
                 SET p.workspaceId = $workspaceId, p.name = $name, p.data = $data, p.createdAt = $createdAt, p.updatedAt = $updatedAt
@@ -76,8 +96,8 @@ public class Neo4jPlanRepository {
                     "workspaceId", plan.getWorkspaceId() != null ? plan.getWorkspaceId() : "default",
                     "name", plan.getName() != null ? plan.getName() : "",
                     "data", json,
-                    "createdAt", plan.getCreatedAt() != null ? plan.getCreatedAt() : "",
-                    "updatedAt", plan.getUpdatedAt() != null ? plan.getUpdatedAt() : ""
+                    "createdAt", createdAt,
+                    "updatedAt", updatedAt
                 ));
         } catch (Exception e) {
             log.error("Error saving plan: {}", e.getMessage());

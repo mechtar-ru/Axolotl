@@ -1,6 +1,7 @@
 package com.agent.orchestrator.graph.repository;
 
 import com.agent.orchestrator.model.WorkflowSchema;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.neo4j.driver.Driver;
@@ -16,7 +17,9 @@ import java.util.*;
 public class Neo4jSchemaRepository {
     private static final Logger log = LoggerFactory.getLogger(Neo4jSchemaRepository.class);
     private final Driver driver;
-    private final ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+    private final ObjectMapper mapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     public Neo4jSchemaRepository(Driver driver) {
         this.driver = driver;
@@ -25,15 +28,20 @@ public class Neo4jSchemaRepository {
     public List<WorkflowSchema> findAll() {
         List<WorkflowSchema> result = new ArrayList<>();
         try (Session session = driver.session()) {
+            // Return ALL schemas - caller filters by userId if needed
             Result rs = session.run("MATCH (s:WorkflowSchema) RETURN s.id, s.name, s.data, s.userId, s.createdAt, s.updatedAt");
+            int count = 0;
             while (rs.hasNext()) {
                 var record = rs.next();
                 WorkflowSchema schema = mapper.readValue(record.get("s.data").asString(), WorkflowSchema.class);
                 result.add(schema);
+                count++;
             }
+            log.info("Neo4j query returned {} records", count);
         } catch (Exception e) {
-            log.error("Error loading schemas: {}", e.getMessage());
+            log.error("Error loading schemas: {}", e.getMessage(), e);
         }
+        log.info("Returning {} schemas from Neo4j", result.size());
         return result;
     }
 

@@ -12,6 +12,8 @@ public class WorkflowSchema {
     private String userId;
     private String workspaceId;
     private String defaultModel;
+    private List<String> defaultTools;
+    private Map<String, Object> defaultToolPermissions;
     private List<Node> nodes;
     private List<Edge> edges;
     private Map<String, Object> metadata;
@@ -38,6 +40,12 @@ public class WorkflowSchema {
 
     public String getDefaultModel() { return defaultModel; }
     public void setDefaultModel(String defaultModel) { this.defaultModel = defaultModel; }
+
+    public List<String> getDefaultTools() { return defaultTools; }
+    public void setDefaultTools(List<String> defaultTools) { this.defaultTools = defaultTools; }
+
+    public Map<String, Object> getDefaultToolPermissions() { return defaultToolPermissions; }
+    public void setDefaultToolPermissions(Map<String, Object> defaultToolPermissions) { this.defaultToolPermissions = defaultToolPermissions; }
 
     public List<Node> getNodes() { return nodes; }
     public void setNodes(List<Node> nodes) { this.nodes = nodes; }

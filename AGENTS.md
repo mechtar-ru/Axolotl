@@ -39,6 +39,10 @@ python3 scripts/api.py GET /api/plan
 - Get token: `POST /api/auth/login` then use `Authorization: Bearer <token>`
 - Use `scripts/api.py` - handles auth automatically
 
+### Database Architecture
+- **Neo4j** — primary storage for schemas, plans, execution history, code graph
+- **SQLite** — auth only (users, settings backup)
+
 ### Task Management
 - **NEVER edit plan.json directly** - use Plan API or MCP
 - Check existing tasks: `GET /api/plan?format=full`

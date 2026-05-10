@@ -15,10 +15,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api")
 public class AgentController {
+    private static final Logger log = LoggerFactory.getLogger(AgentController.class);
 
     private final AgentService agentService;
     private final SchemaService schemaService;
@@ -65,6 +68,7 @@ public class AgentController {
     @GetMapping("/schemas")
     public List<WorkflowSchema> getAllSchemas() {
         String userId = getCurrentUserId();
+        log.info("getAllSchemas called with userId: {}", userId);
         return schemaService.getSchemasByUserId(userId);
     }
 
@@ -249,5 +253,19 @@ public class AgentController {
             throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
         }
         return Map.of("content", content);
+    }
+
+    @PostMapping("/schemas/generate-from-prompt")
+    public Map<String, Object> generateSchemaFromPrompt(@RequestBody Map<String, String> body) {
+        String prompt = body.get("prompt");
+        String model = body.getOrDefault("model", null);
+
+        if (prompt == null || prompt.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "prompt is required");
+        }
+
+        Map<String, Object> result = schemaService.generateSchemaFromPrompt(prompt, model);
+        return result;
     }
 }

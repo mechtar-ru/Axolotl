@@ -4,10 +4,14 @@ import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
+import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +39,7 @@ public class SchemaService {
     private final MetricsService metricsService;
     private final NodeExecutor nodeExecutor;
     private final SchemaExporter schemaExporter;
+    private final LlmService llmService;
 
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
@@ -52,7 +57,8 @@ public class SchemaService {
             SettingsService settingsService,
             MetricsService metricsService,
             NodeExecutor nodeExecutor,
-            SchemaExporter schemaExporter) {
+            SchemaExporter schemaExporter,
+            LlmService llmService) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -60,6 +66,7 @@ public class SchemaService {
         this.metricsService = metricsService;
         this.nodeExecutor = nodeExecutor;
         this.schemaExporter = schemaExporter;
+        this.llmService = llmService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -600,5 +607,199 @@ public class SchemaService {
         String global = settingsService.getGlobalDefaultModel();
         if (global != null && !global.isBlank()) return global;
         return null;
+    }
+
+    // ────────────────────────── Prompt-to-Schema Generation ──────────────────────────
+
+    private static final String PROMPT_TO_SCHEMA_SYSTEM = """
+            You are a workflow architect. The user will describe an application or workflow they want to build.
+            Design a complete Axolotl workflow schema with REAL, specific prompts and configuration — NOT empty placeholders.
+
+            RULES:
+            - Every agent node MUST have detailed, specific systemPrompt and userPrompt (min 2-3 sentences each)
+            - Choose appropriate models: use "minimax-max" for complex tasks, "minimax-m2.5-free" for simple ones
+            - Include realistic enabledTools and toolPermissions for agent nodes that need file/code access
+            - Create a logical flow: typically source -> (analyze/read) -> (implement/write) -> (verify/test) -> output
+            - Position nodes with x increments of 350, starting at x=100, y=200
+            - Each node needs a unique id: n1, n2, n3, etc.
+            - Include at least 3-7 nodes for non-trivial workflows
+            - Add a planExplanation describing what each node does and why
+
+            Available node types:
+            - "source" — provides initial data/input (has sourceData field)
+            - "agent" — LLM-powered node (has systemPrompt, userPrompt, model, agentType, enabledTools, toolPermissions)
+            - "output" — writes result to file/log/memory
+            - "condition" — branches based on JS expression
+            - "loop" — iterates with a condition
+            - "memory" — stores/retrieves from memory
+            - "guardrail" — validates/safety-checks output
+            - "transform" — transforms data between nodes
+
+            Available tools: file_read, file_write, directory_read, grep, git, bash, memory_read, memory_write, memory_search, web_search, web_fetch
+
+            Agent types: coder, assistant, researcher, reviewer
+
+            Respond ONLY with valid JSON — no markdown fences, no commentary:
+            {
+              "name": "Descriptive Schema Name",
+              "description": "What this workflow accomplishes",
+              "nodes": [
+                {
+                  "id": "n1",
+                  "type": "source",
+                  "name": "Descriptive name",
+                  "position": {"x": 100, "y": 200},
+                  "data": {
+                    "sourceData": "actual input content or instructions"
+                  }
+                },
+                {
+                  "id": "n2",
+                  "type": "agent",
+                  "name": "Descriptive name",
+                  "position": {"x": 450, "y": 200},
+                  "data": {
+                    "systemPrompt": "Detailed specific system prompt...",
+                    "userPrompt": "Detailed specific user prompt...",
+                    "model": "minimax-max",
+                    "agentType": "coder",
+                    "enabledTools": ["file_read", "file_write", "bash"],
+                    "maxToolCalls": 50,
+                    "toolPermissions": [
+                      {"toolId": "file_read", "allowedPaths": ["/full/path/**"], "enabled": true},
+                      {"toolId": "file_write", "allowedPaths": ["/full/path/**"], "enabled": true}
+                    ]
+                  }
+                }
+              ],
+              "edges": [
+                {"source": "n1", "target": "n2"}
+              ],
+              "planExplanation": "Markdown explanation of the workflow design"
+            }
+            """;
+
+    public Map<String, Object> generateSchemaFromPrompt(String prompt, String model) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            String resolvedModel = model;
+            if (resolvedModel == null || resolvedModel.isBlank()) {
+                resolvedModel = settingsService.getGlobalDefaultModel();
+            }
+            if (resolvedModel == null || resolvedModel.isBlank()) {
+                resolvedModel = "minimax-max";
+            }
+
+            log.info("Generating schema from prompt (model={}): {}", resolvedModel, prompt.substring(0, Math.min(100, prompt.length())));
+
+            String llmResponse = llmService.chat(resolvedModel, PROMPT_TO_SCHEMA_SYSTEM, prompt, null);
+
+            if (llmResponse == null || llmResponse.isBlank()) {
+                result.put("success", false);
+                result.put("error", "LLM returned empty response");
+                return result;
+            }
+
+            String jsonStr = llmResponse.trim();
+            if (jsonStr.startsWith("```")) {
+                jsonStr = jsonStr.replaceFirst("^```\\w*\\n?", "").replaceFirst("\\n?```$", "");
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root;
+            try {
+                root = mapper.readTree(jsonStr);
+            } catch (Exception e) {
+                result.put("success", false);
+                result.put("error", "Failed to parse LLM response as JSON: " + e.getMessage());
+                result.put("raw", llmResponse);
+                return result;
+            }
+
+            WorkflowSchema schema = new WorkflowSchema();
+            schema.setName(root.has("name") ? root.get("name").asText() : "Generated Schema");
+            schema.setDescription(root.has("description") ? root.get("description").asText() : "");
+            schema.setVersion("1.0");
+
+            List<Node> nodes = new ArrayList<>();
+            if (root.has("nodes")) {
+                for (JsonNode n : root.get("nodes")) {
+                    Node schemaNode = new Node();
+                    schemaNode.setId(n.has("id") ? n.get("id").asText() : UUID.randomUUID().toString());
+                    schemaNode.setType(n.has("type") ? n.get("type").asText() : "agent");
+                    schemaNode.setName(n.has("name") ? n.get("name").asText() : "Node");
+                    if (n.has("position")) {
+                        Node.Position pos = new Node.Position();
+                        pos.setX(n.get("position").has("x") ? n.get("position").get("x").asInt() : 100);
+                        pos.setY(n.get("position").has("y") ? n.get("position").get("y").asInt() : 200);
+                        schemaNode.setPosition(pos);
+                    }
+                    if (n.has("data")) {
+                        Node.NodeData data = new Node.NodeData();
+                        JsonNode d = n.get("data");
+                        if (d.has("userPrompt")) data.setUserPrompt(d.get("userPrompt").asText());
+                        if (d.has("systemPrompt")) data.setSystemPrompt(d.get("systemPrompt").asText());
+                        if (d.has("model")) data.setModel(d.get("model").asText());
+                        if (d.has("agentType")) data.setAgentType(d.get("agentType").asText());
+                        if (d.has("sourceData")) data.setSourceData(d.get("sourceData").asText());
+                        if (d.has("enabledTools") && d.get("enabledTools").isArray()) {
+                            List<String> tools = new ArrayList<>();
+                            for (JsonNode t : d.get("enabledTools")) tools.add(t.asText());
+                            data.setEnabledTools(tools);
+                        }
+                        if (d.has("maxToolCalls")) data.setMaxToolCalls(d.get("maxToolCalls").asInt());
+                        if (d.has("toolPermissions") && d.get("toolPermissions").isArray()) {
+                            List<ToolPermission> tps = new ArrayList<>();
+                            for (JsonNode tpNode : d.get("toolPermissions")) {
+                                ToolPermission tp = new ToolPermission();
+                                if (tpNode.has("toolId")) tp.setToolId(tpNode.get("toolId").asText());
+                                if (tpNode.has("enabled")) tp.setEnabled(tpNode.get("enabled").asBoolean());
+                                if (tpNode.has("allowedPaths") && tpNode.get("allowedPaths").isArray()) {
+                                    Set<String> paths = new HashSet<>();
+                                    for (JsonNode p : tpNode.get("allowedPaths")) paths.add(p.asText());
+                                    tp.setAllowedPaths(paths);
+                                }
+                                tps.add(tp);
+                            }
+                            data.setToolPermissions(tps);
+                        }
+                        schemaNode.setData(data);
+                    }
+                    nodes.add(schemaNode);
+                }
+            }
+            schema.setNodes(nodes);
+
+            List<Edge> edges = new ArrayList<>();
+            if (root.has("edges")) {
+                for (JsonNode e : root.get("edges")) {
+                    Edge edge = new Edge();
+                    edge.setId(UUID.randomUUID().toString());
+                    edge.setSource(e.has("source") ? e.get("source").asText() : "");
+                    edge.setTarget(e.has("target") ? e.get("target").asText() : "");
+                    edges.add(edge);
+                }
+            }
+            schema.setEdges(edges);
+
+            String id = UUID.randomUUID().toString();
+            schema.setId(id);
+            schema.setCreatedAt(Instant.now().toString());
+            schema.setUpdatedAt(Instant.now().toString());
+            schemaRepository.save(schema);
+
+            log.info("Generated schema '{}' with {} nodes, {} edges (ID: {})", schema.getName(), nodes.size(), edges.size(), id);
+
+            result.put("success", true);
+            result.put("schema", schema);
+            if (root.has("planExplanation")) {
+                result.put("planExplanation", root.get("planExplanation").asText());
+            }
+        } catch (Exception e) {
+            log.error("Failed to generate schema from prompt: {}", e.getMessage(), e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+        return result;
     }
 }

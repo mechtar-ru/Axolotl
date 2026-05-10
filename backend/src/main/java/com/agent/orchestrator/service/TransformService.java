@@ -57,7 +57,9 @@ public class TransformService {
         String field = (String) config.get("field");
         if (field == null || field.isEmpty()) return input;
         try {
-            JsonNode node = mapper.readTree(input);
+            // Strip markdown code blocks before parsing JSON
+            String jsonInput = stripMarkdownCodeBlocks(input);
+            JsonNode node = mapper.readTree(jsonInput);
             JsonNode value = node.get(field);
             return value != null ? value.asText() : null;
         } catch (Exception e) {
@@ -66,11 +68,47 @@ public class TransformService {
         }
     }
 
+    private String stripMarkdownCodeBlocks(String input) {
+        if (input == null) return null;
+        String trimmed = input.trim();
+        
+        // Try to find JSON code block markers
+        Pattern blockPattern = Pattern.compile("```json\\s*([\\s\\S]*?)```", Pattern.MULTILINE);
+        Matcher blockMatcher = blockPattern.matcher(trimmed);
+        if (blockMatcher.find()) {
+            String jsonContent = blockMatcher.group(1).trim();
+            if (jsonContent.startsWith("{")) return jsonContent;
+        }
+        
+        // Try ``` without language specifier
+        Pattern plainBlock = Pattern.compile("```\\s*([\\s\\S]*?)```", Pattern.MULTILINE);
+        Matcher plainMatcher = plainBlock.matcher(trimmed);
+        if (plainMatcher.find()) {
+            String jsonContent = plainMatcher.group(1).trim();
+            if (jsonContent.startsWith("{")) return jsonContent;
+        }
+        
+        // Fallback: find first { and last } that form valid JSON
+        int firstBrace = trimmed.indexOf('{');
+        int lastBrace = trimmed.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            String potential = trimmed.substring(firstBrace, lastBrace + 1);
+            // Quick validity check - must have at least one key
+            if (potential.contains(":")) {
+                return potential;
+            }
+        }
+        
+        return input;
+    }
+
     private String extractJsonPath(String input, Map<String, Object> config) {
         String path = (String) config.get("path");
         if (path == null || path.isEmpty()) return input;
         try {
-            JsonNode node = mapper.readTree(input);
+            // Strip markdown code blocks before parsing JSON
+            String jsonInput = stripMarkdownCodeBlocks(input);
+            JsonNode node = mapper.readTree(jsonInput);
             JsonNode result = node.at(path);
             return result.isMissingNode() ? null : result.toString();
         } catch (Exception e) {

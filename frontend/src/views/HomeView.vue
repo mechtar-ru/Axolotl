@@ -97,6 +97,11 @@
               <span class="action-card__title">Новая схема</span>
               <span class="action-card__desc">Пустой холст для вашей идеи</span>
             </button>
+            <button class="action-card action-card--highlight" @click="showSchemaBuilder = true">
+              <span class="action-card__icon">🏗️</span>
+              <span class="action-card__title">Schema Builder</span>
+              <span class="action-card__desc">Опиши приложение — AI создаст схему</span>
+            </button>
             <button class="action-card" @click="createDemoSchema">
               <span class="action-card__icon">📖</span>
               <span class="action-card__title">Демо-схема</span>
@@ -164,6 +169,11 @@
       @complete="handleOnboardingComplete"
       @skip="handleOnboardingSkip"
     />
+
+    <SchemaBuilderModal
+      v-model="showSchemaBuilder"
+      @schema-created="onSchemaBuilderResult"
+    />
   </div>
 </template>
 
@@ -181,6 +191,7 @@ import CommandPalette from '../components/ui/CommandPalette.vue';
 import OnboardingModal from '../components/ui/OnboardingModal.vue';
 import AppModal from '../components/ui/AppModal.vue';
 import ShortcutsOverlay from '../components/ui/ShortcutsOverlay.vue';
+import SchemaBuilderModal from '../components/ui/SchemaBuilderModal.vue';
 import type { WorkflowSchema } from '../types';
 import { schemaApi, api } from '../services/api';
 
@@ -200,6 +211,7 @@ const showCommandPalette = ref(false);
 const showSearch = ref(false);
 const showOnboarding = ref(false);
 const showShortcuts = ref(false);
+const showSchemaBuilder = ref(false);
 const sidebarOpen = ref(false);
 
 // Execution state (provided to RightPanel via provide/inject)
@@ -337,6 +349,11 @@ watch(() => route.params.id, (newId) => {
 }, { immediate: true });
 
 function selectSchema(schema: WorkflowSchema) {
+  router.push({ name: 'schema', params: { id: schema.id } });
+}
+
+function onSchemaBuilderResult(schema: WorkflowSchema) {
+  schemaStore.loadSchemas();
   router.push({ name: 'schema', params: { id: schema.id } });
 }
 
@@ -995,6 +1012,16 @@ body {
 .action-card__desc {
   font-size: 12px;
   color: #888;
+}
+
+.action-card--highlight {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+}
+.action-card--highlight:hover {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
+  box-shadow: 0 8px 30px rgba(245, 158, 11, 0.25);
 }
 
 /* Templates section */
