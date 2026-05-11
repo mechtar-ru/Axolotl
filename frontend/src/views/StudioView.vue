@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { schemaApi } from '@/services/api'
+import { useWebSocket } from '@/composables/useWebSocket'
 import StudioTopBar from '@/components/studio/StudioTopBar.vue'
 import BlueprintView from '@/components/studio/BlueprintView.vue'
+import LiveView from '@/components/studio/LiveView.vue'
 
 type StudioMode = 'blueprint' | 'live' | 'timeline'
 
@@ -15,6 +17,9 @@ const schemaStore = useSchemaStore()
 const activeMode = ref<StudioMode>('blueprint')
 const appId = ref('')
 
+// WebSocket for real-time execution events
+const { connect, disconnect } = useWebSocket()
+
 // App state
 const app = computed(() => {
   return schemaStore.schemas.find(s => s.id === appId.value) || schemaStore.currentSchema
@@ -23,6 +28,11 @@ const app = computed(() => {
 const isRunning = ref(false)
 const executionError = ref<string | null>(null)
 
+// Execution state from WebSocket events
+const nodeResults = ref<Record<string, any>>({})      // nodeId → result content
+const nodeStatuses = ref<Record<string, string>>({})   // nodeId → status (running/completed/failed)
+const executionProgress = ref<{ totalNodes: number; completedNodes: number } | null>(null)
+
 // Provide state for child components
 provide('appState', {
   app,
@@ -30,6 +40,13 @@ provide('appState', {
   activeMode,
   appId
 })
+// LiveView injects isRunning directly — provide it separately too
+provide('isRunning', isRunning)
+provide('executionError', executionError)
+provide('nodeResults', nodeResults)
+provide('nodeStatuses', nodeStatuses)
+provide('executionProgress', executionProgress)
+
 
 // Load app on mount
 onMounted(async () => {
@@ -56,6 +73,7 @@ function setMode(mode: StudioMode) {
 function toggleRun() {
   if (isRunning.value) {
     // Stop execution
+    disconnect()
     schemaApi.stopSchema(appId.value)
       .catch((err: Error) => {
         console.error('Failed to stop execution:', err)
@@ -65,17 +83,42 @@ function toggleRun() {
     // Start execution
     isRunning.value = true
     executionError.value = null
-    // First save the schema, then execute
+    // Clear previous results
+    nodeResults.value = {}
+    nodeStatuses.value = {}
+    executionProgress.value = null
     const currentApp = app.value
     if (currentApp) {
+      // Connect WebSocket first
+      connect(appId.value, {
+        onProgress: (data) => {
+          nodeStatuses.value[data.nodeId] = data.status
+          if (data.progress !== undefined) {
+            executionProgress.value = {
+              totalNodes: data.totalNodes || 0,
+              completedNodes: data.completedNodes || 0
+            }
+          }
+        },
+        onResult: (data) => {
+          nodeResults.value[data.nodeId] = data.result
+        },
+        onComplete: () => {
+          isRunning.value = false
+        },
+        onError: (data) => {
+          nodeStatuses.value[data.nodeId] = 'failed'
+          executionError.value = data.error
+          isRunning.value = false
+        },
+      })
+
       schemaStore.updateSchema(currentApp)
         .then(() => schemaApi.executeSchema(appId.value, 'EXECUTE'))
-        .then(() => {
-          isRunning.value = false
-        })
         .catch((err: Error) => {
-          isRunning.value = false
           executionError.value = err.message
+          isRunning.value = false
+          disconnect()
         })
     } else {
       isRunning.value = false
@@ -83,6 +126,11 @@ function toggleRun() {
     }
   }
 }
+
+// Cleanup WebSocket on unmount
+onUnmounted(() => {
+  disconnect()
+})
 
 // Navigate back to dashboard
 function goToDashboard() {
@@ -106,15 +154,10 @@ function goToDashboard() {
         v-if="activeMode === 'blueprint'"
         :app-id="appId"
       />
-      <div v-else-if="activeMode === 'live'" class="placeholder-view">
-        <div class="placeholder-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-        </div>
-        <h2>Live Mode</h2>
-        <p>Run your app to see it in action</p>
-      </div>
+      <LiveView
+        v-else-if="activeMode === 'live'"
+        :app-id="appId"
+      />
       <div v-else-if="activeMode === 'timeline'" class="placeholder-view">
         <div class="placeholder-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useVueFlow } from '@vue-flow/core'
+import { useSchemaStore } from '@/stores/schemaStore'
 
 const props = defineProps<{
   blockId: string
@@ -9,12 +11,29 @@ const emit = defineEmits<{
   close: []
 }>()
 
-// Block config state
+const schemaStore = useSchemaStore()
+const { nodes } = useVueFlow({ id: 'blueprint-flow' })
+
+// Look up the VueFlow node by blockId
+const node = computed(() => nodes.value.find(n => n.id === props.blockId))
+
+// Block config state — populated from node data on change
 const blockLabel = ref('')
 const blockDescription = ref('')
 const model = ref('')
 const prompt = ref('')
 const blockType = ref('agent')
+
+// Populate form fields when the panel opens for a different block
+watch(() => props.blockId, () => {
+  if (!node.value) return
+  blockLabel.value = (node.value.data?.label as string) || ''
+  blockType.value = (node.value.data?.type as string) || 'agent'
+  const config = (node.value.data?.config as Record<string, any>) || {}
+  blockDescription.value = (config.description as string) || ''
+  model.value = (config.model as string) || 'local'
+  prompt.value = (config.prompt as string) || ''
+}, { immediate: true })
 
 // Determine config sections based on block type
 const showModelSelector = computed(() => blockType.value === 'agent')
@@ -24,7 +43,41 @@ const showActionType = computed(() => blockType.value === 'output')
 const showInputType = computed(() => blockType.value === 'source')
 
 function saveConfig() {
-  // Auto-save on changes
+  if (!node.value) return
+
+  // Update VueFlow node data
+  node.value.data = {
+    ...node.value.data,
+    label: blockLabel.value,
+    config: {
+      ...((node.value.data?.config as Record<string, any>) || {}),
+      description: blockDescription.value,
+      model: model.value,
+      prompt: prompt.value,
+    }
+  }
+
+  // Sync to schemaStore for persistence
+  if (schemaStore.currentSchema?.nodes) {
+    const updatedNodes = schemaStore.currentSchema.nodes.map(n => {
+      if (n.id !== props.blockId) return n
+      return {
+        ...n,
+        name: blockLabel.value,
+        type: blockType.value as any,
+        data: {
+          ...(n.data || {}),
+          description: blockDescription.value,
+          model: model.value,
+          prompt: prompt.value,
+        }
+      }
+    })
+    schemaStore.updateSchema({
+      ...schemaStore.currentSchema,
+      nodes: updatedNodes
+    })
+  }
 }
 
 function handleKeydown(e: KeyboardEvent) {

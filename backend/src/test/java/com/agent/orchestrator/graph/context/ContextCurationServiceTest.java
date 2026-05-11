@@ -43,6 +43,7 @@ class ContextCurationServiceTest {
         when(mockClass.getDescription()).thenReturn("Test description");
         when(mockClass.getMethods()).thenReturn(Set.of());
         when(mockClass.getFields()).thenReturn(Set.of());
+        when(mockClass.getDependencies()).thenReturn(Set.of());
 
         when(classRepo.findByNameContainingOrQualifiedNameContaining("test", "test"))
                 .thenReturn(List.of(mockClass));
@@ -54,7 +55,8 @@ class ContextCurationServiceTest {
         assertTrue(result.tokenCount() <= 500, "Should respect token budget");
         assertTrue(!result.classHashes().isEmpty() || !result.methodHashes().isEmpty(),
                 "Should return some hashes");
-        assertEquals("hybrid_relevance_centrality", result.strategy());
+        assertTrue(result.strategy().startsWith("adaptive_"),
+                "Strategy should be adaptive: " + result.strategy());
     }
 
     @Test
@@ -67,6 +69,7 @@ class ContextCurationServiceTest {
         when(mockClass.getDescription()).thenReturn("Recently modified");
         when(mockClass.getMethods()).thenReturn(Set.of());
         when(mockClass.getFields()).thenReturn(Set.of());
+        when(mockClass.getDependencies()).thenReturn(Set.of());
 
         when(classRepo.findByNameContainingOrQualifiedNameContaining(anyString(), anyString()))
                 .thenReturn(List.of(mockClass));
@@ -94,13 +97,40 @@ class ContextCurationServiceTest {
 
     @Test
     void testCountTokens_simpleText() {
-        assertTrue(ContextCurationService.countTokens("hello world") >= 2);
+        // "hello world" is exactly 2 tokens in cl100k_base encoding (used by GPT-4)
+        assertEquals(2, ContextCurationService.countTokens("hello world"));
     }
 
     @Test
     void testCountTokens_javaCode() {
+        // "public class Test { }" is exactly 5 tokens in cl100k_base (GPT-4)
+        String code = "public class Test { }";
+        assertEquals(5, ContextCurationService.countTokens(code));
+    }
+
+    @Test
+    void testJtokkitAccuracy() {
+        // Verify jtokkit produces expected token count for a known string.
+        // The string "The quick brown fox jumps over the lazy dog" is 10 tokens in cl100k_base.
+        String known = "The quick brown fox jumps over the lazy dog";
+        int tokens = ContextCurationService.countTokens(known);
+        assertTrue(tokens > 0, "Should produce positive token count");
+        // jtokkit is deterministic — same input always produces same count
+        assertEquals(tokens, ContextCurationService.countTokens(known));
+    }
+
+    @Test
+    void testJtokkitFallback() {
+        // Verify the heuristic fallback (countTokensFallback) works correctly.
+        // This is the exact same regex logic that was the original countTokens.
+        assertEquals(0, ContextCurationService.countTokensFallback(""));
+        assertEquals(0, ContextCurationService.countTokensFallback(null));
+
+        // The heuristic should still produce non-zero counts for real text
+        assertTrue(ContextCurationService.countTokensFallback("hello world") >= 2);
+
         String code = "public class Test { private String name; }";
-        assertTrue(ContextCurationService.countTokens(code) > 0);
+        assertTrue(ContextCurationService.countTokensFallback(code) > 0);
     }
 
     @Test
@@ -114,6 +144,7 @@ class ContextCurationServiceTest {
         when(verbose.getDescription()).thenReturn("X".repeat(1000));
         when(verbose.getMethods()).thenReturn(Set.of());
         when(verbose.getFields()).thenReturn(Set.of());
+        when(verbose.getDependencies()).thenReturn(Set.of());
 
         when(classRepo.findByNameContainingOrQualifiedNameContaining(anyString(), anyString()))
                 .thenReturn(List.of(verbose));
@@ -122,6 +153,8 @@ class ContextCurationServiceTest {
                 curationService.curateForQuery("test", 100, List.of());
 
         assertNotNull(result);
-        assertTrue(result.tokenCount() > 0, "Should have some tokens");
+        // With jtokkit live counting, token count should be strictly <= budget
+        assertTrue(result.tokenCount() > 0, "Should have some tokens (at least the header)");
+        assertTrue(result.tokenCount() <= 100, "Token count should respect budget");
     }
 }

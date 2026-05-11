@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { useSchemaStore } from '@/stores/schemaStore'
-import type { FlowNode } from '@/types'
+import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
 import BlockConfigPanel from '@/components/studio/BlockConfigPanel.vue'
 
@@ -34,39 +34,54 @@ const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fit
 const selectedBlockId = ref<string | null>(null)
 const configPanelOpen = ref(false)
 
+// Build VueFlow nodes from schema data
+function buildVueFlowNodes(schema: any): Node[] {
+  if (!schema.nodes) return []
+  return schema.nodes.map((n: FlowNode) => ({
+    id: n.id,
+    type: n.type || 'agent',
+    position: n.position || { x: 100, y: 200 },
+    data: {
+      label: n.name,
+      type: n.type,
+      config: n.data,
+      status: n.status
+    }
+  }))
+}
+
+function buildVueFlowEdges(schema: any): Edge[] {
+  if (!schema.edges) return []
+  return schema.edges.map((e: FlowEdge) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    type: 'smoothstep',
+    markerEnd: { type: MarkerType.ArrowClosed }
+  }))
+}
+
 // Load existing nodes/edges from schema
 onMounted(() => {
   const schema = schemaStore.schemas.find(s => s.id === props.appId)
   if (schema) {
-    if (schema.nodes) {
-      // Convert schema nodes to VueFlow nodes
-      const vueFlowNodes: Node[] = schema.nodes.map(n => ({
-        id: n.id,
-        type: n.type || 'agent',
-        position: n.position || { x: 100, y: 200 },
-        data: {
-          label: n.name,
-          type: n.type,
-          config: n.data,
-          status: n.status
-        }
-      }))
-      nodes.value = vueFlowNodes as any
-    }
-    if (schema.edges) {
-      const vueFlowEdges: Edge[] = schema.edges.map(e => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: 'smoothstep',
-        markerEnd: { type: MarkerType.ArrowClosed }
-      }))
-      edges.value = vueFlowEdges as any
-    }
+    addNodes(buildVueFlowNodes(schema))
+    addEdges(buildVueFlowEdges(schema))
   }
   
-  setTimeout(() => fitView({ padding: 0.2 }), 100)
+  nextTick(() => fitView({ padding: 0.2 }))
 })
+
+// Watch for async schema loading — schemas may arrive after mount
+watch(() => schemaStore.schemas, (schemas) => {
+  const schema = schemas.find(s => s.id === props.appId)
+  if (!schema) return
+
+  addNodes(buildVueFlowNodes(schema))
+  addEdges(buildVueFlowEdges(schema))
+
+  nextTick(() => fitView({ padding: 0.2 }))
+}, { deep: true })
 
 // Handle drag and drop from BlockPalette
 const dropPosition = ref({ x: 0, y: 0 })
@@ -144,6 +159,10 @@ function onPaneClickHandler() {
 
 // Handle new connections
 onConnect((connection) => {
+  if (!connection || !connection.source || !connection.target) {
+    console.warn('Skipping incomplete connection', connection)
+    return
+  }
   const newEdge: Edge = {
     id: `edge-${Date.now()}`,
     source: connection.source,
@@ -170,7 +189,6 @@ onConnect((connection) => {
         :default-viewport="{ x: 0, y: 0, zoom: 1 }"
         :min-zoom="0.2"
         :max-zoom="4"
-        fit-view-on-init
         @drop="onDropHandler"
         @dragover="onDragOverHandler"
         @node-click="onNodeClickHandler"

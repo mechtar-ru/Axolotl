@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.DistributionSummary;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,6 +26,8 @@ public class MetricsService {
 
     private final Timer schemaExecutionTimer;
     private final Timer nodeExecutionTimer;
+    private final Counter tokenEstimatedTotal;
+    private final DistributionSummary tokenEstimatedPerCall;
 
     public MetricsService(MeterRegistry registry) {
         // Schema execution counters
@@ -73,6 +76,15 @@ public class MetricsService {
         this.nodeExecutionTimer = Timer.builder("axolotl.node.execution.duration")
                 .description("Node execution duration")
                 .register(registry);
+
+        // Token estimation metrics
+        this.tokenEstimatedTotal = Counter.builder("axolotl.token.estimated.total")
+                .description("Cumulative tokens estimated across all curation calls")
+                .register(registry);
+        
+        this.tokenEstimatedPerCall = DistributionSummary.builder("axolotl.token.estimated.per_call")
+                .description("Distribution of token counts per curation call")
+                .register(registry);
     }
 
     public void recordSchemaExecutionStart() {
@@ -109,6 +121,11 @@ public class MetricsService {
 
     public void recordToolCall() {
         toolCallsTotal.increment();
+    }
+
+    public void recordTokenCount(int tokenCount) {
+        tokenEstimatedTotal.increment(tokenCount);
+        tokenEstimatedPerCall.record(tokenCount);
     }
 
     public Timer.Sample startTimer() {

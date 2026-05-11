@@ -1,23 +1,78 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 const props = defineProps<{
   appType: string
+  executionResult: any
 }>()
 
 const input = ref('')
 const output = ref<string | null>(null)
 const isRunning = ref(false)
+const viewMode = ref<'preview' | 'raw'>('preview')
+
+// Detect artifact type
+type ArtifactType = 'html' | 'json' | 'script' | 'text'
+const artifactType = computed<ArtifactType>(() => {
+  const content = output.value
+  if (!content) return 'text'
+  const trimmed = content.trimStart()
+  if (trimmed.startsWith('<!DOCTYPE html') || trimmed.startsWith('<html') || trimmed.startsWith('<HTML')) return 'html'
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    try { JSON.parse(trimmed); return 'json' } catch { /* not JSON */ }
+  }
+  if (trimmed.startsWith('#!/') || trimmed.startsWith('#!')) return 'script'
+  if (trimmed.includes('<script') || trimmed.includes('function ') || trimmed.includes('console.log')) return 'script'
+  return 'text'
+})
+
+const artifactLabel = computed(() => {
+  const labels: Record<ArtifactType, string> = { html: 'HTML', json: 'JSON', script: 'Script', text: 'Text' }
+  return labels[artifactType.value]
+})
+
+const artifactSize = computed(() => {
+  if (!output.value) return ''
+  const bytes = new TextEncoder().encode(output.value).length
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+})
+
+const artifactFileName = computed(() => {
+  const ext: Record<ArtifactType, string> = { html: 'html', json: 'json', script: 'js', text: 'txt' }
+  return `artifact.${ext[artifactType.value]}`
+})
+
+// Watch for execution results from WebSocket
+watch(() => props.executionResult, (result) => {
+  if (result !== null && result !== undefined) {
+    output.value = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+    isRunning.value = false
+    viewMode.value = 'preview'
+  }
+})
+
+function downloadArtifact() {
+  if (!output.value) return
+  const blob = new Blob([output.value], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = artifactFileName.value
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 function run() {
   if (!input.value.trim() || isRunning.value) return
-  
   isRunning.value = true
   output.value = null
-  
-  // Simulate processing
+  // Schema execution is triggered from StudioView — this is just a local simulation fallback
   setTimeout(() => {
-    output.value = `App Type: ${props.appType}\nInput: ${input.value}\n\nThis is where the app output will appear. Connect WebSocket for real-time results.`
+    output.value = `App Type: ${props.appType}\nInput: ${input.value}\n\nRun from the top bar to execute the schema via WebSocket.`
     isRunning.value = false
   }, 800)
 }
@@ -54,11 +109,64 @@ function run() {
       <div class="io-divider" />
       
       <div class="io-section output-section">
-        <h3 class="io-title">Output</h3>
-        <div v-if="!output" class="output-placeholder">
-          <p>Run your app to see output here</p>
+        <div class="output-header">
+          <h3 class="io-title" style="margin:0">Artifact</h3>
+          <div class="artifact-toolbar" v-if="output">
+            <span class="artifact-badge" :class="artifactType">{{ artifactLabel }}</span>
+            <span class="artifact-size">{{ artifactSize }}</span>
+            <button
+              v-if="artifactType === 'html'"
+              class="toolbar-btn"
+              :class="{ active: viewMode === 'preview' }"
+              @click="viewMode = 'preview'"
+              title="Preview"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </button>
+            <button
+              class="toolbar-btn"
+              :class="{ active: viewMode === 'raw' }"
+              @click="viewMode = 'raw'"
+              title="Raw"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M16 18l6-6-6-6"/>
+                <path d="M8 6l-6 6 6 6"/>
+              </svg>
+            </button>
+            <button class="toolbar-btn download-btn" @click="downloadArtifact" title="Download">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <pre v-else class="output-content">{{ output }}</pre>
+
+        <!-- No output -->
+        <div v-if="!output" class="output-placeholder">
+          <p>Run your app to see the artifact</p>
+        </div>
+
+        <!-- HTML preview -->
+        <iframe
+          v-else-if="artifactType === 'html' && viewMode === 'preview'"
+          class="artifact-iframe"
+          :srcdoc="output"
+          sandbox="allow-scripts"
+          title="Artifact preview"
+        />
+
+        <!-- Raw content (all types) -->
+        <pre
+          v-else
+          class="output-content"
+        >{{ output }}</pre>
       </div>
     </div>
   </div>
@@ -94,6 +202,73 @@ function run() {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0 0 0.75rem 0;
+}
+
+.output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+  gap: 0.5rem;
+}
+
+.artifact-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.artifact-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.artifact-badge.html { background: #e44d2618; color: #e44d26; }
+.artifact-badge.json { background: #f7df1e18; color: #f7df1e; }
+.artifact-badge.script { background: #539e4318; color: #539e43; }
+.artifact-badge.text { background: var(--accent-bg); color: var(--accent); }
+
+.artifact-size {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.12s;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.toolbar-btn.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.download-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
 }
 
 .io-textarea {
@@ -160,6 +335,14 @@ function run() {
   border-radius: 8px;
   color: var(--text-muted);
   font-size: 0.85rem;
+}
+
+.artifact-iframe {
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: white;
 }
 
 .output-content {

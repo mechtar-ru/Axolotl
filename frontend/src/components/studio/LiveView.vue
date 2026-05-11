@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, inject, type Ref } from 'vue'
+import { ref, computed, inject, type Ref, type ComputedRef } from 'vue'
 import { useSchemaStore } from '@/stores/schemaStore'
 import ChatAppUI from '@/components/live/ChatAppUI.vue'
 import DocAnalyzerAppUI from '@/components/live/DocAnalyzerAppUI.vue'
@@ -18,6 +18,19 @@ const appType = computed(() => (app.value as any)?.appType || 'CUSTOM')
 
 // Injected state from StudioView
 const isRunning = inject<Ref<boolean>>('isRunning', ref(false))
+
+// Injected execution results
+const nodeResults = inject<Ref<Record<string, any>>>('nodeResults', ref({}))
+
+// Find the latest output result — take the last added node result
+const executionResult = computed(() => {
+  const results = nodeResults.value
+  const keys = Object.keys(results)
+  if (keys.length === 0) return null
+  // Return the last output node result, or the last result overall
+  const outputKey = keys.find(k => k.startsWith('out-')) || keys[keys.length - 1]
+  return results[outputKey]
+})
 </script>
 
 <template>
@@ -29,8 +42,8 @@ const isRunning = inject<Ref<boolean>>('isRunning', ref(false))
     <div class="app-ui-container">
       <ChatAppUI v-if="appType === 'CHAT'" />
       <DocAnalyzerAppUI v-else-if="appType === 'ANALYZER'" />
-      <GameAppUI v-else-if="appType === 'GAME'" />
-      <GenericAppUI v-else :app-type="appType" />
+      <GameAppUI v-else-if="appType === 'GAME'" :execution-result="executionResult" />
+      <GenericAppUI v-else :app-type="appType" :execution-result="executionResult" />
     </div>
     
     <!-- Back to Blueprint hint -->
