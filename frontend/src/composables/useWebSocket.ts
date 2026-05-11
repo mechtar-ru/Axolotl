@@ -14,6 +14,9 @@ export interface WebSocketCallbacks {
   onPredictCall?: (data: { schemaId: string; nodeId: string; signature: string; inputSummary: string; outputSummary: string; durationMs: number; tokens: number }) => void;
   onIteration?: (data: { schemaId: string; nodeId: string; iteration: number; durationMs: number; toolCalls: number; predictCalls: number }) => void;
   onTrajectoryComplete?: (data: { schemaId: string; nodeId: string; totalIterations: number; totalTimeMs: number; totalToolCalls: number; totalPredictCalls: number; totalTokens: number; estimatedCost: number }) => void;
+  // New Wave 3 events
+  onStep?: (data: { schemaId: string; stepIndex: number; blockId: string; blockType: string; label: string; status: string; details: string; duration: number }) => void;
+  onLiveUpdate?: (data: { schemaId: string; appType: string; payload: Record<string, unknown> }) => void;
 }
 
 export function useWebSocket() {
@@ -39,8 +42,6 @@ export function useWebSocket() {
 
       const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/execution';
       const url = `${WS_URL}?schemaId=${schemaId}`;
-      // Предполагаем, что бэкенд на localhost:8080, но в реальности нужно брать из конфига
-      // const url = `ws://127.0.0.1:8080/ws/execution?schemaId=${schemaId}`;
       console.log('🔌 Подключение к WebSocket:', url);
       ws.value = new WebSocket(url);
 
@@ -98,8 +99,14 @@ export function useWebSocket() {
             case 'trajectoryComplete':
               callbacks?.onTrajectoryComplete?.(data);
               break;
+            // New Wave 3 events
+            case 'step':
+              callbacks?.onStep?.(data);
+              break;
+            case 'live_update':
+              callbacks?.onLiveUpdate?.(data);
+              break;
             default:
-              // Silently ignore unknown types (plan_updated, etc.)
               break;
           }
         } catch (error) {
@@ -110,7 +117,6 @@ export function useWebSocket() {
       ws.value.onclose = (event) => {
         isConnected.value = false;
         console.log('🔌 WebSocket отключен, код:', event.code, 'причина:', event.reason);
-        // Автоматическое переподключение, если не было намеренного закрытия
         if (event.code !== 1000 && reconnectAttempts.value < maxReconnectAttempts) {
           reconnectTimeout = window.setTimeout(() => {
             reconnectAttempts.value++;
@@ -137,7 +143,6 @@ export function useWebSocket() {
       connectResolve = resolve;
       connectReject = reject;
       connect(schemaId, wsCallbacks);
-      // Timeout after 5s
       setTimeout(() => {
         if (connectReject) {
           connectReject('WebSocket connection timeout');

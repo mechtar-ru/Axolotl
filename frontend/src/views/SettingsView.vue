@@ -11,6 +11,20 @@
       <div v-else-if="error" class="error">{{ error }}</div>
 
       <div v-else>
+        <!-- Theme selector -->
+        <div class="provider-card theme-card">
+          <div class="provider-header">
+            <span style="font-size: 20px;">🎨</span>
+            <h2>Theme</h2>
+          </div>
+          <div class="provider-fields">
+            <div class="field">
+              <label>Appearance</label>
+              <ThemeToggle :model-value="settingsStore.theme" @update:model-value="settingsStore.setTheme" />
+            </div>
+          </div>
+        </div>
+
         <!-- User default model -->
         <div class="provider-card user-default-card">
           <div class="provider-header">
@@ -205,9 +219,12 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useSettingsStore } from '@/stores/settingsStore';
+import ThemeToggle from '@/components/ui/ThemeToggle.vue';
 import { settingsApi, customEndpointApi, type ProviderInfo, type CustomLlmEndpoint } from '../services/api';
 
 const router = useRouter();
+const settingsStore = useSettingsStore();
 const providers = ref<ProviderInfo[]>([]);
 const loading = ref(true);
 const error = ref('');
@@ -711,6 +728,11 @@ onMounted(async () => {
 
 .user-default-card {
   border-left: 3px solid var(--accent);
+  margin-bottom: 24px;
+}
+
+.theme-card {
+  border-left: 3px solid #f59e0b;
   margin-bottom: 24px;
 }
 </style>

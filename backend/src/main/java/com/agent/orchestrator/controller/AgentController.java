@@ -112,7 +112,7 @@ public class AgentController {
     public Map<String, String> executeSchema(
             @PathVariable String id,
             @RequestParam(defaultValue = "EXECUTE") ExecutionMode mode) {
-        schemaService.executeSchema(id, mode);
+        schemaService.executeSchema(id);
         return Map.of("status", "started", "schemaId", id, "mode", mode.name());
     }
 

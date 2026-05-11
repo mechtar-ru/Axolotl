@@ -1,7 +1,6 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.Edge;
-import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.ToolPermission;
@@ -156,10 +155,6 @@ public class SchemaService {
     // ────────────────────────── Execution ──────────────────────────
 
     public void executeSchema(String id) {
-        executeSchema(id, ExecutionMode.EXECUTE);
-    }
-
-    public void executeSchema(String id, ExecutionMode mode) {
         WorkflowSchema schema = schemaRepository.findById(id);
         if (schema == null)
             throw new org.springframework.web.server.ResponseStatusException(
@@ -183,7 +178,7 @@ public class SchemaService {
         cancelFlags.put(id, cancelFlag);
         Timer.Sample timerSample = metricsService != null ? metricsService.startTimer() : null;
         CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> executeWorkflow(schema, cancelFlag, mode), executionExecutor);
+                () -> executeWorkflow(schema, cancelFlag), executionExecutor);
         runningExecutions.put(id, future);
         future.whenComplete((result, ex) -> {
             if (metricsService != null && timerSample != null) {
@@ -277,8 +272,8 @@ public class SchemaService {
         }
     }
 
-    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag, ExecutionMode mode) {
-        log.info("Выполнение схемы: {} (mode={})", schema.getName(), mode);
+    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag) {
+        log.info("Выполнение схемы: {}", schema.getName());
         long startTime = System.currentTimeMillis();
         long workflowStartTime = startTime;
 
@@ -289,7 +284,7 @@ public class SchemaService {
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schema.getId(), "system", "STARTED", 0, "Выполнение начато");
-            webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName() + " [" + mode + "]", null);
+            webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName(), null);
         }
 
         List<List<Node>> levels = getExecutionLevels(schema);
@@ -330,6 +325,15 @@ public class SchemaService {
                 webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "running");
             }
 
+            // Emit step events for each node in this level
+            if (webSocketHandler != null) {
+                for (Node node : level) {
+                    String blockType = node.getType() != null ? node.getType() : "unknown";
+                    String label = node.getName() != null ? node.getName() : "Untitled";
+                    webSocketHandler.sendStep(schema.getId(), completedCount, node.getId(), blockType, label, "running", "", 0);
+                }
+            }
+
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (Node node : executable) {
                 log.info("Начало выполнения узла: {} ({})", node.getId(), node.getName());
@@ -339,11 +343,10 @@ public class SchemaService {
                 }
 
                 final long nodeStartTime = System.currentTimeMillis();
-                final ExecutionMode currentMode = mode;
                 futures.add(CompletableFuture.runAsync(() -> {
                     String resolvedModel = resolveModel(
                             node.getData() != null ? node.getData().getModel() : null, schema);
-                    nodeExecutor.executeNode(node, schema.getId(), cancelFlag, currentMode, resolvedModel);
+                    nodeExecutor.executeNode(node, schema.getId(), cancelFlag, com.agent.orchestrator.model.ExecutionMode.EXECUTE, resolvedModel);
                     long nodeTime = System.currentTimeMillis() - nodeStartTime;
                     log.info("Узел завершен: {} ({}) - {}мс", node.getId(), node.getName(), nodeTime);
                     if (webSocketHandler != null) {
@@ -394,6 +397,11 @@ public class SchemaService {
                 webSocketHandler.sendMetrics(schema.getId(), nodesCompleted, nodesCompleted, totalTime, finalNodesPerSecond);
                 webSocketHandler.sendLog(schema.getId(), "success",
                         "Выполнение схемы завершено: " + totalTime + "мс, узлов: " + nodesCompleted, null);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("status", "completed");
+                payload.put("totalTime", totalTime);
+                payload.put("nodesCompleted", nodesCompleted);
+                webSocketHandler.sendLiveUpdate(schema.getId(), "CUSTOM", payload);
             }
             log.info("Выполнение схемы завершено: {} ({}мс, {}/{} узлов)", schema.getName(), totalTime, nodesCompleted, totalNodes);
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");

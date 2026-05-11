@@ -17,6 +17,7 @@ import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.type.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -40,6 +41,7 @@ public class AstDependencyResolver {
     /** Maps simple class name -> Set of fully-qualified names (handles ambiguous names) */
     private final Map<String, Set<String>> simpleToQualified = new HashMap<>();
 
+    @Autowired
     public AstDependencyResolver(CodeClassRepository classRepo,
                                  CodeMethodRepository methodRepo,
                                  CodeFieldRepository fieldRepo) {

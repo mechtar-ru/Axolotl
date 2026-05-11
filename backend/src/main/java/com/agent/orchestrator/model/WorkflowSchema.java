@@ -19,6 +19,7 @@ public class WorkflowSchema {
     private Map<String, Object> metadata;
     private String createdAt;
     private String updatedAt;
+    private String appType; // nullable, null => CUSTOM for backward compat
 
     // Геттеры и сеттеры
     public String getId() { return id; }
@@ -61,4 +62,7 @@ public class WorkflowSchema {
 
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+
+    public String getAppType() { return appType; }
+    public void setAppType(String appType) { this.appType = appType; }
 }

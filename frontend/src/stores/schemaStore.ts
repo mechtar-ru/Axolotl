@@ -1,13 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { WorkflowSchema, FlowNode, FlowEdge, ExecutionMode } from '../types';
+import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
 import { schemaApi, settingsApi } from '../services/api';
 
 export const useSchemaStore = defineStore('schema', () => {
   const schemas = ref<WorkflowSchema[]>([]);
   const currentSchema = ref<WorkflowSchema | null>(null);
   const loading = ref(false);
-  const executionMode = ref<ExecutionMode>('EXECUTE');
 
   async function loadSchemas() {
     loading.value = true;
@@ -24,7 +23,7 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
   
-  async function createSchema(name: string) {
+  async function createSchema(name: string, appType?: string) {
     // Pre-fill user default model if available
     let defaultModel: string | undefined;
     try {
@@ -37,6 +36,7 @@ export const useSchemaStore = defineStore('schema', () => {
       name,
       description: '',
       version: '1.0',
+      appType: appType || 'CUSTOM',
       nodes: [],
       edges: [],
       defaultModel,
@@ -83,15 +83,21 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
   
-  async function executeCurrentSchema() {
-    if (currentSchema.value) {
-      try {
-        await updateSchema(currentSchema.value);
-        await schemaApi.executeSchema(currentSchema.value.id, executionMode.value);
-      } catch (error) {
-        console.error('Ошибка выполнения схемы:', error);
-        throw error;
-      }
+  async function executeSchema(id: string) {
+    if (!id) return;
+    try {
+      await schemaApi.executeSchema(id, 'EXECUTE');
+    } catch (error) {
+      console.error('Ошибка выполнения схемы:', error);
+      throw error;
+    }
+  }
+
+  async function cancelExecution(id: string) {
+    try {
+      await schemaApi.stopSchema(id);
+    } catch (error) {
+      console.error('Ошибка остановки схемы:', error);
     }
   }
 
@@ -99,21 +105,16 @@ export const useSchemaStore = defineStore('schema', () => {
     currentSchema.value = schema;
   }
 
-  function setExecutionMode(mode: ExecutionMode) {
-    executionMode.value = mode;
-  }
-
   return {
     schemas,
     currentSchema,
     loading,
-    executionMode,
     loadSchemas,
     createSchema,
     updateSchema,
     deleteSchema,
-    executeCurrentSchema,
+    executeSchema,
+    cancelExecution,
     updateCurrentSchema,
-    setExecutionMode,
   };
 });

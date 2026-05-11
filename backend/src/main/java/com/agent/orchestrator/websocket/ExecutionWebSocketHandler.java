@@ -274,4 +274,25 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         sendMessage(schemaId, toJson(msg));
         log.debug("Волна {} [{}]: {} ({} узлов)", waveNumber, schemaId, status, nodeIds.size());
     }
+
+    public void sendStep(String schemaId, int stepIndex, String blockId, String blockType, String label, String status, String details, long duration) {
+        Map<String, Object> msg = baseMsg("step", schemaId);
+        msg.put("stepIndex", stepIndex);
+        msg.put("blockId", blockId);
+        msg.put("blockType", blockType);
+        msg.put("label", label);
+        msg.put("status", status);
+        msg.put("details", details);
+        msg.put("duration", duration);
+        sendMessage(schemaId, toJson(msg));
+        log.debug("Step [{}/{}]: {} - {} ({}ms)", schemaId, blockId, label, status, duration);
+    }
+
+    public void sendLiveUpdate(String schemaId, String appType, Map<String, Object> payload) {
+        Map<String, Object> msg = baseMsg("live_update", schemaId);
+        msg.put("appType", appType);
+        msg.put("payload", payload);
+        sendMessage(schemaId, toJson(msg));
+        log.debug("Live update [{}]: appType={}", schemaId, appType);
+    }
 }

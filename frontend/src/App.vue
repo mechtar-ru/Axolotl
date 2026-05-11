@@ -5,13 +5,13 @@
 
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { useSchemaStore } from './stores/schemaStore';
 import ToastContainer from './components/ToastContainer.vue';
+import { useSettingsStore } from './stores/settingsStore';
 
-const schemaStore = useSchemaStore();
+const settingsStore = useSettingsStore();
 
 onMounted(() => {
-  schemaStore.loadSchemas();
+  settingsStore.initTheme();
 });
 </script>
 
@@ -24,8 +24,8 @@ onMounted(() => {
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #1a1a2e;
-  color: #eee;
+  background: var(--bg-primary, #1a1a2e);
+  color: var(--text-primary, #eee);
 }
 
 .app {
@@ -169,5 +169,46 @@ body {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+:root {
+  --border: #4a4a6a;
+  --border-focus: #6c63ff;
+  --border-subtle: rgba(255,255,255,0.08);
+  --error: #ff6b6b;
+  --success: #4caf50;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f8f9fa;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-sidebar: #f1f3f5;
+  --bg-canvas: #f8f9fa;
+  --bg-hover: #e9ecef;
+  --bg-active: #dee2e6;
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --border-light: #f0f0f0;
+  --accent: #6c63ff;
+  --accent-light: #8b83ff;
+  --accent-bg: #edebff;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.1);
+
+  --border: #e5e7eb;
+  --border-focus: #6c63ff;
+  --border-subtle: rgba(0,0,0,0.08);
+  --error: #dc3545;
+  --success: #28a745;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
 }
 </style>

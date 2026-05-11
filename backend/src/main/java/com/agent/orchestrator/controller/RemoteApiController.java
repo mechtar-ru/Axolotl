@@ -105,7 +105,7 @@ public class RemoteApiController {
         checkRateLimit(key.getId());
 
         ExecutionMode executionMode = ExecutionMode.valueOf(mode);
-        schemaService.executeSchema(id, executionMode);
+        schemaService.executeSchema(id);
 
         Map<String, String> response = new HashMap<>();
         response.put("status", "started");
