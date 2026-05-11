@@ -11,12 +11,13 @@ public class TemplateController {
 
     @GetMapping
     public List<Map<String, Object>> getTemplates() {
-        return List.of(projectPlanningTemplate());
+        return List.of(projectPlanningTemplate(), sokobanGameTemplate());
     }
 
     @GetMapping("/{id}")
     public Map<String, Object> getTemplate(@PathVariable String id) {
         if ("project-planning".equals(id)) return projectPlanningTemplate();
+        if ("sokoban-game".equals(id)) return sokobanGameTemplate();
         throw new NoSuchElementException("Template not found: " + id);
     }
 
@@ -110,6 +111,79 @@ public class TemplateController {
         t.put("variables", List.of(
                 Map.of("name", "projectPath", "description", "Path to the project directory", "required", true, "nodeId", "s1", "field", "config.projectPath"),
                 Map.of("name", "features", "description", "List of features to plan (markdown)", "required", true, "nodeId", "a2", "field", "userPrompt")
+        ));
+
+        return t;
+    }
+
+    private Map<String, Object> sokobanGameTemplate() {
+        Map<String, Object> t = new LinkedHashMap<>();
+        t.put("id", "sokoban-game");
+        t.put("name", "Sokoban Game Generator");
+        t.put("description", "Generate a playable Sokoban puzzle game from grid parameters and level design");
+        t.put("icon", "🎮");
+
+        // Nodes
+        List<Map<String, Object>> nodes = new ArrayList<>();
+
+        // Source: game parameters
+        Map<String, Object> source = new LinkedHashMap<>();
+        source.put("id", "s1");
+        source.put("type", "source");
+        source.put("name", "Game Parameters");
+        source.put("position", Map.of("x", 100, "y", 50));
+        Map<String, Object> sourceData = new LinkedHashMap<>();
+        sourceData.put("config", Map.of(
+            "sourceType", "text",
+            "grid", "8x8",
+            "level", "Classic Sokoban level 1"
+        ));
+        source.put("data", sourceData);
+        nodes.add(source);
+
+        // Agent: Game Generator
+        Map<String, Object> gameAgent = new LinkedHashMap<>();
+        gameAgent.put("id", "a1");
+        gameAgent.put("type", "agent");
+        gameAgent.put("name", "Game Generator");
+        gameAgent.put("position", Map.of("x", 100, "y", 250));
+        Map<String, Object> agentData = new LinkedHashMap<>();
+        agentData.put("systemPrompt",
+            "You are a game developer specializing in generating playable HTML/JS games. " +
+            "Given grid parameters and level designs, you must output a COMPLETE, self-contained HTML file " +
+            "that includes all CSS and JavaScript inline. The game must be immediately playable in a browser. " +
+            "Include: grid rendering, player movement (arrow keys), collision detection, win condition, " +
+            "move counter, undo functionality, and visual feedback.");
+        agentData.put("userPrompt",
+            "Generate a playable Sokoban game with these specifications:\n" +
+            "- Grid dimensions: {{grid}}\n" +
+            "- Level design: {{level}}\n\n" +
+            "Output only the complete HTML file content.");
+        agentData.put("model", "");
+        gameAgent.put("data", agentData);
+        nodes.add(gameAgent);
+
+        // Output: generated game
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("id", "o1");
+        output.put("type", "output");
+        output.put("name", "Generated Game");
+        output.put("position", Map.of("x", 100, "y", 450));
+        output.put("data", Map.of("outputType", "log"));
+        nodes.add(output);
+
+        t.put("nodes", nodes);
+
+        // Edges
+        List<Map<String, String>> edges = new ArrayList<>();
+        edges.add(Map.of("id", "e1", "source", "s1", "target", "a1"));
+        edges.add(Map.of("id", "e2", "source", "a1", "target", "o1"));
+        t.put("edges", edges);
+
+        // Variables users should fill in
+        t.put("variables", List.of(
+            Map.of("name", "grid", "description", "Grid dimensions (e.g. 8x8)", "required", true, "nodeId", "s1", "field", "config.grid"),
+            Map.of("name", "level", "description", "Level layout description or JSON", "required", true, "nodeId", "a1", "field", "userPrompt")
         ));
 
         return t;

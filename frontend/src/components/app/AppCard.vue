@@ -30,6 +30,7 @@ const appTypeIcons: Record<string, string> = {
   ANALYZER: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   GENERATOR: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
   EMAIL: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z',
+  GAME: 'M6 12h4m4 0h4M6 16h4m4 0h4M6 8h12M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z',
   CUSTOM: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4'
 }
 
@@ -38,6 +39,7 @@ const appTypeColors: Record<string, string> = {
   ANALYZER: '#2196f3',
   GENERATOR: '#ff9800',
   EMAIL: '#9c27b0',
+  GAME: '#e91e63',
   CUSTOM: '#6c63ff'
 }
 
@@ -46,7 +48,15 @@ function getAppTypeColor(type?: string): string {
 }
 
 function getAppTypeLabel(type?: string): string {
-  return type || 'CUSTOM'
+  const labels: Record<string, string> = {
+    CHAT: 'Chat',
+    ANALYZER: 'Analyzer',
+    GENERATOR: 'Generator',
+    EMAIL: 'Email',
+    GAME: 'Game',
+    CUSTOM: 'Custom'
+  }
+  return labels[type || 'CUSTOM'] || type || 'CUSTOM'
 }
 
 function handleClick() {

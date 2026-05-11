@@ -2,7 +2,7 @@ export interface AppTemplate {
   id: string
   name: string
   description: string
-  appType: 'CHAT' | 'ANALYZER' | 'GENERATOR' | 'EMAIL' | 'CUSTOM'
+  appType: 'CHAT' | 'ANALYZER' | 'GENERATOR' | 'EMAIL' | 'GAME' | 'CUSTOM'
   defaultNodes: Array<{
     id: string
     type: string
@@ -166,6 +166,42 @@ export const templates: AppTemplate[] = [
         id: 'act-1',
         type: 'output',
         name: 'Email Output',
+        position: { x: 800, y: 200 },
+        data: {}
+      }
+    ],
+    defaultEdges: [
+      { id: 'e1', source: 'receive-1', target: 'think-1' },
+      { id: 'e2', source: 'think-1', target: 'act-1' }
+    ]
+  },
+  {
+    id: 'template-sokoban',
+    name: 'Sokoban Game',
+    description: 'Generate a playable Sokoban puzzle game from grid parameters',
+    appType: 'GAME',
+    defaultNodes: [
+      {
+        id: 'receive-1',
+        type: 'source',
+        name: 'Game Parameters',
+        position: { x: 100, y: 200 },
+        data: { sourceData: 'Grid size, level layout, and game rules' }
+      },
+      {
+        id: 'think-1',
+        type: 'agent',
+        name: 'Generate Game',
+        position: { x: 450, y: 200 },
+        data: {
+          systemPrompt: 'You are a game developer. Generate a complete playable Sokoban game as HTML with embedded CSS and JavaScript. The game must include: a grid-based level, player character, walls, boxes, target spaces, movement controls (arrow keys), undo functionality, level reset, move counter, and victory detection. Output ONLY the complete HTML file.',
+          userPrompt: 'Create a Sokoban game with these parameters:\n\nGrid: {{grid}}\nLevel: {{level}}\n\nGenerate a self-contained HTML file.'
+        }
+      },
+      {
+        id: 'act-1',
+        type: 'output',
+        name: 'Playable Game',
         position: { x: 800, y: 200 },
         data: {}
       }

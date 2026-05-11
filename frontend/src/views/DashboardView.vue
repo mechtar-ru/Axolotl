@@ -45,6 +45,13 @@ const templates = ref([
     icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4'
   },
   {
+    id: 'template-sokoban',
+    name: 'Sokoban Game',
+    description: 'Generate a playable Sokoban puzzle game',
+    appType: 'GAME',
+    icon: 'M6 12h4m4 0h4M6 16h4m4 0h4M6 8h12M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z'
+  },
+  {
     id: 'template-blank',
     name: 'Blank App',
     description: 'Start from scratch with an empty canvas',
@@ -71,7 +78,7 @@ async function createFromTemplate(templateId: string) {
   if (!template) return
 
   try {
-    const schema = await schemaStore.createSchema(template.name)
+    const schema = await schemaStore.createSchema(template.name, template.appType)
     if (schema) {
       router.push(`/app/${schema.id}`)
     }
@@ -159,6 +166,7 @@ async function createBlankApp() {
             <option value="ANALYZER">Analyzer</option>
             <option value="GENERATOR">Generator</option>
             <option value="EMAIL">Email Agent</option>
+            <option value="GAME">Game</option>
           </select>
         </div>
         <div class="modal-actions">

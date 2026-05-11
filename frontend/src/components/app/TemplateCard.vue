@@ -18,6 +18,7 @@ const bgColors: Record<string, string> = {
   ANALYZER: 'rgba(33, 150, 243, 0.1)',
   GENERATOR: 'rgba(255, 152, 0, 0.1)',
   EMAIL: 'rgba(156, 39, 176, 0.1)',
+  GAME: 'rgba(233, 30, 99, 0.1)',
   CUSTOM: 'rgba(108, 99, 255, 0.1)'
 }
 
@@ -26,6 +27,7 @@ const accentColors: Record<string, string> = {
   ANALYZER: '#2196f3',
   GENERATOR: '#ff9800',
   EMAIL: '#9c27b0',
+  GAME: '#e91e63',
   CUSTOM: '#6c63ff'
 }
 

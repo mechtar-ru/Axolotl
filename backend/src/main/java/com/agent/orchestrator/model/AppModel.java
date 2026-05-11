@@ -6,6 +6,7 @@ public class AppModel {
         ANALYZER,
         GENERATOR,
         EMAIL,
+        GAME,
         CUSTOM
     }
 

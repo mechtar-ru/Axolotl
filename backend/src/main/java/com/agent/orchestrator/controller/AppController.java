@@ -129,7 +129,17 @@ public class AppController {
         emailAgent.put("edges", List.of());
         templates.add(emailAgent);
 
-        // Template 5: Data Extractor
+        // Template 5: Sokoban Game
+        Map<String, Object> sokoban = new LinkedHashMap<>();
+        sokoban.put("id", "template-sokoban");
+        sokoban.put("name", "Sokoban Game");
+        sokoban.put("description", "Generate a playable Sokoban puzzle game");
+        sokoban.put("appType", "GAME");
+        sokoban.put("nodes", List.of());
+        sokoban.put("edges", List.of());
+        templates.add(sokoban);
+
+        // Template 6: Data Extractor
         Map<String, Object> dataExtractor = new LinkedHashMap<>();
         dataExtractor.put("id", "template-data");
         dataExtractor.put("name", "Data Extractor");
@@ -139,7 +149,7 @@ public class AppController {
         dataExtractor.put("edges", List.of());
         templates.add(dataExtractor);
 
-        // Template 6: Blank
+        // Template 7: Blank
         Map<String, Object> blank = new LinkedHashMap<>();
         blank.put("id", "template-blank");
         blank.put("name", "Blank App");

@@ -86,6 +86,7 @@ export interface WorkflowSchema {
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;
+  appType?: string;
 }
 
 export interface Agent {
