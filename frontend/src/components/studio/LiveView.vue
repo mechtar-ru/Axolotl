@@ -3,7 +3,7 @@ import { ref, computed, inject, type Ref, type ComputedRef } from 'vue'
 import { useSchemaStore } from '@/stores/schemaStore'
 import ChatAppUI from '@/components/live/ChatAppUI.vue'
 import DocAnalyzerAppUI from '@/components/live/DocAnalyzerAppUI.vue'
-import GameAppUI from '@/components/live/GameAppUI.vue'
+import DesignWorkspaceUI from '@/components/live/DesignWorkspaceUI.vue'
 import GenericAppUI from '@/components/live/GenericAppUI.vue'
 
 const props = defineProps<{
@@ -42,7 +42,7 @@ const executionResult = computed(() => {
     <div class="app-ui-container">
       <ChatAppUI v-if="appType === 'CHAT'" />
       <DocAnalyzerAppUI v-else-if="appType === 'ANALYZER'" />
-      <GameAppUI v-else-if="appType === 'GAME'" :execution-result="executionResult" />
+      <DesignWorkspaceUI v-else-if="appType === 'GAME' || appType === 'GENERATOR'" :app-type="appType" :execution-result="executionResult" />
       <GenericAppUI v-else :app-type="appType" :execution-result="executionResult" />
     </div>
     

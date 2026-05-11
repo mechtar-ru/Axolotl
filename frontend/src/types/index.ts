@@ -53,6 +53,13 @@ export interface SourceItem {
   content: string;
 }
 
+export interface DesignWorkspaceFile {
+  name: string
+  content: string
+  type: string // MIME type
+  size?: number
+}
+
 export interface FlowNode {
   id: string;
   type: 'source' | 'agent' | 'output' | 'condition' | 'transform' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder';

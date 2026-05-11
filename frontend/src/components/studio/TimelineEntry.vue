@@ -21,7 +21,7 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="timeline-entry" :style="{ '--dot-color': color }">
+  <div class="timeline-entry" :style="{ '--dot-color': color }" @click="$emit('click', event.blockId)">
     <div class="timeline-dot" :style="{ background: color }" />
     <div class="timeline-content">
       <div class="timeline-label">{{ event.label }}</div>

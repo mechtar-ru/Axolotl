@@ -4,9 +4,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { schemaApi } from '@/services/api'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { provideExecutionState, createExecutionState } from '@/composables/useExecutionState'
 import StudioTopBar from '@/components/studio/StudioTopBar.vue'
 import BlueprintView from '@/components/studio/BlueprintView.vue'
 import LiveView from '@/components/studio/LiveView.vue'
+import TimelineView from '@/components/studio/TimelineView.vue'
 
 type StudioMode = 'blueprint' | 'live' | 'timeline'
 
@@ -47,6 +49,31 @@ provide('nodeResults', nodeResults)
 provide('nodeStatuses', nodeStatuses)
 provide('executionProgress', executionProgress)
 
+// Execution state for TimelineView
+const execState = createExecutionState()
+provideExecutionState(execState)
+
+const nodeStartTimes = new Map<string, number>()
+let stepCounter = 0
+
+function addStepEvent(nodeId: string, status: string, details?: string) {
+  const schema = app.value
+  const nodeDef = schema?.nodes?.find((n: any) => n.id === nodeId)
+  const now = Date.now()
+  const startTime = nodeStartTimes.get(nodeId) || now
+  const duration = now - startTime
+
+  execState.stepEvents.value.push({
+    stepIndex: stepCounter++,
+    blockId: nodeId,
+    blockType: nodeDef?.type || 'agent',
+    label: nodeDef?.name || nodeId,
+    status,
+    details: details || '',
+    duration,
+    timestamp: now
+  })
+}
 
 // Load app on mount
 onMounted(async () => {
@@ -87,12 +114,22 @@ function toggleRun() {
     nodeResults.value = {}
     nodeStatuses.value = {}
     executionProgress.value = null
+    // Clear timeline events
+    execState.stepEvents.value = []
+    nodeStartTimes.clear()
+    stepCounter = 0
     const currentApp = app.value
     if (currentApp) {
       // Connect WebSocket first
       connect(appId.value, {
         onProgress: (data) => {
           nodeStatuses.value[data.nodeId] = data.status
+          if (!nodeStartTimes.has(data.nodeId)) {
+            nodeStartTimes.set(data.nodeId, Date.now())
+          }
+          if (data.status === 'running') {
+            addStepEvent(data.nodeId, 'running')
+          }
           if (data.progress !== undefined) {
             executionProgress.value = {
               totalNodes: data.totalNodes || 0,
@@ -102,14 +139,21 @@ function toggleRun() {
         },
         onResult: (data) => {
           nodeResults.value[data.nodeId] = data.result
+          addStepEvent(data.nodeId, 'completed')
         },
         onComplete: () => {
           isRunning.value = false
+          addStepEvent('__execution__', 'completed', 'Execution finished')
+          // Auto-switch to Live tab so user sees the result
+          if (activeMode.value === 'timeline') {
+            activeMode.value = 'live'
+          }
         },
         onError: (data) => {
           nodeStatuses.value[data.nodeId] = 'failed'
           executionError.value = data.error
           isRunning.value = false
+          addStepEvent(data.nodeId, 'failed', data.error)
         },
       })
 
@@ -158,16 +202,13 @@ function goToDashboard() {
         v-else-if="activeMode === 'live'"
         :app-id="appId"
       />
-      <div v-else-if="activeMode === 'timeline'" class="placeholder-view">
-        <div class="placeholder-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="48" height="48">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-        </div>
-        <h2>Timeline Mode</h2>
-        <p>View execution history and traces</p>
-      </div>
+      <TimelineView
+        v-else-if="activeMode === 'timeline'"
+        @select-block="(blockId) => {
+          if (blockId === '__execution__') return
+          activeMode = 'blueprint'
+        }"
+      />
     </div>
   </div>
 </template>
