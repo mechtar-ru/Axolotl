@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { DesignWorkspaceFile } from '@/types'
+import type { DesignWorkspaceFile, WorkflowSchema } from '@/types'
+import { schemaApi } from '@/services/api'
 
 const props = defineProps<{
+  appId: string
   appType: 'GAME' | 'GENERATOR'
   executionResult: any
 }>()
@@ -16,14 +18,18 @@ const plan = ref<string | null>(null)
 const critiquePrompt = ref('')
 const files = ref<DesignWorkspaceFile[]>([])
 const phase = ref<Phase>('ideation')
+const isGenerating = ref(false)
+const generationError = ref<string | null>(null)
 
 // Watch execution results from WebSocket
 watch(() => props.executionResult, (result) => {
-  if (!result) return
+  if (!result || isGenerating.value === false) return
   
   // If result has a plan, show it in Review tab
   if (result.plan) {
     plan.value = result.plan
+    isGenerating.value = false
+    generationError.value = null
     phase.value = 'review'
     activeTab.value = 'review'
   }
@@ -36,10 +42,12 @@ watch(() => props.executionResult, (result) => {
       type: f.type || 'text/plain',
       size: f.size ?? (f.content ? new Blob([f.content]).size : undefined)
     }))
+    isGenerating.value = false
+    generationError.value = null
     phase.value = 'complete'
     activeTab.value = 'output'
   }
-}, { immediate: true })
+})
 
 // Tab labels
 const tabLabels: Record<Tab, string> = {
@@ -73,10 +81,41 @@ function downloadAll() {
   files.value.forEach(f => downloadFile(f))
 }
 
-// Generate draft (placeholder — execution triggered from Blueprint)
-function generateDraft() {
-  if (!conceptPrompt.value.trim()) return
-  phase.value = 'ideation'
+// Generate draft — update source node, execute schema
+async function generateDraft() {
+  const prompt = conceptPrompt.value.trim()
+  if (!prompt || isGenerating.value) return
+
+  isGenerating.value = true
+  generationError.value = null
+
+  try {
+    // 1. Load current schema
+    const schema = await schemaApi.getSchema(props.appId)
+
+    // 2. Find the first source node and update its sourceData
+    const sourceNode = schema.nodes?.find(n => n.type === 'source')
+    if (!sourceNode) {
+      throw new Error('No source node found in this schema. Add a Source node to use Generate Draft.')
+    }
+
+    // 3. Update the source data with the user's concept prompt
+    sourceNode.data = { ...sourceNode.data, sourceData: prompt }
+
+    // 4. Persist the updated schema
+    await schemaApi.updateSchema(props.appId, schema)
+
+    // 5. Trigger execution — WebSocket will stream result back
+    //    (watch on executionResult picks up the final result)
+    await schemaApi.executeSchema(props.appId)
+
+    // Switch to generating state — watch on executionResult will
+    // move to review/output when backend finishes
+    phase.value = 'ideation'
+  } catch (err: any) {
+    generationError.value = err.message || 'Failed to generate draft'
+    isGenerating.value = false
+  }
 }
 
 // Refine with critique (placeholder)
@@ -112,13 +151,18 @@ function refineWithCritique() {
         />
         <button
           class="action-btn"
-          :disabled="!conceptPrompt.trim()"
+          :disabled="!conceptPrompt.trim() || isGenerating"
           @click="generateDraft"
         >
-          Generate Draft
+          <span v-if="isGenerating" class="spinner" />
+          {{ isGenerating ? 'Generating Draft...' : 'Generate Draft' }}
         </button>
-        <p v-if="phase === 'ideation' && !conceptPrompt" class="hint-text">
-          Write a description above and click "Generate Draft" to start. Run the workflow from <strong>Blueprint</strong> to execute.
+        <p v-if="generationError" class="error-text">{{ generationError }}</p>
+        <p v-else-if="isGenerating" class="hint-text">
+          Your concept is being processed by the workflow. Results will appear in <strong>Review</strong> and <strong>Output</strong> tabs once complete.
+        </p>
+        <p v-else-if="!conceptPrompt" class="hint-text">
+          Write a description above and click "Generate Draft" to start.
         </p>
       </div>
 
@@ -459,6 +503,33 @@ function refineWithCritique() {
   color: var(--text-muted);
   font-size: 0.85rem;
   min-height: 200px;
+}
+
+/* Error text */
+.error-text {
+  font-size: 0.8rem;
+  color: var(--danger);
+  margin-top: 0.5rem;
+  line-height: 1.5;
+  padding: 0.5rem 0.75rem;
+  background: var(--danger-bg);
+  border-radius: 6px;
+  border: 1px solid var(--danger);
+}
+
+/* Spinner */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Hint text */
