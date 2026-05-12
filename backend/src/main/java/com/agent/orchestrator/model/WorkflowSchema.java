@@ -21,6 +21,8 @@ public class WorkflowSchema {
     private String updatedAt;
     private String appType; // nullable, null => CUSTOM for backward compat
     private Map<String, String> planningModels;
+    private String planningOutline;
+    private String planningRefinedPlan;
 
     // Геттеры и сеттеры
     public String getId() { return id; }
@@ -69,4 +71,10 @@ public class WorkflowSchema {
 
     public Map<String, String> getPlanningModels() { return planningModels; }
     public void setPlanningModels(Map<String, String> planningModels) { this.planningModels = planningModels; }
+
+    public String getPlanningOutline() { return planningOutline; }
+    public void setPlanningOutline(String planningOutline) { this.planningOutline = planningOutline; }
+
+    public String getPlanningRefinedPlan() { return planningRefinedPlan; }
+    public void setPlanningRefinedPlan(String planningRefinedPlan) { this.planningRefinedPlan = planningRefinedPlan; }
 }

@@ -91,6 +91,8 @@ export interface WorkflowSchema {
   edges: FlowEdge[];
   defaultModel?: string;
   planningModels?: PlanningModels;
+  planningOutline?: string;
+  planningRefinedPlan?: string;
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;

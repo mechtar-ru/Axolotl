@@ -90,6 +90,18 @@ export const schemaApi = {
     schema.planningModels = models;
     return this.updateSchema(id, schema);
   },
+
+  async updatePlanningOutline(id: string, outline: string | null): Promise<WorkflowSchema> {
+    const schema = await this.getSchema(id);
+    schema.planningOutline = outline || undefined;
+    return this.updateSchema(id, schema);
+  },
+
+  async updatePlanningRefinedPlan(id: string, plan: string | null): Promise<WorkflowSchema> {
+    const schema = await this.getSchema(id);
+    schema.planningRefinedPlan = plan || undefined;
+    return this.updateSchema(id, schema);
+  },
 };
 
 export const agentApi = {

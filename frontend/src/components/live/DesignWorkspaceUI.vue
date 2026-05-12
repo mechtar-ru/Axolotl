@@ -39,10 +39,21 @@ const files = ref<DesignWorkspaceFile[]>([])
 
 // ── Model Picker ───────────────────────────────────────────
 
-async function loadPlanningModels() {
+async function loadSchemaState() {
   try {
     const schema = await schemaApi.getSchema(props.appId)
     planningModels.value = schema.planningModels || null
+    if (schema.planningOutline) {
+      outlinePlan.value = schema.planningOutline
+      phase.value = 'outline'
+    }
+    if (schema.planningRefinedPlan) {
+      refinedPlan.value = schema.planningRefinedPlan
+      phase.value = 'refine'
+    }
+    if (schema.planningOutline || schema.planningRefinedPlan) {
+      activeTab.value = 'review'
+    }
   } catch {
     // Silently fail - defaults will be used
   }
@@ -83,6 +94,8 @@ async function generateOutline() {
 
     phase.value = 'outline'
     activeTab.value = 'review'
+    // Persist outline to schema so it survives navigation/refresh
+    await schemaApi.updatePlanningOutline(props.appId, outlinePlan.value)
   } catch (err: any) {
     generationError.value = err.message || 'Failed to generate outline'
     // Stay on concept tab on error — don't lose progress
@@ -114,6 +127,8 @@ async function refinePlan() {
 
     refinedPlan.value = response.content
     phase.value = 'refine'
+    // Persist refined plan to schema so it survives navigation/refresh
+    await schemaApi.updatePlanningRefinedPlan(props.appId, refinedPlan.value)
   } catch (err: any) {
     generationError.value = err.message || 'Failed to refine plan'
     // Show error but keep outline visible — don't lose progress
@@ -141,6 +156,10 @@ async function executePlan() {
     sourceNode.data = { ...sourceNode.data, sourceData: planContent }
     await schemaApi.updateSchema(props.appId, schema)
     await schemaApi.executeSchema(props.appId)
+
+    // Plan has been consumed into sourceData — clear persisted plans
+    await schemaApi.updatePlanningOutline(props.appId, null)
+    await schemaApi.updatePlanningRefinedPlan(props.appId, null)
 
     phase.value = 'execute'
   } catch (err: any) {
@@ -170,7 +189,7 @@ watch(() => props.executionResult, (result) => {
 
 // ── Init ───────────────────────────────────────────────────
 
-loadPlanningModels()
+loadSchemaState()
 
 // ── Helpers ────────────────────────────────────────────────
 
