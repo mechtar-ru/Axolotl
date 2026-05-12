@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ref, type Ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import DesignWorkspaceUI from './DesignWorkspaceUI.vue'
 
@@ -9,6 +10,8 @@ vi.mock('@/services/api', () => ({
     executeSchema: vi.fn(),
     plan: vi.fn(),
     updatePlanningModels: vi.fn(),
+    updatePlanningOutline: vi.fn(),
+    updatePlanningRefinedPlan: vi.fn(),
     updatePlanningContext: vi.fn(),
     clearPlanningContext: vi.fn(),
   }
@@ -20,6 +23,15 @@ const DEFAULT_PROPS = {
   appId: 'test-app-1',
   appType: 'GAME' as const,
   executionResult: null,
+}
+
+/** Helper: create provides needed by DesignWorkspaceUI */
+function createProvides() {
+  const isRunning = ref(false)
+  const startExecution = vi.fn(async (_skipSave?: boolean) => {
+    await schemaApi.executeSchema('test-app-1', 'EXECUTE')
+  })
+  return { isRunning, startExecution }
 }
 
 describe('DesignWorkspaceUI', () => {
@@ -160,7 +172,7 @@ describe('DesignWorkspaceUI', () => {
     }))
   })
 
-  it('calls executePlan flow: getSchema → updateSchema → executeSchema', async () => {
+  it('calls executePlan flow: getSchema → updateSchema → executeSchema via startExecution', async () => {
     vi.mocked(schemaApi.plan).mockResolvedValueOnce({
       type: 'outline',
       content: '- Outline',
@@ -178,7 +190,16 @@ describe('DesignWorkspaceUI', () => {
     vi.mocked(schemaApi.updateSchema).mockResolvedValue(mockSchema as any)
     vi.mocked(schemaApi.executeSchema).mockResolvedValue(undefined)
 
-    const wrapper = mount(DesignWorkspaceUI, { props: DEFAULT_PROPS })
+    const provides = createProvides()
+    const wrapper = mount(DesignWorkspaceUI, {
+      props: DEFAULT_PROPS,
+      global: {
+        provide: {
+          isRunning: provides.isRunning,
+          startExecution: provides.startExecution,
+        },
+      },
+    })
     await wrapper.find('textarea').setValue('Create a game')
 
     const allBtns1 = wrapper.findAll('button')
@@ -201,7 +222,7 @@ describe('DesignWorkspaceUI', () => {
 
     expect(schemaApi.getSchema).toHaveBeenCalledWith('test-app-1')
     expect(schemaApi.updateSchema).toHaveBeenCalled()
-    expect(schemaApi.executeSchema).toHaveBeenCalledWith('test-app-1')
+    expect(provides.startExecution).toHaveBeenCalled()
   })
 
   it('shows generated files when executionResult arrives', async () => {
@@ -240,6 +261,34 @@ describe('DesignWorkspaceUI', () => {
     const errorText = wrapper.find('.error-text')
     expect(errorText.exists()).toBe(true)
     expect(errorText.text()).toContain('API timeout')
+  })
+
+  it('shows output when executionResult has output field (not files)', async () => {
+    const wrapper = mount(DesignWorkspaceUI, { props: DEFAULT_PROPS })
+
+    await wrapper.setProps({
+      executionResult: {
+        output: 'Hello from execution',
+      },
+    })
+
+    const fileItems = wrapper.findAll('.file-item')
+    expect(fileItems.length).toBe(1)
+    expect(fileItems.at(0)?.text()).toContain('output.txt')
+  })
+
+  it('shows output when executionResult has result field', async () => {
+    const wrapper = mount(DesignWorkspaceUI, { props: DEFAULT_PROPS })
+
+    await wrapper.setProps({
+      executionResult: {
+        result: { generated: true, items: 3 },
+      },
+    })
+
+    const fileItems = wrapper.findAll('.file-item')
+    expect(fileItems.length).toBe(1)
+    expect(fileItems.at(0)?.text()).toContain('output.json')
   })
 
   it('renders for GENERATOR app type', () => {

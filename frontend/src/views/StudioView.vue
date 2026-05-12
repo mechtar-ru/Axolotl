@@ -49,6 +49,76 @@ provide('nodeResults', nodeResults)
 provide('nodeStatuses', nodeStatuses)
 provide('executionProgress', executionProgress)
 
+/**
+ * Start execution with WebSocket connection.
+ * @param skipSave — if true, skip schemaStore.updateSchema (caller already saved)
+ */
+const startExecution = async (skipSave: boolean = false): Promise<void> => {
+  isRunning.value = true
+  executionError.value = null
+  nodeResults.value = {}
+  nodeStatuses.value = {}
+  executionProgress.value = null
+  execState.stepEvents.value = []
+  nodeStartTimes.clear()
+  stepCounter = 0
+
+  const currentApp = app.value
+  if (!currentApp) {
+    executionError.value = 'No app selected'
+    isRunning.value = false
+    return
+  }
+
+  connect(appId.value, {
+    onProgress: (data) => {
+      nodeStatuses.value[data.nodeId] = data.status
+      if (!nodeStartTimes.has(data.nodeId)) {
+        nodeStartTimes.set(data.nodeId, Date.now())
+      }
+      if (data.status === 'running') {
+        addStepEvent(data.nodeId, 'running')
+      }
+      if (data.progress !== undefined) {
+        executionProgress.value = {
+          totalNodes: data.totalNodes || 0,
+          completedNodes: data.completedNodes || 0
+        }
+      }
+    },
+    onResult: (data) => {
+      nodeResults.value[data.nodeId] = data.result
+      addStepEvent(data.nodeId, 'completed')
+    },
+    onComplete: () => {
+      isRunning.value = false
+      addStepEvent('__execution__', 'completed', 'Execution finished')
+      if (activeMode.value === 'timeline') {
+        activeMode.value = 'live'
+      }
+    },
+    onError: (data) => {
+      nodeStatuses.value[data.nodeId] = 'failed'
+      executionError.value = data.error
+      isRunning.value = false
+      addStepEvent(data.nodeId, 'failed', data.error)
+    },
+  })
+
+  if (!skipSave) {
+    await schemaStore.updateSchema(currentApp)
+  }
+
+  try {
+    await schemaApi.executeSchema(appId.value, 'EXECUTE')
+  } catch (err) {
+    executionError.value = (err as Error).message
+    isRunning.value = false
+    disconnect()
+  }
+}
+provide('startExecution', startExecution)
+
 // Execution state for TimelineView
 const execState = createExecutionState()
 provideExecutionState(execState)
@@ -107,67 +177,7 @@ function toggleRun() {
       })
     isRunning.value = false
   } else {
-    // Start execution
-    isRunning.value = true
-    executionError.value = null
-    // Clear previous results
-    nodeResults.value = {}
-    nodeStatuses.value = {}
-    executionProgress.value = null
-    // Clear timeline events
-    execState.stepEvents.value = []
-    nodeStartTimes.clear()
-    stepCounter = 0
-    const currentApp = app.value
-    if (currentApp) {
-      // Connect WebSocket first
-      connect(appId.value, {
-        onProgress: (data) => {
-          nodeStatuses.value[data.nodeId] = data.status
-          if (!nodeStartTimes.has(data.nodeId)) {
-            nodeStartTimes.set(data.nodeId, Date.now())
-          }
-          if (data.status === 'running') {
-            addStepEvent(data.nodeId, 'running')
-          }
-          if (data.progress !== undefined) {
-            executionProgress.value = {
-              totalNodes: data.totalNodes || 0,
-              completedNodes: data.completedNodes || 0
-            }
-          }
-        },
-        onResult: (data) => {
-          nodeResults.value[data.nodeId] = data.result
-          addStepEvent(data.nodeId, 'completed')
-        },
-        onComplete: () => {
-          isRunning.value = false
-          addStepEvent('__execution__', 'completed', 'Execution finished')
-          // Auto-switch to Live tab so user sees the result
-          if (activeMode.value === 'timeline') {
-            activeMode.value = 'live'
-          }
-        },
-        onError: (data) => {
-          nodeStatuses.value[data.nodeId] = 'failed'
-          executionError.value = data.error
-          isRunning.value = false
-          addStepEvent(data.nodeId, 'failed', data.error)
-        },
-      })
-
-      schemaStore.updateSchema(currentApp)
-        .then(() => schemaApi.executeSchema(appId.value, 'EXECUTE'))
-        .catch((err: Error) => {
-          executionError.value = err.message
-          isRunning.value = false
-          disconnect()
-        })
-    } else {
-      isRunning.value = false
-      executionError.value = 'No app selected'
-    }
+    startExecution(false)
   }
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 import type { DesignWorkspaceFile, WorkflowSchema, PlanningModels, PlanQuestion, PlanResponse } from '@/types'
 import { schemaApi } from '@/services/api'
 import PlanningModelsPicker from './PlanningModelsPicker.vue'
@@ -9,6 +9,11 @@ const props = defineProps<{
   appType: 'GAME' | 'GENERATOR'
   executionResult: any
 }>()
+
+// ── Injected from StudioView ────────────────────────────────
+
+const isRunning = inject<Ref<boolean>>('isRunning', ref(false))
+const startExecution = inject<(skipSave?: boolean) => Promise<void>>('startExecution', async () => {})
 
 // ── Phase & Tab State ──────────────────────────────────────
 
@@ -193,11 +198,17 @@ async function executePlan() {
   const planContent = refinedPlan.value || outlinePlan.value
   if (!planContent || isGenerating.value) return
 
+  // Don't allow execute if schema is already running
+  if (isRunning.value) {
+    generationError.value = 'Schema is already running — wait for it to finish or stop it first.'
+    return
+  }
+
   isGenerating.value = true
   generationError.value = null
 
   try {
-    // Use existing generateDraft logic: write plan to sourceNode sourceData → execute schema
+    // Write plan to source node and save schema
     const schema = await schemaApi.getSchema(props.appId)
     const sourceNode = schema.nodes?.find(n => n.type === 'source')
     if (!sourceNode) {
@@ -205,17 +216,22 @@ async function executePlan() {
     }
     sourceNode.data = { ...sourceNode.data, sourceData: planContent }
     await schemaApi.updateSchema(props.appId, schema)
-    await schemaApi.executeSchema(props.appId)
 
-    // Plan has been consumed into sourceData — clear persisted plans
+    // Clear persisted plans (they're now in sourceData)
     await schemaApi.updatePlanningOutline(props.appId, null)
     await schemaApi.updatePlanningRefinedPlan(props.appId, null)
     await schemaApi.clearPlanningContext(props.appId)
 
     phase.value = 'execute'
+
+    // Trigger execution via parent WebSocket-connected flow
+    // (skipSave=true — schema was already saved above)
+    await startExecution(true)
+
+    // NOTE: isGenerating stays true until execution results arrive via WS.
+    // It's cleared in the executionResult watcher or on error.
   } catch (err: any) {
     generationError.value = err.message || 'Failed to execute plan'
-  } finally {
     isGenerating.value = false
   }
 }
@@ -225,6 +241,7 @@ async function executePlan() {
 watch(() => props.executionResult, (result) => {
   if (!result) return
 
+  // Convert any result format into DesignWorkspaceFile[]
   if (result.files && Array.isArray(result.files)) {
     files.value = result.files.map((f: any) => ({
       name: f.name || 'unnamed',
@@ -232,10 +249,25 @@ watch(() => props.executionResult, (result) => {
       type: f.type || 'text/plain',
       size: f.size ?? (f.content ? new Blob([f.content]).size : undefined),
     }))
-    isGenerating.value = false
-    generationError.value = null
-    activeTab.value = 'output'
+  } else {
+    // Handle any other result shape: { output, result, content }, string, or raw object
+    const content =
+      (typeof result.output !== 'undefined' ? result.output :
+        typeof result.result !== 'undefined' ? result.result :
+        typeof result.content !== 'undefined' ? result.content :
+        result)
+    const isString = typeof content === 'string'
+    files.value = [{
+      name: isString ? 'output.txt' : 'output.json',
+      content: isString ? content : JSON.stringify(content, null, 2),
+      type: isString ? 'text/plain' : 'application/json',
+      size: isString ? content.length : undefined,
+    }]
   }
+
+  isGenerating.value = false
+  generationError.value = null
+  activeTab.value = 'output'
 })
 
 // ── Init ───────────────────────────────────────────────────
