@@ -102,6 +102,18 @@ export const schemaApi = {
     schema.planningRefinedPlan = plan || undefined;
     return this.updateSchema(id, schema);
   },
+
+  async updatePlanningContext(id: string, context: string | null): Promise<WorkflowSchema> {
+    const schema = await this.getSchema(id);
+    schema.planningContext = context || undefined;
+    return this.updateSchema(id, schema);
+  },
+
+  async clearPlanningContext(id: string): Promise<WorkflowSchema> {
+    const schema = await this.getSchema(id);
+    schema.planningContext = undefined;
+    return this.updateSchema(id, schema);
+  },
 };
 
 export const agentApi = {

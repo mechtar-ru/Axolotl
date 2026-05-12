@@ -93,6 +93,7 @@ export interface WorkflowSchema {
   planningModels?: PlanningModels;
   planningOutline?: string;
   planningRefinedPlan?: string;
+  planningContext?: string;
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;

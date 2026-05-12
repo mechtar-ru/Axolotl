@@ -23,7 +23,6 @@ const generationError = ref<string | null>(null)
 // ── Planning State ─────────────────────────────────────────
 
 const planningModels = ref<PlanningModels | null>(null)
-const showModelPicker = ref(false)
 
 // Outline state
 const outlinePlan = ref<string | null>(null)
@@ -54,6 +53,10 @@ async function loadSchemaState() {
     if (schema.planningOutline || schema.planningRefinedPlan) {
       activeTab.value = 'review'
     }
+    // Restore concept context (prompt, questions, answers, edits)
+    if (schema.planningContext) {
+      restoreContext(schema.planningContext)
+    }
   } catch {
     // Silently fail - defaults will be used
   }
@@ -63,6 +66,49 @@ async function savePlanningModels(models: PlanningModels) {
   planningModels.value = models
   await schemaApi.updatePlanningModels(props.appId, models)
 }
+
+// ── Context Persistence ────────────────────────────────────
+
+let saveContextTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleSaveContext() {
+  if (saveContextTimer) clearTimeout(saveContextTimer)
+  saveContextTimer = setTimeout(saveContext, 1000)
+}
+
+async function saveContext() {
+  if (!outlinePlan.value && !refinedPlan.value) return // nothing to save yet
+  const ctx = JSON.stringify({
+    conceptPrompt: conceptPrompt.value,
+    questions: questions.value,
+    questionAnswers: questionAnswers.value,
+    userEdits: userEdits.value,
+  })
+  try {
+    await schemaApi.updatePlanningContext(props.appId, ctx)
+  } catch {
+    // silent — context save should never block the user
+  }
+}
+
+function restoreContext(contextJson: string) {
+  try {
+    const ctx = JSON.parse(contextJson)
+    if (ctx.conceptPrompt) conceptPrompt.value = ctx.conceptPrompt
+    if (ctx.questions) questions.value = ctx.questions
+    if (ctx.questionAnswers) questionAnswers.value = ctx.questionAnswers
+    if (ctx.userEdits) userEdits.value = ctx.userEdits
+  } catch {
+    // silent — invalid JSON means no context to restore
+  }
+}
+
+// Auto-save context when user edits answers or feedback
+watch([userEdits, questionAnswers], () => {
+  if (outlinePlan.value || refinedPlan.value) {
+    scheduleSaveContext()
+  }
+}, { deep: true })
 
 // ── Level 1: Outline ───────────────────────────────────────
 
@@ -96,6 +142,8 @@ async function generateOutline() {
     activeTab.value = 'review'
     // Persist outline to schema so it survives navigation/refresh
     await schemaApi.updatePlanningOutline(props.appId, outlinePlan.value)
+    // Persist concept context (prompt, questions, answers) for reload
+    await saveContext()
   } catch (err: any) {
     generationError.value = err.message || 'Failed to generate outline'
     // Stay on concept tab on error — don't lose progress
@@ -129,6 +177,8 @@ async function refinePlan() {
     phase.value = 'refine'
     // Persist refined plan to schema so it survives navigation/refresh
     await schemaApi.updatePlanningRefinedPlan(props.appId, refinedPlan.value)
+    // Persist latest edits/answers for reload
+    await saveContext()
   } catch (err: any) {
     generationError.value = err.message || 'Failed to refine plan'
     // Show error but keep outline visible — don't lose progress
@@ -160,6 +210,7 @@ async function executePlan() {
     // Plan has been consumed into sourceData — clear persisted plans
     await schemaApi.updatePlanningOutline(props.appId, null)
     await schemaApi.updatePlanningRefinedPlan(props.appId, null)
+    await schemaApi.clearPlanningContext(props.appId)
 
     phase.value = 'execute'
   } catch (err: any) {
@@ -224,15 +275,6 @@ function downloadAll() {
 
 <template>
   <div class="design-workspace">
-    <!-- Model Picker Overlay -->
-    <PlanningModelsPicker
-      v-if="showModelPicker"
-      :model-value="planningModels"
-      :default-model="'gpt-4o'"
-      @update:model-value="savePlanningModels"
-      @close="showModelPicker = false"
-    />
-
     <!-- Tabs -->
     <div class="tabs">
       <button
@@ -256,6 +298,11 @@ function downloadAll() {
           :placeholder="appType === 'GAME' ? 'Describe your game idea...' : 'Describe what you want to generate...'"
           rows="12"
         />
+        <PlanningModelsPicker
+          :model-value="planningModels"
+          :default-model="'gpt-4o'"
+          @update:model-value="savePlanningModels"
+        />
         <div class="action-row">
           <button
             class="action-btn"
@@ -264,16 +311,6 @@ function downloadAll() {
           >
             <span v-if="isGenerating" class="spinner" />
             {{ isGenerating ? 'Generating Outline...' : 'Generate Draft' }}
-          </button>
-          <button
-            class="icon-btn"
-            title="Choose planning models"
-            @click="showModelPicker = true"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
-            </svg>
           </button>
         </div>
         <p v-if="generationError" class="error-text">{{ generationError }}</p>

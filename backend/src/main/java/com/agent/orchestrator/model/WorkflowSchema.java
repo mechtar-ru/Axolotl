@@ -23,6 +23,7 @@ public class WorkflowSchema {
     private Map<String, String> planningModels;
     private String planningOutline;
     private String planningRefinedPlan;
+    private String planningContext;
 
     // Геттеры и сеттеры
     public String getId() { return id; }
@@ -77,4 +78,7 @@ public class WorkflowSchema {
 
     public String getPlanningRefinedPlan() { return planningRefinedPlan; }
     public void setPlanningRefinedPlan(String planningRefinedPlan) { this.planningRefinedPlan = planningRefinedPlan; }
+
+    public String getPlanningContext() { return planningContext; }
+    public void setPlanningContext(String planningContext) { this.planningContext = planningContext; }
 }

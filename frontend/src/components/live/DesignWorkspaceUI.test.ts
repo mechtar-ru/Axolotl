@@ -9,6 +9,8 @@ vi.mock('@/services/api', () => ({
     executeSchema: vi.fn(),
     plan: vi.fn(),
     updatePlanningModels: vi.fn(),
+    updatePlanningContext: vi.fn(),
+    clearPlanningContext: vi.fn(),
   }
 }))
 
@@ -218,19 +220,12 @@ describe('DesignWorkspaceUI', () => {
     expect(fileItems.at(0)?.text()).toContain('game.html')
   })
 
-  it('shows settings icon button in Concept tab', () => {
+  it('shows inline PlanningModelsPicker in Concept tab', () => {
     const wrapper = mount(DesignWorkspaceUI, { props: DEFAULT_PROPS })
-    const iconBtn = wrapper.find('.icon-btn')
-    expect(iconBtn.exists()).toBe(true)
-  })
-
-  it('shows PlanningModelsPicker when settings icon is clicked', async () => {
-    const wrapper = mount(DesignWorkspaceUI, { props: DEFAULT_PROPS })
-    await wrapper.find('.icon-btn').trigger('click')
     expect(wrapper.findComponent({ name: 'PlanningModelsPicker' }).exists()).toBe(true)
   })
 
-  it('shows error on failed outline generation', async () => {
+  it('error on failed outline generation', async () => {
     vi.mocked(schemaApi.plan).mockRejectedValue(new Error('API timeout'))
 
     const wrapper = mount(DesignWorkspaceUI, { props: DEFAULT_PROPS })
