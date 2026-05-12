@@ -664,10 +664,26 @@ function downloadAll() {
   border-color: var(--accent);
   background: var(--accent-bg);
   color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.option-label.selected::before {
+  content: '✓';
+  position: absolute;
+  left: 0.4rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--accent);
 }
 
 .option-label input {
-  display: none;
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
 .question-input {
