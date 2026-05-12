@@ -4,6 +4,7 @@ import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.service.AgentService;
+import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -29,6 +32,7 @@ class AgentControllerTest {
     @Mock AgentService agentService;
     @Mock LlmService llmService;
     @Mock MemPalaceClient memPalaceClient;
+    @Mock PlanningService planningService;
 
     @InjectMocks AgentController controller;
 
@@ -103,5 +107,57 @@ class AgentControllerTest {
 
         mockMvc.perform(get("/api/outputs/schema-1/node-1"))
             .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void generateOutline_callsPlanningService() throws Exception {
+        when(planningService.generateOutline(eq("test-1"), eq("Build a game"), eq("gpt-4o-mini")))
+            .thenReturn(Map.of("success", true, "type", "outline", "content", "- Plan"));
+
+        mockMvc.perform(post("/api/schemas/test-1/plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"prompt": "Build a game", "level": "outline", "model": "gpt-4o-mini"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.type").value("outline"));
+    }
+
+    @Test
+    void refinePlan_callsPlanningService() throws Exception {
+        when(planningService.refinePlan(eq("test-1"), eq("Build a game"), eq("deepseek-chat"),
+                eq("- Plan"), eq("Add co-op"), anyMap()))
+            .thenReturn(Map.of("success", true, "type", "refine", "content", "# Design Doc"));
+
+        mockMvc.perform(post("/api/schemas/test-1/plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"prompt": "Build a game", "level": "refine", "model": "deepseek-chat",
+                     "context": {"outline": "- Plan", "userEdits": "Add co-op", "answers": {}}}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.type").value("refine"));
+    }
+
+    @Test
+    void generatePlan_rejectsInvalidLevel() throws Exception {
+        mockMvc.perform(post("/api/schemas/test-1/plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"prompt": "Build a game", "level": "invalid", "model": "gpt-4o-mini"}
+                    """))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void generatePlan_rejectsEmptyPrompt() throws Exception {
+        mockMvc.perform(post("/api/schemas/test-1/plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"prompt": "", "level": "outline", "model": "gpt-4o-mini"}
+                    """))
+            .andExpect(status().isBadRequest());
     }
 }

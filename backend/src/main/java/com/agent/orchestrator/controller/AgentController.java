@@ -7,6 +7,7 @@ import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
+import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -27,12 +28,16 @@ public class AgentController {
     private final SchemaService schemaService;
     private final LlmService llmService;
     private final MemPalaceClient memPalaceClient;
+    private final PlanningService planningService;
 
-    public AgentController(AgentService agentService, SchemaService schemaService, LlmService llmService, MemPalaceClient memPalaceClient) {
+    public AgentController(AgentService agentService, SchemaService schemaService,
+                           LlmService llmService, MemPalaceClient memPalaceClient,
+                           PlanningService planningService) {
         this.agentService = agentService;
         this.schemaService = schemaService;
         this.llmService = llmService;
         this.memPalaceClient = memPalaceClient;
+        this.planningService = planningService;
     }
 
     @GetMapping("/agents")
@@ -151,6 +156,42 @@ public class AgentController {
             result.put("error", e.getMessage());
         }
         return result;
+    }
+
+    // ── Tiered Planning ────────────────────────────────────────
+
+    @PostMapping("/schemas/{id}/plan")
+    public Map<String, Object> generatePlan(
+            @PathVariable String id,
+            @RequestBody Map<String, Object> body) {
+
+        String prompt = (String) body.get("prompt");
+        String level = (String) body.get("level");
+        String model = (String) body.get("model");
+
+        if (prompt == null || prompt.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "prompt is required");
+        }
+        if (level == null || (!"outline".equals(level) && !"refine".equals(level))) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "level must be 'outline' or 'refine'");
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> context = (Map<String, Object>) body.get("context");
+
+        if ("outline".equals(level)) {
+            return planningService.generateOutline(id, prompt, model);
+        } else {
+            String outline = context != null ? (String) context.get("outline") : null;
+            String userEdits = context != null ? (String) context.get("userEdits") : null;
+            @SuppressWarnings("unchecked")
+            Map<String, String> answers = context != null
+                    ? (Map<String, String>) context.get("answers") : null;
+            if (answers == null) answers = Map.of();
+            return planningService.refinePlan(id, prompt, model, outline, userEdits, answers);
+        }
     }
 
     // === Settings ===

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { WorkflowSchema, Agent, ExecutionMode } from '../types';
+import type { WorkflowSchema, Agent, ExecutionMode, PlanningModels, PlanRequest, PlanResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 
@@ -78,6 +78,17 @@ export const schemaApi = {
   async generateFromPrompt(prompt: string, model?: string): Promise<{ success: boolean; schema?: WorkflowSchema; error?: string; planExplanation?: string }> {
     const response = await api.post('/schemas/generate-from-prompt', { prompt, model });
     return response.data;
+  },
+
+  async plan(id: string, request: PlanRequest): Promise<PlanResponse> {
+    const response = await api.post(`/schemas/${id}/plan`, request);
+    return response.data;
+  },
+
+  async updatePlanningModels(id: string, models: PlanningModels): Promise<WorkflowSchema> {
+    const schema = await this.getSchema(id);
+    schema.planningModels = models;
+    return this.updateSchema(id, schema);
   },
 };
 

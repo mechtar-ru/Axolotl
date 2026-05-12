@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { DesignWorkspaceFile, WorkflowSchema } from '@/types'
+import type { DesignWorkspaceFile, WorkflowSchema, PlanningModels, PlanQuestion, PlanResponse } from '@/types'
 import { schemaApi } from '@/services/api'
+import PlanningModelsPicker from './PlanningModelsPicker.vue'
 
 const props = defineProps<{
   appId: string
@@ -9,61 +10,182 @@ const props = defineProps<{
   executionResult: any
 }>()
 
-type Tab = 'concept' | 'review' | 'output'
-type Phase = 'ideation' | 'review' | 'generating' | 'complete'
+// ── Phase & Tab State ──────────────────────────────────────
 
-const activeTab = ref<Tab>('concept')
+type PlanningPhase = 'concept' | 'outline' | 'refine' | 'execute'
+
+const activeTab = ref<'concept' | 'review' | 'output'>('concept')
 const conceptPrompt = ref('')
-const plan = ref<string | null>(null)
-const critiquePrompt = ref('')
-const files = ref<DesignWorkspaceFile[]>([])
-const phase = ref<Phase>('ideation')
+const phase = ref<PlanningPhase>('concept')
 const isGenerating = ref(false)
 const generationError = ref<string | null>(null)
 
-// Watch execution results from WebSocket
-watch(() => props.executionResult, (result) => {
-  if (!result || isGenerating.value === false) return
-  
-  // If result has a plan, show it in Review tab
-  if (result.plan) {
-    plan.value = result.plan
-    isGenerating.value = false
-    generationError.value = null
-    phase.value = 'review'
-    activeTab.value = 'review'
+// ── Planning State ─────────────────────────────────────────
+
+const planningModels = ref<PlanningModels | null>(null)
+const showModelPicker = ref(false)
+
+// Outline state
+const outlinePlan = ref<string | null>(null)
+const questions = ref<PlanQuestion[]>([])
+const questionAnswers = ref<Record<string, string>>({})
+
+// Refine state
+const refinedPlan = ref<string | null>(null)
+const userEdits = ref('')
+
+// Files from execution
+const files = ref<DesignWorkspaceFile[]>([])
+
+// ── Model Picker ───────────────────────────────────────────
+
+async function loadPlanningModels() {
+  try {
+    const schema = await schemaApi.getSchema(props.appId)
+    planningModels.value = schema.planningModels || null
+  } catch {
+    // Silently fail - defaults will be used
   }
-  
-  // If result has files, show them in Output tab
+}
+
+async function savePlanningModels(models: PlanningModels) {
+  planningModels.value = models
+  await schemaApi.updatePlanningModels(props.appId, models)
+}
+
+// ── Level 1: Outline ───────────────────────────────────────
+
+async function generateOutline() {
+  const prompt = conceptPrompt.value.trim()
+  if (!prompt || isGenerating.value) return
+
+  isGenerating.value = true
+  generationError.value = null
+
+  try {
+    const model = planningModels.value?.fast || undefined
+    const response = await schemaApi.plan(props.appId, {
+      prompt,
+      level: 'outline',
+      model: model || '',
+    })
+
+    outlinePlan.value = response.content
+    if (response.questions) {
+      questions.value = response.questions
+      // Initialize answers with defaults
+      const answers: Record<string, string> = {}
+      for (const q of response.questions) {
+        answers[q.id] = q.defaultAnswer
+      }
+      questionAnswers.value = answers
+    }
+
+    phase.value = 'outline'
+    activeTab.value = 'review'
+  } catch (err: any) {
+    generationError.value = err.message || 'Failed to generate outline'
+    // Stay on concept tab on error — don't lose progress
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ── Level 2: Refine ────────────────────────────────────────
+
+async function refinePlan() {
+  if (!outlinePlan.value || isGenerating.value) return
+
+  isGenerating.value = true
+  generationError.value = null
+
+  try {
+    const model = planningModels.value?.medium || undefined
+    const response = await schemaApi.plan(props.appId, {
+      prompt: conceptPrompt.value.trim(),
+      level: 'refine',
+      model: model || '',
+      context: {
+        outline: outlinePlan.value,
+        userEdits: userEdits.value,
+        answers: questionAnswers.value,
+      },
+    })
+
+    refinedPlan.value = response.content
+    phase.value = 'refine'
+  } catch (err: any) {
+    generationError.value = err.message || 'Failed to refine plan'
+    // Show error but keep outline visible — don't lose progress
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ── Level 3: Execute ───────────────────────────────────────
+
+async function executePlan() {
+  const planContent = refinedPlan.value || outlinePlan.value
+  if (!planContent || isGenerating.value) return
+
+  isGenerating.value = true
+  generationError.value = null
+
+  try {
+    // Use existing generateDraft logic: write plan to sourceNode sourceData → execute schema
+    const schema = await schemaApi.getSchema(props.appId)
+    const sourceNode = schema.nodes?.find(n => n.type === 'source')
+    if (!sourceNode) {
+      throw new Error('No source node found in this schema. Add a Source node to execute the plan.')
+    }
+    sourceNode.data = { ...sourceNode.data, sourceData: planContent }
+    await schemaApi.updateSchema(props.appId, schema)
+    await schemaApi.executeSchema(props.appId)
+
+    phase.value = 'execute'
+  } catch (err: any) {
+    generationError.value = err.message || 'Failed to execute plan'
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ── Watch execution results ────────────────────────────────
+
+watch(() => props.executionResult, (result) => {
+  if (!result) return
+
   if (result.files && Array.isArray(result.files)) {
     files.value = result.files.map((f: any) => ({
       name: f.name || 'unnamed',
       content: f.content || '',
       type: f.type || 'text/plain',
-      size: f.size ?? (f.content ? new Blob([f.content]).size : undefined)
+      size: f.size ?? (f.content ? new Blob([f.content]).size : undefined),
     }))
     isGenerating.value = false
     generationError.value = null
-    phase.value = 'complete'
     activeTab.value = 'output'
   }
 })
 
-// Tab labels
-const tabLabels: Record<Tab, string> = {
+// ── Init ───────────────────────────────────────────────────
+
+loadPlanningModels()
+
+// ── Helpers ────────────────────────────────────────────────
+
+const tabLabels: Record<string, string> = {
   concept: 'Concept',
   review: 'Review',
-  output: 'Output'
+  output: 'Output',
 }
 
-// File size formatter
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-// Download single file
 function downloadFile(file: DesignWorkspaceFile) {
   const blob = new Blob([file.content], { type: file.type })
   const url = URL.createObjectURL(blob)
@@ -76,60 +198,26 @@ function downloadFile(file: DesignWorkspaceFile) {
   URL.revokeObjectURL(url)
 }
 
-// Download all files (simplified — downloads one by one)
 function downloadAll() {
   files.value.forEach(f => downloadFile(f))
-}
-
-// Generate draft — update source node, execute schema
-async function generateDraft() {
-  const prompt = conceptPrompt.value.trim()
-  if (!prompt || isGenerating.value) return
-
-  isGenerating.value = true
-  generationError.value = null
-
-  try {
-    // 1. Load current schema
-    const schema = await schemaApi.getSchema(props.appId)
-
-    // 2. Find the first source node and update its sourceData
-    const sourceNode = schema.nodes?.find(n => n.type === 'source')
-    if (!sourceNode) {
-      throw new Error('No source node found in this schema. Add a Source node to use Generate Draft.')
-    }
-
-    // 3. Update the source data with the user's concept prompt
-    sourceNode.data = { ...sourceNode.data, sourceData: prompt }
-
-    // 4. Persist the updated schema
-    await schemaApi.updateSchema(props.appId, schema)
-
-    // 5. Trigger execution — WebSocket will stream result back
-    //    (watch on executionResult picks up the final result)
-    await schemaApi.executeSchema(props.appId)
-
-    // Switch to generating state — watch on executionResult will
-    // move to review/output when backend finishes
-    phase.value = 'ideation'
-  } catch (err: any) {
-    generationError.value = err.message || 'Failed to generate draft'
-    isGenerating.value = false
-  }
-}
-
-// Refine with critique (placeholder)
-function refineWithCritique() {
-  if (!critiquePrompt.value.trim()) return
 }
 </script>
 
 <template>
   <div class="design-workspace">
+    <!-- Model Picker Overlay -->
+    <PlanningModelsPicker
+      v-if="showModelPicker"
+      :model-value="planningModels"
+      :default-model="'gpt-4o'"
+      @update:model-value="savePlanningModels"
+      @close="showModelPicker = false"
+    />
+
     <!-- Tabs -->
     <div class="tabs">
       <button
-        v-for="tab in (['concept', 'review', 'output'] as Tab[])"
+        v-for="tab in (['concept', 'review', 'output'] as const)"
         :key="tab"
         class="tab-btn"
         :class="{ active: activeTab === tab }"
@@ -140,68 +228,148 @@ function refineWithCritique() {
     </div>
 
     <div class="tab-content">
-      <!-- Concept Tab -->
+      <!-- ========== Concept Tab ========== -->
       <div v-if="activeTab === 'concept'" class="tab-pane concept-pane">
         <h3 class="pane-title">Describe what you'd like to build</h3>
         <textarea
           v-model="conceptPrompt"
           class="concept-textarea"
-          :placeholder="appType === 'GAME' ? 'Describe your game idea (e.g. Tower defense with dragons and magic)...' : 'Describe what you want to generate (e.g. A landing page for a SaaS product)...'"
+          :placeholder="appType === 'GAME' ? 'Describe your game idea...' : 'Describe what you want to generate...'"
           rows="12"
         />
-        <button
-          class="action-btn"
-          :disabled="!conceptPrompt.trim() || isGenerating"
-          @click="generateDraft"
-        >
-          <span v-if="isGenerating" class="spinner" />
-          {{ isGenerating ? 'Generating Draft...' : 'Generate Draft' }}
-        </button>
+        <div class="action-row">
+          <button
+            class="action-btn"
+            :disabled="!conceptPrompt.trim() || isGenerating"
+            @click="generateOutline"
+          >
+            <span v-if="isGenerating" class="spinner" />
+            {{ isGenerating ? 'Generating Outline...' : 'Generate Draft' }}
+          </button>
+          <button
+            class="icon-btn"
+            title="Choose planning models"
+            @click="showModelPicker = true"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
         <p v-if="generationError" class="error-text">{{ generationError }}</p>
         <p v-else-if="isGenerating" class="hint-text">
-          Your concept is being processed by the workflow. Results will appear in <strong>Review</strong> and <strong>Output</strong> tabs once complete.
+          Generating your plan outline...
         </p>
         <p v-else-if="!conceptPrompt" class="hint-text">
           Write a description above and click "Generate Draft" to start.
         </p>
       </div>
 
-      <!-- Review Tab -->
+      <!-- ========== Review Tab ========== -->
       <div v-if="activeTab === 'review'" class="tab-pane review-pane">
-        <div v-if="!plan" class="empty-state">
-          <p>Run the workflow from <strong>Blueprint</strong> to see results here.</p>
-        </div>
-        <div v-else class="review-layout">
+        <!-- Outline phase: plan + editable questions -->
+        <div v-if="outlinePlan && !refinedPlan" class="review-layout">
           <div class="review-plan">
-            <h3 class="pane-title">Generated Plan</h3>
-            <div class="plan-content">{{ plan }}</div>
+            <h3 class="pane-title">Outline Plan</h3>
+            <div class="plan-content">{{ outlinePlan }}</div>
+
+            <!-- Questions -->
+            <div v-if="questions.length > 0" class="questions-section">
+              <h3 class="pane-title">Clarifying Questions</h3>
+              <div class="questions-list">
+                <div v-for="q in questions" :key="q.id" class="question-item">
+                  <label class="question-label">{{ q.text }}</label>
+                  <div v-if="q.options && q.options.length > 0" class="question-options">
+                    <label
+                      v-for="opt in q.options"
+                      :key="opt"
+                      class="option-label"
+                      :class="{ selected: questionAnswers[q.id] === opt }"
+                    >
+                      <input
+                        type="radio"
+                        :name="'q-' + q.id"
+                        :value="opt"
+                        v-model="questionAnswers[q.id]"
+                      />
+                      {{ opt }}
+                    </label>
+                  </div>
+                  <input
+                    v-else
+                    v-model="questionAnswers[q.id]"
+                    type="text"
+                    class="question-input"
+                    placeholder="Your answer..."
+                  />
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="review-critique">
-            <h3 class="pane-title">Critique</h3>
+          <div class="review-sidebar">
+            <h3 class="pane-title">Feedback / Edits</h3>
             <textarea
-              v-model="critiquePrompt"
+              v-model="userEdits"
               class="critique-textarea"
-              placeholder="Add your feedback or suggestions for refinement..."
-              rows="6"
+              placeholder="Add your feedback, corrections, or additional requirements..."
+              rows="8"
             />
             <button
               class="action-btn"
-              :disabled="!critiquePrompt.trim()"
-              @click="refineWithCritique"
+              :disabled="isGenerating"
+              @click="refinePlan"
             >
-              Refine with Critique
+              <span v-if="isGenerating" class="spinner" />
+              {{ isGenerating ? 'Refining...' : 'Refine Plan' }}
             </button>
+            <p v-if="generationError" class="error-text">{{ generationError }}</p>
             <p class="hint-text">
-              Copy your critique to the Blueprint and re-run execution to refine the plan.
+              Edit questions above and add feedback, then click "Refine Plan" to generate a detailed design document.
             </p>
           </div>
         </div>
+
+        <!-- Refined plan phase: detailed document + execute -->
+        <div v-else-if="refinedPlan" class="review-layout">
+          <div class="review-plan">
+            <h3 class="pane-title">Refined Design Document</h3>
+            <div class="plan-content">{{ refinedPlan }}</div>
+          </div>
+          <div class="review-sidebar">
+            <h3 class="pane-title">Ready to Execute?</h3>
+            <p class="hint-text">
+              The plan above will be used as source data for your workflow. Click "Execute Plan" to run it.
+            </p>
+            <button
+              class="action-btn execute-btn"
+              :disabled="isGenerating"
+              @click="executePlan"
+            >
+              <span v-if="isGenerating" class="spinner" />
+              {{ isGenerating ? 'Executing...' : 'Execute Plan' }}
+            </button>
+            <button
+              class="action-btn secondary-btn"
+              :disabled="isGenerating"
+              @click="refinedPlan = null; userEdits = ''"
+            >
+              Back to Outline
+            </button>
+            <p v-if="generationError" class="error-text">{{ generationError }}</p>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div v-else class="empty-state">
+          <p>Generate a draft from the <strong>Concept</strong> tab to see results here.</p>
+        </div>
       </div>
 
-      <!-- Output Tab -->
+      <!-- ========== Output Tab ========== -->
       <div v-if="activeTab === 'output'" class="tab-pane output-pane">
         <div v-if="files.length === 0" class="empty-state">
-          <p>No files generated yet. Run the workflow from Blueprint to generate files.</p>
+          <p>No files generated yet. Refine your plan and execute it from the <strong>Review</strong> tab.</p>
         </div>
         <div v-else class="output-content">
           <div class="output-header">
@@ -251,7 +419,6 @@ function refineWithCritique() {
   background: var(--bg-primary);
 }
 
-/* Tabs */
 .tabs {
   display: flex;
   gap: 0;
@@ -282,7 +449,6 @@ function refineWithCritique() {
   border-bottom-color: var(--accent);
 }
 
-/* Tab content */
 .tab-content {
   flex: 1;
   overflow-y: auto;
@@ -302,7 +468,6 @@ function refineWithCritique() {
   margin: 0 0 0.75rem 0;
 }
 
-/* Concept tab */
 .concept-textarea {
   width: 100%;
   padding: 0.75rem;
@@ -324,7 +489,34 @@ function refineWithCritique() {
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
-/* Review tab */
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.icon-btn:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .review-layout {
   display: flex;
   gap: 1.5rem;
@@ -335,6 +527,15 @@ function refineWithCritique() {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+.review-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .plan-content {
@@ -350,13 +551,85 @@ function refineWithCritique() {
   overflow-y: auto;
   color: var(--text-primary);
   font-family: monospace;
+  min-height: 200px;
+  max-height: 500px;
 }
 
-.review-critique {
-  flex: 1;
+.questions-section {
+  margin-top: 1rem;
+}
+
+.questions-list {
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+}
+
+.question-item {
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.question-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.question-options {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.option-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-primary);
+}
+
+.option-label:hover {
+  border-color: var(--accent);
+}
+
+.option-label.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.option-label input {
+  display: none;
+}
+
+.question-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.question-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
 .critique-textarea {
@@ -371,6 +644,8 @@ function refineWithCritique() {
   font-family: inherit;
   line-height: 1.6;
   min-height: 120px;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .critique-textarea:focus {
@@ -379,7 +654,6 @@ function refineWithCritique() {
   box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
-/* Output tab */
 .output-header {
   display: flex;
   align-items: center;
@@ -452,12 +726,10 @@ function refineWithCritique() {
   border-color: var(--accent);
 }
 
-/* Action buttons */
 .action-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
-  margin-top: 0.75rem;
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 8px;
@@ -468,6 +740,7 @@ function refineWithCritique() {
   cursor: pointer;
   align-self: flex-start;
   transition: background 0.15s;
+  white-space: nowrap;
 }
 
 .action-btn:hover:not(:disabled) {
@@ -479,11 +752,18 @@ function refineWithCritique() {
   cursor: not-allowed;
 }
 
+.execute-btn {
+  background: #22c55e;
+}
+
+.execute-btn:hover:not(:disabled) {
+  background: #16a34a;
+}
+
 .secondary-btn {
   background: var(--bg-secondary);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
-  margin-top: 0;
 }
 
 .secondary-btn:hover:not(:disabled) {
@@ -492,7 +772,6 @@ function refineWithCritique() {
   color: var(--text-primary);
 }
 
-/* Empty state */
 .empty-state {
   flex: 1;
   display: flex;
@@ -505,7 +784,6 @@ function refineWithCritique() {
   min-height: 200px;
 }
 
-/* Error text */
 .error-text {
   font-size: 0.8rem;
   color: var(--danger);
@@ -517,7 +795,6 @@ function refineWithCritique() {
   border: 1px solid var(--danger);
 }
 
-/* Spinner */
 .spinner {
   display: inline-block;
   width: 14px;
@@ -532,7 +809,6 @@ function refineWithCritique() {
   to { transform: rotate(360deg); }
 }
 
-/* Hint text */
 .hint-text {
   font-size: 0.75rem;
   color: var(--text-muted);

@@ -90,10 +90,40 @@ export interface WorkflowSchema {
   nodes: FlowNode[];
   edges: FlowEdge[];
   defaultModel?: string;
+  planningModels?: PlanningModels;
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;
   appType?: string;
+}
+
+export interface PlanningModels {
+  fast: string;
+  medium: string;
+}
+
+export interface PlanQuestion {
+  id: string;
+  text: string;
+  defaultAnswer: string;
+  options?: string[];
+}
+
+export interface PlanRequest {
+  prompt: string;
+  level: 'outline' | 'refine';
+  model: string;
+  context?: {
+    outline: string;
+    userEdits: string;
+    answers: Record<string, string>;
+  };
+}
+
+export interface PlanResponse {
+  type: 'outline' | 'refine';
+  content: string;
+  questions?: PlanQuestion[];
 }
 
 export interface Agent {
