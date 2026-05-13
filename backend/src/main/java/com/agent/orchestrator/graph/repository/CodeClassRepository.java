@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CodeClassRepository extends Neo4jRepository<CodeClass, Long> {
+public interface CodeClassRepository extends Neo4jRepository<CodeClass, String> {
     
     Optional<CodeClass> findByQualifiedName(String qualifiedName);
 

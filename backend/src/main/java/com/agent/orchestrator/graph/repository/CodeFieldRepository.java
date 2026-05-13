@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CodeFieldRepository extends Neo4jRepository<CodeField, Long> {
+public interface CodeFieldRepository extends Neo4jRepository<CodeField, String> {
 
     @Query("MATCH (f:Field {signature: $signature}) RETURN f")
     Optional<CodeField> findBySignature(@Param("signature") String signature);

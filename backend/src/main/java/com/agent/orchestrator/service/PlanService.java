@@ -7,8 +7,12 @@ import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class PlanService {
@@ -362,6 +366,71 @@ public class PlanService {
         log.info("Критерии приёмки задачи {} обновлены: {}/{}", taskId,
                 task.getCriteriaMetCount(), task.getAcceptanceCriteria().size());
         return task;
+    }
+
+    // === Execution task methods ===
+
+    public Task createTaskForExecution(String schemaId, String workspaceId, String schemaName) {
+        Plan plan = getPlan(workspaceId);
+        Task task = new Task(schemaName);
+        task.setStatus(TaskStatus.IN_PROGRESS);
+        task.setSchemaId(schemaId);
+        int maxOrder = plan.getTasks().stream().mapToInt(Task::getOrder).max().orElse(-1);
+        task.setOrder(maxOrder + 1);
+        plan.getTasks().add(task);
+        plan.touch();
+        planRepository.save(plan);
+        notifyPlanUpdated(plan);
+        log.info("Создана задача выполнения для схемы: {} (ID: {})", schemaName, task.getId());
+        return task;
+    }
+
+    public void completeTaskForExecution(String taskId, String workspaceId, List<Task.GeneratedFile> generatedFiles) {
+        Plan plan = getPlan(workspaceId);
+        Task task = plan.getTasks().stream()
+                .filter(t -> t.getId().equals(taskId))
+                .findFirst()
+                .orElse(null);
+        if (task == null) {
+            log.warn("Задача выполнения не найдена: {}", taskId);
+            return;
+        }
+        if (generatedFiles != null && !generatedFiles.isEmpty()) {
+            task.setGeneratedFiles(generatedFiles);
+        }
+        task.setStatus(TaskStatus.DONE);
+        task.setReason("Схема выполнена, сгенерировано файлов: " +
+                (generatedFiles != null ? generatedFiles.size() : 0));
+        task.touch();
+        plan.touch();
+        planRepository.save(plan);
+        notifyPlanUpdated(plan);
+        log.info("Задача выполнения {} завершена с {} файлами", taskId,
+                generatedFiles != null ? generatedFiles.size() : 0);
+    }
+
+    public List<Task.GeneratedFile> scanGeneratedFiles(String targetPath, String workspaceId) {
+        if (targetPath == null || targetPath.isBlank()) {
+            return new ArrayList<>();
+        }
+        if (!Files.exists(Path.of(targetPath))) {
+            return new ArrayList<>();
+        }
+        try (Stream<Path> paths = Files.walk(Path.of(targetPath))) {
+            return paths.filter(Files::isRegularFile)
+                    .map(p -> new Task.GeneratedFile(Path.of(targetPath).relativize(p).toString(), ""))
+                    .toList();
+        } catch (IOException e) {
+            log.warn("Ошибка сканирования сгенерированных файлов: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public List<Task> getCompletedTasks(String workspaceId) {
+        Plan plan = getPlan(workspaceId);
+        return plan.getTasks().stream()
+                .filter(t -> t.getStatus() == TaskStatus.DONE)
+                .collect(Collectors.toList());
     }
 
     // === Helper methods ===

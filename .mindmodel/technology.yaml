@@ -1,0 +1,224 @@
+# .mindmodel/technology.yaml
+# Tech stack, frameworks, and dependency constraints
+# AI agents MUST follow these constraints when generating code
+
+meta:
+  rule: "Use only the approved technologies listed below. Do NOT introduce unlisted frameworks, libraries, or tools."
+  severity: error
+
+backend:
+  language:
+    name: "Java"
+    version: "21"
+    constraints:
+      - "Use Java 21 features where appropriate (pattern matching, records, text blocks, sealed classes)"
+      - "Source and target must be Java 21"
+      - "Do NOT use Java versions below 21"
+
+  framework:
+    name: "Spring Boot"
+    version: "3.2.0"
+    parent: "org.springframework.boot:spring-boot-starter-parent:3.2.0"
+    constraints:
+      - "Use constructor injection — NO @Autowired on fields"
+      - "NO @Value on fields directly — use constructor parameter"
+      - "Use @Configuration, @Service, @Component, @Controller stereotypes"
+      - "Spring Security 6.x with SecurityFilterChain DSL"
+      - "Spring WebSocket (TextWebSocketHandler), NOT Socket.IO"
+
+  build_tool:
+    name: "Maven"
+    constraints:
+      - "pom.xml at backend/ root"
+      - "start-class: com.agent.orchestrator.Application"
+      - "spring-ai.version: 1.1.4 managed via BOM"
+
+  database:
+    primary:
+      name: "SQLite"
+      access: "Raw JDBC"
+      driver: "org.sqlite.JDBC"
+      connection: "DriverManager.getConnection()"
+      constraints:
+        - "NO JPA/Hibernate for SQLite — use raw JDBC"
+        - "Manual SQL with TextBlock (triple-quoted strings)"
+        - "WAL mode enabled via PRAGMA"
+        - "Repository pattern with custom *Repository classes"
+        - "Package: com.agent.orchestrator.repository"
+
+    secondary:
+      name: "Neo4j"
+      type: "Graph database"
+      access:
+        - "Spring Data Neo4j (@Node, @Repository)"
+        - "Direct Neo4j Java Driver (org.neo4j.driver)"
+      package: "com.agent.orchestrator.graph"
+      constraints:
+        - "For codebase graph, plans, entities"
+        - "NOT for operational CRUD (use SQLite for that)"
+        - "Hash-anchored edits via 16-hex-char stable hashes"
+
+  llm_integration:
+    providers:
+      - name: "Ollama"
+        protocol: "NDJSON streaming"
+        client: "java.net.http.HttpClient"
+
+      - name: "OpenAI"
+        protocol: "SSE streaming"
+        client: "java.net.http.HttpClient"
+
+      - name: "Anthropic"
+        protocol: "SSE streaming"
+        client: "java.net.http.HttpClient"
+
+      - name: "DeepSeek"
+        protocol: "SSE streaming"
+        client: "java.net.http.HttpClient"
+
+      - name: "Custom OpenAI-compatible"
+        protocol: "REST"
+        client: "java.net.http.HttpClient"
+
+      - name: "RLM"
+        package: "com.agent.orchestrator.llm"
+
+      - name: "Spring AI"
+        config: "SpringAiConfig"
+        constraints:
+          - "Used alongside java.net.http.HttpClient, NOT as replacement"
+          - "Configured via SpringAiConfig"
+
+      - name: "OpencodeZen"
+        package: "com.agent.orchestrator.llm"
+
+    constraints:
+      - "ALL LLM providers use java.net.http.HttpClient (NOT RestTemplate)"
+      - "All implement LlmProvider interface"
+      - "Strategy pattern for provider selection in LlmService"
+      - "Package: com.agent.orchestrator.llm"
+
+  security:
+    auth: "JWT (JJWT 0.12.3)"
+    implementation: "OncePerRequestFilter (JwtAuthFilter) + SecurityConfig"
+    constraint: "Constructor injection, @Component on filter"
+
+  logging:
+    framework: "SLF4J + Logstash (structured JSON)"
+    pattern: |
+      private static final Logger log = LoggerFactory.getLogger(ClassName.class);
+    constraints:
+      - "SLF4J placeholder format {}, NO string concatenation"
+      - "Log messages in Russian"
+      - "Logstash encoder for JSON output"
+
+  monitoring:
+    - "Micrometer with Prometheus (/actuator/prometheus)"
+    - "SpringDoc OpenAPI 3.0 (/swagger.html)"
+    - "Bucket4j (declared only — hand-rolled rate limiting)"
+    - "Resilience4j (declared — annotation-based only)"
+
+  other_key_deps:
+    - "Jackson (JSON serialization/deserialization)"
+    - "JavaParser 3.25 (AST analysis for Neo4j code graph)"
+    - "jtokkit 1.1 (token counting)"
+    - "GraalVM Polyglot 24.1 (scripting, polyglot execution)"
+    - "Playwright (E2E testing client)"
+
+  testing:
+    framework: "JUnit 5 + Mockito + TestContainers"
+    style:
+      - "@ExtendWith(MockitoExtension.class) on test classes"
+      - "snake_case test method names (getExecutionLevels_linearGraph)"
+      - "Static imports for assertions (org.junit.jupiter.api.Assertions.*)"
+      - "Static imports for Mockito (org.mockito.Mockito.*)"
+    constraints:
+      - "Test files in src/test/java/ mirroring main package structure"
+      - "Integration tests use @SpringBootTest or TestContainers"
+
+frontend:
+  language:
+    name: "TypeScript"
+    version: "~6.0.0"
+    constraints:
+      - "Strict types enabled"
+      - "Use interface over type for object shapes"
+      - "import type { ... } for type-only imports"
+
+  framework:
+    name: "Vue"
+    version: "3.5"
+    api: "Composition API"
+    script_setup: "<script setup lang=\"ts\">"
+    constraints:
+      - "ALWAYS use Composition API with <script setup lang=\"ts\">"
+      - "Use ref(), computed(), watch() from Vue"
+      - "NO Options API (data/computed/methods object syntax)"
+      - "Functional components only where beneficial"
+
+  build_tool:
+    name: "Vite"
+    version: "^8.0.3"
+    config: "vite.config.ts (at project root)"
+
+  state_management:
+    name: "Pinia"
+    version: "^3.0.4"
+    pattern: "Setup stores (function-based)"
+    constraints:
+      - "defineStore with function (setup) pattern, NOT options object"
+      - "Return all public refs/computed/actions from the function"
+
+  routing:
+    name: "Vue Router"
+    version: "^5.0.4"
+    pattern: "createRouter + createWebHistory"
+    constraints:
+      - "Lazy-loaded routes with () => import()"
+      - "meta: { requiresAuth: boolean } for route guards"
+      - "Navigation guard with router.beforeEach"
+
+  canvas:
+    name: "VueFlow"
+    version: "^1.48.2"
+    packages:
+      - "@vue-flow/core"
+      - "@vue-flow/background"
+      - "@vue-flow/controls"
+      - "@vue-flow/minimap"
+    constraints:
+      - "Custom nodes via nodeTypes prop + <Handle> + useVueFlow()"
+      - "VueFlow's built-in addNodes/addEdges for mutations"
+
+  http_client:
+    name: "Axios"
+    version: "^1.15.0"
+    pattern: "Single axios instance with JWT interceptor"
+    constraints:
+      - "Centralized api.ts with axios.create() + interceptors"
+      - "Domain-specific API modules (schemaApi, agentApi, etc.)"
+      - "JWT auto-attach via request interceptor"
+      - "401 redirect to /login via response interceptor"
+
+  ui_libraries:
+    - "@vueuse/core ^14.2.1"
+    - "lucide-vue-next ^1.0.0"
+    - "html-to-image ^1.11.13"
+
+  desktop:
+    name: "Electron"
+    version: "^41.2.1"
+    pattern: "Main/preload/contextBridge"
+    packages:
+      - "electron ^41.2.1"
+      - "electron-builder ^26.8.1"
+      - "electron-updater ^6.3.0"
+
+  testing:
+    frameworks:
+      - "Vitest ^4.1.2 (unit)"
+      - "Playwright ^1.59.1 (E2E)"
+      - "Vue Test Utils ^2.4.6"
+    constraints:
+      - "Test files co-located in __tests__/ next to component"
+      - "vitest-based, NOT jest or other test runner"

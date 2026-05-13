@@ -35,9 +35,18 @@ python3 scripts/api.py GET /api/plan
 ## Critical Patterns
 
 ### Authentication
+- Backend runs on port **8082** (not 8080)
 - Use `tech/tech` for all harness/automation API calls
-- Get token: `POST /api/auth/login` then use `Authorization: Bearer <token>`
-- Use `scripts/api.py` - handles auth automatically
+- **For curl**: `source scripts/token.sh` — exports `$TOKEN` and `$CURL_HEADER`
+  ```bash
+  source scripts/token.sh                         # caches in ~/.axolotl/token
+  curl -s -H "$CURL_HEADER" http://localhost:8082/api/schemas
+  curl -s -H "$CURL_HEADER" http://localhost:8082/api/app/ea42107f-c3ac-4080-8fb7-645f5a62080e | python3 -m json.tool
+  ```
+- **For Python**: `scripts/api.py` — handles auth automatically
+  ```bash
+  source .venv/bin/activate
+  python3 scripts/api.py GET /api/schemas
 
 ### Database Architecture
 - **Neo4j** — primary storage for schemas, plans, execution history, code graph

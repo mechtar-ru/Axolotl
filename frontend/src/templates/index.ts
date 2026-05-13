@@ -194,8 +194,9 @@ export const templates: AppTemplate[] = [
         name: 'Generate Game',
         position: { x: 450, y: 200 },
         data: {
-          systemPrompt: 'You are a game developer. Generate a complete playable Sokoban game as HTML with embedded CSS and JavaScript. The game must include: a grid-based level, player character, walls, boxes, target spaces, movement controls (arrow keys), undo functionality, level reset, move counter, and victory detection. Output ONLY the complete HTML file.',
-          userPrompt: 'Create a Sokoban game with these parameters:\n\nGrid: {{grid}}\nLevel: {{level}}\n\nGenerate a self-contained HTML file.'
+          systemPrompt: 'You are a game developer. Generate a complete playable Sokoban game as HTML with embedded CSS and JavaScript. The game must include: a grid-based level, player character, walls, boxes, target spaces, movement controls (arrow keys), undo functionality, level reset, move counter, and victory detection. Output ONLY the complete HTML file to the project target path using file_write.',
+          userPrompt: 'Create a Sokoban game with these parameters:\n\nGrid: {{grid}}\nLevel: {{level}}\n\nGenerate a self-contained HTML file and write it to the project target path.',
+          enabledTools: ['file_write']
         }
       },
       {

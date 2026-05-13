@@ -4,13 +4,13 @@ import org.springframework.data.neo4j.core.schema.*;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 @Node(labels = {"Decision", "Architecture"})
 public class Decision {
     
     @Id
-    @GeneratedValue
-    private Long id;
+    private String id;
     
     @Property(name = "title")
     private String title;
@@ -48,16 +48,19 @@ public class Decision {
     @Relationship(type = "RELATED_TO", direction = Relationship.Direction.OUTGOING)
     private Set<Decision> relatedDecisions = new HashSet<>();
     
-    public Decision() {}
+    public Decision() {
+        this.id = UUID.randomUUID().toString();
+    }
     
     public Decision(String title, String description, String rationale) {
+        this.id = UUID.randomUUID().toString();
         this.title = title;
         this.description = description;
         this.rationale = rationale;
     }
     
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getDescription() { return description; }

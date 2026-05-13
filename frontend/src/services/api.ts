@@ -116,6 +116,67 @@ export const schemaApi = {
   },
 };
 
+export interface AppInfo {
+  id: string;
+  name: string;
+  description: string;
+  appType: string;
+  targetPath?: string;
+  targetPathConflictAction?: string;
+  workspaceId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const appApi = {
+  /** Get single app by ID */
+  async getApp(id: string): Promise<AppInfo> {
+    const response = await api.get(`/app/${id}`);
+    return response.data;
+  },
+
+  /** Check if targetPath directory exists for a given app name */
+  async checkTargetPath(name: string, appType: string): Promise<{
+    exists: boolean;
+    targetPath: string;
+  }> {
+    const response = await api.get('/app/check-target-path', {
+      params: { name, appType }
+    });
+    return response.data;
+  },
+
+  /** Create app with conflict resolution action */
+  async createApp(data: {
+    name: string;
+    appType: string;
+    description?: string;
+    conflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';
+    customTargetPath?: string;
+  }): Promise<AppInfo> {
+    const response = await api.post('/app', data);
+    return response.data;
+  },
+
+  /** Update app */
+  async updateApp(id: string, data: {
+    name?: string;
+    description?: string;
+  }): Promise<AppInfo> {
+    const response = await api.put(`/app/${id}`, data);
+    return response.data;
+  },
+
+  /** Get generated files for a completed execution task */
+  async getGeneratedFiles(schemaId: string): Promise<Array<{
+    path: string;
+    description: string;
+  }>> {
+    const response = await api.get(`/app/${schemaId}/generated-files`);
+    return response.data;
+  }
+};
+
 export const agentApi = {
   async getAgents(): Promise<Agent[]> {
     const response = await api.get('/agents');

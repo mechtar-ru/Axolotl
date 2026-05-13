@@ -1,15 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { appApi } from '@/services/api'
 
 const props = defineProps<{
   appType: string
   executionResult: any
+  schemaId?: string
 }>()
 
 const input = ref('')
 const output = ref<string | null>(null)
 const isRunning = ref(false)
 const viewMode = ref<'preview' | 'raw'>('preview')
+const generatedFiles = ref<Array<{path: string, description: string}>>([])
+const loadingFiles = ref(false)
 
 // Detect artifact type
 type ArtifactType = 'html' | 'json' | 'script' | 'text'
@@ -45,11 +49,15 @@ const artifactFileName = computed(() => {
 })
 
 // Watch for execution results from WebSocket
-watch(() => props.executionResult, (result) => {
+watch(() => props.executionResult, async (result) => {
   if (result !== null && result !== undefined) {
     output.value = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
     isRunning.value = false
     viewMode.value = 'preview'
+    // Fetch generated files after execution completes
+    if (props.schemaId) {
+      await fetchGeneratedFiles()
+    }
   }
 })
 
@@ -75,6 +83,19 @@ function run() {
     output.value = `App Type: ${props.appType}\nInput: ${input.value}\n\nRun from the top bar to execute the schema via WebSocket.`
     isRunning.value = false
   }, 800)
+}
+
+async function fetchGeneratedFiles() {
+  if (!props.schemaId) return
+  loadingFiles.value = true
+  try {
+    const files = await appApi.getGeneratedFiles(props.schemaId)
+    generatedFiles.value = files
+  } catch (error) {
+    console.error('Failed to fetch generated files:', error)
+  } finally {
+    loadingFiles.value = false
+  }
 }
 </script>
 
@@ -168,6 +189,21 @@ function run() {
           class="output-content"
         >{{ output }}</pre>
       </div>
+    </div>
+
+    <!-- Generated Files Section -->
+    <div v-if="generatedFiles.length > 0" class="generated-files-section">
+      <h3>Generated Files</h3>
+      <div class="file-list">
+        <div v-for="file in generatedFiles" :key="file.path" class="file-item">
+          <span class="file-icon">📄</span>
+          <span class="file-path">{{ file.path }}</span>
+          <span v-if="file.description" class="file-desc">{{ file.description }}</span>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="loadingFiles" class="generated-files-section">
+      <p class="loading-text">Loading generated files...</p>
     </div>
   </div>
 </template>
@@ -359,5 +395,56 @@ function run() {
   color: var(--text-primary);
   margin: 0;
   font-family: monospace;
+}
+
+.generated-files-section {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.generated-files-section h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 0.75rem 0;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  padding: 0.25rem 0;
+}
+
+.file-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.file-path {
+  font-family: monospace;
+  color: var(--text-primary);
+}
+
+.file-desc {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.loading-text {
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 </style>

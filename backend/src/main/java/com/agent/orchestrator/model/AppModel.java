@@ -15,17 +15,11 @@ public class AppModel {
     private String description;
     private String workspaceId;
     private AppType appType;
+    private String targetPath;
+    private String targetPathConflictAction;
 
     public AppModel() {
         this.appType = AppType.CUSTOM;
-    }
-
-    public AppModel(String id, String name, String description, String workspaceId, AppType appType) {
-        this.id = id;
-        this.name = name;
-        this.description = description;
-        this.workspaceId = workspaceId;
-        this.appType = appType != null ? appType : AppType.CUSTOM;
     }
 
     // Factory: create from WorkflowSchema
@@ -35,6 +29,8 @@ public class AppModel {
         model.setName(schema.getName());
         model.setDescription(schema.getDescription());
         model.setWorkspaceId(schema.getWorkspaceId());
+        model.setTargetPath(schema.getTargetPath());
+        model.setTargetPathConflictAction(schema.getTargetPathConflictAction());
         String appTypeStr = schema.getAppType();
         if (appTypeStr != null && !appTypeStr.isEmpty()) {
             try {
@@ -55,6 +51,8 @@ public class AppModel {
         schema.setDescription(this.description);
         schema.setWorkspaceId(this.workspaceId);
         schema.setAppType(this.appType != null ? this.appType.name() : AppType.CUSTOM.name());
+        schema.setTargetPath(this.targetPath);
+        schema.setTargetPathConflictAction(this.targetPathConflictAction);
         return schema;
     }
 
@@ -73,4 +71,10 @@ public class AppModel {
 
     public AppType getAppType() { return appType; }
     public void setAppType(AppType appType) { this.appType = appType; }
+
+    public String getTargetPath() { return targetPath; }
+    public void setTargetPath(String targetPath) { this.targetPath = targetPath; }
+
+    public String getTargetPathConflictAction() { return targetPathConflictAction; }
+    public void setTargetPathConflictAction(String targetPathConflictAction) { this.targetPathConflictAction = targetPathConflictAction; }
 }

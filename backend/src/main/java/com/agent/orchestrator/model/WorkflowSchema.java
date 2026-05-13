@@ -20,6 +20,8 @@ public class WorkflowSchema {
     private String createdAt;
     private String updatedAt;
     private String appType; // nullable, null => CUSTOM for backward compat
+    private String targetPath; // nullable, null means no app mode
+    private String targetPathConflictAction; // nullable, "CONTINUE" | "OVERWRITE" | "CHANGE_PATH"
     private Map<String, String> planningModels;
     private String planningOutline;
     private String planningRefinedPlan;
@@ -69,6 +71,12 @@ public class WorkflowSchema {
 
     public String getAppType() { return appType; }
     public void setAppType(String appType) { this.appType = appType; }
+
+    public String getTargetPath() { return targetPath; }
+    public void setTargetPath(String targetPath) { this.targetPath = targetPath; }
+
+    public String getTargetPathConflictAction() { return targetPathConflictAction; }
+    public void setTargetPathConflictAction(String targetPathConflictAction) { this.targetPathConflictAction = targetPathConflictAction; }
 
     public Map<String, String> getPlanningModels() { return planningModels; }
     public void setPlanningModels(Map<String, String> planningModels) { this.planningModels = planningModels; }

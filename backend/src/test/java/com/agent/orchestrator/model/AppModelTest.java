@@ -12,7 +12,12 @@ class AppModelTest {
 
     @Test
     void testGameAppTypeDefaultBehavior() {
-        AppModel app = new AppModel("1", "Test Game", "A game", "ws1", AppModel.AppType.GAME);
+        AppModel app = new AppModel();
+        app.setId("1");
+        app.setName("Test Game");
+        app.setDescription("A game");
+        app.setWorkspaceId("ws1");
+        app.setAppType(AppModel.AppType.GAME);
         assertEquals(AppModel.AppType.GAME, app.getAppType());
         assertEquals("GAME", app.toSchema().getAppType());
     }

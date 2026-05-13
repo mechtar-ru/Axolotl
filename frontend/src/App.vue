@@ -1,10 +1,16 @@
 <template>
-  <router-view />
-  <ToastContainer />
+  <div class="app-layout">
+    <NavBar />
+    <main class="app-main">
+      <router-view />
+    </main>
+    <ToastContainer />
+  </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue';
+import NavBar from './components/NavBar.vue';
 import ToastContainer from './components/ToastContainer.vue';
 import { useSettingsStore } from './stores/settingsStore';
 
@@ -169,6 +175,17 @@ body {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
+}
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-main {
+  flex: 1;
+  overflow: auto;
 }
 
 :root {

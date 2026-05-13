@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CodePackageRepository extends Neo4jRepository<CodePackage, Long> {
+public interface CodePackageRepository extends Neo4jRepository<CodePackage, String> {
     
     Optional<CodePackage> findByPath(String path);
     

@@ -1,0 +1,174 @@
+# .mindmodel/conventions.yaml
+# Coding conventions and style rules
+# AI agents MUST follow these conventions when writing code
+
+meta:
+  severity: error
+  note: "These are project-specific conventions, not general best practices. Follow them strictly."
+
+# ──────── BACKEND (Java) ────────
+
+backend:
+  naming:
+    classes: "PascalCase — WorkflowSchema, NodeExecutor, LlmService"
+    methods: "camelCase, verb-driven — getExecutionLevels(), findByName()"
+    variables: "camelCase — schemaId, nodeResult, providerName"
+    constants: "UPPER_SNAKE_CASE — MAX_CONTEXT_CHARS, MAX_SUBAGENT_DEPTH"
+    enums:
+      type: "PascalCase — TaskStatus, PlanLevel, ExecutionMode"
+      values: "UPPER_SNAKE_CASE — TODO, IN_PROGRESS, BLOCKED"
+    interfaces: "No 'I' prefix — LlmProvider (NOT ILlmProvider)"
+    packages: "com.agent.orchestrator.{controller,service,model,...}"
+    tests: "snake_case — getExecutionLevels_linearGraph, resolveProvider_ollama"
+
+  project_structure:
+    package_base: "com.agent.orchestrator"
+    packages:
+      - ".controller"    # REST endpoints
+      - ".service"       # Business logic
+      - ".model"         # Domain POJOs
+      - ".config"        # Spring config, Security, JWT, WebSocket
+      - ".llm"           # LLM providers (interface + implementations)
+      - ".mcp"           # MCP/JSON-RPC server
+      - ".graph"         # Neo4j integration (repository, model, loader, etc.)
+      - ".graph.repository"
+      - ".graph.model"
+      - ".graph.loader"
+      - ".graph.hasher"
+      - ".graph.context"
+      - ".graph.search"
+      - ".graph.api"
+      - ".graph.mcp"
+      - ".graph.config"
+      - ".graph.metrics"
+      - ".graph.scheduler"
+      - ".repository"    # SQLite repositories
+      - ".websocket"     # WebSocket handler
+      - ".client"        # External clients
+
+  formatting:
+    indentation: "4 spaces (NO tabs)"
+    braces: "Opening brace on same line (K&R style)"
+    line_length: "No hard limit, but prefer under 120 chars"
+
+  dependency_injection:
+    method: "Constructor injection"
+    rules:
+      - "NO @Autowired on fields"
+      - "NO field injection"
+      - "Single constructor (implicit @Autowired) or explicit constructor"
+      - "Example: public SchemaService(RepoA a, ServiceB b) { ... }"
+
+  logging:
+    declaration: 'private static final Logger log = LoggerFactory.getLogger(ClassName.class);'
+    format: "SLF4J placeholder {} — NO string concatenation"
+    language: "Russian — all log messages, error strings in Russian"
+    examples:
+      - 'log.error("Провайдер LLM не найден: {}", providerName);'
+      - 'log.info("WebSocket подключен для схемы: {}", schemaId);'
+      - 'log.warn("JWT secret is not set — generated random secret.");'
+
+  comments:
+    language: "Russian for implementation comments, English for Javadoc"
+    section_separators: "// ──────── SECTION NAME ────────"
+    javadoc: "English (for interface contracts)"
+
+  model_pattern:
+    description: "POJOs with explicit getters/setters"
+    rules:
+      - "NO Lombok — write explicit getters and setters"
+      - "Inner static classes for nested data (Position, NodeData, EdgeCondition)"
+      - "Enum inner types with @JsonCreator/@JsonValue for custom serialization"
+      - "TextBlock for multi-line strings (SQL, JSON schemas)"
+
+  sql:
+    style: "Raw JDBC with TextBlock (\"\"\"...\"\"\")"
+    db: "SQLite"
+    connection: "DriverManager.getConnection()"
+    examples:
+      - |
+        String sql = """
+            SELECT * FROM schemas
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+        """;
+
+  llm_provider_pattern:
+    description: "Strategy pattern via LlmProvider interface"
+    rules:
+      - "All implementations in com.agent.orchestrator.llm"
+      - "Use java.net.http.HttpClient (NOT RestTemplate)"
+      - "String-based error returns instead of exceptions"
+      - "Component annotation for auto-discovery"
+
+# ──────── FRONTEND (Vue/TypeScript) ────────
+
+frontend:
+  component_naming:
+    components: "PascalCase.vue — AgentNode.vue, BlueprintView.vue"
+    composables: "camelCase with use* prefix — useWebSocket, useToast"
+    stores: "camelCase with use*Store — useSchemaStore, useAuthStore"
+    types: "PascalCase interfaces — WorkflowSchema, FlowNode, FlowEdge"
+
+  vue_conventions:
+    script_setup: "<script setup lang=\"ts\"> — ALWAYS, never Options API"
+    composition_api: "ref(), computed(), watch() from Vue"
+    props: "defineProps<T>() with TypeScript generics"
+    emits: "defineEmits<{ (e: 'update', val: T): void }>()"
+
+  pinia_stores:
+    pattern: "Setup stores (function-based defineStore)"
+    rules:
+      - "defineStore('name', () => { const x = ref(); return { x }; })"
+      - "Return all public state/computed/actions explicitly"
+      - "Access via storeToRefs() for destructuring"
+      - "Reactive: ref() for primitives, reactive() for complex objects"
+
+  imports:
+    order:
+      - "External libraries first (vue, pinia, axios, @vue-flow)"
+      - "Internal @/ aliases (@/stores/, @/types/, @/components/)"
+      - "Relative imports last (../nodes/SourceNode)"
+    type_imports: "import type { ... } for type-only imports"
+    path_alias: "@/ maps to src/"
+
+  api_layer:
+    pattern: "Centralized Axios instance + domain-specific modules"
+    file: "services/api.ts"
+    structure:
+      - "Single api = axios.create({ baseURL, headers })"
+      - "Request interceptor: JWT token attach"
+      - "Response interceptor: 401 → clear auth → redirect /login"
+      - "Export domain modules: schemaApi, agentApi, authApi, etc."
+
+  routing:
+    pattern: "createRouter + createWebHistory"
+    lazy_loading: "() => import('@/views/SomeView.vue')"
+    auth_guard: "meta: { requiresAuth: true } + router.beforeEach"
+
+  component_structure:
+    custom_nodes: "VueFlow custom nodes via nodeTypes prop"
+    patterns:
+      - "<Handle> from @vue-flow/core for connection points"
+      - "useVueFlow() for canvas operations"
+      - "watch() + nextTick() for async data loading"
+
+  state_management_notes:
+    - "Pinia stores hold API data (schemas, auth, settings)"
+    - "WebSocket state managed via composable (useWebSocket)"
+    - "Toast/composable for UI state"
+
+  error_messages:
+    language: "Russian"
+    examples:
+      - 'console.error("Ошибка загрузки схем:", error);'
+      - 'console.error("Ошибка создания схемы:", error);'
+
+  testing:
+    framework: "Vitest + Vue Test Utils"
+    file_location: "__tests__/ directory next to component"
+    patterns:
+      - "describe/it blocks"
+      - "mount() or shallowMount() from VTU"
+      - "vi.mock() for module mocking"
+      - "snake_case test method names"

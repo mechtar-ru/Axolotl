@@ -1,0 +1,248 @@
+# .mindmodel/patterns.yaml
+# Design patterns, architecture patterns, and code structure conventions
+# AI agents MUST follow these patterns when generating code
+
+meta:
+  severity: warning
+  note: "These patterns are derived from actual codebase structure. Follow them to maintain consistency."
+
+# ──────── BACKEND ARCHITECTURE ────────
+
+backend:
+  layer_pattern:
+    description: "Controller → Service → Repository layered architecture"
+    flow: |
+      REST Controller → Service (business logic) → Repository (data access)
+    rules:
+      - "Controllers are thin — delegate to services"
+      - "Services contain business logic and orchestration"
+      - "Repositories handle data access (SQLite or Neo4j)"
+      - "No business logic in controllers or repositories"
+
+  llm_strategy_pattern:
+    description: "Strategy pattern for LLM provider selection"
+    participants:
+      interface: "LlmProvider (com.agent.orchestrator.llm)"
+      context: "LlmService — routes requests by provider name"
+      implementations:
+        - "OllamaProvider"
+        - "OpenAiProvider"
+        - "AnthropicProvider"
+        - "DeepSeekProvider"
+        - "CustomLlmProvider"
+        - "RlmProvider"
+        - "SpringAiLlmProvider"
+        - "OpencodeZenProvider"
+    rules:
+      - "New providers MUST implement LlmProvider interface"
+      - "Register via @Component for auto-discovery by LlmService"
+      - "LlmService resolves provider based on model name prefix"
+
+  node_execution_pattern:
+    description: "Visitor/Strategy pattern for node type execution"
+    class: "NodeExecutor"
+    method: "execute(Node node, ...) — switch on node type"
+    node_types_handled:
+      source: "Provide input data"
+      agent: "Call LLM with context and tools"
+      output: "Format and deliver result"
+      condition: "Evaluate branching condition"
+      transform: "Apply data transformations"
+      loop: "Iterate with max iteration limit"
+      memory: "Read/write MemPalace"
+      guardrail: "Validate/transform data"
+      human: "Wait for user confirmation"
+      fallback: "Execute fallback on error"
+      subagent: "Recursively execute nested schema"
+      schemabuilder: "Generate dynamic schema from prompt"
+      group: "NOP — visual container"
+      comment: "NOP — visual annotation"
+      webhook: "Trigger external endpoint"
+      schedule: "Scheduled execution trigger"
+    notes:
+      - "Returns String (result), not exceptions for LLM calls"
+      - "Variable interpolation via {{input}}, {{prev_result}}, {{node:Name}}"
+
+  websocket_events:
+    description: "Observer pattern for real-time execution updates"
+    handler: "ExecutionWebSocketHandler (TextWebSocketHandler)"
+    event_types:
+      - progress: "{ schemaId, nodeId, status, progress, message }"
+      - result: "{ schemaId, nodeId, result }"
+      - error: "{ schemaId, nodeId, error }"
+      - complete: "{ schemaId, totalTime, nodesCompleted }"
+      - metrics: "{ schemaId, totalNodes, completedNodes, elapsedTime, nodesPerSecond }"
+      - log: "raw message string"
+      - token: "{ schemaId, nodeId, token }"
+      - wave: "{ waveNumber, nodeIds, status }"
+      - toolCall: "{ schemaId, nodeId, toolName, args, durationMs, success, result }"
+      - iteration: "{ schemaId, nodeId, iteration, durationMs, toolCalls, predictCalls }"
+      - trajectoryComplete: "{ schemaId, nodeId, totalIterations, totalTimeMs, ... }"
+      - step: "{ schemaId, stepIndex, blockId, blockType, label, status, details, duration }"
+      - liveUpdate: "{ schemaId, appType, payload }"
+    session_management:
+      - "Session map per schemaId"
+      - "Thread-safe via CopyOnWriteArrayList"
+      - "ReentrantLock per schema for send operations"
+
+  mcp_pattern:
+    description: "JSON-RPC 2.0 protocol server for MCP tools"
+    package: "com.agent.orchestrator.mcp"
+    classes:
+      - "PlanMcpServer — MCP server implementation"
+      - "PlanTools — tool definitions (add_task, read_plan, update_task_status, etc.)"
+    protocol: "JSON-RPC 2.0"
+    transport: "HTTP POST to /mcp"
+
+  security_pattern:
+    description: "JWT filter chain with OncePerRequestFilter"
+    components:
+      - "SecurityConfig — SecurityFilterChain with permitAll/auth rules"
+      - "JwtAuthFilter — OncePerRequestFilter, extracts token → sets SecurityContext"
+      - "JwtUtil — Token generation/validation (JJWT 0.12.3)"
+    flow:
+      - "JwtAuthFilter.shouldNotFilter() checks public paths"
+      - "JwtAuthFilter.doFilterInternal() parses Bearer token"
+      - "Sets UsernamePasswordAuthenticationToken in SecurityContextHolder"
+      - "SecurityConfig.authorizeHttpRequests() handles 403 for unauthenticated"
+
+  wave_execution:
+    description: "Kahn topological sort → CompletableFuture parallel execution"
+    class: "SchemaService"
+    method: "executeSchema()"
+    steps:
+      - "Build adjacency graph from edges"
+      - "Kahn's algorithm → compute wave levels (topological order)"
+      - "Each wave: all nodes executed in parallel via CompletableFuture"
+      - "Subscribe to previous wave completions before starting next"
+      - "WebSocket events for each node status change"
+    error_handling:
+      - "Node failure counts tracked per execution"
+      - "MAX_NODE_RESTARTS (3) consecutive errors → BLOCKED"
+      - "Cancellation via AtomicBoolean flag"
+
+  dual_database:
+    description: "SQLite for operational CRUD + Neo4j for graph queries"
+    sqlite:
+      purpose: "Operational CRUD: schemas, plans, endpoints, auth"
+      access: "Raw JDBC (DriverManager.getConnection)"
+      repositories: "com.agent.orchestrator.repository.*"
+    neo4j:
+      purpose: "Graph queries, codebase analysis, AI features"
+      access: "Spring Data Neo4j + direct Driver"
+      repositories: "com.agent.orchestrator.graph.repository.*"
+    rules:
+      - "Operational writes go to SQLite"
+      - "Graph queries for analysis go to Neo4j"
+      - "Data may be mirrored (SQLite primary, Neo4j for analysis)"
+
+  error_handling:
+    description: "String-based error returns in LLM providers, try-catch with log"
+    pattern: |
+      try {
+          // LLM call
+          return result;
+      } catch (Exception e) {
+          log.error("Ошибка: {}", e.getMessage());
+          return "Error: " + e.getMessage();
+      }
+    rules:
+      - "LLM providers return error Strings, NOT throw exceptions"
+      - "Service layer wraps LLM errors in meaningful messages"
+      - "log.error() with {} placeholders"
+      - "Critical: 3 consecutive failures → BLOCKED status"
+
+# ──────── FRONTEND ARCHITECTURE ────────
+
+frontend:
+  spa_pattern:
+    description: "Single-page application with Vue Router lazy-loaded views"
+    views:
+      - "/login → LoginView (public)"
+      - "/ → DashboardView (auth)"
+      - "/app/:id → StudioView (auth)"
+      - "/settings → SettingsView (auth)"
+      - "/about → AboutView (public)"
+
+  pinia_setup_store:
+    description: "Setup function pattern for Pinia stores"
+    template: |
+      import { defineStore } from 'pinia';
+      import { ref, computed } from 'vue';
+
+      export const useXStore = defineStore('x', () => {
+        const state = ref<Type>(initialValue);
+        const derived = computed(() => state.value.toUpperCase());
+
+        async function action() {
+          // ...
+        }
+
+        return { state, derived, action };
+      });
+    examples:
+      - "useSchemaStore — schema CRUD operations"
+      - "useAuthStore — JWT token, login/register/logout"
+      - "usePanelStore — UI panel state"
+      - "useSettingsStore — app settings, theme"
+      - "useExecutionStore — execution tracking"
+
+  centralized_api:
+    description: "Axios singleton with JWT interceptor + domain modules"
+    template: |
+      import axios from 'axios';
+      export const api = axios.create({ baseURL, headers });
+
+      api.interceptors.request.use(config => {
+        config.headers.Authorization = `Bearer ${localStorage.getItem('token')}`;
+        return config;
+      });
+
+      export const schemaApi = {
+        async getSchemas(): Promise<WorkflowSchema[]> { ... },
+        async createSchema(schema): Promise<WorkflowSchema> { ... },
+      };
+
+  composable_pattern:
+    description: "Reusable stateful logic via composable functions"
+    examples:
+      - "useWebSocket — WebSocket connection, event dispatch, auto-reconnect"
+      - "useToast — toast notification management"
+      - "useElectron — Electron IPC bridge"
+      - "useExecutionState — execution status tracking"
+    rules:
+      - "Composables return refs (not plain values)"
+      - "Side effects in composables (event listeners, timers) cleaned in onUnmounted"
+      - "Composables may accept config parameters"
+
+  vueflow_custom_node:
+    description: "VueFlow custom node components"
+    template: |
+      <template>
+        <div class="node" :class="statusClass">
+          <Handle type="target" :position="Position.Top" />
+          <div class="node-header">{{ data.label }}</div>
+          <div class="node-content">
+            <!-- node-specific UI -->
+          </div>
+          <Handle type="source" :position="Position.Bottom" />
+        </div>
+      </template>
+      <script setup lang="ts">
+      import { Handle, Position, useNode } from '@vue-flow/core';
+      const props = defineProps<{ id: string; data: any; selected: boolean }>();
+      </script>
+    rules:
+      - "Register in BlueprintView via nodeTypes object"
+      - "Use <Handle> for connection points"
+      - "Status classes: node-running, node-completed, node-failed"
+
+  electron_pattern:
+    description: "Main/preload/contextBridge architecture"
+    files:
+      - "electron/main.ts — BrowserWindow, tray, menu, IPC"
+      - "electron/preload.ts — contextBridge.exposeInMainWorld"
+      - "frontend/src/composables/useElectron.ts — renderer bridge"
+    rules:
+      - "All Node.js APIs exposed via contextBridge (NOT direct require in renderer)"
+      - "IPC channels for native features (file dialogs, notifications, updates)"

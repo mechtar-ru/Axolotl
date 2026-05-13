@@ -1,0 +1,444 @@
+# .mindmodel/examples/frontend-stores.yaml
+# Real code examples from the Axolotl frontend
+# Use these as reference when writing new frontend code
+
+meta:
+  note: "All examples are extracted from actual project files. Follow the same patterns."
+
+# ──────── PINIA SETUP STORE ────────
+
+- title: "useSchemaStore — Pinia setup store with CRUD operations"
+  source: "frontend/src/stores/schemaStore.ts"
+  code: |
+    import { defineStore } from 'pinia';
+    import { ref } from 'vue';
+    import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
+    import { schemaApi, settingsApi } from '../services/api';
+
+    export const useSchemaStore = defineStore('schema', () => {
+      const schemas = ref<WorkflowSchema[]>([]);
+      const currentSchema = ref<WorkflowSchema | null>(null);
+      const loading = ref(false);
+
+      async function loadSchemas() {
+        loading.value = true;
+        try {
+          const data = await schemaApi.getSchemas();
+          schemas.value = data;
+          if (schemas.value.length > 0 && !currentSchema.value) {
+            currentSchema.value = schemas.value[0]!;
+          }
+        } catch (error) {
+          console.error('Ошибка загрузки схем:', error);
+        } finally {
+          loading.value = false;
+        }
+      }
+
+      async function createSchema(name: string, appType?: string) {
+        let defaultModel: string | undefined;
+        try {
+          defaultModel = await settingsApi.getUserDefaultModel();
+          if (!defaultModel) defaultModel = undefined;
+        } catch {}
+
+        const newSchema = {
+          id: `new-${Date.now()}`,
+          name,
+          description: '',
+          version: '1.0',
+          appType: appType || 'CUSTOM',
+          nodes: [],
+          edges: [],
+          defaultModel,
+          createdAt: new Date().toISOString(),
+        } as WorkflowSchema;
+        try {
+          const created = await schemaApi.createSchema(newSchema);
+          schemas.value.push(created);
+          currentSchema.value = created;
+          return created;
+        } catch (error) {
+          console.error('Ошибка создания схемы:', error);
+          throw error;
+        }
+      }
+
+      async function updateSchema(schema: WorkflowSchema) {
+        try {
+          const updated = await schemaApi.updateSchema(schema.id, schema);
+          const index = schemas.value.findIndex(s => s.id === schema.id);
+          if (index !== -1) { schemas.value[index] = updated; }
+          if (currentSchema.value?.id === schema.id) {
+            currentSchema.value = updated;
+          }
+          return updated;
+        } catch (error) {
+          console.error('Ошибка обновления схемы:', error);
+          throw error;
+        }
+      }
+
+      return {
+        schemas, currentSchema, loading,
+        loadSchemas, createSchema, updateSchema,
+      };
+    });
+  patterns:
+    - "defineStore with setup function (NOT options object)"
+    - "ref() for reactive state"
+    - "async/await with try/catch"
+    - "Russian error messages"
+    - "Return all public refs and functions"
+
+# ──────── AUTH STORE WITH COMPUTED ────────
+
+- title: "useAuthStore — authentication state with computed properties"
+  source: "frontend/src/stores/authStore.ts"
+  code: |
+    import { defineStore } from 'pinia';
+    import { ref, computed } from 'vue';
+    import axios from 'axios';
+
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+
+    export const useAuthStore = defineStore('auth', () => {
+      const token = ref<string | null>(localStorage.getItem('axolotl_token'));
+      const username = ref<string | null>(localStorage.getItem('axolotl_username'));
+      const role = ref<string | null>(localStorage.getItem('axolotl_role'));
+
+      const isAuthenticated = computed(() => !!token.value);
+      const isAdmin = computed(() => role.value === 'admin');
+
+      function setAuth(data: { token: string; username: string; role: string }) {
+        token.value = data.token;
+        username.value = data.username;
+        role.value = data.role;
+        localStorage.setItem('axolotl_token', data.token);
+        localStorage.setItem('axolotl_username', data.username);
+        localStorage.setItem('axolotl_role', data.role);
+      }
+
+      function logout() {
+        token.value = null;
+        username.value = null;
+        role.value = null;
+        localStorage.removeItem('axolotl_token');
+        localStorage.removeItem('axolotl_username');
+        localStorage.removeItem('axolotl_role');
+      }
+
+      async function login(user: string, password: string) {
+        const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+          username: user, password,
+        });
+        if (response.data.error) throw new Error(response.data.error);
+        setAuth(response.data);
+        return response.data;
+      }
+
+      return {
+        token, username, role,
+        isAuthenticated, isAdmin,
+        login, register, logout, getAuthHeaders,
+      };
+    });
+  patterns:
+    - "computed() for derived state (isAuthenticated, isAdmin)"
+    - "ref() for localStorage-backed state"
+    - "Direct axios call for login/register"
+    - "All public state returned"
+
+# ──────── COMPOSABLE WITH WEBSOCKET ────────
+
+- title: "useWebSocket — composable with event dispatch and auto-reconnect"
+  source: "frontend/src/composables/useWebSocket.ts"
+  code: |
+    import { ref, onUnmounted, readonly } from 'vue';
+
+    export interface WebSocketCallbacks {
+      onProgress: (data: { schemaId: string; nodeId: string; status: string; progress: number; message: string }) => void;
+      onResult: (data: { schemaId: string; nodeId: string; result: any }) => void;
+      onError: (data: { schemaId: string; nodeId: string; error: string }) => void;
+      onComplete: (data: { schemaId: string; totalTime: number; nodesCompleted: number }) => void;
+      onMetrics?: (data: any) => void;
+      onToken?: (data: { schemaId: string; nodeId: string; token: string }) => void;
+      onWave?: (data: { waveNumber: number; nodeIds: string[]; status: string }) => void;
+      onToolCall?: (data: any) => void;
+      onIteration?: (data: any) => void;
+    }
+
+    export function useWebSocket() {
+      const ws = ref<WebSocket | null>(null);
+      const isConnected = ref(false);
+      const reconnectAttempts = ref(0);
+      const maxReconnectAttempts = 5;
+      const reconnectInterval = 3000;
+      let reconnectTimeout: number | null = null;
+      let currentSchemaId: string | null = null;
+      let callbacks: WebSocketCallbacks | null = null;
+
+      const connect = (schemaId: string, wsCallbacks: WebSocketCallbacks) => {
+        try {
+          currentSchemaId = schemaId;
+          callbacks = wsCallbacks;
+          if (ws.value) { ws.value.close(); }
+
+          const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/execution';
+          const url = `${WS_URL}?schemaId=${schemaId}`;
+          ws.value = new WebSocket(url);
+
+          ws.value.onopen = () => {
+            isConnected.value = true;
+            reconnectAttempts.value = 0;
+          };
+
+          ws.value.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              switch (data.type) {
+                case 'progress': callbacks?.onProgress(data); break;
+                case 'result':   callbacks?.onResult(data); break;
+                case 'error':    callbacks?.onError(data); break;
+                case 'complete': callbacks?.onComplete(data); break;
+                case 'metrics':  callbacks?.onMetrics?.(data); break;
+                case 'token':    callbacks?.onToken?.(data); break;
+                case 'wave':     callbacks?.onWave?.(data); break;
+                case 'toolCall': callbacks?.onToolCall?.(data); break;
+                case 'iteration': callbacks?.onIteration?.(data); break;
+              }
+            } catch (e) { /* ignore parse errors */ }
+          };
+
+          ws.value.onclose = () => {
+            isConnected.value = false;
+            // Auto-reconnect logic
+          };
+
+        } catch (error) {
+          console.error('WebSocket connection error:', error);
+        }
+      };
+
+      const disconnect = () => {
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
+        if (ws.value) { ws.value.close(); ws.value = null; }
+        isConnected.value = false;
+      };
+
+      onUnmounted(disconnect);
+
+      return { isConnected, reconnectAttempts, connect, disconnect };
+    }
+  patterns:
+    - "Composable function (use*)"
+    - "ref() for reactive state, readonly() for public exposure"
+    - "onUnmounted() cleanup"
+    - "Event-type dispatch via switch/case"
+    - "Auto-reconnect with exponential backoff"
+
+# ──────── CENTRALIZED API LAYER ────────
+
+- title: "Axios singleton with JWT interceptor and domain modules"
+  source: "frontend/src/services/api.ts"
+  code: |
+    import axios from 'axios';
+    import type { WorkflowSchema, Agent, ExecutionMode } from '../types';
+
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+
+    export const api = axios.create({
+      baseURL: API_BASE_URL,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    // Auto-attach JWT token to all requests
+    api.interceptors.request.use((config) => {
+      const token = localStorage.getItem('axolotl_token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    });
+
+    // On 401, clear auth state and redirect to login
+    api.interceptors.response.use(
+      (response) => response,
+      async (error) => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem('axolotl_token');
+          localStorage.removeItem('axolotl_username');
+          localStorage.removeItem('axolotl_role');
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    export const schemaApi = {
+      async getSchemas(): Promise<WorkflowSchema[]> {
+        const response = await api.get('/schemas');
+        return response.data;
+      },
+
+      async getSchema(id: string): Promise<WorkflowSchema> {
+        const response = await api.get(`/schemas/${id}`);
+        return response.data;
+      },
+
+      async createSchema(schema: WorkflowSchema): Promise<WorkflowSchema> {
+        const response = await api.post('/schemas', schema);
+        return response.data;
+      },
+
+      async updateSchema(id: string, schema: WorkflowSchema): Promise<WorkflowSchema> {
+        const response = await api.put(`/schemas/${id}`, schema);
+        return response.data;
+      },
+
+      async deleteSchema(id: string): Promise<void> {
+        await api.delete(`/schemas/${id}`);
+      },
+    };
+
+    export const agentApi = {
+      async getAgents(): Promise<Agent[]> {
+        const response = await api.get('/agents');
+        return response.data;
+      },
+      async createAgent(agent: Agent): Promise<Agent> {
+        const response = await api.post('/agents', agent);
+        return response.data;
+      },
+    };
+  patterns:
+    - "Single axios.create() instance"
+    - "Request interceptor for JWT"
+    - "Response interceptor for 401 redirect"
+    - "Domain-specific API modules (schemaApi, agentApi)"
+    - "TypeScript generics for return types"
+
+# ──────── VUEFLOW CUSTOM NODE ────────
+
+- title: "BlueprintView — VueFlow integration with custom node types"
+  source: "frontend/src/components/studio/BlueprintView.vue"
+  code: |
+    <script setup lang="ts">
+    import { ref, onMounted, watch, nextTick } from 'vue'
+    import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
+    import { Background, BackgroundVariant } from '@vue-flow/background'
+    import { Controls } from '@vue-flow/controls'
+    import { MiniMap } from '@vue-flow/minimap'
+    import { useSchemaStore } from '@/stores/schemaStore'
+    import type { FlowNode, FlowEdge } from '@/types'
+
+    import ReceiveBlock from '@/components/blocks/ReceiveBlock.vue'
+    import ThinkBlock from '@/components/blocks/ThinkBlock.vue'
+    import RememberBlock from '@/components/blocks/RememberBlock.vue'
+    import ActBlock from '@/components/blocks/ActBlock.vue'
+
+    const schemaStore = useSchemaStore()
+
+    const nodeTypes = {
+      source: ReceiveBlock,
+      agent: ThinkBlock,
+      memory: RememberBlock,
+      output: ActBlock,
+    }
+
+    const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView } = useVueFlow({ id: 'blueprint-flow' })
+
+    function buildVueFlowNodes(schema: any): Node[] {
+      if (!schema.nodes) return []
+      return schema.nodes.map((n: FlowNode) => ({
+        id: n.id,
+        type: n.type || 'agent',
+        position: n.position || { x: 100, y: 200 },
+        data: { label: n.name, type: n.type, config: n.data, status: n.status }
+      }))
+    }
+
+    function buildVueFlowEdges(schema: any): Edge[] {
+      if (!schema.edges) return []
+      return schema.edges.map((e: FlowEdge) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        type: 'smoothstep',
+        markerEnd: { type: MarkerType.ArrowClosed }
+      }))
+    }
+
+    onMounted(() => {
+      const schema = schemaStore.schemas.find(s => s.id === props.appId)
+      if (schema) {
+        addNodes(buildVueFlowNodes(schema))
+        addEdges(buildVueFlowEdges(schema))
+      }
+      nextTick(() => fitView({ padding: 0.2 }))
+    })
+    </script>
+  patterns:
+    - "<script setup lang=\"ts\">"
+    - "Custom nodeTypes map with block components"
+    - "useVueFlow() for canvas operations"
+    - "addNodes/addEdges for mutations"
+    - "nextTick() + fitView() for initial layout"
+    - "watch() for async schema loading"
+
+# ──────── ROUTER DEFINITION ────────
+
+- title: "Vue Router with lazy loading and auth guard"
+  source: "frontend/src/router/index.ts"
+  code: |
+    import { createRouter, createWebHistory } from 'vue-router'
+    import DashboardView from '@/views/DashboardView.vue'
+
+    const router = createRouter({
+      history: createWebHistory(import.meta.env.BASE_URL),
+      routes: [
+        {
+          path: '/login',
+          name: 'login',
+          component: () => import('@/views/LoginView.vue'),
+        },
+        {
+          path: '/',
+          name: 'dashboard',
+          component: DashboardView,
+          meta: { requiresAuth: true },
+        },
+        {
+          path: '/app/:id',
+          name: 'studio',
+          component: () => import('@/views/StudioView.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
+          path: '/settings',
+          name: 'settings',
+          component: () => import('@/views/SettingsView.vue'),
+          meta: { requiresAuth: true },
+        },
+        {
+          path: '/about',
+          name: 'about',
+          component: () => import('@/views/AboutView.vue'),
+        },
+      ],
+    })
+
+    router.beforeEach((to, _from) => {
+      const token = localStorage.getItem('axolotl_token');
+      if (to.meta.requiresAuth && !token) return { name: 'login' };
+      if (to.name === 'login' && token) return { name: 'dashboard' };
+    })
+
+    export default router
+  patterns:
+    - "createWebHistory() for clean URLs"
+    - "Lazy-loaded routes via () => import()"
+    - "meta.requiresAuth for protected routes"
+    - "router.beforeEach() navigation guard"

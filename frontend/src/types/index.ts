@@ -82,6 +82,11 @@ export interface FlowEdge {
   type: 'data' | 'control' | 'condition';
 }
 
+export interface GeneratedFile {
+  path: string;
+  description: string;
+}
+
 export interface WorkflowSchema {
   id: string;
   name: string;
@@ -98,6 +103,8 @@ export interface WorkflowSchema {
   createdAt?: string;
   updatedAt?: string;
   appType?: string;
+  targetPath?: string;
+  targetPathConflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';
 }
 
 export interface PlanningModels {

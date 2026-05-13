@@ -26,13 +26,14 @@ class NodeExecutorTest {
     @Mock TransformService transformService;
     @Mock Neo4jSchemaRepository schemaRepository;
     @Mock PlanService planService;
+    @Mock ProjectContextBuilder projectContextBuilder;
 
     NodeExecutor nodeExecutor;
 
     @BeforeEach
     void setUp() {
         nodeExecutor = new NodeExecutor(llmService, webSocketHandler, memPalaceClient,
-                toolExecutor, transformService, schemaRepository, planService);
+                toolExecutor, transformService, schemaRepository, planService, projectContextBuilder);
     }
 
     // === Command Sanitization ===

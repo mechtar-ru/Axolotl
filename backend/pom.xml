@@ -13,7 +13,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
+        <version>3.3.13</version>
     </parent>
     
     <properties>
@@ -72,11 +72,10 @@
             <version>2.3.0</version>
         </dependency>
         
-        <!-- Micrometer Prometheus for metrics -->
+        <!-- Micrometer Prometheus for metrics (version managed by Spring Boot parent) -->
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
-            <version>1.12.0</version>
         </dependency>
         
         <!-- Resilience4j for circuit breakers -->

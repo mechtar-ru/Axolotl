@@ -24,6 +24,7 @@ public class Task {
     private List<Boolean> acceptanceCriteriaMet = new ArrayList<>();
     private Instant createdAt;
     private Instant updatedAt;
+    private List<GeneratedFile> generatedFiles = new ArrayList<>();
 
     public Task() {
         this.id = UUID.randomUUID().toString();
@@ -78,6 +79,27 @@ public class Task {
 
     public List<Boolean> getAcceptanceCriteriaMet() { return acceptanceCriteriaMet; }
     public void setAcceptanceCriteriaMet(List<Boolean> acceptanceCriteriaMet) { this.acceptanceCriteriaMet = acceptanceCriteriaMet; }
+
+    public List<GeneratedFile> getGeneratedFiles() { return generatedFiles; }
+    public void setGeneratedFiles(List<GeneratedFile> generatedFiles) { this.generatedFiles = generatedFiles; }
+
+    public static class GeneratedFile {
+        private String path;
+        private String description;
+
+        public GeneratedFile() {}
+
+        public GeneratedFile(String path, String description) {
+            this.path = path;
+            this.description = description;
+        }
+
+        public String getPath() { return path; }
+        public void setPath(String path) { this.path = path; }
+
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+    }
 
     public void touch() {
         this.updatedAt = Instant.now();

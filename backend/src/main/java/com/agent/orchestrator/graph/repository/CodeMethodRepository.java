@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CodeMethodRepository extends Neo4jRepository<CodeMethod, Long> {
+public interface CodeMethodRepository extends Neo4jRepository<CodeMethod, String> {
     
     Optional<CodeMethod> findBySignature(String signature);
     

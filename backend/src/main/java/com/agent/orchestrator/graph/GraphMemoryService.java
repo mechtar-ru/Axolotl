@@ -54,7 +54,7 @@ public class GraphMemoryService {
     }
     
     @Transactional
-    public void linkDecisionToClass(Long decisionId, String classQualifiedName) {
+    public void linkDecisionToClass(String decisionId, String classQualifiedName) {
         Decision decision = decisionRepo.findById(decisionId)
                 .orElseThrow(() -> new IllegalArgumentException("Decision not found: " + decisionId));
         CodeClass clazz = classRepo.findByQualifiedName(classQualifiedName)
@@ -70,7 +70,7 @@ public class GraphMemoryService {
     }
     
     @Transactional
-    public void linkDecisionToDecision(Long fromId, Long toId) {
+    public void linkDecisionToDecision(String fromId, String toId) {
         Decision from = decisionRepo.findById(fromId).orElse(null);
         Decision to = decisionRepo.findById(toId).orElse(null);
         

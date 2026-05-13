@@ -31,6 +31,8 @@ spring:
       password: ${NEO4J_PASSWORD:neo4j}
 
 axolotl:
+  apps:
+    base-path: ${AXOLOTL_APPS_PATH:/Users/evgenijtihomirov/git/Axolotl}
   db:
     path: ${AXOLOTL_DB_PATH:schema.db}
   jwt:

@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.ToolPermission;
+import com.agent.orchestrator.model.Task;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
@@ -39,6 +40,7 @@ public class SchemaService {
     private final NodeExecutor nodeExecutor;
     private final SchemaExporter schemaExporter;
     private final LlmService llmService;
+    private final PlanService planService;
 
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
@@ -57,7 +59,8 @@ public class SchemaService {
             MetricsService metricsService,
             NodeExecutor nodeExecutor,
             SchemaExporter schemaExporter,
-            LlmService llmService) {
+            LlmService llmService,
+            PlanService planService) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -66,6 +69,7 @@ public class SchemaService {
         this.nodeExecutor = nodeExecutor;
         this.schemaExporter = schemaExporter;
         this.llmService = llmService;
+        this.planService = planService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -287,6 +291,24 @@ public class SchemaService {
             webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName(), null);
         }
 
+        // Создаём задачу в плане, если схема с targetPath (режим приложения)
+        Task executionTask = null;
+        if (schema.getTargetPath() != null && !schema.getTargetPath().isBlank()) {
+            try {
+                String wsId = schema.getWorkspaceId() != null ? schema.getWorkspaceId() : "default";
+                executionTask = planService.createTaskForExecution(
+                        wsId, schema.getId(), schema.getName());
+                log.info("Создана задача выполнения для схемы с targetPath: {} (taskId={})",
+                        schema.getTargetPath(), executionTask.getId());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schema.getId(), "info",
+                            "Создана задача отслеживания выполнения", null);
+                }
+            } catch (Exception e) {
+                log.warn("Не удалось создать задачу выполнения: {}", e.getMessage());
+            }
+        }
+
         List<List<Node>> levels = getExecutionLevels(schema);
         Set<String> skippedNodes = computeSkippedNodes(schema, conditionResults);
 
@@ -404,6 +426,26 @@ public class SchemaService {
                 webSocketHandler.sendLiveUpdate(schema.getId(), "CUSTOM", payload);
             }
             log.info("Выполнение схемы завершено: {} ({}мс, {}/{} узлов)", schema.getName(), totalTime, nodesCompleted, totalNodes);
+
+            // Завершаем задачу в плане, если была создана (схема с targetPath)
+            if (executionTask != null) {
+                try {
+                    List<Task.GeneratedFile> generatedFiles = new ArrayList<>();
+                    String prefix = schema.getId() + ":";
+                    for (java.util.Map.Entry<String, String> entry : nodeExecutor.getOutputFileRegistry().entrySet()) {
+                        if (entry.getKey().startsWith(prefix)) {
+                            generatedFiles.add(new Task.GeneratedFile(entry.getValue(),
+                                    "Сгенерированный файл из узла " + entry.getKey().substring(prefix.length())));
+                        }
+                    }
+                    String wsId = schema.getWorkspaceId() != null ? schema.getWorkspaceId() : "default";
+                    planService.completeTaskForExecution(executionTask.getId(), wsId, generatedFiles);
+                    log.info("Задача выполнения завершена: {} ({} файлов)", executionTask.getId(), generatedFiles.size());
+                } catch (Exception e) {
+                    log.warn("Не удалось завершить задачу выполнения: {}", e.getMessage());
+                }
+            }
+
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
         }
     }

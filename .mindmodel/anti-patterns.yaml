@@ -1,0 +1,213 @@
+# .mindmodel/anti-patterns.yaml
+# Known anti-patterns, inconsistencies, and practices to AVOID
+# AI agents MUST NOT introduce these patterns in new code
+
+meta:
+  severity: error
+  note: "These are project-specific anti-patterns. Follow the 'Instead' guidance."
+
+# ──────── CODING STYLE ANTI-PATTERNS ────────
+
+anti_patterns:
+
+  - id: "no-lombok"
+    title: "No Lombok — explicit getters/setters"
+    description: "Project does NOT use Lombok. All getters/setters are handwritten."
+    bad: |
+      @Data
+      @AllArgsConstructor
+      public class WorkflowSchema {
+          private String id;
+          private String name;
+      }
+    good: |
+      public class WorkflowSchema {
+          private String id;
+          private String name;
+
+          public String getId() { return id; }
+          public void setId(String id) { this.id = id; }
+          public String getName() { return name; }
+          public void setName(String name) { this.name = name; }
+      }
+    severity: error
+
+  - id: "no-field-injection"
+    title: "No @Autowired on fields"
+    description: "Use constructor injection, NOT field injection"
+    bad: |
+      @Service
+      public class SchemaService {
+          @Autowired
+          private Neo4jSchemaRepository schemaRepository;
+      }
+    good: |
+      @Service
+      public class SchemaService {
+          private final Neo4jSchemaRepository schemaRepository;
+
+          public SchemaService(Neo4jSchemaRepository schemaRepository) {
+              this.schemaRepository = schemaRepository;
+          }
+      }
+    severity: error
+
+  - id: "no-interface-i-prefix"
+    title: "No 'I' prefix on interfaces"
+    description: "Interfaces are NOT prefixed with 'I'. Name describes the capability."
+    bad: |
+      public interface ILlmProvider { }
+      public interface ISchemaService { }
+    good: |
+      public interface LlmProvider { }
+      // No interface for SchemaService — concrete class directly
+    severity: error
+
+  - id: "no-string-concat-logging"
+    title: "No string concatenation in logging"
+    description: "Use SLF4J {} placeholders, NOT string concatenation"
+    bad: |
+      log.info("Schema " + id + " loaded for user " + userId);
+    good: |
+      log.info("Schema {} loaded for user {}", id, userId);
+    severity: error
+
+  - id: "no-field-value-injection"
+    title: "No @Value on fields"
+    description: "Use constructor parameter injection for @Value"
+    bad: |
+      @Service
+      public class OllamaProvider {
+          @Value("${axolotl.llm.ollama.base-url}")
+          private String baseUrl;
+      }
+    good: |
+      @Component
+      public class OllamaProvider {
+          private final String baseUrl;
+
+          public OllamaProvider(@Value("${axolotl.llm.ollama.base-url}") String baseUrl) {
+              this.baseUrl = baseUrl;
+          }
+      }
+    severity: error
+
+  - id: "no-options-api"
+    title: "No Vue Options API"
+    description: "Frontend uses Composition API with <script setup lang=\"ts\"> exclusively"
+    bad: |
+      <script>
+      export default {
+        data() { return { count: 0 }; },
+        methods: { increment() { this.count++; } }
+      }
+      </script>
+    good: |
+      <script setup lang="ts">
+      import { ref } from 'vue';
+      const count = ref(0);
+      function increment() { count.value++; }
+      </script>
+    severity: error
+
+  - id: "no-pinia-options-store"
+    title: "No Pinia Options Store pattern"
+    description: "Use setup (function) stores only"
+    bad: |
+      export const useStore = defineStore('x', {
+        state: () => ({ count: 0 }),
+        actions: { increment() { this.count++; } }
+      });
+    good: |
+      export const useStore = defineStore('x', () => {
+        const count = ref(0);
+        function increment() { count.value++; }
+        return { count, increment };
+      });
+    severity: error
+
+  - id: "no-rest-template"
+    title: "No RestTemplate in LLM providers"
+    description: "LLM providers use java.net.http.HttpClient, never RestTemplate"
+    severity: error
+
+  - id: "no-jpa-for-sqlite"
+    title: "No JPA/Hibernate for SQLite access"
+    description: "Use raw JDBC with DriverManager and SQL text blocks"
+    bad: |
+      @Entity
+      @Table(name = "schemas")
+      public class SchemaEntity {
+          @Id private String id;
+      }
+    good: |
+      // Raw JDBC with text blocks
+      String sql = """
+          SELECT * FROM schemas WHERE id = ?
+      """;
+      try (Connection conn = DriverManager.getConnection(dbUrl);
+           PreparedStatement stmt = conn.prepareStatement(sql)) {
+          stmt.setString(1, id);
+          // ...
+      }
+    severity: error
+
+  - id: "no-livedependency-injection"
+    title: "No live dependency in tests"
+    description: "Use @ExtendWith(MockitoExtension.class) and @Mock for unit tests"
+    severity: warning
+
+  - id: "no-eslint-prettier"
+    title: "No linter/formatter configured"
+    description: "There is no ESLint, Prettier, or EditorConfig for the frontend"
+    note: "Do NOT add linter config files unless explicitly requested"
+    severity: info
+
+  - id: "no-lucide-html-to-image-usage"
+    title: "Unused declared dependencies"
+    description: "These are declared in package.json but may not be imported: @vueuse/core, lucide-vue-next, html-to-image"
+    note: "Check before using — they may need npm install if not already present"
+
+# ──────── ARCHITECTURE ANTI-PATTERNS ────────
+
+  - id: "mixed-language-identifiers"
+    title: "Mixed Russian/English in code"
+    description: "Code identifiers in English, comments/literals/logs in Russian"
+    note: "This IS the convention — do NOT change. Accept it as intentional."
+    severity: info
+
+  - id: "string-based-errors"
+    title: "String-based error returns in LLM providers"
+    description: "LLM provider implementations return error Strings instead of throwing exceptions"
+    note: "This IS the convention for this layer. Service layer may handle differently."
+    severity: info
+
+  - id: "box-drawing-section-separators"
+    title: "Box-drawing characters for section separators"
+    description: "Code uses // ──────── SECTION ──────── comments"
+    note: "This IS the convention. Continue using it."
+    severity: info
+
+  - id: "bucket4j-declared-unused"
+    title: "Bucket4j declared but hand-rolled rate limiting used"
+    description: "Bucket4j in pom.xml but not imported. Rate limiting is custom-implemented."
+    note: "Do NOT add Bucket4j imports unless migration is explicitly requested"
+    severity: warning
+
+  - id: "resilience4j-declared-annotation-only"
+    title: "Resilience4j declared but potentially annotation-only"
+    description: "Resilience4j in pom.xml but usage may be limited to annotations"
+    note: "Check existing usage before adding new Resilience4j patterns"
+    severity: info
+
+  - id: "inner-classes-for-nested-data"
+    title: "Inline inner classes for nested data in models"
+    description: "Model classes use inner static classes (Node.NodeData, Edge.EdgeCondition)"
+    note: "This IS the convention. Keeps related data structures together."
+    severity: info
+
+  - id: "single-api-ts-large-file"
+    title: "Centralized api.ts may grow large"
+    description: "All domain API modules in one file — schemaApi, agentApi, etc."
+    note: "This IS the convention. Consider splitting if file exceeds 500 lines."
+    severity: info

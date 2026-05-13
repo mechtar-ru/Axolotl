@@ -2,13 +2,13 @@ package com.agent.orchestrator.graph.model;
 
 import org.springframework.data.neo4j.core.schema.*;
 import java.time.Instant;
+import java.util.UUID;
 
 @Node(labels = {"Field", "Code"})
 public class CodeField {
 
     @Id
-    @GeneratedValue
-    private Long id;
+    private String id;
 
     @Property(name = "name")
     private String name;
@@ -43,15 +43,18 @@ public class CodeField {
     @Relationship(type = "DECLARES", direction = Relationship.Direction.INCOMING)
     private CodeClass parentClass;
 
-    public CodeField() {}
+    public CodeField() {
+        this.id = UUID.randomUUID().toString();
+    }
 
     public CodeField(String name, String type) {
+        this.id = UUID.randomUUID().toString();
         this.name = name;
         this.type = type;
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getType() { return type; }

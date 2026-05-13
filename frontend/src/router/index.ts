@@ -22,6 +22,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/app/:id/home',
+      name: 'app-dashboard',
+      component: () => import('@/views/AppDashboardView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/schema/:id',
       redirect: (to) => ({ path: `/app/${to.params.id}` }),
     },

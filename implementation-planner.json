@@ -1,0 +1,90 @@
+{
+  "name": "Implementation Planner",
+  "description": "Analyze test dirs, generate schema for them, verify build works",
+  "version": "1.0",
+  "userId": "tech",
+  "workspaceId": null,
+  "defaultModel": "openai/gpt-4o-mini",
+  "nodes": [
+    {
+      "id": "analysis-request",
+      "type": "source",
+      "name": "Analysis Request",
+      "position": { "x": 100, "y": 250 },
+      "data": {
+        "sourceData": "Analyze current implementation of backend-next and frontend-next vs production backend/src/main/java and frontend/src. Provide detailed gap analysis with file paths.",
+        "config": { "sourceType": "text" }
+      },
+      "inputPorts": [],
+      "outputPorts": ["data"]
+    },
+    {
+      "id": "code-analyzer",
+      "type": "subagent",
+      "name": "Code Analyzer",
+      "position": { "x": 300, "y": 250 },
+      "data": {
+        "systemPrompt": "You are a Senior Software Architect conducting thorough code analysis.",
+        "userPrompt": "Analyze backend-next/src/main/java and frontend-next/src. Compare to backend/src/main/java and frontend/src. Identify what's implemented, what's missing, and what needs to be built.",
+        "model": "openai/gpt-4o-mini",
+        "subagentSchemaId": "cd6de58e-c29b-45e9-8f6f-1c8c6b05d553",
+        "inputMapping": {
+          "systemPrompt": "",
+          "userPrompt": ""
+        },
+        "outputMapping": {
+          "result": ""
+        }
+      },
+      "inputPorts": ["data"],
+      "outputPorts": ["data"]
+    },
+    {
+      "id": "schema-builder",
+      "type": "schemabuilder",
+      "name": "Implementation Schema",
+      "position": { "x": 550, "y": 250 },
+      "data": {
+        "systemPrompt": null,
+        "userPrompt": "Generate a WorkflowSchema JSON that implements all suggested changes. CRITICAL: All file paths must use:\n- backend-next/ NOT backend/\n- frontend-next/ NOT frontend/\n\nNodes should:\n1. Read current state (Source node with directory_read tool)\n2. Apply changes (Agent node with file_read/file_write tools)\n3. Test with bash (mvn compile or npm run build)\n\nFor each change, first read the target file to understand structure, then write updated version.",
+        "config": {}
+      },
+      "inputPorts": ["data"],
+      "outputPorts": ["data"]
+    },
+    {
+      "id": "build-test",
+      "type": "agent",
+      "name": "Build Test",
+      "position": { "x": 800, "y": 250 },
+      "data": {
+        "systemPrompt": "You are a build verification agent. Test that the generated schema implementation works.",
+        "userPrompt": "Run build tests for both backend-next and frontend-next:\n\n1. Backend: cd backend-next && mvn compile\n2. Frontend: cd frontend-next && npm install && npm run build\n\nReport success/failure for each.",
+        "model": "openai/gpt-4o-mini",
+        "enabledTools": ["bash"],
+        "toolPermissions": [
+          { "toolId": "bash", "allowedPaths": ["**"], "enabled": true }
+        ]
+      },
+      "inputPorts": ["data"],
+      "outputPorts": ["data"]
+    },
+    {
+      "id": "output",
+      "type": "output",
+      "name": "Result",
+      "position": { "x": 1000, "y": 250 },
+      "data": {
+        "config": { "outputType": "text" }
+      },
+      "inputPorts": ["data"],
+      "outputPorts": []
+    }
+  ],
+  "edges": [
+    { "id": "e1", "source": "analysis-request", "target": "code-analyzer", "sourcePort": "data", "targetPort": "data" },
+    { "id": "e2", "source": "code-analyzer", "target": "schema-builder", "sourcePort": "data", "targetPort": "data" },
+    { "id": "e3", "source": "schema-builder", "target": "build-test", "sourcePort": "data", "targetPort": "data" },
+    { "id": "e4", "source": "build-test", "target": "output", "sourcePort": "data", "targetPort": "data" }
+  ]
+}

@@ -5,9 +5,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -191,6 +196,134 @@ class PlanServiceTest {
                 planService.updateTaskPriority("default", "non-existent", Priority.HIGH));
     }
 
+    // ===== Create Task for Execution =====
+
+    @Test
+    @DisplayName("Create task for execution with IN_PROGRESS status and schemaId")
+    void createTaskForExecution() {
+        Task task = planService.createTaskForExecution("schema-1", "default", "Execution task");
+        assertNotNull(task.getId());
+        assertEquals("Execution task", task.getTitle());
+        assertEquals(TaskStatus.IN_PROGRESS, task.getStatus());
+        assertEquals("schema-1", task.getSchemaId());
+        assertEquals(1, planService.getPlan("default").getTasks().size());
+    }
+
+    // ===== Complete Task for Execution =====
+
+    @Test
+    @DisplayName("Complete task with generated files — status set to DONE")
+    void completeTaskForExecutionWithFiles() {
+        Task task = planService.createTaskForExecution("schema-1", "default", "Exec task");
+        List<Task.GeneratedFile> files = List.of(
+                new Task.GeneratedFile("src/main.js", "Main JS file"),
+                new Task.GeneratedFile("src/utils.js", "Utilities")
+        );
+        planService.completeTaskForExecution(task.getId(), "default", files);
+
+        Plan plan = planService.getPlan("default");
+        Task completed = plan.getTasks().get(0);
+        assertEquals(TaskStatus.DONE, completed.getStatus());
+        assertEquals(2, completed.getGeneratedFiles().size());
+        assertEquals("src/main.js", completed.getGeneratedFiles().get(0).getPath());
+        assertEquals("Main JS file", completed.getGeneratedFiles().get(0).getDescription());
+    }
+
+    @Test
+    @DisplayName("Complete non-existent task should throw NoSuchElementException")
+    void completeTaskForExecutionNotFound() {
+        assertThrows(NoSuchElementException.class, () ->
+                planService.completeTaskForExecution("non-existent", "default", List.of()));
+    }
+
+    @Test
+    @DisplayName("Complete task with null files list")
+    void completeTaskForExecutionNullFiles() {
+        Task task = planService.createTaskForExecution("schema-1", "default", "Exec task");
+        planService.completeTaskForExecution(task.getId(), "default", null);
+        Plan plan = planService.getPlan("default");
+        assertNull(plan.getTasks().get(0).getGeneratedFiles());
+    }
+
+    // ===== Scan Generated Files =====
+
+    @Test
+    @DisplayName("Scan generated files from directory — ignores node_modules, .git, target, dist")
+    void scanGeneratedFiles() throws IOException {
+        Path tempDir = Files.createTempDirectory("scan-test-");
+        try {
+            Files.createDirectories(tempDir.resolve("src"));
+            Files.writeString(tempDir.resolve("src/main.js"), "content");
+            Files.writeString(tempDir.resolve("README.md"), "# Readme");
+
+            // Ignored directories
+            Files.createDirectories(tempDir.resolve("node_modules"));
+            Files.writeString(tempDir.resolve("node_modules/pkg.js"), "ignored");
+            Files.createDirectories(tempDir.resolve("target"));
+            Files.writeString(tempDir.resolve("target/classes/Main.class"), "ignored");
+            Files.createDirectories(tempDir.resolve(".git"));
+            Files.writeString(tempDir.resolve(".git/config"), "ignored");
+            Files.createDirectories(tempDir.resolve("dist"));
+            Files.writeString(tempDir.resolve("dist/bundle.js"), "ignored");
+
+            List<Task.GeneratedFile> files = planService.scanGeneratedFiles(tempDir.toString(), "default");
+
+            assertEquals(2, files.size(), "Should only find non-ignored files");
+            assertTrue(files.stream().anyMatch(f -> f.getPath().equals("src/main.js")));
+            assertTrue(files.stream().anyMatch(f -> f.getPath().equals("README.md")));
+            assertTrue(files.stream().noneMatch(f -> f.getPath().contains("node_modules")));
+            assertTrue(files.stream().noneMatch(f -> f.getPath().contains("target")));
+            assertTrue(files.stream().noneMatch(f -> f.getPath().contains(".git")));
+            assertTrue(files.stream().noneMatch(f -> f.getPath().contains("dist")));
+            // Every file gets empty description initially
+            files.forEach(f -> assertEquals("", f.getDescription()));
+        } finally {
+            try (var walk = Files.walk(tempDir)) {
+                walk.sorted(Comparator.reverseOrder())
+                        .forEach(p -> { try { Files.deleteIfExists(p); } catch (IOException ignored) {} });
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("Scan non-existent directory returns empty list")
+    void scanGeneratedFilesNonExistentPath() {
+        List<Task.GeneratedFile> files = planService.scanGeneratedFiles("/tmp/non-existent-dir-12345", "default");
+        assertTrue(files.isEmpty());
+    }
+
+    // ===== Get Completed Tasks =====
+
+    @Test
+    @DisplayName("Get completed tasks returns only DONE tasks")
+    void getCompletedTasks() {
+        Task t1 = planService.createTaskForExecution("s1", "default", "Task 1");
+        Task t2 = planService.createTaskForExecution("s2", "default", "Task 2");
+        planService.completeTaskForExecution(t1.getId(), "default", List.of());
+
+        List<Task> completed = planService.getCompletedTasks("default");
+        assertEquals(1, completed.size());
+        assertEquals(t1.getId(), completed.get(0).getId());
+        assertEquals(TaskStatus.DONE, completed.get(0).getStatus());
+    }
+
+    @Test
+    @DisplayName("Get completed tasks from empty plan returns empty list")
+    void getCompletedTasksEmpty() {
+        List<Task> completed = planService.getCompletedTasks("default");
+        assertTrue(completed.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Get completed tasks — no DONE tasks returns empty list")
+    void getCompletedTasksNoneDone() {
+        planService.createTaskForExecution("s1", "default", "Task 1");
+        planService.createTaskForExecution("s2", "default", "Task 2");
+
+        List<Task> completed = planService.getCompletedTasks("default");
+        assertTrue(completed.isEmpty());
+    }
+
     // ===== Test helper: in-memory PlanService (no SQLite) =====
 
     static class TestPlanService extends PlanService {
@@ -300,6 +433,36 @@ class PlanServiceTest {
             if (task == null) throw new NoSuchElementException("Task not found: " + taskId);
             task.setPriority(priority);
             return task;
+        }
+
+        @Override
+        public Task createTaskForExecution(String schemaId, String workspaceId, String taskTitle) {
+            Plan plan = getPlan(workspaceId);
+            Task task = new Task(taskTitle);
+            task.setStatus(TaskStatus.IN_PROGRESS);
+            task.setSchemaId(schemaId);
+            task.setOrder(plan.getTasks().size());
+            plan.getTasks().add(task);
+            return task;
+        }
+
+        @Override
+        public void completeTaskForExecution(String taskId, String workspaceId, List<Task.GeneratedFile> files) {
+            Plan plan = getPlan(workspaceId);
+            Task task = plan.getTasks().stream()
+                    .filter(t -> t.getId().equals(taskId))
+                    .findFirst()
+                    .orElse(null);
+            if (task == null) throw new NoSuchElementException("Task not found: " + taskId);
+            task.setStatus(TaskStatus.DONE);
+            task.setGeneratedFiles(files);
+        }
+
+        @Override
+        public List<Task> getCompletedTasks(String workspaceId) {
+            return getPlan(workspaceId).getTasks().stream()
+                    .filter(t -> t.getStatus() == TaskStatus.DONE)
+                    .collect(Collectors.toList());
         }
 
         @Override

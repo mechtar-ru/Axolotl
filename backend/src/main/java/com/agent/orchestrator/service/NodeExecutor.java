@@ -53,6 +53,7 @@ public class NodeExecutor {
     private final TransformService transformService;
     private final Neo4jSchemaRepository schemaRepository;
     private final PlanService planService;
+    private final ProjectContextBuilder projectContextBuilder;
 
     @Value("${axolotl.sandbox.allowedWriteDirs:.}")
     private java.util.List<String> allowedWriteDirs;
@@ -60,6 +61,7 @@ public class NodeExecutor {
     private final Map<String, Map<String, String>> nodeResults = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
     private final Map<String, String> outputFileRegistry = new ConcurrentHashMap<>();
+    private final Map<String, Object> generatedFilesRegistry = new ConcurrentHashMap<>();
 
     private static final int MAX_CONTEXT_CHARS = 4000;
     private static final int MAX_SUBAGENT_DEPTH = 5;
@@ -70,7 +72,8 @@ public class NodeExecutor {
                         ToolExecutor toolExecutor,
                         TransformService transformService,
                         Neo4jSchemaRepository schemaRepository,
-                        PlanService planService) {
+                        PlanService planService,
+                        ProjectContextBuilder projectContextBuilder) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -78,6 +81,7 @@ public class NodeExecutor {
         this.transformService = transformService;
         this.schemaRepository = schemaRepository;
         this.planService = planService;
+        this.projectContextBuilder = projectContextBuilder;
     }
 
     @PostConstruct
@@ -98,6 +102,10 @@ public class NodeExecutor {
 
     public Map<String, String> getOutputFileRegistry() {
         return outputFileRegistry;
+    }
+
+    public Map<String, Object> getGeneratedFilesRegistry() {
+        return generatedFilesRegistry;
     }
 
     // ────────────────────────── main dispatcher ──────────────────────────
@@ -486,6 +494,20 @@ public class NodeExecutor {
             }
         }
 
+        // Inject project context if schema has targetPath
+        if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+            try {
+                String projectContext = projectContextBuilder.buildContext(
+                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId());
+                if (!projectContext.isEmpty()) {
+                    systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") +
+                            "=== Project Context ===\n" + projectContext;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to build project context: {}", e.getMessage());
+            }
+        }
+
         String result = llmService.streamingChat(model, systemPrompt, prompt, null,
                 token -> {
                     if (webSocketHandler != null) {
@@ -496,6 +518,15 @@ public class NodeExecutor {
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Ответ получен");
             webSocketHandler.sendLog(schemaId, "info", "Ответ от LLM получен", node.getId());
+        }
+
+        // Extract generatedFiles JSON from agent response
+        if (result != null && !result.isBlank()) {
+            Map<String, Object> extracted = extractGeneratedFiles(result);
+            if (extracted != null) {
+                generatedFilesRegistry.put(schemaId + ":" + node.getId(), extracted);
+                log.info("Extracted generatedFiles from agent node {}: {}", node.getId(), extracted);
+            }
         }
 
         if (memPalaceClient.isEnabled() && result != null && !result.isBlank()) {
@@ -545,6 +576,19 @@ public class NodeExecutor {
             String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
             if (!memoryContext.isEmpty()) {
                 systemPrompt += "\n\n" + memoryContext;
+            }
+        }
+
+        // Inject project context if schema has targetPath
+        if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+            try {
+                String projectContext = projectContextBuilder.buildContext(
+                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId());
+                if (!projectContext.isEmpty()) {
+                    systemPrompt += "\n\n=== Project Context ===\n" + projectContext;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to build project context: {}", e.getMessage());
             }
         }
 
@@ -631,7 +675,17 @@ public class NodeExecutor {
                     "schema:" + schemaId + ",node:" + node.getId());
         }
 
-        return lastResponse != null ? lastResponse : fullResponse.toString();
+        // Extract generatedFiles JSON from agent response
+        String finalResponse = lastResponse != null ? lastResponse : fullResponse.toString();
+        if (finalResponse != null && !finalResponse.isBlank()) {
+            Map<String, Object> extracted = extractGeneratedFiles(finalResponse);
+            if (extracted != null) {
+                generatedFilesRegistry.put(schemaId + ":" + node.getId(), extracted);
+                log.info("Extracted generatedFiles from tool agent node {}: {}", node.getId(), extracted);
+            }
+        }
+
+        return finalResponse;
     }
 
     private String simulateAgentNode(Node node, String schemaId) {
@@ -1600,6 +1654,44 @@ public class NodeExecutor {
         if (schemaModel != null && !schemaModel.isBlank()) return schemaModel;
         if (globalModel != null && !globalModel.isBlank()) return globalModel;
         return null;
+    }
+
+    // ────────────────────────── generatedFiles extraction ──────────────────────────
+
+    /**
+     * Look for a top-level {@code {"generatedFiles": [...]}} JSON block in the last 500 characters
+     * of the LLM response. Returns the parsed map, or null if not found / not parseable.
+     */
+    @SuppressWarnings("unchecked")
+    Map<String, Object> extractGeneratedFiles(String response) {
+        if (response == null || response.isBlank()) return null;
+        String tail = response.substring(Math.max(0, response.length() - 500));
+        int idx = tail.lastIndexOf("\"generatedFiles\"");
+        if (idx < 0) return null;
+        // walk back to find the opening '{'
+        int brace = tail.lastIndexOf('{', idx);
+        if (brace < 0) return null;
+        String candidate = tail.substring(brace);
+        // close at the first matching '}'
+        int depth = 0;
+        int close = -1;
+        for (int i = 0; i < candidate.length(); i++) {
+            char c = candidate.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) { close = i; break; }
+            }
+        }
+        if (close < 0) return null;
+        String json = candidate.substring(0, close + 1);
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(json, Map.class);
+        } catch (Exception e) {
+            log.debug("Failed to parse generatedFiles JSON from agent response: {}", e.getMessage());
+            return null;
+        }
     }
 
     // ────────────────────────── Test accessors (package-private) ──────────────────────────

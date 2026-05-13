@@ -493,4 +493,86 @@ public class ToolExecutor {
     public interface ToolExecutorHandler {
         ToolResult execute(Map<String, Object> params, ToolPermission permission);
     }
+
+    /**
+     * Check if a given path is allowed within the sandbox (allowedPaths).
+     */
+    private String validateSandboxPath(String requestedPath, ToolPermission permission, String schemaTargetPath) {
+        if (permission != null && permission.getAllowedPaths() != null && !permission.getAllowedPaths().isEmpty()) {
+            boolean allowed = permission.getAllowedPaths().stream()
+                    .anyMatch(p -> matchesGlob(requestedPath, p));
+            if (allowed) return requestedPath;
+            throw new SecurityException("File write blocked: path " + requestedPath
+                    + " not in node's allowedPaths: " + permission.getAllowedPaths());
+        }
+
+        if (schemaTargetPath != null && !schemaTargetPath.isBlank()) {
+            String normalizedRequested = requestedPath.replace("\\", "/");
+            String normalizedTarget = schemaTargetPath.replace("\\", "/");
+            if (!normalizedTarget.endsWith("/")) normalizedTarget += "/";
+            if (normalizedRequested.startsWith(normalizedTarget)) {
+                return requestedPath;
+            }
+            throw new SecurityException("File write blocked: path " + requestedPath
+                    + " is outside schema targetPath: " + schemaTargetPath);
+        }
+
+        return requestedPath;
+    }
+
+    private boolean matchesGlob(String path, String pattern) {
+        if (pattern == null || path == null) return false;
+        String regex = pattern
+                .replace(".", "\\.")
+                .replace("**", ".+?")
+                .replace("*", "[^/]+");
+        return path.matches(regex);
+    }
+
+    public ToolResult handleFileWriteWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
+        String path = (String) params.get("path");
+        String content = (String) params.get("content");
+        if (path == null || content == null) return ToolResult.error("Missing path or content");
+
+        try {
+            validateSandboxPath(path, permission, schemaTargetPath);
+            java.nio.file.Path targetPath = java.nio.file.Path.of(path);
+            java.nio.file.Files.createDirectories(targetPath.getParent());
+            java.nio.file.Files.writeString(targetPath, content);
+            return ToolResult.ok("File written: " + path);
+        } catch (SecurityException e) {
+            return ToolResult.error(e.getMessage());
+        } catch (IOException e) {
+            return ToolResult.error("Failed to write file: " + e.getMessage());
+        }
+    }
+
+    public ToolResult handleDirectoryReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
+        String path = (String) params.get("path");
+        if (path == null) path = ".";
+
+        try {
+            validateSandboxPath(path, permission, schemaTargetPath);
+        } catch (SecurityException e) {
+            return ToolResult.error(e.getMessage());
+        }
+
+        try (java.util.stream.Stream<java.nio.file.Path> stream = java.nio.file.Files.list(java.nio.file.Path.of(path))) {
+            java.util.List<String> files = stream.map(p -> p.toString()).sorted().collect(java.util.stream.Collectors.toList());
+            return ToolResult.ok(String.join("\n", files));
+        } catch (IOException e) {
+            return ToolResult.error("Failed to list directory: " + e.getMessage());
+        }
+    }
+
+    public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission,
+                              String schemaId, String nodeId, String schemaTargetPath) {
+        if ("file_write".equals(toolId)) {
+            return handleFileWriteWithSandbox(params, permission, schemaTargetPath);
+        }
+        if ("directory_read".equals(toolId)) {
+            return handleDirectoryReadWithSandbox(params, permission, schemaTargetPath);
+        }
+        return execute(toolId, params, permission, schemaId, nodeId);
+    }
 }

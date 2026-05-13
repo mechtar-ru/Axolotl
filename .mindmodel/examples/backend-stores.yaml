@@ -1,0 +1,341 @@
+# .mindmodel/examples/backend-stores.yaml
+# Real code examples from the Axolotl backend
+# Use these as reference when writing new backend code
+
+meta:
+  note: "All examples are extracted from actual project files. Follow the same patterns."
+
+# ──────── MODEL POJO ────────
+
+- title: "Domain model with explicit getters/setters"
+  source: "backend/src/main/java/com/agent/orchestrator/model/Edge.java"
+  code: |
+    package com.agent.orchestrator.model;
+
+    public class Edge {
+        private String id;
+        private String source;
+        private String sourcePort;
+        private String target;
+        private String targetPort;
+        private String type;  // "data", "control", "condition"
+        private EdgeCondition condition;
+
+        // Геттеры и сеттеры
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+
+        public String getSource() { return source; }
+        public void setSource(String source) { this.source = source; }
+
+        public String getTarget() { return target; }
+        public void setTarget(String target) { this.target = target; }
+
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+
+        public EdgeCondition getCondition() { return condition; }
+        public void setCondition(EdgeCondition condition) { this.condition = condition; }
+
+        public static class EdgeCondition {
+            private String field;
+            private String operator;  // "equals", "contains", "greater", "less"
+            private Object value;
+
+            public String getField() { return field; }
+            public void setField(String field) { this.field = field; }
+            public String getOperator() { return operator; }
+            public void setOperator(String operator) { this.operator = operator; }
+            public Object getValue() { return value; }
+            public void setValue(Object value) { this.value = value; }
+        }
+    }
+  patterns:
+    - "No Lombok — explicit getters/setters"
+    - "Inner static class for nested data"
+    - "Russian comments"
+    - "String-based type (not enum)"
+
+# ──────── LLM PROVIDER INTERFACE ────────
+
+- title: "LlmProvider interface — Strategy pattern"
+  source: "backend/src/main/java/com/agent/orchestrator/llm/LlmProvider.java"
+  code: |
+    package com.agent.orchestrator.llm;
+
+    import java.util.List;
+    import java.util.Map;
+
+    /**
+     * Интерфейс провайдера LLM.
+     * Каждая реализация — конкретный провайдер (Ollama, OpenAI, Anthropic и т.д.)
+     */
+    public interface LlmProvider {
+
+        /**
+         * Отправить запрос к LLM и получить полный ответ.
+         */
+        String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config);
+
+        /**
+         * Stream tokens from LLM via callback. Returns the full response at the end.
+         */
+        default String streamingChat(String model, String systemPrompt, String userPrompt,
+                                      Map<String, Object> config, java.util.function.Consumer<String> onToken) {
+            String response = chat(model, systemPrompt, userPrompt, config);
+            onToken.accept(response);
+            return response;
+        }
+
+        default boolean supportsStreaming() {
+            return false;
+        }
+
+        boolean isAvailable();
+        String getName();
+        List<String> listModels();
+        String getBaseUrl();
+    }
+  patterns:
+    - "No 'I' prefix (LlmProvider, not ILlmProvider)"
+    - "Default methods for optional streaming"
+    - "Javadoc in English"
+    - "String returns for chat (not Mono/Flux)"
+
+# ──────── LLM PROVIDER IMPLEMENTATION ────────
+
+- title: "OllamaProvider — HttpClient-based LLM implementation"
+  source: "backend/src/main/java/com/agent/orchestrator/llm/OllamaProvider.java"
+  code: |
+    package com.agent.orchestrator.llm;
+
+    import com.fasterxml.jackson.databind.ObjectMapper;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+    import org.springframework.beans.factory.annotation.Value;
+    import org.springframework.stereotype.Component;
+
+    import java.net.URI;
+    import java.net.http.HttpClient;
+    import java.net.http.HttpRequest;
+    import java.net.http.HttpResponse;
+    import java.time.Duration;
+    import java.util.ArrayList;
+    import java.util.List;
+    import java.util.Map;
+    import java.util.function.Consumer;
+
+    @Component
+    public class OllamaProvider implements LlmProvider {
+
+        private static final Logger log = LoggerFactory.getLogger(OllamaProvider.class);
+
+        private final HttpClient httpClient;
+        private final ObjectMapper objectMapper;
+
+        @Value("${axolotl.llm.ollama.base-url:http://localhost:11434}")
+        private String baseUrl;
+
+        public OllamaProvider() {
+            this.httpClient = HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+            this.objectMapper = new ObjectMapper();
+        }
+
+        @Override
+        public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+            String effectiveModel = model;
+            try {
+                var messages = new ArrayList<Map<String, String>>();
+                if (systemPrompt != null && !systemPrompt.isBlank()) {
+                    messages.add(Map.of("role", "system", "content", systemPrompt));
+                }
+                messages.add(Map.of("role", "user", "content", userPrompt));
+
+                String json = objectMapper.writeValueAsString(Map.of(
+                    "model", effectiveModel,
+                    "messages", messages,
+                    "stream", false
+                ));
+
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/api/chat"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .timeout(Duration.ofSeconds(3600))
+                    .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                return objectMapper.readTree(response.body()).path("message").path("content").asText();
+            } catch (Exception e) {
+                log.error("Ошибка при запросе к Ollama: {}", e.getMessage());
+                return "Error: " + e.getMessage();
+            }
+        }
+
+        @Override
+        public boolean isAvailable() { return true; }
+
+        @Override
+        public String getName() { return "ollama"; }
+
+        @Override
+        public List<String> listModels() { return List.of(); }
+
+        @Override
+        public String getBaseUrl() { return baseUrl; }
+    }
+  patterns:
+    - "@Component for auto-discovery"
+    - "HttpClient (not RestTemplate)"
+    - "Constructor injection"
+    - "String-based error returns"
+    - "Russian log messages"
+
+# ──────── SERVICE WITH CONSTRUCTOR INJECTION ────────
+
+- title: "SchemaService — service layer with constructor injection"
+  source: "backend/src/main/java/com/agent/orchestrator/service/SchemaService.java"
+  code: |
+    @Service
+    public class SchemaService {
+
+        private static final Logger log = LoggerFactory.getLogger(SchemaService.class);
+
+        private final Neo4jSchemaRepository schemaRepository;
+        private final ExecutionWebSocketHandler webSocketHandler;
+        private final MemPalaceClient memPalaceClient;
+        private final SettingsService settingsService;
+        private final MetricsService metricsService;
+        private final NodeExecutor nodeExecutor;
+        private final SchemaExporter schemaExporter;
+        private final LlmService llmService;
+
+        private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
+        private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
+        private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
+        private static final int MAX_HISTORY = 100;
+        private static final int MAX_NODE_RESTARTS = 3;
+        private final ExecutorService executionExecutor = Executors.newFixedThreadPool(
+                Runtime.getRuntime().availableProcessors());
+
+        public SchemaService(Neo4jSchemaRepository schemaRepository,
+                             ExecutionWebSocketHandler webSocketHandler,
+                             MemPalaceClient memPalaceClient,
+                             SettingsService settingsService,
+                             MetricsService metricsService,
+                             NodeExecutor nodeExecutor,
+                             SchemaExporter schemaExporter,
+                             LlmService llmService) {
+            this.schemaRepository = schemaRepository;
+            this.webSocketHandler = webSocketHandler;
+            this.memPalaceClient = memPalaceClient;
+            this.settingsService = settingsService;
+            this.metricsService = metricsService;
+            this.nodeExecutor = nodeExecutor;
+            this.schemaExporter = schemaExporter;
+            this.llmService = llmService;
+        }
+        // ...
+    }
+  patterns:
+    - "Constructor injection — NO @Autowired"
+    - "private static final Logger log = ..."
+    - "ConcurrentHashMap for concurrent state"
+    - "MAX_ constants for configuration"
+
+# ──────── SECURITY FILTER ────────
+
+- title: "JwtAuthFilter — OncePerRequestFilter pattern"
+  source: "backend/src/main/java/com/agent/orchestrator/config/JwtAuthFilter.java"
+  code: |
+    @Component
+    public class JwtAuthFilter extends OncePerRequestFilter {
+
+        private final JwtUtil jwtUtil;
+
+        public JwtAuthFilter(JwtUtil jwtUtil) {
+            this.jwtUtil = jwtUtil;
+        }
+
+        @Override
+        protected boolean shouldNotFilter(HttpServletRequest request) {
+            String path = request.getRequestURI();
+            return path.startsWith("/api/schemas") ||
+                   path.startsWith("/api/health") ||
+                   path.startsWith("/ws") ||
+                   path.equals("/mcp");
+        }
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                          FilterChain filterChain) throws ServletException, IOException {
+            String header = request.getHeader("Authorization");
+            if (header != null && header.startsWith("Bearer ")) {
+                String token = header.substring(7);
+                if (jwtUtil.isValid(token)) {
+                    String username = jwtUtil.getUsername(token);
+                    String role = jwtUtil.getRole(token);
+                    var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
+                    var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
+            }
+            filterChain.doFilter(request, response);
+        }
+    }
+  patterns:
+    - "Constructor injection"
+    - "@Component on filter"
+    - "shouldNotFilter() for public endpoints"
+    - "Bearer token extraction"
+
+# ──────── DB CONFIG WITH RAW JDBC ────────
+
+- title: "DbConfig — raw JDBC with SQLite"
+  source: "backend/src/main/java/com/agent/orchestrator/config/DbConfig.java"
+  code: |
+    @Configuration
+    public class DbConfig {
+
+        private static final Logger log = LoggerFactory.getLogger(DbConfig.class);
+
+        private final String dbUrl;
+
+        public DbConfig(@Value("${axolotl.db.path:}") String dbPath) {
+            if (dbPath != null && !dbPath.isBlank()) {
+                Path resolved = Paths.get(dbPath).toAbsolutePath();
+                dbUrl = "jdbc:sqlite:" + resolved;
+            } else {
+                Path dataDir = Paths.get(System.getProperty("user.home"), ".axolotl");
+                dataDir.toFile().mkdirs();
+                dbUrl = "jdbc:sqlite:" + dataDir.resolve("schema.db");
+            }
+            log.info("DbConfig dbUrl: {}", dbUrl);
+        }
+
+        @PostConstruct
+        public void init() {
+            enableWalMode();
+        }
+
+        private void enableWalMode() {
+            try (Connection conn = DriverManager.getConnection(dbUrl);
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("PRAGMA journal_mode=WAL");
+                log.info("SQLite WAL mode enabled");
+            } catch (SQLException e) {
+                log.warn("Could not enable WAL mode: {}", e.getMessage());
+            }
+        }
+
+        public String getDbUrl() {
+            return dbUrl;
+        }
+    }
+  patterns:
+    - "DriverManager.getConnection() (NOT JPA)"
+    - "@Value in constructor parameter"
+    - "WAL mode via PRAGMA"
+    - "Russian log messages"

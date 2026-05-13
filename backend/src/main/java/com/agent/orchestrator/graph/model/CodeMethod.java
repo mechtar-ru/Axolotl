@@ -4,13 +4,13 @@ import org.springframework.data.neo4j.core.schema.*;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 @Node(labels = {"Method", "Code"})
 public class CodeMethod {
 
     @Id
-    @GeneratedValue
-    private Long id;
+    private String id;
 
     @Property(name = "name")
     private String name;
@@ -63,16 +63,19 @@ public class CodeMethod {
     @Relationship(type = "DECLARES", direction = Relationship.Direction.INCOMING)
     private CodeClass parentClass;
 
-    public CodeMethod() {}
+    public CodeMethod() {
+        this.id = UUID.randomUUID().toString();
+    }
 
     public CodeMethod(String name, String signature, String returnType) {
+        this.id = UUID.randomUUID().toString();
         this.name = name;
         this.signature = signature;
         this.returnType = returnType;
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getSignature() { return signature; }

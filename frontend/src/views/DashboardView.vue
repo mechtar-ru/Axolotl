@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import AppCard from '@/components/app/AppCard.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
+import { appApi, schemaApi } from '@/services/api'
+import { getTemplateById } from '@/templates'
+import type { WorkflowSchema } from '@/types'
+
+// Helper: prompt for confirmation
+function confirmDelete(appName: string): Promise<boolean> {
+  return Promise.resolve(window.confirm(`Delete "${appName}"? This cannot be undone.`))
+}
 
 const router = useRouter()
 const schemaStore = useSchemaStore()
@@ -64,10 +72,78 @@ const showNewAppModal = ref(false)
 const newAppName = ref('')
 const newAppType = ref('CUSTOM')
 
+// Conflict modal state
+const showConflictModal = ref(false)
+const pendingTemplate = ref<any>(null)
+const conflictAction = ref<'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH'>('CONTINUE')
+const customTargetPath = ref('')
+
+const generatedApps = computed(() => {
+  const seen = new Map<string, typeof schemaStore.schemas[0]>()
+  for (const s of schemaStore.schemas) {
+    if (s.targetPath && s.appType && s.appType !== 'CUSTOM') {
+      seen.set(s.targetPath, s) // last wins (most recent)
+    }
+  }
+  return Array.from(seen.values())
+})
+
+const searchQuery = ref('')
+
+// Merge generated app metadata into all schemas for unified grid
+const visibleApps = computed(() => {
+  const genMap = new Map<string, { targetPath: string; status: 'active' | 'idle' }>()
+  for (const g of generatedApps.value) {
+    if (g.targetPath) {
+      genMap.set(g.id, { targetPath: g.targetPath, status: 'active' })
+    }
+  }
+  return schemaStore.schemas.map(s => ({
+    ...s,
+    isGenerated: genMap.has(s.id),
+    targetPath: genMap.get(s.id)?.targetPath || s.targetPath,
+    status: genMap.has(s.id) ? ('active' as const) : ('idle' as const),
+  }))
+})
+
+const filteredApps = computed(() => {
+  if (!searchQuery.value.trim()) return visibleApps.value
+  const q = searchQuery.value.toLowerCase()
+  return visibleApps.value.filter(app => app.name.toLowerCase().includes(q))
+})
+
+function continueDevelopment(app: any) {
+  router.push(`/app/${app.id}`)
+}
+
 // Load apps on mount
 onMounted(() => {
   schemaStore.loadSchemas()
 })
+
+/** After creating a schema from a template, push the template's nodes and edges into it.
+ *  Returns the updated full schema, or undefined if template has no nodes to apply.
+ */
+async function applyTemplateToSchema(schemaId: string, templateId: string): Promise<WorkflowSchema | undefined> {
+  const fullTemplate = getTemplateById(templateId)
+  if (!fullTemplate || fullTemplate.defaultNodes.length === 0) return
+
+  const schema = await schemaApi.getSchema(schemaId)
+  schema.nodes = fullTemplate.defaultNodes.map(n => ({
+    id: n.id,
+    type: n.type as any,
+    name: n.name,
+    position: { x: n.position.x, y: n.position.y },
+    data: { ...n.data } as any,
+  }))
+  schema.edges = fullTemplate.defaultEdges.map(e => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    type: 'data' as const,
+  }))
+  return await schemaApi.updateSchema(schemaId, schema)
+}
 
 function openApp(id: string) {
   router.push(`/app/${id}`)
@@ -78,23 +154,109 @@ async function createFromTemplate(templateId: string) {
   if (!template) return
 
   try {
-    const schema = await schemaStore.createSchema(template.name, template.appType)
-    if (schema) {
-      router.push(`/app/${schema.id}`)
+    // For non-CUSTOM appTypes, check for path conflict first
+    if (template.appType !== 'CUSTOM') {
+      const pathCheck = await appApi.checkTargetPath(template.name, template.appType)
+      if (pathCheck.exists) {
+        // Show conflict modal
+        showConflictModal.value = true
+        pendingTemplate.value = template
+        return
+      }
+    }
+    // No conflict — create directly
+    const appInfo = await appApi.createApp({
+      name: template.name,
+      appType: template.appType,
+      description: template.description,
+    })
+    if (!appInfo) return
+
+    // Push template nodes/edges into the schema (returns full WorkflowSchema)
+    const updated = await applyTemplateToSchema(appInfo.id, templateId)
+    if (updated) {
+      schemaStore.schemas.push(updated)
+    } else {
+      // Template has no nodes (e.g. blank); still need to add to store
+      schemaStore.schemas.push(appInfo as unknown as WorkflowSchema)
+    }
+    router.push(`/app/${appInfo.id}`)
+  } catch (error) {
+    console.error('Failed to create app from template:', error)
+  }
+}
+
+async function resolveConflict() {
+  if (!pendingTemplate.value) return
+  try {
+    const template = pendingTemplate.value
+    const appInfo = await appApi.createApp({
+      name: template.name,
+      appType: template.appType,
+      description: template.description,
+      conflictAction: conflictAction.value,
+      customTargetPath: conflictAction.value === 'CHANGE_PATH' ? customTargetPath.value : undefined
+    })
+    if (appInfo) {
+      // Push template nodes/edges if this template has a definition
+      const updated = await applyTemplateToSchema(appInfo.id, template.id)
+      if (updated) {
+        schemaStore.schemas.push(updated)
+      } else {
+        schemaStore.schemas.push(appInfo as unknown as WorkflowSchema)
+      }
+      showConflictModal.value = false
+      pendingTemplate.value = null
+      router.push(`/app/${appInfo.id}`)
     }
   } catch (error) {
-    console.error('Failed to create schema from template:', error)
+    console.error('Failed to resolve conflict:', error)
   }
+}
+
+async function handleDeleteApp(app: any) {
+  const confirmed = await confirmDelete(app.name)
+  if (!confirmed) return
+  await schemaStore.deleteSchema(app.id)
 }
 
 async function createBlankApp() {
   if (!newAppName.value.trim()) return
   try {
-    const schema = await schemaStore.createSchema(newAppName.value)
-    showNewAppModal.value = false
-    newAppName.value = ''
-    if (schema) {
-      router.push(`/app/${schema.id}`)
+    // For CUSTOM app types, use the original schemaStore.createSchema
+    if (newAppType.value === 'CUSTOM') {
+      const schema = await schemaStore.createSchema(newAppName.value, newAppType.value)
+      showNewAppModal.value = false
+      newAppName.value = ''
+      if (schema) {
+        router.push(`/app/${schema.id}`)
+      }
+    } else {
+      // For non-CUSTOM types, use appApi with conflict check
+      const pathCheck = await appApi.checkTargetPath(newAppName.value, newAppType.value)
+      if (pathCheck.exists) {
+        // Show conflict modal — create a pseudo-template for the pending app
+        showConflictModal.value = true
+        pendingTemplate.value = {
+          id: 'blank',
+          name: newAppName.value,
+          appType: newAppType.value,
+          description: ''
+        }
+        return
+      }
+      // No conflict — create directly
+      const appInfo = await appApi.createApp({
+        name: newAppName.value,
+        appType: newAppType.value,
+        description: '',
+      })
+      if (appInfo) {
+        schemaStore.schemas.push(appInfo as unknown as WorkflowSchema)
+        showNewAppModal.value = false
+        newAppName.value = ''
+        router.push(`/app/${appInfo.id}`)
+      }
     }
   } catch (error) {
     console.error('Failed to create blank app:', error)
@@ -115,18 +277,35 @@ async function createBlankApp() {
       </button>
     </header>
 
+    <!-- Search Bar -->
+    <div class="search-bar">
+      <svg class="search-icon" viewBox="0 0 20 20" fill="currentColor" width="18" height="18">
+        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+      </svg>
+      <input
+        v-model="searchQuery"
+        type="text"
+        class="search-input"
+        placeholder="Search apps..."
+      />
+    </div>
+
     <!-- My Apps Grid -->
     <section class="apps-section">
       <h2>My Apps</h2>
       <div v-if="schemaStore.schemas.length === 0" class="empty-state">
         <p>No apps yet. Create your first app!</p>
       </div>
+      <div v-else-if="filteredApps.length === 0" class="empty-state">
+        <p>No apps matching "{{ searchQuery }}"</p>
+      </div>
       <div v-else class="apps-grid">
         <AppCard
-          v-for="app in schemaStore.schemas"
+          v-for="app in filteredApps"
           :key="app.id"
           :app="app"
           @click="openApp(app.id)"
+          @delete="handleDeleteApp(app)"
         />
       </div>
     </section>
@@ -172,6 +351,47 @@ async function createBlankApp() {
         <div class="modal-actions">
           <button class="btn-secondary" @click="showNewAppModal = false">Cancel</button>
           <button class="btn-primary" @click="createBlankApp" :disabled="!newAppName.trim()">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conflict Resolution Modal -->
+    <div v-if="showConflictModal" class="modal-overlay" @click.self="showConflictModal = false">
+      <div class="modal">
+        <h3>Directory Conflict</h3>
+        <p>The target path already exists for "{{ pendingTemplate?.name }}". Choose how to proceed:</p>
+        <div class="conflict-options">
+          <label class="conflict-option" :class="{ selected: conflictAction === 'CONTINUE' }">
+            <input type="radio" v-model="conflictAction" value="CONTINUE" />
+            <div class="option-content">
+              <strong>Continue</strong>
+              <span>Keep existing files and append new ones</span>
+            </div>
+          </label>
+          <label class="conflict-option" :class="{ selected: conflictAction === 'OVERWRITE' }">
+            <input type="radio" v-model="conflictAction" value="OVERWRITE" />
+            <div class="option-content">
+              <strong>Overwrite</strong>
+              <span>Delete existing directory and start fresh</span>
+            </div>
+          </label>
+          <label class="conflict-option" :class="{ selected: conflictAction === 'CHANGE_PATH' }">
+            <input type="radio" v-model="conflictAction" value="CHANGE_PATH" />
+            <div class="option-content">
+              <strong>Change Path</strong>
+              <span>Specify a different target path</span>
+            </div>
+          </label>
+        </div>
+        <div v-if="conflictAction === 'CHANGE_PATH'" class="form-group">
+          <label>Custom Path</label>
+          <input v-model="customTargetPath" type="text" placeholder="/Users/.../Axolotl/my-app/" class="input" />
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showConflictModal = false">Cancel</button>
+          <button class="btn-primary" @click="resolveConflict">
+            {{ conflictAction === 'CONTINUE' ? 'Continue' : conflictAction === 'OVERWRITE' ? 'Overwrite' : 'Change Path' }}
+          </button>
         </div>
       </div>
     </div>
@@ -281,6 +501,43 @@ h2 {
   border: 2px dashed var(--border-color);
 }
 
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 1.5rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+
+.search-bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.search-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -348,5 +605,55 @@ select.input {
   justify-content: flex-end;
   gap: 0.75rem;
   margin-top: 1.25rem;
+}
+
+/* Conflict modal styles */
+.conflict-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.conflict-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border: 2px solid var(--border-color);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.conflict-option:hover {
+  border-color: var(--accent-light);
+  background: var(--bg-hover);
+}
+
+.conflict-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.conflict-option input[type="radio"] {
+  margin-top: 0.125rem;
+  cursor: pointer;
+}
+
+.option-content {
+  flex: 1;
+}
+
+.option-content strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.option-content span {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
 }
 </style>

@@ -5,6 +5,7 @@ import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { schemaApi } from '@/services/api'
 import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
 import BlockConfigPanel from '@/components/studio/BlockConfigPanel.vue'
@@ -61,25 +62,29 @@ function buildVueFlowEdges(schema: any): Edge[] {
   }))
 }
 
-// Load existing nodes/edges from schema
-onMounted(() => {
-  const schema = schemaStore.schemas.find(s => s.id === props.appId)
-  if (schema) {
-    addNodes(buildVueFlowNodes(schema))
-    addEdges(buildVueFlowEdges(schema))
+// Load full schema (with nodes + edges) from API detail endpoint
+async function loadFullSchema() {
+  try {
+    const fullSchema = await schemaApi.getSchema(props.appId)
+    if (fullSchema?.nodes?.length) {
+      addNodes(buildVueFlowNodes(fullSchema))
+      addEdges(buildVueFlowEdges(fullSchema))
+      nextTick(() => fitView({ padding: 0.2 }))
+    }
+  } catch (err) {
+    console.error('Failed to load full schema:', err)
   }
-  
-  nextTick(() => fitView({ padding: 0.2 }))
-})
+}
 
-// Watch for async schema loading — schemas may arrive after mount
-watch(() => schemaStore.schemas, (schemas) => {
-  const schema = schemas.find(s => s.id === props.appId)
-  if (!schema) return
+onMounted(loadFullSchema)
+
+// Watch for schema updates (e.g. after save)
+watch(() => schemaStore.currentSchema, (schema) => {
+  if (!schema || schema.id !== props.appId) return
+  if (!schema.nodes?.length) return
 
   addNodes(buildVueFlowNodes(schema))
   addEdges(buildVueFlowEdges(schema))
-
   nextTick(() => fitView({ padding: 0.2 }))
 }, { deep: true })
 

@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface DecisionRepository extends Neo4jRepository<Decision, Long> {
+public interface DecisionRepository extends Neo4jRepository<Decision, String> {
     
     List<Decision> findByTitleContaining(String titleFragment);
     

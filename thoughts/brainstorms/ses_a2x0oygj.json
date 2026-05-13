@@ -1,0 +1,29 @@
+{
+  "session_id": "ses_a2x0oygj",
+  "browser_session_id": "ses_aqqauaq8",
+  "request": "Select a conceptual model for Axolotl — the core metaphor that makes the product instantly understandable. Currently Axolotl mixes canvas/nodes/execution/memory/plan, but no unifying idea ties it together.",
+  "created_at": 1778417213695,
+  "updated_at": 1778417214320,
+  "branches": {
+    "choose-model": {
+      "id": "choose-model",
+      "scope": "Pick the right conceptual model for Axolotl",
+      "status": "exploring",
+      "questions": [
+        {
+          "id": "q_83bg78g2",
+          "type": "pick_one",
+          "text": "What feels like the right core metaphor for Axolotl?",
+          "config": {
+            "question": "What feels like the right core metaphor for Axolotl?",
+            "context": "A conceptual model is the ONE mental framework that helps users instantly understand what something is and how it works. Good examples: spreadsheets = 'grid of cells', Figma = 'design canvas', Notion = 'building blocks', n8n = 'pipeline'. What should Axolotl be?"
+          }
+        }
+      ],
+      "finding": null
+    }
+  },
+  "branch_order": [
+    "choose-model"
+  ]
+}

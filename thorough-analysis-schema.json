@@ -1,0 +1,68 @@
+{
+  "name": "Thorough Code Analysis",
+  "description": "Analyze current implementation with tools and reasoning",
+  "version": "1.0",
+  "userId": "tech",
+  "workspaceId": null,
+  "defaultModel": "openai/gpt-4o-mini",
+  "nodes": [
+    {
+      "id": "source-1",
+      "type": "source",
+      "name": "Analysis Request",
+      "position": { "x": 100, "y": 250 },
+      "data": {
+        "systemPrompt": null,
+        "userPrompt": null,
+        "sourceData": "Analyze current implementation of backend-next and frontend-next compared to production. Focus on:\n1. What IS already implemented (file counts, key components)\n2. What's different from production code\n3. Why specific changes were made\n4. gaps that need filling\n\nUse tools to read directories and files thoroughly.",
+        "config": { "sourceType": "text" },
+        "messages": null
+      },
+      "inputPorts": [],
+      "outputPorts": ["data"]
+    },
+    {
+      "id": "agent-1",
+      "type": "agent",
+      "name": "Code Analyzer",
+      "position": { "x": 350, "y": 250 },
+      "data": {
+        "systemPrompt": "You are a Senior Software Architect conducting THOROUGH code analysis.\n\n## Critical Rules\n1. ALWAYS use tools to read actual files - NEVER guess\n2. For each directory, use directory_read to list contents\n3. For key files, use file_read to understand implementation\n4. Count files, identify patterns, extract specific code\n\n## Analysis Output Format\nFor each target (backend-next, frontend-next), provide:\n\n### 1. Implementation Status\n- File count by type (.java, .ts, .vue, etc.)\n- Key directories and their purposes\n- Core components identified\n\n### 2. Gap Analysis\n- What's implemented vs production\n- Missing critical pieces\n- TODO/FIXME comments found\n\n### 3. Reasoning\n- WHY each change was made (inference from code patterns)\n- Design decisions evident in structure\n- Trade-offs made\n\n### 4. Recommendations\n- Specific files that need work\n- Priority order\n- Dependencies between changes\n\nBe specific with file paths and code references.",
+        "userPrompt": "Analyze these directories thoroughly:\n- /backend-next/src/main/java\n- /frontend-next/src\n- /backend/src/main/java (production)\n- /frontend/src (production)\n\nUse directory_read first to get file counts, then file_read for key files. Compare production vs test implementation.",
+        "model": "openai/gpt-4o-mini",
+        "agentType": "coder",
+        "enabledTools": ["directory_read", "file_read", "grep"],
+        "toolPermissions": [
+          { "toolId": "directory_read", "allowedPaths": ["**"], "enabled": true },
+          { "toolId": "file_read", "allowedPaths": ["**"], "enabled": true },
+          { "toolId": "grep", "allowedPaths": ["**"], "enabled": true }
+        ],
+        "maxToolCalls": 50,
+        "config": {},
+        "messages": null,
+        "result": null
+      },
+      "inputPorts": ["data"],
+      "outputPorts": ["data"]
+    },
+    {
+      "id": "output-1",
+      "type": "output",
+      "name": "Analysis Report",
+      "position": { "x": 600, "y": 250 },
+      "data": {
+        "systemPrompt": null,
+        "userPrompt": null,
+        "sourceData": null,
+        "config": { "outputType": "text" },
+        "messages": null
+      },
+      "inputPorts": ["data"],
+      "outputPorts": []
+    }
+  ],
+  "edges": [
+    { "id": "edge-1", "source": "source-1", "target": "agent-1", "sourcePort": "data", "targetPort": "data" },
+    { "id": "edge-2", "source": "agent-1", "target": "output-1", "sourcePort": "data", "targetPort": "data" }
+  ]
+}

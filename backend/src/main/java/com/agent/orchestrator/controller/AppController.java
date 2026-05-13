@@ -1,13 +1,18 @@
 package com.agent.orchestrator.controller;
 
+import com.agent.orchestrator.config.AppConfig;
 import com.agent.orchestrator.model.AppModel;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.service.SchemaService;
+import com.agent.orchestrator.service.PlanService;
+import com.agent.orchestrator.model.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
+import java.nio.file.*;
 import java.util.*;
 
 @RestController
@@ -16,9 +21,13 @@ public class AppController {
 
     private static final Logger log = LoggerFactory.getLogger(AppController.class);
     private final SchemaService schemaService;
+    private final PlanService planService;
+    private final AppConfig appConfig;
 
-    public AppController(SchemaService schemaService) {
+    public AppController(SchemaService schemaService, PlanService planService, AppConfig appConfig) {
         this.schemaService = schemaService;
+        this.planService = planService;
+        this.appConfig = appConfig;
     }
 
     // GET /api/app — list all apps
@@ -33,14 +42,49 @@ public class AppController {
 
     // POST /api/app — create app
     @PostMapping
-    public ResponseEntity<AppModel> createApp(@RequestBody AppModel appModel) {
+    public ResponseEntity<AppModel> createApp(@RequestBody CreateAppRequest req) {
         WorkflowSchema schema = new WorkflowSchema();
-        schema.setName(appModel.getName());
-        schema.setDescription(appModel.getDescription());
-        if (appModel.getAppType() != null) {
-            schema.setAppType(appModel.getAppType().name());
+        schema.setName(req.name());
+        schema.setDescription(req.description());
+        if (req.appType() != null) {
+            schema.setAppType(req.appType());
         }
-        schema.setWorkspaceId(appModel.getWorkspaceId());
+        schema.setWorkspaceId(req.workspaceId());
+
+        // Compute target path
+        String targetPath;
+        if (req.customTargetPath() != null && !req.customTargetPath().isBlank()) {
+            targetPath = req.customTargetPath();
+        } else {
+            targetPath = appConfig.targetPathFor(req.name());
+        }
+        schema.setTargetPath(targetPath);
+
+        // Handle conflict action
+        String conflictAction = req.conflictAction();
+        if ("OVERWRITE".equalsIgnoreCase(conflictAction)) {
+            Path path = Path.of(targetPath);
+            try {
+                if (Files.exists(path)) {
+                    Files.walk(path)
+                            .sorted(Comparator.reverseOrder())
+                            .map(java.nio.file.Path::toFile)
+                            .forEach(java.io.File::delete);
+                }
+                Files.createDirectories(path);
+                schema.setTargetPathConflictAction("OVERWRITE");
+            } catch (IOException e) {
+                log.warn("Failed to handle OVERWRITE for path {}: {}", targetPath, e.getMessage());
+            }
+        } else if ("CHANGE_PATH".equalsIgnoreCase(conflictAction)) {
+            if (req.customTargetPath() != null && !req.customTargetPath().isBlank()) {
+                schema.setTargetPath(req.customTargetPath());
+                schema.setTargetPathConflictAction("CHANGE_PATH");
+            }
+        } else {
+            // CONTINUE or null — leave as-is
+            schema.setTargetPathConflictAction("CONTINUE");
+        }
 
         WorkflowSchema created = schemaService.createSchema(schema);
         return ResponseEntity.ok(AppModel.fromSchema(created));
@@ -82,6 +126,143 @@ public class AppController {
     public ResponseEntity<Void> deleteApp(@PathVariable String id) {
         schemaService.deleteSchema(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // POST /api/app/check-path — check if target directory already exists for a given app config
+    @PostMapping("/check-path")
+    public ResponseEntity<Map<String, Object>> checkPath(@RequestBody AppModel appModel) {
+        String targetPath = null;
+        boolean exists = false;
+
+        if (appModel.getAppType() != null && appModel.getAppType() != AppModel.AppType.CUSTOM) {
+            targetPath = appConfig.targetPathFor(appModel.getName());
+            exists = Files.exists(Paths.get(targetPath));
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("exists", exists);
+        response.put("targetPath", targetPath);
+        response.put("suggestedActions", List.of("CONTINUE", "OVERWRITE", "CHANGE_PATH"));
+        log.info("check-path for app '{}' type={}: exists={}, targetPath={}",
+                appModel.getName(), appModel.getAppType(), exists, targetPath);
+        return ResponseEntity.ok(response);
+    }
+
+    // POST /api/app/resolve-path — create app with conflict resolution (CONTINUE/OVERWRITE/CHANGE_PATH)
+    @PostMapping("/resolve-path")
+    public ResponseEntity<?> resolvePath(@RequestBody Map<String, Object> body) {
+        String name = (String) body.get("name");
+        String description = (String) body.get("description");
+        String workspaceId = (String) body.get("workspaceId");
+        String appTypeStr = (String) body.get("appType");
+        String conflictAction = (String) body.get("conflictAction");
+        if (conflictAction == null || conflictAction.isEmpty()) {
+            conflictAction = "CONTINUE";
+        }
+
+        // Parse appType from string
+        AppModel.AppType appType = null;
+        if (appTypeStr != null && !appTypeStr.isEmpty()) {
+            try {
+                appType = AppModel.AppType.valueOf(appTypeStr.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                log.warn("Unknown appType '{}', falling back to CUSTOM", appTypeStr);
+                appType = AppModel.AppType.CUSTOM;
+            }
+        }
+
+        // Build schema
+        WorkflowSchema schema = new WorkflowSchema();
+        schema.setName(name);
+        schema.setDescription(description);
+        if (appType != null) {
+            schema.setAppType(appType.name());
+        }
+        schema.setWorkspaceId(workspaceId);
+
+        // Set targetPath for non-CUSTOM app types
+        if (appType != null && appType != AppModel.AppType.CUSTOM) {
+            String targetPath = appConfig.targetPathFor(schema.getName());
+            schema.setTargetPath(targetPath);
+            schema.setTargetPathConflictAction(conflictAction);
+
+            // Handle directory based on conflict action
+            try {
+                switch (conflictAction) {
+                    case "OVERWRITE":
+                        if (Files.exists(Paths.get(targetPath))) {
+                            deleteDirectory(targetPath);
+                        }
+                        Files.createDirectories(Paths.get(targetPath));
+                        log.info("OVERWRITE: cleared and created directory: {}", targetPath);
+                        break;
+                    case "CONTINUE":
+                        Files.createDirectories(Paths.get(targetPath));
+                        log.info("CONTINUE: ensured directory exists: {}", targetPath);
+                        break;
+                    case "CHANGE_PATH":
+                        // CHANGE_PATH: path is set on schema but directory is not modified
+                        log.info("CHANGE_PATH: targetPath set on schema, directory untouched: {}", targetPath);
+                        break;
+                    default:
+                        log.warn("Unknown conflictAction '{}', treating as CONTINUE", conflictAction);
+                        Files.createDirectories(Paths.get(targetPath));
+                        break;
+                }
+            } catch (IOException e) {
+                log.error("Failed to handle target directory: {}", targetPath, e);
+                return ResponseEntity.status(500).body(Map.of("error", "Failed to handle target directory: " + e.getMessage()));
+            }
+        }
+
+        WorkflowSchema created = schemaService.createSchema(schema);
+        log.info("resolve-path created schema '{}' (ID: {}) with conflictAction={}", created.getName(), created.getId(), conflictAction);
+        return ResponseEntity.ok(AppModel.fromSchema(created));
+    }
+
+    // GET /api/app/check-target-path — check if target path exists
+    @GetMapping("/check-target-path")
+    public ResponseEntity<Map<String, Object>> checkTargetPath(
+            @RequestParam String name,
+            @RequestParam String appType) {
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        if ("CUSTOM".equalsIgnoreCase(appType)) {
+            result.put("exists", false);
+            result.put("targetPath", null);
+            return ResponseEntity.ok(result);
+        }
+
+        String targetPath = appConfig.targetPathFor(name);
+        boolean exists = Files.exists(Path.of(targetPath));
+        result.put("exists", exists);
+        result.put("targetPath", targetPath);
+        return ResponseEntity.ok(result);
+    }
+
+    // GET /api/app/{id}/generated-files — get generated files for app
+    @GetMapping("/{id}/generated-files")
+    public ResponseEntity<List<Task.GeneratedFile>> getGeneratedFiles(@PathVariable String id) {
+        WorkflowSchema schema = schemaService.getSchema(id);
+        if (schema == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        com.agent.orchestrator.model.Plan plan = planService.getPlanBySchemaId(id);
+        if (plan == null) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+
+        // Find DONE task with matching schemaId
+        for (Task task : plan.getTasks()) {
+            if (task.getStatus() == com.agent.orchestrator.model.TaskStatus.DONE
+                    && id.equals(task.getSchemaId())) {
+                List<Task.GeneratedFile> files = task.getGeneratedFiles();
+                return ResponseEntity.ok(files != null ? files : Collections.emptyList());
+            }
+        }
+
+        return ResponseEntity.ok(Collections.emptyList());
     }
 
     // GET /api/app/templates — return hardcoded template list
@@ -160,5 +341,32 @@ public class AppController {
         templates.add(blank);
 
         return ResponseEntity.ok(templates);
+    }
+
+    // --- Inner classes ---
+
+    public record CreateAppRequest(
+            String name,
+            String description,
+            String appType,
+            String workspaceId,
+            String conflictAction,
+            String customTargetPath) {}
+
+    // --- Private helpers ---
+
+    private void deleteDirectory(String path) throws IOException {
+        java.nio.file.Path dir = Paths.get(path);
+        if (Files.exists(dir)) {
+            Files.walk(dir)
+                .sorted(Comparator.reverseOrder())
+                .forEach(p -> {
+                    try {
+                        Files.deleteIfExists(p);
+                    } catch (IOException e) {
+                        log.warn("Failed to delete: {}", p, e);
+                    }
+                });
+        }
     }
 }

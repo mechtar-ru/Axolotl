@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps<{
@@ -12,6 +13,10 @@ const props = defineProps<{
     version?: string
     userId?: string
     workspaceId?: string
+    // NEW FIELDS — merged from generatedApps
+    targetPath?: string
+    isGenerated?: boolean
+    status?: 'active' | 'idle'
   }
   onClick?: () => void
 }>()
@@ -67,9 +72,12 @@ function handleClick() {
   }
 }
 
-function handleContextMenu(e: MouseEvent) {
-  e.preventDefault()
-  // Could emit event for parent to show context menu
+const deleting = ref(false)
+
+async function handleDelete(e: MouseEvent) {
+  e.stopPropagation()
+  deleting.value = true
+  emit('delete')
 }
 
 function formatDate(dateStr?: string): string {
@@ -81,10 +89,27 @@ function formatDate(dateStr?: string): string {
     return ''
   }
 }
+
+function formatPath(fullPath: string): string {
+  // 1. Replace /Users/evgenijtihomirov with ~
+  const homeReplaced = fullPath.replace(/^\/Users\/evgenijtihomirov/, '~')
+  // 2. Strip trailing slash for splitting, re-add later
+  const cleaned = homeReplaced.replace(/\/$/, '')
+  const parts = cleaned.split('/').filter(Boolean)
+  // 3. If 2 or fewer segments, show as-is
+  if (parts.length <= 2) return cleaned + '/'
+  // 4. Show last 2 segments with ellipsis prefix
+  return '\u2026/' + parts.slice(-2).join('/') + '/'
+}
+
+function getStatusDotColor(status?: 'active' | 'idle'): string {
+  if (status === 'active') return '#4caf50'
+  return '#9e9e9e' // gray for idle/default
+}
 </script>
 
 <template>
-  <div class="app-card" @click="handleClick" @contextmenu="handleContextMenu">
+  <div class="app-card" @click="handleClick">
     <div class="app-card-header">
       <div class="app-type-badge" :style="{ background: getAppTypeColor(app.appType) }">
         <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -100,6 +125,18 @@ function formatDate(dateStr?: string): string {
     <div class="app-card-footer">
       <span v-if="app.updatedAt" class="app-date">Updated {{ formatDate(app.updatedAt) }}</span>
       <span v-else-if="app.createdAt" class="app-date">Created {{ formatDate(app.createdAt) }}</span>
+      <button class="delete-btn" @click="handleDelete" title="Delete app">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+          <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+    <div v-if="app.isGenerated && app.targetPath" class="app-card-path" :title="app.targetPath">
+      <svg class="path-icon" viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+        <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
+      </svg>
+      <span class="path-text">{{ formatPath(app.targetPath) }}</span>
+      <span class="status-dot" :style="{ background: getStatusDotColor(app.status) }" :title="app.status === 'active' ? 'Active sessions' : 'Idle'"></span>
     </div>
   </div>
 </template>
@@ -182,5 +219,62 @@ function formatDate(dateStr?: string): string {
 .app-date {
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.app-card-path {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.625rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.path-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.path-text {
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.delete-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 0;
+}
+
+.app-card:hover .delete-btn {
+  display: inline-flex;
+}
+
+.delete-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
 }
 </style>

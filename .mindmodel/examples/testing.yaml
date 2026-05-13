@@ -1,0 +1,218 @@
+# .mindmodel/examples/testing.yaml
+# Testing patterns from the Axolotl codebase
+# Use these as reference when writing tests
+
+meta:
+  note: "All examples are extracted from actual project test files."
+
+# ──────── BACKEND UNIT TEST (JUnit5 + Mockito) ────────
+
+- title: "LlmServiceTest — Mockito extension with snake_case test names"
+  source: "backend/src/test/java/com/agent/orchestrator/llm/LlmServiceTest.java"
+  code: |
+    package com.agent.orchestrator.llm;
+
+    import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
+    import org.junit.jupiter.api.BeforeEach;
+    import org.junit.jupiter.api.Test;
+    import org.junit.jupiter.api.extension.ExtendWith;
+    import org.mockito.Mock;
+    import org.mockito.junit.jupiter.MockitoExtension;
+
+    import java.util.List;
+    import java.util.Map;
+
+    import static org.junit.jupiter.api.Assertions.*;
+    import static org.mockito.Mockito.*;
+
+    @ExtendWith(MockitoExtension.class)
+    class LlmServiceTest {
+
+        @Mock LlmProvider ollama;
+        @Mock LlmProvider openai;
+        @Mock LlmProvider anthropic;
+        @Mock LlmProvider deepseek;
+        @Mock CustomLlmEndpointRepository customEndpointRepository;
+
+        LlmService llmService;
+
+        @BeforeEach
+        void setUp() {
+            when(ollama.getName()).thenReturn("ollama");
+            when(openai.getName()).thenReturn("openai");
+            when(anthropic.getName()).thenReturn("anthropic");
+            when(deepseek.getName()).thenReturn("deepseek");
+            lenient().when(customEndpointRepository.findAll()).thenReturn(List.of());
+
+            llmService = new LlmService(List.of(ollama, openai, anthropic, deepseek), customEndpointRepository);
+        }
+
+        @Test
+        void resolveProvider_ollama() {
+            when(ollama.chat(any(), any(), any(), any())).thenReturn("ok");
+            llmService.chat("ollama", null, "test", null);
+            verify(ollama).chat(eq("ollama"), isNull(), eq("test"), isNull());
+        }
+
+        @Test
+        void resolveProvider_local() {
+            when(ollama.chat(any(), any(), any(), any())).thenReturn("ok");
+            llmService.chat("local", null, "test", null);
+            verify(ollama).chat(eq("local"), isNull(), eq("test"), isNull());
+        }
+
+        @Test
+        void resolveProvider_gptPrefix() {
+            when(openai.chat(any(), any(), any(), any())).thenReturn("ok");
+            llmService.chat("gpt-4o", null, "test", null);
+            verify(openai).chat(eq("gpt-4o"), isNull(), eq("test"), isNull());
+        }
+
+        @Test
+        void resolveProvider_claudePrefix() {
+            when(anthropic.chat(any(), any(), any(), any())).thenReturn("ok");
+            llmService.chat("claude-3-opus", null, "test", null);
+            verify(anthropic).chat(eq("claude-3-opus"), isNull(), eq("test"), isNull());
+        }
+    }
+  patterns:
+    - "@ExtendWith(MockitoExtension.class)"
+    - "@Mock for all dependencies"
+    - "snake_case test method names"
+    - "Static imports for assertions and Mockito"
+    - "lenient() for unused mocks"
+    - "verify() for interaction testing"
+
+# ──────── BACKEND SERVICE TEST ────────
+
+- title: "SchemaServiceTest — topological sort testing"
+  source: "backend/src/test/java/com/agent/orchestrator/service/SchemaServiceTest.java"
+  code: |
+    package com.agent.orchestrator.service;
+
+    import org.junit.jupiter.api.BeforeEach;
+    import org.junit.jupiter.api.Test;
+    import org.junit.jupiter.api.extension.ExtendWith;
+    import org.mockito.Mock;
+    import org.mockito.junit.jupiter.MockitoExtension;
+
+    import static org.junit.jupiter.api.Assertions.*;
+    import static org.mockito.Mockito.*;
+
+    @ExtendWith(MockitoExtension.class)
+    class SchemaServiceTest {
+
+        @Mock Neo4jSchemaRepository schemaRepository;
+        @Mock ExecutionWebSocketHandler webSocketHandler;
+        @Mock MemPalaceClient memPalaceClient;
+        @Mock SettingsService settingsService;
+        @Mock MetricsService metricsService;
+        @Mock NodeExecutor nodeExecutor;
+        @Mock SchemaExporter schemaExporter;
+        @Mock LlmService llmService;
+
+        SchemaService schemaService;
+
+        @BeforeEach
+        void setUp() {
+            schemaService = new SchemaService(schemaRepository, webSocketHandler, memPalaceClient,
+                    settingsService, metricsService, nodeExecutor, schemaExporter, llmService);
+        }
+
+        @Test
+        void getExecutionLevels_linearGraph() {
+            WorkflowSchema schema = buildSchema(nodes("a", "b", "c"), edges("a->b", "b->c"));
+            var levels = schemaService.getExecutionLevelsPublic(schema);
+            assertEquals(3, levels.size());
+            assertEquals(List.of("a"), names(levels.get(0)));
+            assertEquals(List.of("b"), names(levels.get(1)));
+            assertEquals(List.of("c"), names(levels.get(2)));
+        }
+
+        @Test
+        void getExecutionLevels_diamondGraph() {
+            WorkflowSchema schema = buildSchema(nodes("a", "b", "c", "d"),
+                    edges("a->b", "a->c", "b->d", "c->d"));
+            var levels = schemaService.getExecutionLevelsPublic(schema);
+            assertEquals(3, levels.size());
+            assertEquals(List.of("a"), names(levels.get(0)));
+            assertEquals(2, levels.get(1).size());
+            assertTrue(names(levels.get(1)).containsAll(List.of("b", "c")));
+        }
+    }
+  patterns:
+    - "@ExtendWith(MockitoExtension.class)"
+    - "Mock all Service dependencies"
+    - "snake_case test methods describing scenario"
+    - "Helper methods (buildSchema, nodes, edges)"
+    - "Assert on data structure, not behavior"
+
+# ──────── FRONTEND COMPONENT TEST (Vitest + VTU) ────────
+
+- title: "SourceNode test — Vue Test Utils with Vitest"
+  source: "frontend/src/components/nodes/__tests__/SourceNode.test.ts"
+  code: |
+    import { describe, it, expect, vi } from 'vitest'
+    import { mount } from '@vue/test-utils'
+    import SourceNode from '../SourceNode.vue'
+
+    vi.mock('@vue-flow/core', () => ({
+      Handle: { template: '<div class="handle"><slot /></div>', props: ['type', 'position'] },
+      Position: { Top: 'top', Bottom: 'bottom' },
+    }))
+
+    const defaultProps = {
+      id: 'source-1',
+      data: {
+        name: 'Input Data',
+        sourceData: 'test source content',
+        onUpdate: vi.fn(),
+        onRename: vi.fn(),
+        onDelete: vi.fn(),
+      },
+    }
+
+    describe('SourceNode', () => {
+      it('renders node name', () => {
+        const wrapper = mount(SourceNode, { props: defaultProps })
+        expect(wrapper.text()).toContain('Input Data')
+      })
+
+      it('starts expanded with textarea visible', () => {
+        const wrapper = mount(SourceNode, { props: defaultProps })
+        expect(wrapper.find('textarea').exists()).toBe(true)
+      })
+
+      it('calls onDelete when delete clicked', async () => {
+        const wrapper = mount(SourceNode, { ...defaultProps, selected: true })
+        await wrapper.find('.delete-btn').trigger('click')
+        expect(defaultProps.data.onDelete).toHaveBeenCalled()
+      })
+
+      it('updates sourceData on textarea input', async () => {
+        const wrapper = mount(SourceNode, { props: defaultProps })
+        await wrapper.find('textarea').setValue('new data')
+        expect(defaultProps.data.onUpdate).toHaveBeenCalledWith({ sourceData: 'new data' })
+      })
+
+      it('shows result when present', () => {
+        const wrapper = mount(SourceNode, {
+          props: { ...defaultProps, data: { ...defaultProps.data, result: 'output text' } },
+        })
+        expect(wrapper.text()).toContain('output text')
+      })
+
+      it('shows running icon during execution', () => {
+        const wrapper = mount(SourceNode, {
+          props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'running' } },
+        })
+        expect(wrapper.text()).toContain('⏳')
+      })
+    })
+  patterns:
+    - "describe/it blocks from vitest"
+    - "vi.mock() for VueFlow module mocking"
+    - "mount() from @vue/test-utils"
+    - "Assertions on rendered text/content"
+    - "async/await for event interactions"
+    - "Test file in __tests__/ subdirectory"

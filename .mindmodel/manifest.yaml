@@ -1,0 +1,38 @@
+# .mindmodel/manifest.yaml
+# Axolotl — Visual AI-Agent Orchestration
+version: 2
+name: axolotl
+description: "Visual AI-Agent Orchestration Platform — Spring Boot 3.2 + Vue 3 backend/frontend with LLM integration, Neo4j graph, and Electron desktop app"
+
+categories:
+  - path: technology.yaml
+    description: "Tech stack, frameworks, libraries, and dependency constraints"
+    group: stack
+
+  - path: domain.yaml
+    description: "Domain terminology, entities, key concepts, and ubiquitous language"
+    group: domain
+
+  - path: conventions.yaml
+    description: "Coding conventions for Java backend and Vue/TypeScript frontend"
+    group: style
+
+  - path: patterns.yaml
+    description: "Design patterns, architecture patterns, and code structure conventions"
+    group: patterns
+
+  - path: anti-patterns.yaml
+    description: "Known anti-patterns, inconsistencies, and practices to avoid"
+    group: patterns
+
+  - path: examples/backend-stores.yaml
+    description: "Backend code examples — LLM provider, service, config patterns"
+    group: examples
+
+  - path: examples/frontend-stores.yaml
+    description: "Frontend code examples — Pinia store, composable, component patterns"
+    group: examples
+
+  - path: examples/testing.yaml
+    description: "Testing patterns — JUnit5/Mockito backend, Vitest/VTU frontend"
+    group: examples

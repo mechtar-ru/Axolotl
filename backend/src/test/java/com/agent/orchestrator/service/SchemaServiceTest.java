@@ -28,13 +28,14 @@ class SchemaServiceTest {
     @Mock NodeExecutor nodeExecutor;
     @Mock SchemaExporter schemaExporter;
     @Mock LlmService llmService;
+    @Mock PlanService planService;
 
     SchemaService schemaService;
 
     @BeforeEach
     void setUp() {
         schemaService = new SchemaService(schemaRepository, webSocketHandler, memPalaceClient,
-                settingsService, metricsService, nodeExecutor, schemaExporter, llmService);
+                settingsService, metricsService, nodeExecutor, schemaExporter, llmService, planService);
     }
 
     // === Topological Sort / Execution Levels ===

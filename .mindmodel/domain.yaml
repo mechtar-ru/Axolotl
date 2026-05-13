@@ -1,0 +1,247 @@
+# .mindmodel/domain.yaml
+# Axolotl domain terminology, entities, and ubiquitous language
+# AI agents MUST use these terms consistently in code, comments, and naming
+
+meta:
+  language: "Code identifiers in English, comments/strings/logs in Russian"
+  rule: "Use these domain terms precisely — do NOT invent synonyms"
+
+# ──────── CORE ENTITIES ────────
+
+entities:
+  WorkflowSchema:
+    description: "Named, versioned graph of nodes+edges defining an executable AI-agent workflow"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - id: String
+      - name: String
+      - description: String
+      - version: String (default "1.0")
+      - userId: String
+      - workspaceId: String
+      - defaultModel: String
+      - defaultTools: List<String>
+      - defaultToolPermissions: Map<String, Object>
+      - nodes: List<Node>
+      - edges: List<Edge>
+      - metadata: Map<String, Object>
+      - createdAt: String
+      - updatedAt: String
+      - appType: String (nullable)
+      - planningModels: Map<String, String>
+      - planningOutline: String
+      - planningRefinedPlan: String
+      - planningContext: String
+    notes:
+      - "Versioned via String field (not formal versioning system)"
+      - "appType may affect execution interpretation"
+
+  Node:
+    description: "Single step in workflow graph"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - id: String
+      - type: NodeType (enum)
+      - name: String
+      - position: Position (x, y)
+      - data: NodeData
+      - inputPorts: List<String>
+      - outputPorts: List<String>
+      - status: NodeStatus (IDLE/RUNNING/COMPLETED/FAILED/BLOCKED)
+    node_types:
+      - source: "Data input node"
+      - agent: "LLM agent node — core execution"
+      - output: "Result output node"
+      - condition: "Branching logic node"
+      - transform: "Data transformation node"
+      - loop: "Iteration node with maxIterations"
+      - group: "Visual grouping container"
+      - comment: "Annotation/note on canvas"
+      - memory: "MemPalace interaction node"
+      - guardrail: "Data validation/transformation"
+      - human: "Human-in-the-loop confirmation"
+      - fallback: "Fallback on error"
+      - subagent: "Nested workflow invocation"
+      - webhook: "External webhook trigger"
+      - schedule: "Time-based trigger"
+      - schemabuilder: "Dynamic schema generation"
+    notes:
+      - "16 node types total"
+      - "Type is stored as String, not Java enum (flexible)"
+      - "NodeStatus is an inner enum with @JsonCreator/@JsonValue"
+
+  Edge:
+    description: "Typed connection between nodes"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - id: String
+      - source: String
+      - sourcePort: String
+      - target: String
+      - targetPort: String
+      - type: String ("data", "control", "condition")
+      - condition: EdgeCondition (field, operator, value)
+    edge_types:
+      - data: "Data flow connection"
+      - control: "Execution flow control"
+      - condition: "Conditional routing (true/false)"
+
+  Plan:
+    description: "Hierarchical container for Tasks"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - id: String (UUID)
+      - workspaceId: String
+      - name: String
+      - parentId: String
+      - schemaId: String
+      - level: PlanLevel (PROJECT/SCHEMA/SUBSCHEMA)
+      - tasks: List<Task>
+      - createdAt: Instant
+      - updatedAt: Instant
+    notes:
+      - "Auto-generates UUID on construction"
+      - "touch() method updates updatedAt"
+
+  Task:
+    description: "Single work item with status, priority, acceptance criteria"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - id: String
+      - title: String
+      - description: String
+      - status: TaskStatus (TODO/IN_PROGRESS/DONE/COMPLETED/BLOCKED)
+      - priority: Priority
+      - acceptanceCriteria: String
+      - linkedNodeId: String
+      - planId: String
+
+  PlanLevel:
+    values: [PROJECT, SCHEMA, SUBSCHEMA]
+    package: "com.agent.orchestrator.model"
+
+  TaskStatus:
+    values: [TODO, IN_PROGRESS, DONE, COMPLETED, BLOCKED]
+    notes:
+      - "Has @JsonValue/@JsonCreator for serialization"
+      - "Parsed case-insensitively"
+
+  Priority:
+    values: [LOW, MEDIUM, HIGH, CRITICAL]
+    package: "com.agent.orchestrator.model"
+
+  Agent:
+    description: "LLM provider connection configuration"
+    package: "com.agent.orchestrator.model"
+    notes: "Connects to Ollama, OpenAI, Anthropic, DeepSeek, custom providers"
+
+  ExecutionRecord:
+    description: "Record of a past schema execution"
+    package: "com.agent.orchestrator.model"
+
+  Skill:
+    description: "Auto-generated behavioral pattern from agent trajectories"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - id: String
+      - name: String
+      - version: int
+      - usageCount: int
+      - successRate: double
+      - pattern: String
+      - description: String
+      - category: String
+      - isActive: boolean
+
+  Tool:
+    description: "Capability an agent can invoke (15 built-in)"
+    package: "com.agent.orchestrator.model"
+    tools:
+      - file_read: "Read file contents"
+      - file_write: "Write content to file"
+      - directory_read: "List directory contents"
+      - grep: "Search text in files"
+      - git: "Execute git commands"
+      - bash: "Execute shell commands"
+      - memory_read: "Read from MemPalace"
+      - memory_write: "Write to MemPalace"
+      - memory_search: "Search MemPalace"
+      - web_search: "Web search"
+      - web_fetch: "Fetch URL content"
+      - web_api: "Call external API"
+      - graph_query: "Query Neo4j code graph"
+      - mcp_execute: "Execute MCP tool"
+      - rlm_predict: "RLM prediction"
+
+  ToolPermission:
+    description: "Per-node tool access control"
+    package: "com.agent.orchestrator.model"
+    fields:
+      - allow: boolean
+      - allowedPaths: List<String>
+      - blockedCommands: List<String>
+
+# ──────── KEY CONCEPTS ────────
+
+concepts:
+  ExecutionMode:
+    values: [EXECUTE, ANALYZE, DRY_RUN]
+    description: "Mode of schema execution"
+    enum_class: "com.agent.orchestrator.model.ExecutionMode"
+    details:
+      EXECUTE: "Full execution with side effects"
+      ANALYZE: "Read-only analysis, no mutations"
+      DRY_RUN: "Simulate without actual execution"
+
+  ExecutionWave:
+    description: "Parallel-execution level from Kahn topological sort"
+    details: "Nodes at same level execute in parallel via CompletableFuture"
+
+  VariableInterpolation:
+    description: "Template variable resolution in prompts and configs"
+    syntaxes:
+      - "{{input}} — initial input data"
+      - "{{prev_result}} — result of previous node"
+      - "{{node:Name}} — result of named upstream node"
+
+  SubagentDepth:
+    description: "Maximum recursion level for nested workflows"
+    value: 5
+    constant: "MAX_SUBAGENT_DEPTH"
+
+  ConvergenceThreshold:
+    description: "Consecutive error limit before a node is BLOCKED"
+    value: 3
+    constant: "MAX_NODE_RESTARTS"
+
+  Trajectory:
+    description: "Full agent execution record"
+    captures:
+      - Iterations count
+      - Tool calls with timing
+      - LLM predict calls with tokens
+      - Duration in milliseconds
+      - Estimated cost
+
+  HashAnchoredEdits:
+    description: "Stable 16-hex-char hash for Java classes in Neo4j code graph"
+    tool: "CodeEntityHasher"
+    use_case: "Agent nodes reference code via stable hash in Neo4j queries"
+
+  MemPalace:
+    description: "Long-term memory system as a graph"
+    structure: "Wings → Rooms → Tunnels"
+    storage: "axolotl/patterns, axolotl/skills"
+    features:
+      - "Semantic search via cosine similarity"
+      - "Auto-save agent results"
+      - "Graph visualization in UI"
+      - "Memory Node for search/injection"
+
+  ExecutionWaveLayout:
+    description: "Kahn topological sort computes parallel execution waves"
+    detail: "Nodes at same wave level run in parallel; edges define dependencies"
+
+  AppType:
+    description: "Differentiates schema type for execution interpretation"
+    examples: ["CUSTOM", "CHAT", "DOC_ANALYZER", "PLANNING"]

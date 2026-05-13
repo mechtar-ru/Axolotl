@@ -4,13 +4,13 @@ import org.springframework.data.neo4j.core.schema.*;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
 
 @Node(labels = {"Class", "Code"})
 public class CodeClass {
 
     @Id
-    @GeneratedValue
-    private Long id;
+    private String id;
 
     @Property(name = "name")
     private String name;
@@ -72,16 +72,19 @@ public class CodeClass {
     @Relationship(type = "CONTAINS", direction = Relationship.Direction.INCOMING)
     private CodePackage parentPackage;
 
-    public CodeClass() {}
+    public CodeClass() {
+        this.id = UUID.randomUUID().toString();
+    }
 
     public CodeClass(String name, String qualifiedName, String packageName) {
+        this.id = UUID.randomUUID().toString();
         this.name = name;
         this.qualifiedName = qualifiedName;
         this.packageName = packageName;
     }
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getQualifiedName() { return qualifiedName; }
