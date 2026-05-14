@@ -16,10 +16,22 @@ const blockTypes = ref<BlockType[]>([
     icon: 'M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1'
   },
   {
+    type: 'review',
+    label: 'Review',
+    color: '#f59e0b',
+    icon: 'M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2M9 14l2 2 4-4'
+  },
+  {
     type: 'agent',
     label: 'Think',
     color: '#2196f3',
     icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z'
+  },
+  {
+    type: 'verifier',
+    label: 'Verify',
+    color: '#8b5cf6',
+    icon: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'
   },
   {
     type: 'memory',

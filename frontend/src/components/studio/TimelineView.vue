@@ -14,8 +14,10 @@ const events = computed(() => execState?.stepEvents.value || [])
 const blockColors: Record<string, string> = {
   source: '#4caf50',
   agent: '#2196f3',
+  verifier: '#8b5cf6',
   memory: '#9c27b0',
-  output: '#ff9800'
+  output: '#ff9800',
+  review: '#f59e0b'
 }
 
 function getBlockColor(type: string): string {

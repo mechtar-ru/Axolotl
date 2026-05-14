@@ -220,4 +220,13 @@ class SchemaServiceTest {
     private List<String> names(List<Node> nodes) {
         return nodes.stream().map(Node::getName).toList();
     }
+
+    @Test
+    void getExecutionResults_returnsEmptyMapForUnknownExecution() {
+        // nodeExecutor.getNodeResults() returns an empty ConcurrentHashMap by default
+        when(nodeExecutor.getNodeResults()).thenReturn(new java.util.concurrent.ConcurrentHashMap<>());
+        
+        Map<String, String> results = schemaService.getExecutionResults("unknown-exec");
+        assertTrue(results.isEmpty());
+    }
 }

@@ -17,7 +17,7 @@ public class Node {
     private NodeStatus status;
     
     public enum NodeStatus {
-        IDLE, RUNNING, COMPLETED, FAILED, BLOCKED;
+        IDLE, RUNNING, COMPLETED, FAILED, BLOCKED, AWAITING_APPROVAL;
 
         @JsonCreator
         public static NodeStatus fromString(String value) {
@@ -28,6 +28,7 @@ public class Node {
                 case "COMPLETED" -> COMPLETED;
                 case "FAILED" -> FAILED;
                 case "BLOCKED" -> BLOCKED;
+                case "AWAITING_APPROVAL" -> AWAITING_APPROVAL;
                 default -> IDLE;
             };
         }

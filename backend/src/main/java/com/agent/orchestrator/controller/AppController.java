@@ -9,6 +9,8 @@ import com.agent.orchestrator.model.Task;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -59,6 +61,12 @@ public class AppController {
             targetPath = appConfig.targetPathFor(req.name());
         }
         schema.setTargetPath(targetPath);
+
+        // Set userId from auth context for model resolution
+        String userId = getCurrentUserId();
+        if (userId != null) {
+            schema.setUserId(userId);
+        }
 
         // Handle conflict action
         String conflictAction = req.conflictAction();
@@ -179,6 +187,12 @@ public class AppController {
             schema.setAppType(appType.name());
         }
         schema.setWorkspaceId(workspaceId);
+
+        // Set userId from auth context for model resolution
+        String currentUserId = getCurrentUserId();
+        if (currentUserId != null) {
+            schema.setUserId(currentUserId);
+        }
 
         // Set targetPath for non-CUSTOM app types
         if (appType != null && appType != AppModel.AppType.CUSTOM) {
@@ -354,6 +368,14 @@ public class AppController {
             String customTargetPath) {}
 
     // --- Private helpers ---
+
+    private String getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            return auth.getName();
+        }
+        return null;
+    }
 
     private void deleteDirectory(String path) throws IOException {
         java.nio.file.Path dir = Paths.get(path);

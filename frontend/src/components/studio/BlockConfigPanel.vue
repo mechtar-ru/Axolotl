@@ -33,6 +33,20 @@ watch(() => props.blockId, () => {
   blockDescription.value = (config.description as string) || ''
   model.value = (config.model as string) || 'local'
   prompt.value = (config.prompt as string) || ''
+  // Verifier fields
+  const checks = config.checks as Record<string, any> | undefined
+  syntaxCheck.value = checks?.syntaxCheck ?? true
+  requiredPatterns.value = (checks?.requiredPatterns as string[]) ?? []
+  testCommand.value = checks?.testCommand ?? ''
+    maxFileSizeKb.value = checks?.maxFileSizeKb ?? 500
+    // Review fields
+    reviewPremortem.value = checks?.premortem ?? true
+    reviewPrism.value = checks?.prism ?? false
+    reviewPostmortem.value = checks?.postmortem ?? false
+    reviewMode.value = config?.mode ?? 'manual'
+    reviewMaxIterations.value = config?.maxIterations ?? 3
+    reviewMaxAutoIterations.value = config?.maxAutoIterations ?? 3
+    reviewGeneratePlan.value = config?.generatePlan ?? true
 }, { immediate: true })
 
 // Determine config sections based on block type
@@ -41,6 +55,29 @@ const showPrompt = computed(() => blockType.value === 'agent')
 const showMemoryType = computed(() => blockType.value === 'memory')
 const showActionType = computed(() => blockType.value === 'output')
 const showInputType = computed(() => blockType.value === 'source')
+const showVerifierConfig = computed(() => blockType.value === 'verifier')
+const showReviewConfig = computed(() => blockType.value === 'review')
+const showAutoConfig = computed(() => blockType.value === 'review' && (reviewMode.value === 'auto' || reviewMode.value === 'hybrid'))
+
+const syntaxCheck = ref(true)
+const requiredPatterns = ref<string[]>([])
+const testCommand = ref('')
+const maxFileSizeKb = ref(500)
+
+const reviewPremortem = ref(true)
+const reviewPrism = ref(false)
+const reviewPostmortem = ref(false)
+const reviewMode = ref('manual')
+const reviewMaxIterations = ref(3)
+const reviewMaxAutoIterations = ref(3)
+const reviewGeneratePlan = ref(true)
+
+const requiredPatternsText = computed({
+  get: () => requiredPatterns.value.join('\n'),
+  set: (val: string) => {
+    requiredPatterns.value = val.split('\n').filter(s => s.trim().length > 0)
+  }
+})
 
 function saveConfig() {
   if (!node.value) return
@@ -57,20 +94,60 @@ function saveConfig() {
     }
   }
 
+  // Verifier-specific config
+  if (showVerifierConfig.value) {
+    const checks = {
+      syntaxCheck: syntaxCheck.value,
+      requiredPatterns: requiredPatterns.value,
+      testCommand: testCommand.value,
+      maxFileSizeKb: maxFileSizeKb.value
+    }
+    // Merge checks into config
+    if (!node.value.data.config) node.value.data.config = {}
+    ;(node.value.data.config as Record<string, any>).checks = checks
+  }
+
+  // Review-specific config
+  if (showReviewConfig.value) {
+    const checks = {
+      premortem: reviewPremortem.value,
+      prism: reviewPrism.value,
+      postmortem: reviewPostmortem.value
+    }
+    if (!node.value.data.config) node.value.data.config = {}
+    ;(node.value.data.config as Record<string, any>).checks = checks
+    ;(node.value.data.config as Record<string, any>).mode = reviewMode.value
+    ;(node.value.data.config as Record<string, any>).maxIterations = reviewMaxIterations.value
+    ;(node.value.data.config as Record<string, any>).maxAutoIterations = reviewMaxAutoIterations.value
+    ;(node.value.data.config as Record<string, any>).generatePlan = reviewGeneratePlan.value
+  }
+
   // Sync to schemaStore for persistence
   if (schemaStore.currentSchema?.nodes) {
     const updatedNodes = schemaStore.currentSchema.nodes.map(n => {
       if (n.id !== props.blockId) return n
+      const baseData: Record<string, any> = {
+        ...(n.data || {}),
+        description: blockDescription.value,
+        model: model.value,
+        prompt: prompt.value,
+      }
+      if (showReviewConfig.value) {
+        baseData.checks = {
+          premortem: reviewPremortem.value,
+          prism: reviewPrism.value,
+          postmortem: reviewPostmortem.value
+        }
+        baseData.mode = reviewMode.value
+        baseData.maxIterations = reviewMaxIterations.value
+        baseData.maxAutoIterations = reviewMaxAutoIterations.value
+        baseData.generatePlan = reviewGeneratePlan.value
+      }
       return {
         ...n,
         name: blockLabel.value,
         type: blockType.value as any,
-        data: {
-          ...(n.data || {}),
-          description: blockDescription.value,
-          model: model.value,
-          prompt: prompt.value,
-        }
+        data: baseData
       }
     })
     schemaStore.updateSchema({
@@ -167,6 +244,115 @@ function handleKeydown(e: KeyboardEvent) {
           <option value="memory-knowledge">Knowledge Base</option>
           <option value="memory-facts">Structured Facts</option>
         </select>
+      </div>
+
+      <!-- Verification Checks (Verify blocks) -->
+      <div v-if="showVerifierConfig" class="config-section">
+        <label class="config-label">Verification Checks</label>
+
+        <label class="config-checkbox">
+          <input type="checkbox" v-model="syntaxCheck" @change="saveConfig" />
+          Syntax Check
+        </label>
+
+        <div class="config-field">
+          <label class="config-label">Required Patterns (one per line)</label>
+          <textarea
+            v-model="requiredPatternsText"
+            class="config-textarea"
+            placeholder="player&#10;move()&#10;check_victory"
+            rows="3"
+            @input="saveConfig"
+          />
+        </div>
+
+        <div class="config-field">
+          <label class="config-label">Test Command</label>
+          <input
+            v-model="testCommand"
+            type="text"
+            class="config-input"
+            placeholder="python3 -m py_compile {{filepath}}"
+            @input="saveConfig"
+          />
+        </div>
+
+        <div class="config-field">
+          <label class="config-label">Max File Size (KB)</label>
+          <input
+            v-model="maxFileSizeKb"
+            type="number"
+            class="config-input"
+            min="1"
+            max="10000"
+            @input="saveConfig"
+          />
+        </div>
+
+        <div class="config-field config-info">
+          <span class="config-label">Tools: file_read, bash, grep (fixed)</span>
+        </div>
+      </div>
+
+      <!-- Review Checks (Review blocks) -->
+      <div v-if="showReviewConfig" class="config-section">
+        <label class="config-label">Review Checks</label>
+
+        <label class="config-checkbox">
+          <input type="checkbox" v-model="reviewPremortem" @change="saveConfig" />
+          Premortem (review plan before execution)
+        </label>
+
+        <label class="config-checkbox">
+          <input type="checkbox" v-model="reviewPrism" @change="saveConfig" />
+          Prism (scan codebase context)
+        </label>
+
+        <label class="config-checkbox">
+          <input type="checkbox" v-model="reviewPostmortem" @change="saveConfig" />
+          Postmortem (analyze execution history)
+        </label>
+
+        <div class="config-field">
+          <label class="config-label">Mode</label>
+          <select v-model="reviewMode" class="config-select" @change="saveConfig">
+            <option value="manual">Manual (human review)</option>
+            <option value="auto">Auto (AI review only)</option>
+            <option value="hybrid">Hybrid (auto + human gate)</option>
+          </select>
+        </div>
+
+        <div class="config-field">
+          <label class="config-label">Max Iterations</label>
+          <input
+            v-model="reviewMaxIterations"
+            type="number"
+            class="config-input"
+            min="1"
+            max="20"
+            @input="saveConfig"
+          />
+        </div>
+
+        <!-- Auto-iteration config: only shown for auto/hybrid -->
+        <template v-if="showAutoConfig">
+          <div class="config-field">
+            <label class="config-label">Max Auto Iterations</label>
+            <input
+              v-model="reviewMaxAutoIterations"
+              type="number"
+              class="config-input"
+              min="1"
+              max="50"
+              @input="saveConfig"
+            />
+          </div>
+
+          <label class="config-checkbox">
+            <input type="checkbox" v-model="reviewGeneratePlan" @change="saveConfig" />
+            Generate Plan (AI creates plan from upstream)
+          </label>
+        </template>
       </div>
 
       <!-- Action Type (Act blocks) -->
@@ -295,5 +481,33 @@ function handleKeydown(e: KeyboardEvent) {
 .config-textarea--large {
   min-height: 120px;
   font-size: 0.82rem;
+}
+
+.config-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+}
+
+.config-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.config-field {
+  margin-bottom: 0.75rem;
+}
+
+.config-info {
+  padding: 0.4rem 0.6rem;
+  background: var(--bg-hover);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 </style>

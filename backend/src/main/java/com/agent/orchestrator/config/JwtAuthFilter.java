@@ -25,9 +25,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // Skip JWT filter for public endpoints
-        return path.startsWith("/api/schemas") || 
-               path.startsWith("/api/health") ||
+        // Skip JWT filter for public endpoints (except schemas — needs auth for model resolution)
+        return path.startsWith("/api/health") ||
                path.startsWith("/api/memory") ||
                path.startsWith("/api/graph") ||
                path.startsWith("/api/share") ||

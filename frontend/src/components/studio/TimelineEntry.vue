@@ -1,5 +1,7 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   event: {
     stepIndex: number
     blockId: string
@@ -18,6 +20,17 @@ defineProps<{
 defineEmits<{
   click: [blockId: string]
 }>()
+
+const parsedChecks = computed(() => {
+  try {
+    const details = props.event.details
+    if (!details) return []
+    const parsed = JSON.parse(details)
+    return parsed.checks || []
+  } catch {
+    return []
+  }
+})
 </script>
 
 <template>
@@ -29,6 +42,19 @@ defineEmits<{
         <span class="timeline-status" :class="event.status">{{ event.status }}</span>
         <span class="timeline-duration" v-if="event.duration">{{ event.duration }}ms</span>
         <span class="timeline-time">{{ timestamp }}</span>
+      </div>
+      <div v-if="event.blockType === 'verifier' && event.details" class="verifier-details">
+        <div class="verifier-detail-row" v-for="check in parsedChecks" :key="check.name">
+          <span :class="['check-status', check.passed ? 'pass' : 'fail']">
+            {{ check.passed ? '✓' : '✗' }}
+          </span>
+          <span class="check-name">{{ check.name }}</span>
+        </div>
+      </div>
+      <div v-if="event.blockType === 'review' && event.details" class="review-details">
+        <div class="review-detail-row">
+          <span class="review-findings">{{ event.details }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -91,5 +117,39 @@ defineEmits<{
 .timeline-time {
   color: var(--text-muted);
   margin-left: auto;
+}
+
+.verifier-details {
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+
+.verifier-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  padding: 0.15rem 0;
+}
+
+.check-status.pass { color: #4caf50; }
+.check-status.fail { color: #ef4444; }
+
+.review-details {
+  margin-top: 0.5rem;
+  padding: 0.4rem;
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+
+.review-detail-row {
+  font-size: 0.75rem;
+  padding: 0.15rem 0;
+}
+
+.review-findings {
+  color: var(--text-primary);
 }
 </style>

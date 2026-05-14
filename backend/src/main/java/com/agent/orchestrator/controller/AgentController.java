@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -125,6 +126,23 @@ public class AgentController {
     public Map<String, String> stopSchema(@PathVariable String id) {
         schemaService.cancelExecution(id);
         return Map.of("status", "stopped", "schemaId", id);
+    }
+
+    @PostMapping("/execution/{executionId}/feedback")
+    public Map<String, String> submitReviewFeedback(
+            @PathVariable String executionId,
+            @RequestParam String nodeId,
+            @RequestBody Map<String, Object> body) {
+        String feedback = body.get("feedback") instanceof String ? (String) body.get("feedback") : "";
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> history = body.get("history") instanceof List
+                ? (List<Map<String, Object>>) body.get("history") : new ArrayList<>();
+
+        schemaService.handleReviewFeedback(executionId, nodeId, feedback, history);
+        log.info("Review feedback received for execution {} node {}: {}", executionId, nodeId,
+                feedback.length() > 50 ? feedback.substring(0, 50) + "..." : feedback);
+
+        return Map.of("status", "ok", "message", "Feedback received and review node resumed");
     }
 
     @GetMapping("/health")

@@ -2,11 +2,31 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
 import { schemaApi, settingsApi } from '../services/api';
+import { api } from '../services/api';
+
+export interface ReviewFinding {
+  source: string;
+  severity: string;
+  description: string;
+  suggestion: string;
+}
+
+export interface ReviewData {
+  executionId: string;
+  nodeId: string;
+  originalPlan: string;
+  rewrittenPlan: string;
+  findings: ReviewFinding[];
+  iteration: number;
+  maxIterations: number;
+}
 
 export const useSchemaStore = defineStore('schema', () => {
   const schemas = ref<WorkflowSchema[]>([]);
   const currentSchema = ref<WorkflowSchema | null>(null);
   const loading = ref(false);
+  const pendingReview = ref(false);
+  const reviewData = ref<ReviewData | null>(null);
 
   async function loadSchemas() {
     loading.value = true;
@@ -105,6 +125,39 @@ export const useSchemaStore = defineStore('schema', () => {
     currentSchema.value = schema;
   }
 
+  // Review approval state
+  function handleReviewAwaitingApproval(data: ReviewData) {
+    reviewData.value = data;
+    pendingReview.value = true;
+  }
+
+  function clearReview() {
+    pendingReview.value = false;
+    reviewData.value = null;
+  }
+
+  async function approveReview(executionId: string, nodeId: string) {
+    try {
+      await api.post(`/execution/${executionId}/approve?nodeId=${nodeId}`);
+      pendingReview.value = false;
+      reviewData.value = null;
+    } catch (error) {
+      console.error('Ошибка при approve review:', error);
+      throw error;
+    }
+  }
+
+  async function rejectReview(executionId: string, nodeId: string) {
+    try {
+      await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}`);
+      pendingReview.value = false;
+      reviewData.value = null;
+    } catch (error) {
+      console.error('Ошибка при reject review:', error);
+      throw error;
+    }
+  }
+
   return {
     schemas,
     currentSchema,
@@ -116,5 +169,11 @@ export const useSchemaStore = defineStore('schema', () => {
     executeSchema,
     cancelExecution,
     updateCurrentSchema,
+    pendingReview,
+    reviewData,
+    handleReviewAwaitingApproval,
+    clearReview,
+    approveReview,
+    rejectReview,
   };
 });

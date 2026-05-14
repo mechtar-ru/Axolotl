@@ -160,4 +160,17 @@ class AgentControllerTest {
                     """))
             .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void submitReviewFeedback_returnsOk() throws Exception {
+        mockMvc.perform(post("/api/execution/exec-1/feedback")
+                .param("nodeId", "node-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"feedback": "Looks good, continue", "history": [{"role": "user", "content": "test"}]}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("ok"))
+            .andExpect(jsonPath("$.message").value("Feedback received and review node resumed"));
+    }
 }

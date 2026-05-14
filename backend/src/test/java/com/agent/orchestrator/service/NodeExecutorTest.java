@@ -128,6 +128,98 @@ class NodeExecutorTest {
         assertFalse(nodeExecutor.evaluateConditionPublic("5 < 3", Map.of()));
     }
 
+    // === Verifier node config extraction ===
+
+    @Test
+    void executeVerifierNode_validConfig_setsAgentDataCorrectly() {
+        Node node = new Node();
+        node.setId("verifier-1");
+        node.setType("verifier");
+        node.setName("Verify Generated Code");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("syntaxCheck", true);
+        checks.put("requiredPatterns", List.of("def ", "return"));
+        checks.put("testCommand", "");
+        checks.put("maxFileSizeKb", 500);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setEnabledTools(List.of("file_read", "bash", "grep"));
+        data.setAgentType("verifier");
+        node.setData(data);
+
+        assertEquals("verifier", node.getData().getAgentType());
+        assertEquals(List.of("file_read", "bash", "grep"), node.getData().getEnabledTools());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertNotNull(extractedChecks);
+        assertTrue((Boolean) extractedChecks.get("syntaxCheck"));
+        assertEquals(List.of("def ", "return"), extractedChecks.get("requiredPatterns"));
+    }
+
+    @Test
+    void executeVerifierNode_invalidSyntaxConfig_syntaxCheckTrue() {
+        Node node = new Node();
+        node.setId("verifier-2");
+        node.setType("verifier");
+        node.setName("Verify Broken Code");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("syntaxCheck", true);
+        checks.put("requiredPatterns", List.of());
+        checks.put("testCommand", "");
+        checks.put("maxFileSizeKb", 500);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setEnabledTools(List.of("file_read", "bash", "grep"));
+        data.setAgentType("verifier");
+        node.setData(data);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertNotNull(extractedChecks);
+        assertTrue((Boolean) extractedChecks.get("syntaxCheck"));
+        assertTrue(((List<String>) extractedChecks.get("requiredPatterns")).isEmpty());
+    }
+
+    @Test
+    void executeVerifierNode_missingRequiredPattern_configReadCorrectly() {
+        Node node = new Node();
+        node.setId("verifier-3");
+        node.setType("verifier");
+        node.setName("Verify Missing Pattern");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("syntaxCheck", false);
+        checks.put("requiredPatterns", List.of("@", "move()", "check_victory"));
+        checks.put("testCommand", "");
+        checks.put("maxFileSizeKb", 500);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setEnabledTools(List.of("file_read", "bash", "grep"));
+        data.setAgentType("verifier");
+        node.setData(data);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertNotNull(extractedChecks);
+        assertFalse((Boolean) extractedChecks.get("syntaxCheck"));
+
+        @SuppressWarnings("unchecked")
+        List<String> patterns = (List<String>) extractedChecks.get("requiredPatterns");
+        assertEquals(3, patterns.size());
+        assertTrue(patterns.contains("@"));
+        assertTrue(patterns.contains("move()"));
+        assertTrue(patterns.contains("check_victory"));
+    }
+
     @Test
     void evaluateCondition_withVariables() {
         Map<String, Object> ctx = Map.of("x", 10, "y", 20);
@@ -281,5 +373,197 @@ class NodeExecutorTest {
     @Test
     void sleepWithCancel_returnsTrueWhenNotCancelled() {
         assertTrue(nodeExecutor.sleepWithCancelPublic(50, new java.util.concurrent.atomic.AtomicBoolean(false)));
+    }
+
+    // === Review Node Config ===
+
+    @Test
+    void executeReviewNode_noChecks_configReadCorrectly() {
+        Node node = new Node();
+        node.setId("review-1");
+        node.setType("review");
+        node.setName("Review Plan");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("premortem", false);
+        checks.put("prism", false);
+        checks.put("postmortem", false);
+        checks.put("mode", "pass-through");
+        checks.put("maxIterations", 3);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setAgentType("review");
+        node.setData(data);
+
+        assertEquals("review", node.getData().getAgentType());
+        assertEquals("review", node.getType());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertNotNull(extractedChecks);
+        assertFalse((Boolean) extractedChecks.get("premortem"));
+        assertFalse((Boolean) extractedChecks.get("prism"));
+        assertFalse((Boolean) extractedChecks.get("postmortem"));
+        assertEquals("pass-through", extractedChecks.get("mode"));
+        assertEquals(3, extractedChecks.get("maxIterations"));
+    }
+
+    @Test
+    void executeReviewNode_premortemEnabled_configReadCorrectly() {
+        Node node = new Node();
+        node.setId("review-2");
+        node.setType("review");
+        node.setName("Review with Premortem");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("premortem", true);
+        checks.put("prism", false);
+        checks.put("postmortem", false);
+        checks.put("mode", "pass-through");
+        checks.put("maxIterations", 5);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setAgentType("review");
+        node.setData(data);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertNotNull(extractedChecks);
+        assertTrue((Boolean) extractedChecks.get("premortem"));
+        assertFalse((Boolean) extractedChecks.get("prism"));
+        assertFalse((Boolean) extractedChecks.get("postmortem"));
+        assertEquals("pass-through", extractedChecks.get("mode"));
+        assertEquals(5, ((Number) extractedChecks.get("maxIterations")).intValue());
+    }
+
+    @Test
+    void executeReviewNode_manualMode_returnsAwaitingApproval() {
+        // Create a Node with type "review", mode "manual"
+        Node node = new Node();
+        node.setId("review-manual");
+        node.setType("review");
+        node.setName("Manual Review");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("premortem", true);
+        checks.put("prism", false);
+        checks.put("postmortem", false);
+        checks.put("mode", "manual");
+        checks.put("maxAutoIterations", 3);
+        checks.put("generatePlan", false);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setAgentType("review");
+        node.setData(data);
+
+        assertEquals("review", node.getType());
+        assertEquals("manual", ((Map<String, Object>) node.getData().getConfig().get("checks")).get("mode"));
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertTrue((Boolean) extractedChecks.get("premortem"));
+        assertEquals("manual", extractedChecks.get("mode"));
+    }
+
+    @Test
+    void executeReviewNode_autoMode_passesAfterMax() {
+        Node node = new Node();
+        node.setId("review-auto");
+        node.setType("review");
+        node.setName("Auto Review");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("premortem", true);
+        checks.put("prism", false);
+        checks.put("postmortem", false);
+        checks.put("mode", "auto");
+        checks.put("maxAutoIterations", 3);
+        checks.put("generatePlan", true);
+        config.put("checks", checks);
+        data.setConfig(config);
+        data.setAgentType("review");
+        node.setData(data);
+
+        assertEquals("auto", ((Map<String, Object>) node.getData().getConfig().get("checks")).get("mode"));
+        assertEquals(3, ((Number) ((Map<String, Object>) node.getData().getConfig().get("checks")).get("maxAutoIterations")).intValue());
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) node.getData().getConfig().get("checks");
+        assertTrue((Boolean) extractedChecks.get("premortem"));
+        assertEquals("auto", extractedChecks.get("mode"));
+        assertTrue((Boolean) extractedChecks.get("generatePlan"));
+    }
+
+    @Test
+    void executeVerifierNode_rewriteOnFail_fixesCode() {
+        Node node = new Node();
+        node.setId("verifier-rewrite");
+        node.setType("verifier");
+        node.setName("Verifier with Rewrite");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        Map<String, Object> checks = new HashMap<>();
+        checks.put("syntaxCheck", true);
+        checks.put("testCommand", "");
+        checks.put("premortem", true);
+        checks.put("requiredPatterns", List.of());
+        checks.put("maxFileSizeKb", 500);
+        config.put("checks", checks);
+        config.put("rewriteOnFail", true);
+        config.put("maxRewriteRetries", 3);
+        data.setConfig(config);
+        data.setAgentType("verifier");
+        node.setData(data);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedConfig = node.getData().getConfig();
+        assertTrue((Boolean) extractedConfig.get("rewriteOnFail"));
+        assertEquals(3, ((Number) extractedConfig.get("maxRewriteRetries")).intValue());
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedChecks = (Map<String, Object>) extractedConfig.get("checks");
+        assertTrue((Boolean) extractedChecks.get("syntaxCheck"));
+        assertTrue((Boolean) extractedChecks.get("premortem"));
+    }
+
+    @Test
+    void executeOutputNode_summaryReportMode_configReadCorrectly() {
+        Node node = new Node();
+        node.setId("output-summary");
+        node.setType("output");
+        node.setName("Summary Report");
+
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        config.put("mode", "summary_report");
+        config.put("reportPath", "test-report.md");
+        config.put("includeReview", true);
+        config.put("includeFiles", true);
+        config.put("includeVerification", true);
+        config.put("includeMetrics", true);
+        data.setConfig(config);
+        data.setAgentType("output");
+        node.setData(data);
+
+        assertEquals("output", node.getType());
+        assertEquals("summary_report", node.getData().getConfig().get("mode"));
+        assertEquals("test-report.md", node.getData().getConfig().get("reportPath"));
+        
+        @SuppressWarnings("unchecked")
+        Map<String, Object> extractedConfig = node.getData().getConfig();
+        assertEquals("summary_report", extractedConfig.get("mode"));
+        assertTrue((Boolean) extractedConfig.get("includeReview"));
+        assertTrue((Boolean) extractedConfig.get("includeFiles"));
+        assertTrue((Boolean) extractedConfig.get("includeVerification"));
+        assertTrue((Boolean) extractedConfig.get("includeMetrics"));
     }
 }

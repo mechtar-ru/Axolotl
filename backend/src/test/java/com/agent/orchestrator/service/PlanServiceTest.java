@@ -259,7 +259,7 @@ class PlanServiceTest {
             // Ignored directories
             Files.createDirectories(tempDir.resolve("node_modules"));
             Files.writeString(tempDir.resolve("node_modules/pkg.js"), "ignored");
-            Files.createDirectories(tempDir.resolve("target"));
+            Files.createDirectories(tempDir.resolve("target/classes"));
             Files.writeString(tempDir.resolve("target/classes/Main.class"), "ignored");
             Files.createDirectories(tempDir.resolve(".git"));
             Files.writeString(tempDir.resolve(".git/config"), "ignored");

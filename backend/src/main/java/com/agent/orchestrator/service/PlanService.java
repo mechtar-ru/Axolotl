@@ -21,6 +21,10 @@ public class PlanService {
 
     private static final String DEFAULT_WORKSPACE = "default";
 
+    private static final Set<String> IGNORED_SCAN_DIRS = Set.of(
+            "node_modules", ".git", "target", "dist"
+    );
+
     private final Neo4jPlanRepository planRepository;
     private final ExecutionWebSocketHandler webSocketHandler;
 
@@ -413,12 +417,17 @@ public class PlanService {
         if (targetPath == null || targetPath.isBlank()) {
             return new ArrayList<>();
         }
-        if (!Files.exists(Path.of(targetPath))) {
+        Path root = Path.of(targetPath);
+        if (!Files.exists(root)) {
             return new ArrayList<>();
         }
-        try (Stream<Path> paths = Files.walk(Path.of(targetPath))) {
+        List<Path> ignoredRoots = IGNORED_SCAN_DIRS.stream()
+                .map(root::resolve)
+                .toList();
+        try (Stream<Path> paths = Files.walk(root)) {
             return paths.filter(Files::isRegularFile)
-                    .map(p -> new Task.GeneratedFile(Path.of(targetPath).relativize(p).toString(), ""))
+                    .filter(p -> ignoredRoots.stream().noneMatch(p::startsWith))
+                    .map(p -> new Task.GeneratedFile(root.relativize(p).toString(), ""))
                     .toList();
         } catch (IOException e) {
             log.warn("Ошибка сканирования сгенерированных файлов: {}", e.getMessage());

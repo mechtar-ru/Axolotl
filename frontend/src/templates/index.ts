@@ -189,27 +189,71 @@ export const templates: AppTemplate[] = [
         data: { sourceData: 'Grid size, level layout, and game rules' }
       },
       {
+        id: 'review-1',
+        type: 'review',
+        name: 'Review Plan',
+        position: { x: 350, y: 50 },
+        data: {
+          checks: {
+            premortem: true,
+            prism: false,
+            postmortem: false
+          },
+          mode: 'manual',
+          maxAutoIterations: 3,
+          generatePlan: true
+        },
+        agentType: 'review'
+      },
+      {
         id: 'think-1',
         type: 'agent',
         name: 'Generate Game',
-        position: { x: 450, y: 200 },
+        position: { x: 350, y: 350 },
         data: {
           systemPrompt: 'You are a game developer. Generate a complete playable Sokoban game as HTML with embedded CSS and JavaScript. The game must include: a grid-based level, player character, walls, boxes, target spaces, movement controls (arrow keys), undo functionality, level reset, move counter, and victory detection. Output ONLY the complete HTML file to the project target path using file_write.',
           userPrompt: 'Create a Sokoban game with these parameters:\n\nGrid: {{grid}}\nLevel: {{level}}\n\nGenerate a self-contained HTML file and write it to the project target path.',
-          enabledTools: ['file_write']
+          agentType: 'coder',
+          enabledTools: ['file_write'],
+          model: null
         }
+      },
+      {
+        id: 'verifier-1',
+        type: 'verifier',
+        name: 'Verify Code',
+        position: { x: 600, y: 200 },
+        data: {
+          checks: {
+            syntaxCheck: true,
+            testCommand: '',
+            premortem: true
+          },
+          rewriteOnFail: true,
+          maxRewriteRetries: 3
+        },
+        agentType: 'verifier'
       },
       {
         id: 'act-1',
         type: 'output',
-        name: 'Playable Game',
-        position: { x: 800, y: 200 },
-        data: {}
+        name: 'Pipeline Report',
+        position: { x: 850, y: 200 },
+        data: {
+          mode: 'summary_report',
+          reportPath: 'pipeline-report.md',
+          includeReview: true,
+          includeFiles: true,
+          includeVerification: true,
+          includeMetrics: true
+        }
       }
     ],
     defaultEdges: [
-      { id: 'e1', source: 'receive-1', target: 'think-1' },
-      { id: 'e2', source: 'think-1', target: 'act-1' }
+      { id: 'e1', source: 'receive-1', target: 'review-1' },
+      { id: 'e2', source: 'review-1', target: 'think-1' },
+      { id: 'e3', source: 'think-1', target: 'verifier-1' },
+      { id: 'e4', source: 'verifier-1', target: 'act-1' }
     ]
   },
   {

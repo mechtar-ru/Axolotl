@@ -15,6 +15,8 @@ import ReceiveBlock from '@/components/blocks/ReceiveBlock.vue'
 import ThinkBlock from '@/components/blocks/ThinkBlock.vue'
 import RememberBlock from '@/components/blocks/RememberBlock.vue'
 import ActBlock from '@/components/blocks/ActBlock.vue'
+import VerifyBlock from '@/components/blocks/VerifyBlock.vue'
+import ReviewBlock from '@/components/blocks/ReviewBlock.vue'
 
 const props = defineProps<{
   appId: string
@@ -26,6 +28,8 @@ const schemaStore = useSchemaStore()
 const nodeTypes = {
   source: ReceiveBlock,
   agent: ThinkBlock,
+  verifier: VerifyBlock,
+  review: ReviewBlock,
   memory: RememberBlock,
   output: ActBlock,
 }

@@ -15,6 +15,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -168,6 +170,22 @@ public class SchemaService {
             return;
         }
 
+        // Fall back to auth context userId for model resolution when schema has none
+        if (schema.getUserId() == null) {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+                schema.setUserId(auth.getName());
+                log.info("Set userId={} on schema {} from security context (auth={}, isAuth={})",
+                        auth.getName(), id, auth.getName(), auth.isAuthenticated());
+            } else {
+                log.warn("Could not get userId: auth={}, isAuth={}, name={}",
+                        auth != null, auth != null ? auth.isAuthenticated() : "N/A",
+                        auth != null ? auth.getName() : "N/A");
+            }
+        } else {
+            log.info("Schema {} already has userId={}", id, schema.getUserId());
+        }
+
         if (schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
                 node.setStatus(Node.NodeStatus.IDLE);
@@ -238,6 +256,70 @@ public class SchemaService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    // ── Review Feedback ──
+
+    /**
+     * Handle review feedback from the UI feedback endpoint.
+     * Stores feedback and history in execution state, then triggers re-generation.
+     */
+    public void handleReviewFeedback(String executionId, String nodeId, String feedback, List<Map<String, Object>> history) {
+        // Store feedback in the node result map for the review node to pick up
+        String feedbackKey = executionId + ":" + nodeId + ":feedback";
+        nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
+                .put(feedbackKey, feedback);
+
+        // Store feedback history
+        String historyKey = executionId + ":" + nodeId + ":feedbackHistory";
+        nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
+                .put(historyKey, history != null ? history.toString() : "[]");
+
+        // Find the paused node and resume it from AWAITING_APPROVAL → RUNNING
+        WorkflowSchema schema = schemaRepository.findById(executionId);
+        if (schema != null && schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
+                    node.setStatus(Node.NodeStatus.RUNNING);
+                    log.info("Resumed review node {} from AWAITING_APPROVAL after feedback", nodeId);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(executionId, "info",
+                                "Feedback received, resuming review node: " + nodeId, nodeId);
+                        Map<String, Object> payload = new HashMap<>();
+                        payload.put("nodeId", nodeId);
+                        payload.put("status", "RUNNING");
+                        payload.put("feedback", feedback);
+                        webSocketHandler.sendLiveUpdate(executionId, "review_feedback_applied", payload);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Get all node results for a given execution (used by output summary report).
+     */
+    public Map<String, String> getExecutionResults(String executionId) {
+        Map<String, String> results = nodeExecutor.getNodeResults().get(executionId);
+        if (results == null) {
+            return new HashMap<>();
+        }
+        return new HashMap<>(results);
+    }
+
+    /**
+     * Get the generated files registry for a schema execution.
+     */
+    public Map<String, Object> getGeneratedFiles(String schemaId) {
+        Map<String, Object> files = new HashMap<>();
+        String prefix = schemaId + ":";
+        for (Map.Entry<String, Object> entry : nodeExecutor.getGeneratedFilesRegistry().entrySet()) {
+            if (entry.getKey().startsWith(prefix)) {
+                files.put(entry.getKey().substring(prefix.length()), entry.getValue());
+            }
+        }
+        return files;
     }
 
     // ────────────────────────── Private helpers ──────────────────────────
@@ -326,7 +408,7 @@ public class SchemaService {
 
             List<Node> executable = level.stream()
                     .filter(node -> !skippedNodes.contains(node.getId()))
-                    .filter(node -> node.getStatus() != Node.NodeStatus.BLOCKED)
+                    .filter(node -> node.getStatus() != Node.NodeStatus.BLOCKED && node.getStatus() != Node.NodeStatus.FAILED)
                     .filter(node -> !cancelFlag.get())
                     .toList();
 
@@ -648,14 +730,25 @@ public class SchemaService {
     }
 
     private String resolveModel(String nodeModel, WorkflowSchema schema) {
-        if (nodeModel != null && !nodeModel.isBlank()) return nodeModel;
-        if (schema.getDefaultModel() != null && !schema.getDefaultModel().isBlank()) return schema.getDefaultModel();
+        if (nodeModel != null && !nodeModel.isBlank()) {
+            log.debug("resolveModel: using nodeModel='{}'", nodeModel);
+            return nodeModel;
+        }
+        if (schema.getDefaultModel() != null && !schema.getDefaultModel().isBlank()) {
+            log.debug("resolveModel: using schema.defaultModel='{}'", schema.getDefaultModel());
+            return schema.getDefaultModel();
+        }
         if (schema.getUserId() != null) {
             String userModel = settingsService.getUserDefaultModel(schema.getUserId());
+            log.debug("resolveModel: schema.userId='{}', userModel='{}'", schema.getUserId(), userModel);
             if (userModel != null && !userModel.isBlank()) return userModel;
+        } else {
+            log.debug("resolveModel: schema.userId is NULL");
         }
         String global = settingsService.getGlobalDefaultModel();
+        log.debug("resolveModel: global='{}'", global);
         if (global != null && !global.isBlank()) return global;
+        log.warn("resolveModel: all fallbacks exhausted, returning null");
         return null;
     }
 

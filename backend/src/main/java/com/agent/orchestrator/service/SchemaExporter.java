@@ -200,6 +200,45 @@ public class SchemaExporter {
                 py.append("results[\"").append(varName).append("\"] = \"Memory search: ").append(searchQuery).append(" (stub)\"\n");
                 break;
 
+            case "verifier":
+                String syntaxCheck = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("syntaxCheck", "true") : "true";
+                String testCmd = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().getOrDefault("testCommand", "") : "";
+                py.append("# Verifier: ").append(node.getName()).append("\n");
+                py.append("print(\"Running verifier: ").append(node.getName()).append("\")\n");
+                py.append("# Get upstream file path from results\n");
+                py.append("input_text = list(results.values())[-1] if results else \"\"\n");
+                if ("true".equals(syntaxCheck)) {
+                    py.append("import py_compile, sys, os, tempfile\n");
+                    py.append("try:\n");
+                    py.append("    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:\n");
+                    py.append("        f.write(input_text)\n");
+                    py.append("        tmp_path = f.name\n");
+                    py.append("    py_compile.compile(tmp_path, doraise=True)\n");
+                    py.append("    print(\"PASS: Syntax OK\")\n");
+                    py.append("    os.unlink(tmp_path)\n");
+                    py.append("except py_compile.PyCompileError as e:\n");
+                    py.append("    print(f\"FAIL: Syntax error — {e}\")\n");
+                    py.append("    os.unlink(tmp_path)\n");
+                    py.append("    results[\"").append(varName).append("\"] = '{\"status\": \"FAIL\"}'\n");
+                    py.append("except Exception as e:\n");
+                    py.append("    print(f\"FAIL: {e}\")\n");
+                    py.append("    os.unlink(tmp_path)\n");
+                    py.append("    results[\"").append(varName).append("\"] = '{\"status\": \"FAIL\"}'\n");
+                }
+                if (testCmd != null && !testCmd.isEmpty()) {
+                    py.append("import subprocess\n");
+                    py.append("result = subprocess.run(\"").append(escapePythonString(testCmd)).append("\", shell=True, capture_output=True, text=True)\n");
+                    py.append("if result.returncode == 0:\n");
+                    py.append("    print(\"PASS: Test command OK\")\n");
+                    py.append("else:\n");
+                    py.append("    print(f\"FAIL: Test command exited {result.returncode} — {result.stderr}\")\n");
+                    py.append("    results[\"").append(varName).append("\"] = '{\"status\": \"FAIL\"}'\n");
+                }
+                py.append("results[\"").append(varName).append("\"] = results.get(\"").append(varName).append("\", '{\"status\": \"PASS\"}')\n");
+                break;
+
             default:
                 py.append("# ").append(node.getType()).append(": ").append(node.getName()).append(" (not implemented in Python export)\n");
                 py.append("results[\"").append(varName).append("\"] = \"\"\n");
@@ -222,6 +261,8 @@ public class SchemaExporter {
             case "source" -> "[/";
             case "output" -> "[\\";
             case "condition" -> "{";
+            case "verifier" -> "((";
+            case "review" -> "[/";
             default -> "[";
         };
     }
