@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, watch, nextTick, inject } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -9,6 +9,7 @@ import { schemaApi } from '@/services/api'
 import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
 import BlockConfigPanel from '@/components/studio/BlockConfigPanel.vue'
+import LiveView from '@/components/studio/LiveView.vue'
 
 // Import block components for VueFlow nodeTypes
 import ReceiveBlock from '@/components/blocks/ReceiveBlock.vue'
@@ -38,6 +39,7 @@ const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fit
 
 const selectedBlockId = ref<string | null>(null)
 const configPanelOpen = ref(false)
+const showExecutionOverlay = inject('showExecutionOverlay', ref(false))
 
 // Build VueFlow nodes from schema data
 function buildVueFlowNodes(schema: any): Node[] {
@@ -186,7 +188,7 @@ onConnect((connection) => {
 <template>
   <div class="blueprint-view">
     <!-- Block Palette -->
-    <div class="palette-wrapper">
+    <div v-if="!showExecutionOverlay" class="palette-wrapper">
       <BlockPalette />
     </div>
     
@@ -215,10 +217,15 @@ onConnect((connection) => {
     
     <!-- Config Panel -->
     <BlockConfigPanel
-      v-if="configPanelOpen && selectedBlockId"
+      v-if="!showExecutionOverlay && configPanelOpen && selectedBlockId"
       :block-id="selectedBlockId"
       @close="configPanelOpen = false"
     />
+
+    <!-- Execution Overlay -->
+    <div v-if="showExecutionOverlay" class="execution-overlay">
+      <LiveView :app-id="appId" />
+    </div>
   </div>
 </template>
 
@@ -279,5 +286,13 @@ onConnect((connection) => {
 
 :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
   stroke: var(--accent);
+}
+
+.execution-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: var(--bg-canvas);
+  overflow: hidden;
 }
 </style>

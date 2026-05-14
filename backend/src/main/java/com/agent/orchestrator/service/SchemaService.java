@@ -945,4 +945,131 @@ public class SchemaService {
         }
         return result;
     }
+
+    /**
+     * Generate nodes and edges for an existing schema from a natural language prompt.
+     * Reuses PROMPT_TO_SCHEMA_SYSTEM but constrains LLM to return only nodes/edges.
+     * Saves the new nodes/edges onto the existing schema.
+     */
+    public Map<String, Object> generateNodes(String schemaId, String prompt, String model) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            // 1. Load existing schema
+            WorkflowSchema schema = schemaRepository.findById(schemaId);
+            if (schema == null) {
+                result.put("success", false);
+                result.put("error", "Schema not found: " + schemaId);
+                return result;
+            }
+
+            // 2. Resolve model
+            String resolvedModel = model;
+            if (resolvedModel == null || resolvedModel.isBlank()) {
+                resolvedModel = settingsService.getGlobalDefaultModel();
+            }
+            if (resolvedModel == null || resolvedModel.isBlank()) {
+                resolvedModel = "minimax-max";
+            }
+
+            log.info("Generating nodes for schema '{}' (model={}): {}", schemaId, resolvedModel, prompt.substring(0, Math.min(100, prompt.length())));
+
+            // 3. Build system prompt — constrain to ONLY return nodes/edges
+            String nodeSystemPrompt = PROMPT_TO_SCHEMA_SYSTEM + "\n\nIMPORTANT: The schema already exists. Return ONLY a JSON object with \"nodes\" and \"edges\" fields. Do NOT include \"name\", \"description\", \"version\", \"planExplanation\", or any other top-level fields. Only the nodes and edges arrays.";
+
+            // 4. Call LLM
+            String llmResponse = llmService.chat(resolvedModel, nodeSystemPrompt, prompt, null);
+
+            if (llmResponse == null || llmResponse.isBlank()) {
+                result.put("success", false);
+                result.put("error", "LLM returned empty response");
+                return result;
+            }
+
+            // 5. Parse JSON (strip markdown code fences if present)
+            String jsonStr = llmResponse.trim();
+            if (jsonStr.startsWith("```")) {
+                jsonStr = jsonStr.replaceFirst("^```\\w*\\n?", "").replaceFirst("\\n?```$", "");
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root;
+            try {
+                root = mapper.readTree(jsonStr);
+            } catch (Exception e) {
+                result.put("success", false);
+                result.put("error", "Failed to parse LLM response as JSON: " + e.getMessage());
+                result.put("raw", llmResponse);
+                return result;
+            }
+
+            // 6. Extract nodes
+            List<Node> nodes = new ArrayList<>();
+            if (root.has("nodes")) {
+                for (JsonNode n : root.get("nodes")) {
+                    Node schemaNode = new Node();
+                    schemaNode.setId(n.has("id") ? n.get("id").asText() : UUID.randomUUID().toString());
+                    schemaNode.setType(n.has("type") ? n.get("type").asText() : "agent");
+                    schemaNode.setName(n.has("name") ? n.get("name").asText() : "Node");
+                    if (n.has("position")) {
+                        Node.Position pos = new Node.Position();
+                        pos.setX(n.get("position").has("x") ? n.get("position").get("x").asInt() : 100);
+                        pos.setY(n.get("position").has("y") ? n.get("position").get("y").asInt() : 200);
+                        schemaNode.setPosition(pos);
+                    }
+                    if (n.has("data")) {
+                        Node.NodeData data = new Node.NodeData();
+                        JsonNode d = n.get("data");
+                        if (d.has("userPrompt")) data.setUserPrompt(d.get("userPrompt").asText());
+                        if (d.has("systemPrompt")) data.setSystemPrompt(d.get("systemPrompt").asText());
+                        if (d.has("model")) data.setModel(d.get("model").asText());
+                        if (d.has("agentType")) data.setAgentType(d.get("agentType").asText());
+                        if (d.has("sourceData")) data.setSourceData(d.get("sourceData").asText());
+                        if (d.has("enabledTools") && d.get("enabledTools").isArray()) {
+                            List<String> tools = new ArrayList<>();
+                            for (JsonNode t : d.get("enabledTools")) tools.add(t.asText());
+                            data.setEnabledTools(tools);
+                        }
+                        if (d.has("maxToolCalls")) data.setMaxToolCalls(d.get("maxToolCalls").asInt());
+                        schemaNode.setData(data);
+                    }
+                    nodes.add(schemaNode);
+                }
+            }
+
+            if (nodes.isEmpty()) {
+                result.put("success", false);
+                result.put("error", "No nodes generated. Try a more specific description.");
+                return result;
+            }
+
+            // 7. Extract edges
+            List<Edge> edges = new ArrayList<>();
+            if (root.has("edges")) {
+                for (JsonNode e : root.get("edges")) {
+                    Edge edge = new Edge();
+                    edge.setId(UUID.randomUUID().toString());
+                    edge.setSource(e.has("source") ? e.get("source").asText() : "");
+                    edge.setTarget(e.has("target") ? e.get("target").asText() : "");
+                    edges.add(edge);
+                }
+            }
+
+            // 8. Update existing schema with new nodes/edges
+            schema.setNodes(nodes);
+            schema.setEdges(edges);
+            schema.setUpdatedAt(Instant.now().toString());
+            schemaRepository.save(schema);
+
+            log.info("Generated {} nodes and {} edges for schema '{}'", nodes.size(), edges.size(), schemaId);
+
+            result.put("success", true);
+            result.put("schema", schema);
+
+        } catch (Exception e) {
+            log.error("Failed to generate nodes for schema {}: {}", schemaId, e.getMessage(), e);
+            result.put("success", false);
+            result.put("error", e.getMessage());
+        }
+        return result;
+    }
 }

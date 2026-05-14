@@ -229,4 +229,85 @@ class SchemaServiceTest {
         Map<String, String> results = schemaService.getExecutionResults("unknown-exec");
         assertTrue(results.isEmpty());
     }
+
+    @Test
+    void generateNodes_returnsSuccessWithSchema() {
+        String schemaId = "test-schema-id";
+        String prompt = "Create a calculator app";
+        WorkflowSchema existingSchema = new WorkflowSchema();
+        existingSchema.setId(schemaId);
+        existingSchema.setName("Test App");
+        existingSchema.setNodes(new ArrayList<>());
+        existingSchema.setEdges(new ArrayList<>());
+
+        when(schemaRepository.findById(schemaId)).thenReturn(existingSchema);
+        when(settingsService.getGlobalDefaultModel()).thenReturn("test-model");
+        when(llmService.chat(anyString(), anyString(), eq(prompt), isNull()))
+            .thenReturn("{\"nodes\":[{\"id\":\"n1\",\"type\":\"agent\",\"name\":\"Calc Agent\"}],\"edges\":[]}");
+
+        Map<String, Object> result = schemaService.generateNodes(schemaId, prompt, null);
+
+        assertTrue((Boolean) result.get("success"));
+        assertNotNull(result.get("schema"));
+        verify(schemaRepository).save(any(WorkflowSchema.class));
+    }
+
+    @Test
+    void generateNodes_returnsErrorWhenSchemaNotFound() {
+        String schemaId = "nonexistent";
+        when(schemaRepository.findById(schemaId)).thenReturn(null);
+
+        Map<String, Object> result = schemaService.generateNodes(schemaId, "prompt", "model");
+
+        assertFalse((Boolean) result.get("success"));
+        assertEquals("Schema not found: nonexistent", result.get("error"));
+    }
+
+    @Test
+    void generateNodes_returnsErrorWhenEmptyResponse() {
+        String schemaId = "test-id";
+        WorkflowSchema existingSchema = new WorkflowSchema();
+        existingSchema.setId(schemaId);
+        when(schemaRepository.findById(schemaId)).thenReturn(existingSchema);
+        when(settingsService.getGlobalDefaultModel()).thenReturn("test-model");
+        when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
+            .thenReturn("");
+
+        Map<String, Object> result = schemaService.generateNodes(schemaId, "prompt", null);
+
+        assertFalse((Boolean) result.get("success"));
+        assertEquals("LLM returned empty response", result.get("error"));
+    }
+
+    @Test
+    void generateNodes_returnsErrorWhenNoNodes() {
+        String schemaId = "test-id";
+        WorkflowSchema existingSchema = new WorkflowSchema();
+        existingSchema.setId(schemaId);
+        when(schemaRepository.findById(schemaId)).thenReturn(existingSchema);
+        when(settingsService.getGlobalDefaultModel()).thenReturn("test-model");
+        when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
+            .thenReturn("{\"nodes\":[],\"edges\":[]}");
+
+        Map<String, Object> result = schemaService.generateNodes(schemaId, "prompt", null);
+
+        assertFalse((Boolean) result.get("success"));
+        assertEquals("No nodes generated. Try a more specific description.", result.get("error"));
+    }
+
+    @Test
+    void generateNodes_returnsErrorOnInvalidJson() {
+        String schemaId = "test-id";
+        WorkflowSchema existingSchema = new WorkflowSchema();
+        existingSchema.setId(schemaId);
+        when(schemaRepository.findById(schemaId)).thenReturn(existingSchema);
+        when(settingsService.getGlobalDefaultModel()).thenReturn("test-model");
+        when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
+            .thenReturn("not json at all");
+
+        Map<String, Object> result = schemaService.generateNodes(schemaId, "prompt", null);
+
+        assertFalse((Boolean) result.get("success"));
+        assertTrue(((String) result.get("error")).startsWith("Failed to parse"));
+    }
 }

@@ -327,4 +327,17 @@ public class AgentController {
         Map<String, Object> result = schemaService.generateSchemaFromPrompt(prompt, model);
         return result;
     }
+
+    @PostMapping("/schemas/{id}/generate-nodes")
+    public Map<String, Object> generateNodes(@PathVariable String id, @RequestBody Map<String, String> body) {
+        String prompt = body.get("prompt");
+        String model = body.getOrDefault("model", null);
+
+        if (prompt == null || prompt.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.BAD_REQUEST, "prompt is required");
+        }
+
+        return schemaService.generateNodes(id, prompt, model);
+    }
 }

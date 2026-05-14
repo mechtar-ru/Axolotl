@@ -3,14 +3,15 @@ import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { schemaApi } from '@/services/api'
+import type { WorkflowSchema } from '@/types'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { provideExecutionState, createExecutionState } from '@/composables/useExecutionState'
 import StudioTopBar from '@/components/studio/StudioTopBar.vue'
 import BlueprintView from '@/components/studio/BlueprintView.vue'
-import LiveView from '@/components/studio/LiveView.vue'
 import TimelineView from '@/components/studio/TimelineView.vue'
+import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 
-type StudioMode = 'blueprint' | 'live' | 'timeline'
+type StudioMode = 'blueprint' | 'timeline'
 
 const route = useRoute()
 const router = useRouter()
@@ -42,9 +43,12 @@ provide('appState', {
   activeMode,
   appId
 })
+
+const showExecutionOverlay = computed(() => isRunning.value && activeMode.value === 'blueprint')
+provide('showExecutionOverlay', showExecutionOverlay)
+
 // LiveView injects isRunning directly — provide it separately too
 provide('isRunning', isRunning)
-provide('executionError', executionError)
 provide('nodeResults', nodeResults)
 provide('nodeStatuses', nodeStatuses)
 provide('executionProgress', executionProgress)
@@ -94,7 +98,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       isRunning.value = false
       addStepEvent('__execution__', 'completed', 'Execution finished')
       if (activeMode.value === 'timeline') {
-        activeMode.value = 'live'
+        activeMode.value = 'blueprint'
       }
     },
     onError: (data) => {
@@ -125,6 +129,17 @@ provideExecutionState(execState)
 
 const nodeStartTimes = new Map<string, number>()
 let stepCounter = 0
+
+const showQuickStart = ref(false)
+
+function onShowQuickStart() {
+  showQuickStart.value = true
+}
+
+function onAddToCanvas(schema: WorkflowSchema) {
+  schemaStore.updateSchema(schema)
+  showQuickStart.value = false
+}
 
 function addStepEvent(nodeId: string, status: string, details?: string) {
   const schema = app.value
@@ -201,15 +216,12 @@ function goToDashboard() {
       @set-mode="setMode"
       @toggle-run="toggleRun"
       @back="goToDashboard"
+      @show-quick-start="onShowQuickStart"
     />
     
     <div class="studio-content">
       <BlueprintView
         v-if="activeMode === 'blueprint'"
-        :app-id="appId"
-      />
-      <LiveView
-        v-else-if="activeMode === 'live'"
         :app-id="appId"
       />
       <TimelineView
@@ -220,6 +232,13 @@ function goToDashboard() {
         }"
       />
     </div>
+
+    <QuickStartDialog
+      :visible="showQuickStart"
+      :app-id="appId"
+      @close="showQuickStart = false"
+      @add-to-canvas="onAddToCanvas"
+    />
   </div>
 </template>
 

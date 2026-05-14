@@ -1,5 +1,5 @@
 <script setup lang="ts">
-type StudioMode = 'blueprint' | 'live' | 'timeline'
+type StudioMode = 'blueprint' | 'timeline'
 
 const props = defineProps<{
   appName: string
@@ -11,11 +11,11 @@ const emit = defineEmits<{
   'set-mode': [mode: StudioMode]
   'toggle-run': []
   'back': []
+  'show-quick-start': []
 }>()
 
 const modes: { id: StudioMode; label: string; icon: string }[] = [
   { id: 'blueprint', label: 'Blueprint', icon: 'M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z' },
-  { id: 'live', label: 'Live', icon: 'M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z' },
   { id: 'timeline', label: 'Timeline', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' }
 ]
 </script>
@@ -46,6 +46,17 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
     </nav>
     
     <div class="topbar-right">
+      <button
+        class="quickstart-btn"
+        @click="emit('show-quick-start')"
+        title="Generate pipeline from description"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M13 2L12 10H21L11 22L12 14H3L13 2Z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Quick Start
+      </button>
+
       <button
         :class="['run-btn', { running: isRunning }]"
         @click="emit('toggle-run')"
@@ -179,6 +190,27 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
 
 .run-btn.running:hover {
   background: #dc2626;
+}
+
+.quickstart-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.quickstart-btn:hover {
+  background: var(--accent);
+  color: white;
 }
 
 @keyframes pulse {
