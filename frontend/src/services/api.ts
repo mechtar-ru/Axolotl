@@ -119,6 +119,25 @@ export const schemaApi = {
     schema.planningContext = undefined;
     return this.updateSchema(id, schema);
   },
+
+  async getRuns(schemaId: string): Promise<ExecutionRun[]> {
+    const response = await api.get(`/schemas/${schemaId}/runs`);
+    return response.data;
+  },
+
+  async getPausedRun(schemaId: string): Promise<ExecutionRun | null> {
+    const response = await api.get(`/schemas/${schemaId}/runs/paused`);
+    return response.data;
+  },
+
+  async getRunNodes(schemaId: string, runId: string): Promise<NodeExecution[]> {
+    const response = await api.get(`/schemas/${schemaId}/runs/${runId}/nodes`);
+    return response.data;
+  },
+
+  async resumeSchema(schemaId: string): Promise<void> {
+    await api.post(`/schemas/${schemaId}/resume`);
+  },
 };
 
 export interface AppInfo {
@@ -300,6 +319,39 @@ export interface ExecutionRecord {
     durationMs: number;
     status: string;
   }>;
+}
+
+export interface ExecutionRun {
+  id: string;
+  schemaId: string;
+  status: string;
+  mode: string;
+  totalTokens: number;
+  estimatedCost: number;
+  error: string | null;
+  resumesFrom: string | null;
+  startedAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+}
+
+export interface NodeExecution {
+  id: string;
+  runId: string;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  status: string;
+  tokensUsed: number;
+  durationMs: number;
+  toolCalls: number;
+  error: string | null;
+  inputSummary: string | null;
+  outputSummary: string | null;
+  filesWritten: string | null;
+  configHash: string;
+  startedAt: string;
+  completedAt: string | null;
 }
 
 export const historyApi = {

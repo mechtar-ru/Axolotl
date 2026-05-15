@@ -1,14 +1,18 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.Edge;
+import com.agent.orchestrator.model.ExecutionCheckpoint;
 import com.agent.orchestrator.model.ExecutionRecord;
+import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.Task;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
+import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,6 +47,10 @@ public class SchemaService {
     private final SchemaExporter schemaExporter;
     private final LlmService llmService;
     private final PlanService planService;
+    private final ExecutionRepository executionRepository;
+
+    private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
+    private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
 
     private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
     private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
@@ -63,6 +71,20 @@ public class SchemaService {
             SchemaExporter schemaExporter,
             LlmService llmService,
             PlanService planService) {
+        this(schemaRepository, webSocketHandler, memPalaceClient, settingsService,
+                metricsService, nodeExecutor, schemaExporter, llmService, planService, null);
+    }
+
+    public SchemaService(Neo4jSchemaRepository schemaRepository,
+            ExecutionWebSocketHandler webSocketHandler,
+            MemPalaceClient memPalaceClient,
+            SettingsService settingsService,
+            MetricsService metricsService,
+            NodeExecutor nodeExecutor,
+            SchemaExporter schemaExporter,
+            LlmService llmService,
+            PlanService planService,
+            ExecutionRepository executionRepository) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -72,6 +94,7 @@ public class SchemaService {
         this.schemaExporter = schemaExporter;
         this.llmService = llmService;
         this.planService = planService;
+        this.executionRepository = executionRepository;
     }
 
     @jakarta.annotation.PostConstruct
@@ -192,6 +215,34 @@ public class SchemaService {
             }
         }
 
+        // Create ExecutionRun for persistence
+        String runId = UUID.randomUUID().toString();
+        ExecutionRun run = new ExecutionRun();
+        run.setId(runId);
+        run.setSchemaId(id);
+        run.setStatus("running");
+        run.setMode("EXECUTE");
+        run.setStartedAt(Instant.now().toString());
+        run.setUpdatedAt(Instant.now().toString());
+        if (executionRepository != null) {
+            executionRepository.createRun(run);
+            // Create NodeExecution for each node
+            if (schema.getNodes() != null) {
+                for (Node node : schema.getNodes()) {
+                    NodeExecution ne = new NodeExecution();
+                    ne.setId(UUID.randomUUID().toString());
+                    ne.setRunId(runId);
+                    ne.setNodeId(node.getId());
+                    ne.setNodeName(node.getName());
+                    ne.setNodeType(node.getType());
+                    ne.setStatus("pending");
+                    ne.setConfigHash(computeConfigHash(node, schema));
+                    ne.setStartedAt(Instant.now().toString());
+                    executionRepository.createNodeExecution(ne);
+                }
+            }
+        }
+
         if (metricsService != null) {
             metricsService.recordSchemaExecutionStart();
         }
@@ -199,8 +250,9 @@ public class SchemaService {
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(id, cancelFlag);
         Timer.Sample timerSample = metricsService != null ? metricsService.startTimer() : null;
+        nodeExecutor.setCurrentRunId(id, runId);
         CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> executeWorkflow(schema, cancelFlag), executionExecutor);
+                () -> executeWorkflow(schema, cancelFlag, runId), executionExecutor);
         runningExecutions.put(id, future);
         future.whenComplete((result, ex) -> {
             if (metricsService != null && timerSample != null) {
@@ -224,6 +276,139 @@ public class SchemaService {
             future.cancel(true);
         }
         log.info("Остановка выполнения схемы запрошена: {}", id);
+    }
+
+    // ────────────────────────── Execution Runs / Resilience ──────────────────────────
+
+    /**
+     * Find all execution runs for a given schema (persisted).
+     */
+    public List<ExecutionRun> findExecutionRuns(String schemaId) {
+        if (executionRepository == null) return List.of();
+        return executionRepository.getRunsBySchema(schemaId);
+    }
+
+    /**
+     * Get the paused run for a schema, if any (persisted).
+     */
+    public ExecutionRun getPausedRun(String schemaId) {
+        if (executionRepository == null) return null;
+        return executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
+    }
+
+    /**
+     * Resume a paused execution for the given schema.
+     */
+    public void resumeExecution(String schemaId) {
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        resumeExecution(schemaId, schema);
+    }
+
+    public void resumeExecution(String schemaId, WorkflowSchema schema) {
+        if (schema == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
+        }
+
+        ExecutionRun parentRun = executionRepository != null ?
+                executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused") : null;
+        if (parentRun == null) {
+            log.warn("No paused run found for schema: {}", schemaId);
+            return;
+        }
+
+        if (executionRepository != null && executionRepository.hasActiveRun(schemaId)) {
+            // If there is an active run, allow resume only when there is no *running* run
+            // and the only active run is the paused parent we just fetched. This permits
+            // resuming a paused run while still protecting against concurrent running runs.
+            ExecutionRun running = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "running");
+            if (running != null) {
+                log.warn("Schema {} already has an active running run ({}), cannot resume", schemaId, running.getId());
+                return;
+            }
+        }
+
+        // Get parent node executions
+        List<NodeExecution> parentNodeExecs = executionRepository != null ?
+                executionRepository.getNodeExecutionsByRun(parentRun.getId()) : List.of();
+
+        // Create child run
+        String childRunId = UUID.randomUUID().toString();
+        ExecutionRun childRun = new ExecutionRun();
+        childRun.setId(childRunId);
+        childRun.setSchemaId(schemaId);
+        childRun.setStatus("running");
+        childRun.setMode("EXECUTE");
+        childRun.setResumesFrom(parentRun.getId());
+        childRun.setStartedAt(Instant.now().toString());
+        childRun.setUpdatedAt(Instant.now().toString());
+        if (executionRepository != null) {
+            executionRepository.createRun(childRun);
+        }
+
+        // Compute config hashes for current schema nodes
+        List<Node> schemaNodes = schema.getNodes();
+        if (schemaNodes == null) schemaNodes = new ArrayList<>();
+
+        Map<String, String> currentConfigHashes = new HashMap<>();
+        for (Node node : schemaNodes) {
+            currentConfigHashes.put(node.getId(), computeConfigHash(node, schema));
+        }
+
+        // Reset node statuses and create NodeExecution records
+        for (Node node : schemaNodes) {
+            String currentHash = currentConfigHashes.get(node.getId());
+            NodeExecution matched = parentNodeExecs.stream()
+                    .filter(ne -> ne.getNodeId().equals(node.getId()))
+                    .filter(ne -> "completed".equals(ne.getStatus()))
+                    .filter(ne -> currentHash.equals(ne.getConfigHash()))
+                    .findFirst().orElse(null);
+
+            NodeExecution newNodeExec = new NodeExecution();
+            newNodeExec.setId(UUID.randomUUID().toString());
+            newNodeExec.setRunId(childRunId);
+            newNodeExec.setNodeId(node.getId());
+            newNodeExec.setNodeName(node.getName());
+            newNodeExec.setNodeType(node.getType());
+            newNodeExec.setStartedAt(Instant.now().toString());
+
+            if (matched != null) {
+                newNodeExec.setStatus("skipped");
+                newNodeExec.setOutputSummary(matched.getOutputSummary());
+                newNodeExec.setConfigHash(currentHash);
+                newNodeExec.setCompletedAt(Instant.now().toString());
+                node.setStatus(Node.NodeStatus.COMPLETED);
+            } else {
+                newNodeExec.setStatus("pending");
+                newNodeExec.setConfigHash(currentHash);
+                node.setStatus(Node.NodeStatus.IDLE);
+            }
+            if (executionRepository != null) {
+                executionRepository.createNodeExecution(newNodeExec);
+            }
+
+            // Add skipped node results to nodeExecutor so downstream nodes can read them
+            if (matched != null && matched.getOutputSummary() != null) {
+                nodeExecutor.getNodeResults()
+                        .computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                        .put(node.getId(), matched.getOutputSummary());
+            }
+        }
+
+        log.info("Resuming schema {}: parentRun={}, childRun={}, {} nodes",
+                schemaId, parentRun.getId(), childRunId, schemaNodes.size());
+
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        cancelFlags.put(schemaId, cancelFlag);
+        nodeExecutor.setCurrentRunId(schemaId, childRunId);
+        CompletableFuture<?> future = CompletableFuture.runAsync(
+                () -> executeWorkflow(schema, cancelFlag, childRunId), executionExecutor);
+        runningExecutions.put(schemaId, future);
+    }
+
+    public List<NodeExecution> getExecutionNodes(String runId) {
+        if (executionRepository == null) return List.of();
+        return executionRepository.getNodeExecutionsByRun(runId);
     }
 
     // ────────────────────────── History ──────────────────────────
@@ -358,14 +543,20 @@ public class SchemaService {
         }
     }
 
-    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag) {
+    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag, String runId) {
         log.info("Выполнение схемы: {}", schema.getName());
         long startTime = System.currentTimeMillis();
         long workflowStartTime = startTime;
 
         Map<String, String> conditionResults = nodeExecutor.getConditionResults();
         conditionResults.keySet().removeIf(k -> k.startsWith(schema.getId() + ":"));
-        nodeExecutor.getNodeResults().remove(schema.getId());
+        // Preserve injected results when resuming: only clear previous nodeResults if none present
+        Map<String, String> existingResults = nodeExecutor.getNodeResults().get(schema.getId());
+        if (existingResults == null || existingResults.isEmpty()) {
+            nodeExecutor.getNodeResults().remove(schema.getId());
+        } else {
+            log.debug("Preserving existing node results for schema {} (possible resume) - {} entries", schema.getId(), existingResults.size());
+        }
         nodeFailureCounts.put(schema.getId(), new ConcurrentHashMap<>());
 
         if (webSocketHandler != null) {
@@ -461,6 +652,10 @@ public class SchemaService {
 
             try {
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                // Save checkpoint after each wave
+                if (executionRepository != null) {
+                    saveCheckpoint(schema, runId, waveNum - 1);
+                }
                 if (webSocketHandler != null) {
                     List<String> execIds = executable.stream().map(Node::getId).toList();
                     webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "completed");
@@ -493,6 +688,9 @@ public class SchemaService {
                 webSocketHandler.sendLog(schema.getId(), "warning", "Выполнение схемы остановлено пользователем", null);
             }
             log.warn("Выполнение схемы отменено: {}", schema.getName());
+            if (executionRepository != null) {
+                executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
+            }
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
         } else {
             if (webSocketHandler != null) {
@@ -528,6 +726,9 @@ public class SchemaService {
                 }
             }
 
+            if (executionRepository != null) {
+                executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
+            }
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
         }
     }
@@ -712,6 +913,62 @@ public class SchemaService {
     public static final String FEATURE_DESIGNER_PROMPT = NodeExecutor.FEATURE_DESIGNER_PROMPT;
     public static final String TASK_BREAKDOWN_PROMPT = NodeExecutor.TASK_BREAKDOWN_PROMPT;
     public static final String PLANNING_WORKFLOW_USER_PROMPT = NodeExecutor.PLANNING_WORKFLOW_USER_PROMPT;
+
+    // ────────────────────────── Config hash ──────────────────────────
+
+    /**
+     * Вычислить SHA-256 хеш конфигурации узла для детекции изменений.
+     */
+    public String computeConfigHash(Node node, WorkflowSchema schema) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper hashMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            java.util.LinkedHashMap<String, Object> hashData = new java.util.LinkedHashMap<>();
+            if (node.getData() != null) {
+                hashData.put("data", node.getData());
+            }
+            List<String> incomingEdgeIds = new ArrayList<>();
+            if (schema.getEdges() != null) {
+                for (Edge edge : schema.getEdges()) {
+                    if (edge.getTarget().equals(node.getId())) {
+                        incomingEdgeIds.add(edge.getSource());
+                    }
+                }
+            }
+            Collections.sort(incomingEdgeIds);
+            hashData.put("incomingEdges", incomingEdgeIds);
+            String json = hashMapper.writeValueAsString(hashData);
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (Exception e) {
+            log.error("Ошибка вычисления config hash: {}", e.getMessage());
+            return UUID.randomUUID().toString();
+        }
+    }
+
+    private void saveCheckpoint(WorkflowSchema schema, String runId, int waveNum) {
+        try {
+            ExecutionCheckpoint cp = new ExecutionCheckpoint();
+            cp.setId(UUID.randomUUID().toString());
+            cp.setRunId(runId);
+            cp.setCurrentWave(waveNum);
+            cp.setCreatedAt(Instant.now().toString());
+            List<String> completedIds = new ArrayList<>();
+            if (schema.getNodes() != null) {
+                for (Node n : schema.getNodes()) {
+                    if (n.getStatus() == Node.NodeStatus.COMPLETED) {
+                        completedIds.add(n.getId());
+                    }
+                }
+            }
+            cp.setCompletedNodeIds(new ObjectMapper().writeValueAsString(completedIds));
+            if (executionRepository != null) {
+                executionRepository.saveCheckpoint(cp);
+            }
+        } catch (Exception e) {
+            log.warn("Ошибка сохранения чекпоинта: {}", e.getMessage());
+        }
+    }
 
     // ────────────────────────── Test accessors ──────────────────────────
 

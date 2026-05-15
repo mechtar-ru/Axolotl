@@ -142,6 +142,15 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         log.info("Выполнение завершено [{}]: {}мс, узлов: {}", schemaId, totalTime, nodesCompleted);
     }
 
+    public void sendPaused(String schemaId, int completedNodes, int totalNodes, String error) {
+        Map<String, Object> msg = baseMsg("paused", schemaId);
+        msg.put("completedNodes", completedNodes);
+        msg.put("totalNodes", totalNodes);
+        msg.put("error", error);
+        sendMessage(schemaId, toJson(msg));
+        log.info("Выполнение приостановлено [{}]: {}/{} узлов, ошибка: {}", schemaId, completedNodes, totalNodes, error);
+    }
+
     public void sendMetrics(String schemaId, int totalNodes, int completedNodes, long elapsedTime,
             double nodesPerSecond) {
         Map<String, Object> msg = baseMsg("metrics", schemaId);

@@ -10,6 +10,7 @@ import StudioTopBar from '@/components/studio/StudioTopBar.vue'
 import BlueprintView from '@/components/studio/BlueprintView.vue'
 import TimelineView from '@/components/studio/TimelineView.vue'
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
+import ResumeBanner from '@/components/studio/ResumeBanner.vue'
 
 type StudioMode = 'blueprint' | 'timeline'
 
@@ -160,6 +161,36 @@ function addStepEvent(nodeId: string, status: string, details?: string) {
   })
 }
 
+async function handleResume() {
+  try {
+    await schemaApi.resumeSchema(appId.value)
+    // Start execution without saving first (schema already saved)
+    startExecution(true)
+  } catch (e) {
+    console.error('Failed to resume:', e)
+  }
+}
+
+async function handleRestart() {
+  try {
+    await schemaApi.executeSchema(appId.value, 'EXECUTE')
+    isRunning.value = true
+    executionError.value = null
+    nodeResults.value = {}
+    nodeStatuses.value = {}
+    executionProgress.value = null
+    execState.stepEvents.value = []
+    nodeStartTimes.clear()
+    stepCounter = 0
+  } catch (e) {
+    console.error('Failed to restart:', e)
+  }
+}
+
+function handleDismiss() {
+  // User dismissed the banner - no action needed
+}
+
 // Load app on mount
 onMounted(async () => {
   appId.value = route.params.id as string
@@ -217,6 +248,13 @@ function goToDashboard() {
       @toggle-run="toggleRun"
       @back="goToDashboard"
       @show-quick-start="onShowQuickStart"
+    />
+    
+    <ResumeBanner
+      :schema-id="appId"
+      @resume="handleResume"
+      @restart="handleRestart"
+      @dismiss="handleDismiss"
     />
     
     <div class="studio-content">

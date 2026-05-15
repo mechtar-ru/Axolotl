@@ -3,6 +3,8 @@ package com.agent.orchestrator.controller;
 import com.agent.orchestrator.model.Agent;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.ExecutionRecord;
+import com.agent.orchestrator.model.ExecutionRun;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
@@ -11,6 +13,7 @@ import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -126,6 +129,30 @@ public class AgentController {
     public Map<String, String> stopSchema(@PathVariable String id) {
         schemaService.cancelExecution(id);
         return Map.of("status", "stopped", "schemaId", id);
+    }
+
+    // ── Execution Runs / Resilience ───────────────────────────
+
+    @GetMapping("/schemas/{id}/runs")
+    public List<ExecutionRun> getExecutionRuns(@PathVariable String id) {
+        return schemaService.findExecutionRuns(id);
+    }
+
+    @GetMapping("/schemas/{id}/runs/paused")
+    public ResponseEntity<ExecutionRun> getPausedRun(@PathVariable String id) {
+        ExecutionRun run = schemaService.getPausedRun(id);
+        return ResponseEntity.ok(run);
+    }
+
+    @PostMapping("/schemas/{id}/resume")
+    public Map<String, String> resumeExecution(@PathVariable String id) {
+        schemaService.resumeExecution(id);
+        return Map.of("status", "resumed");
+    }
+
+    @GetMapping("/schemas/{id}/runs/{runId}/nodes")
+    public List<NodeExecution> getRunNodes(@PathVariable String id, @PathVariable String runId) {
+        return schemaService.getExecutionNodes(runId);
     }
 
     @PostMapping("/execution/{executionId}/feedback")

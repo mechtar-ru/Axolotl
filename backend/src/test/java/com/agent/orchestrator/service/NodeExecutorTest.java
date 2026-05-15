@@ -4,6 +4,7 @@ import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.*;
+import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,13 +28,15 @@ class NodeExecutorTest {
     @Mock Neo4jSchemaRepository schemaRepository;
     @Mock PlanService planService;
     @Mock ProjectContextBuilder projectContextBuilder;
+    @Mock ExecutionRepository executionRepository;
 
     NodeExecutor nodeExecutor;
 
     @BeforeEach
     void setUp() {
         nodeExecutor = new NodeExecutor(llmService, webSocketHandler, memPalaceClient,
-                toolExecutor, transformService, schemaRepository, planService, projectContextBuilder);
+                toolExecutor, transformService, schemaRepository, planService, projectContextBuilder,
+                executionRepository);
     }
 
     // === Command Sanitization ===

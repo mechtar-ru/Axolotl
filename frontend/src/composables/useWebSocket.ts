@@ -5,6 +5,7 @@ export interface WebSocketCallbacks {
   onResult: (data: { schemaId: string; nodeId: string; result: any }) => void;
   onError: (data: { schemaId: string; nodeId: string; error: string }) => void;
   onComplete: (data: { schemaId: string; totalTime: number; nodesCompleted: number }) => void;
+  onPaused?: (data: { schemaId: string; completedNodes: number; totalNodes: number; error: string }) => void;
   onMetrics?: (data: { schemaId: string; totalNodes: number; completedNodes: number; elapsedTime: number; nodesPerSecond: number }) => void;
   onLog?: (message: string) => void;
   onNodeTime?: (data: { schemaId: string; nodeId: string; durationMs: number }) => void;
@@ -71,6 +72,9 @@ export function useWebSocket() {
               break;
             case 'complete':
               callbacks?.onComplete(data);
+              break;
+            case 'paused':
+              callbacks?.onPaused?.(data);
               break;
             case 'metrics':
               callbacks?.onMetrics?.(data);

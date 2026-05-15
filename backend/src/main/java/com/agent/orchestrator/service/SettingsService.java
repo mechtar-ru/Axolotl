@@ -39,6 +39,18 @@ public class SettingsService {
         System.arraycopy(keyBytes, 0, aesKeyBytes, 0, Math.min(keyBytes.length, 16));
         this.aesKey = new SecretKeySpec(aesKeyBytes, "AES");
         createTable();
+        // Ensure a sensible global default model exists. User requested DeepSeekV4 flash as default.
+        try {
+            String global = getGlobalDefaultModel();
+            if (global == null || global.isBlank()) {
+                setGlobalDefaultModel("deepseek-v4-flash");
+                log.info("Global default model not set — defaulting to deepseek-v4-flash");
+            } else {
+                log.info("Global default model already set: {}", global);
+            }
+        } catch (Exception e) {
+            log.warn("Unable to ensure global default model: {}", e.getMessage());
+        }
     }
 
     private String encrypt(String plaintext) {

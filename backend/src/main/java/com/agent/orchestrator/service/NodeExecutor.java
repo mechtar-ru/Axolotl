@@ -6,7 +6,9 @@ import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.Plan;
+import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.model.Priority;
 import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.ToolPermission;
@@ -57,6 +59,8 @@ public class NodeExecutor {
     private final Neo4jSchemaRepository schemaRepository;
     private final PlanService planService;
     private final ProjectContextBuilder projectContextBuilder;
+    private final ExecutionRepository executionRepository;
+    private final Map<String, String> schemaRunIds = new ConcurrentHashMap<>();
 
     @Value("${axolotl.sandbox.allowedWriteDirs:.}")
     private java.util.List<String> allowedWriteDirs;
@@ -76,7 +80,8 @@ public class NodeExecutor {
                         TransformService transformService,
                         Neo4jSchemaRepository schemaRepository,
                         PlanService planService,
-                        ProjectContextBuilder projectContextBuilder) {
+                        ProjectContextBuilder projectContextBuilder,
+                        ExecutionRepository executionRepository) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -85,6 +90,7 @@ public class NodeExecutor {
         this.schemaRepository = schemaRepository;
         this.planService = planService;
         this.projectContextBuilder = projectContextBuilder;
+        this.executionRepository = executionRepository;
     }
 
     @PostConstruct
@@ -111,6 +117,11 @@ public class NodeExecutor {
         return generatedFilesRegistry;
     }
 
+    /** Установить ID текущего запуска для схемы (вызывается из SchemaService перед executeWorkflow). */
+    public void setCurrentRunId(String schemaId, String runId) {
+        schemaRunIds.put(schemaId, runId);
+    }
+
     // ────────────────────────── main dispatcher ──────────────────────────
 
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
@@ -122,6 +133,30 @@ public class NodeExecutor {
             }
 
             node.setStatus(Node.NodeStatus.RUNNING);
+
+            // Persist running status to DB if run created
+            String runIdForStart = schemaRunIds.get(schemaId);
+            if (runIdForStart != null) {
+                try {
+                    List<NodeExecution> execs = executionRepository.getNodeExecutionsByRun(runIdForStart);
+                    NodeExecution ne = execs.stream()
+                            .filter(exec -> exec.getNodeId().equals(node.getId()))
+                            .findFirst().orElse(null);
+                    if (ne != null) {
+                        executionRepository.updateNodeExecution(
+                                ne.getId(),
+                                "running",
+                                null,
+                                0L,
+                                0L,
+                                0,
+                                null
+                        );
+                    }
+                } catch (Exception e) {
+                    log.debug("Не удалось обновить статус узла в БД: {}", e.getMessage());
+                }
+            }
 
             if (webSocketHandler != null) {
                 webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Начало выполнения");
@@ -440,6 +475,50 @@ public class NodeExecutor {
 
             node.setStatus(Node.NodeStatus.COMPLETED);
 
+            // Персистенция результата узла в БД
+            String runId = schemaRunIds.get(schemaId);
+            if (runId != null) {
+                try {
+                    List<NodeExecution> execs = executionRepository.getNodeExecutionsByRun(runId);
+                    NodeExecution ne = execs.stream()
+                            .filter(exec -> exec.getNodeId().equals(node.getId()))
+                            .findFirst().orElse(null);
+                    if (ne != null) {
+                        long durationMs = ne.getStartedAt() != null
+                                ? System.currentTimeMillis() - java.time.Instant.parse(ne.getStartedAt()).toEpochMilli()
+                                : 0;
+
+                        // tokens/toolCalls extraction — best-effort: try to read from Node or registries if available
+                        long tokensUsed = 0L;
+                        int toolCalls = 0;
+                        // If generatedFiles registry contains files, serialize paths
+                        String filesWritten = null;
+                        Object genFilesObj = generatedFilesRegistry.get(schemaId + ":" + node.getId());
+                        if (genFilesObj instanceof Map) {
+                            try {
+                                filesWritten = new ObjectMapper().writeValueAsString(genFilesObj);
+                            } catch (Exception ex) {
+                                filesWritten = null;
+                            }
+                        }
+
+                        // Prefer new method that includes filesWritten
+                        executionRepository.updateNodeExecutionWithFiles(
+                                ne.getId(),
+                                "completed",
+                                result,
+                                tokensUsed,
+                                durationMs,
+                                toolCalls,
+                                filesWritten,
+                                null
+                        );
+                    }
+                } catch (Exception persistEx) {
+                    log.warn("Ошибка персистенции результата узла {}: {}", node.getId(), persistEx.getMessage());
+                }
+            }
+
         } catch (Exception e) {
             if (cancelFlag.get()) {
                 node.setStatus(Node.NodeStatus.FAILED);
@@ -453,6 +532,32 @@ public class NodeExecutor {
                         "Ошибка выполнения узла: " + e.getMessage(), node.getId());
             }
             log.error("Ошибка выполнения узла {}: {}", node.getId(), e.getMessage(), e);
+
+            // 402/429 — приостановить выполнение
+            String runId = schemaRunIds.get(schemaId);
+            if (runId != null) {
+                String errorMsg = e.getMessage();
+                if (errorMsg != null && (errorMsg.contains("402") || errorMsg.contains("429")
+                        || errorMsg.contains("insufficient_quota") || errorMsg.contains("rate_limit"))) {
+                    executionRepository.updateRunStatus(runId, "paused",
+                            "Token limit exceeded: " + errorMsg);
+                    log.warn("Выполнение приостановлено из-за превышения лимита: {}", errorMsg);
+                    try {
+                        // compute completed / total nodes for paused event
+                        List<NodeExecution> nodeExecs = executionRepository.getNodeExecutionsByRun(runId);
+                        int completed = 0;
+                        for (NodeExecution ne : nodeExecs) {
+                            if ("completed".equals(ne.getStatus()) || "skipped".equals(ne.getStatus())) completed++;
+                        }
+                        int total = nodeExecs.size();
+                        if (webSocketHandler != null) {
+                            webSocketHandler.sendPaused(schemaId, completed, total, "Token limit exceeded: " + errorMsg);
+                        }
+                    } catch (Exception wsEx) {
+                        log.warn("Не удалось отправить paused event: {}", wsEx.getMessage());
+                    }
+                }
+            }
         }
     }
 
@@ -2022,7 +2127,7 @@ public class NodeExecutor {
 
     Map<String, Object> collectPredecessorResults(WorkflowSchema schema, String nodeId) {
         Map<String, Object> results = new HashMap<>();
-        if (schema.getEdges() == null || schema.getNodes() == null) {
+        if (schema == null || schema.getEdges() == null || schema.getNodes() == null) {
             return results;
         }
         Map<String, String> cached = nodeResults.getOrDefault(schema.getId(), Map.of());
