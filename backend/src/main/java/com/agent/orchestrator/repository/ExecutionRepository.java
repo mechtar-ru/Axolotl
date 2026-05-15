@@ -1,407 +1,368 @@
 package com.agent.orchestrator.repository;
 
-import com.agent.orchestrator.config.DbConfig;
+import com.agent.orchestrator.graph.model.GraphCheckpoint;
+import com.agent.orchestrator.graph.model.GraphExecutionRun;
+import com.agent.orchestrator.graph.model.GraphExecutionRecord;
+import com.agent.orchestrator.graph.model.GraphNodeExecution;
+import com.agent.orchestrator.graph.repository.Neo4jCheckpointRepository;
+import com.agent.orchestrator.graph.repository.Neo4jExecutionRecordRepository;
+import com.agent.orchestrator.graph.repository.Neo4jExecutionRunRepository;
+import com.agent.orchestrator.graph.repository.Neo4jNodeExecutionRepository;
 import com.agent.orchestrator.model.ExecutionCheckpoint;
 import com.agent.orchestrator.model.ExecutionRun;
+import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.NodeExecution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
-import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Repository for execution persistence backed by Neo4j.
+ * Replaces the previous SQLite-based implementation.
+ * Stores ExecutionRun, NodeExecution, Checkpoint, and ExecutionRecord
+ * as separate Neo4j nodes linked via properties.
+ */
 @Repository
 public class ExecutionRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionRepository.class);
 
-    private final String dbUrl;
+    private final Neo4jExecutionRunRepository runRepo;
+    private final Neo4jNodeExecutionRepository nodeExecRepo;
+    private final Neo4jCheckpointRepository checkpointRepo;
+    private final Neo4jExecutionRecordRepository recordRepo;
 
-    public ExecutionRepository(DbConfig dbConfig) {
-        this.dbUrl = dbConfig.getDbUrl();
-        createTables();
-    }
-
-    private void createTables() {
-        String runsSql = """
-            CREATE TABLE IF NOT EXISTS execution_runs (
-                id TEXT PRIMARY KEY,
-                schema_id TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'running',
-                mode TEXT NOT NULL DEFAULT 'EXECUTE',
-                total_tokens INTEGER DEFAULT 0,
-                estimated_cost REAL DEFAULT 0.0,
-                error TEXT,
-                resumes_from TEXT,
-                started_at TEXT,
-                updated_at TEXT,
-                completed_at TEXT,
-                FOREIGN KEY (schema_id) REFERENCES schemas(id)
-            )
-            """;
-
-        String nodesSql = """
-            CREATE TABLE IF NOT EXISTS node_executions (
-                id TEXT PRIMARY KEY,
-                run_id TEXT NOT NULL,
-                node_id TEXT NOT NULL,
-                node_name TEXT,
-                node_type TEXT,
-                status TEXT NOT NULL DEFAULT 'pending',
-                tokens_used INTEGER DEFAULT 0,
-                duration_ms INTEGER DEFAULT 0,
-                tool_calls INTEGER DEFAULT 0,
-                error TEXT,
-                input_summary TEXT,
-                output_summary TEXT,
-                files_written TEXT,
-                config_hash TEXT,
-                started_at TEXT,
-                completed_at TEXT,
-                FOREIGN KEY (run_id) REFERENCES execution_runs(id)
-            )
-            """;
-
-        String checkpointsSql = """
-            CREATE TABLE IF NOT EXISTS execution_checkpoints (
-                id TEXT PRIMARY KEY,
-                run_id TEXT NOT NULL,
-                completed_node_ids TEXT NOT NULL,
-                current_wave INTEGER DEFAULT 0,
-                created_at TEXT,
-                FOREIGN KEY (run_id) REFERENCES execution_runs(id)
-            )
-            """;
-
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             Statement stmt = conn.createStatement()) {
-            stmt.execute(runsSql);
-            stmt.execute(nodesSql);
-            stmt.execute(checkpointsSql);
-            log.info("Таблицы execution_* созданы/проверены");
-        } catch (SQLException e) {
-            log.error("Ошибка создания таблиц execution_*: {}", e.getMessage());
-        }
+    public ExecutionRepository(
+            Neo4jExecutionRunRepository runRepo,
+            Neo4jNodeExecutionRepository nodeExecRepo,
+            Neo4jCheckpointRepository checkpointRepo,
+            Neo4jExecutionRecordRepository recordRepo) {
+        this.runRepo = runRepo;
+        this.nodeExecRepo = nodeExecRepo;
+        this.checkpointRepo = checkpointRepo;
+        this.recordRepo = recordRepo;
+        log.info("ExecutionRepository initialized (Neo4j-backed)");
     }
 
     // ────────── ExecutionRun CRUD ──────────
 
     public void createRun(ExecutionRun run) {
-        String sql = """
-            INSERT INTO execution_runs (id, schema_id, status, mode, total_tokens, estimated_cost,
-                                        error, resumes_from, started_at, updated_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, run.getId());
-            pstmt.setString(2, run.getSchemaId());
-            pstmt.setString(3, run.getStatus());
-            pstmt.setString(4, run.getMode());
-            pstmt.setLong(5, run.getTotalTokens());
-            pstmt.setDouble(6, run.getEstimatedCost());
-            pstmt.setString(7, run.getError());
-            pstmt.setString(8, run.getResumesFrom());
-            pstmt.setString(9, run.getStartedAt());
-            pstmt.setString(10, run.getUpdatedAt());
-            pstmt.setString(11, run.getCompletedAt());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка создания execution_run: {}", e.getMessage());
+        try {
+            runRepo.save(toGraphRun(run));
+        } catch (Exception e) {
+            log.error("Error creating execution run {}: {}", run.getId(), e.getMessage());
         }
     }
 
     public void updateRunStatus(String id, String status, String error) {
-        String sql = "UPDATE execution_runs SET status = ?, error = ?, updated_at = ? WHERE id = ?";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, status);
-            pstmt.setString(2, error);
-            pstmt.setString(3, java.time.Instant.now().toString());
-            pstmt.setString(4, id);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка обновления статуса run {}: {}", id, e.getMessage());
+        try {
+            runRepo.findById(id).ifPresent(graphRun -> {
+                graphRun.setStatus(status);
+                graphRun.setError(error);
+                graphRun.setUpdatedAt(java.time.Instant.now().toString());
+                runRepo.save(graphRun);
+            });
+        } catch (Exception e) {
+            log.error("Error updating run status {}: {}", id, e.getMessage());
         }
     }
 
     public void updateRunCompleted(String id, String status, long totalTokens, double estimatedCost) {
-        String sql = """
-            UPDATE execution_runs
-            SET status = ?, total_tokens = ?, estimated_cost = ?, updated_at = ?, completed_at = ?
-            WHERE id = ?
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            String now = java.time.Instant.now().toString();
-            pstmt.setString(1, status);
-            pstmt.setLong(2, totalTokens);
-            pstmt.setDouble(3, estimatedCost);
-            pstmt.setString(4, now);
-            pstmt.setString(5, now);
-            pstmt.setString(6, id);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка завершения run {}: {}", id, e.getMessage());
+        try {
+            runRepo.findById(id).ifPresent(graphRun -> {
+                String now = java.time.Instant.now().toString();
+                graphRun.setStatus(status);
+                graphRun.setTotalTokens(totalTokens);
+                graphRun.setEstimatedCost(estimatedCost);
+                graphRun.setUpdatedAt(now);
+                graphRun.setCompletedAt(now);
+                runRepo.save(graphRun);
+            });
+        } catch (Exception e) {
+            log.error("Error updating run completion {}: {}", id, e.getMessage());
         }
     }
 
     public ExecutionRun getRun(String id) {
-        String sql = "SELECT * FROM execution_runs WHERE id = ?";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, id);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) return mapRun(rs);
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка чтения run {}: {}", id, e.getMessage());
+        try {
+            return runRepo.findById(id).map(this::toPocoRun).orElse(null);
+        } catch (Exception e) {
+            log.error("Error reading run {}: {}", id, e.getMessage());
+            return null;
         }
-        return null;
     }
 
     public List<ExecutionRun> getRunsBySchema(String schemaId) {
-        List<ExecutionRun> runs = new ArrayList<>();
-        String sql = "SELECT * FROM execution_runs WHERE schema_id = ? ORDER BY started_at DESC";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, schemaId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) runs.add(mapRun(rs));
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка чтения runs для схемы {}: {}", schemaId, e.getMessage());
+        try {
+            return runRepo.findBySchemaIdOrderByStartedAtDesc(schemaId)
+                    .stream().map(this::toPocoRun).toList();
+        } catch (Exception e) {
+            log.error("Error reading runs for schema {}: {}", schemaId, e.getMessage());
+            return List.of();
         }
-        return runs;
     }
 
-    /** Получить последний run схемы с указанным статусом */
     public ExecutionRun getLatestRunBySchemaAndStatus(String schemaId, String status) {
-        String sql = "SELECT * FROM execution_runs WHERE schema_id = ? AND status = ? ORDER BY started_at DESC LIMIT 1";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, schemaId);
-            pstmt.setString(2, status);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) return mapRun(rs);
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка поиска последнего run {} status {}: {}", schemaId, status, e.getMessage());
+        try {
+            return runRepo.findLatestBySchemaIdAndStatus(schemaId, status)
+                    .map(this::toPocoRun).orElse(null);
+        } catch (Exception e) {
+            log.error("Error finding latest run {} status {}: {}", schemaId, status, e.getMessage());
+            return null;
         }
-        return null;
     }
 
-    /** Проверить, есть ли активный запуск для схемы (running или paused) */
     public boolean hasActiveRun(String schemaId) {
-        String sql = "SELECT COUNT(*) FROM execution_runs WHERE schema_id = ? AND (status = 'running' OR status = 'paused')";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, schemaId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                return rs.next() && rs.getInt(1) > 0;
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка проверки активного run: {}", e.getMessage());
+        try {
+            return runRepo.hasActiveRun(schemaId);
+        } catch (Exception e) {
+            log.error("Error checking active run: {}", e.getMessage());
+            return false;
         }
-        return false;
     }
 
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {
-        String sql = """
-            INSERT INTO node_executions (id, run_id, node_id, node_name, node_type, status,
-                                         tokens_used, duration_ms, tool_calls, error,
-                                         input_summary, output_summary, files_written, config_hash,
-                                         started_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, ne.getId());
-            pstmt.setString(2, ne.getRunId());
-            pstmt.setString(3, ne.getNodeId());
-            pstmt.setString(4, ne.getNodeName());
-            pstmt.setString(5, ne.getNodeType());
-            pstmt.setString(6, ne.getStatus());
-            pstmt.setLong(7, ne.getTokensUsed());
-            pstmt.setLong(8, ne.getDurationMs());
-            pstmt.setInt(9, ne.getToolCalls());
-            pstmt.setString(10, ne.getError());
-            pstmt.setString(11, ne.getInputSummary());
-            pstmt.setString(12, ne.getOutputSummary());
-            pstmt.setString(13, ne.getFilesWritten());
-            pstmt.setString(14, ne.getConfigHash());
-            pstmt.setString(15, ne.getStartedAt());
-            pstmt.setString(16, ne.getCompletedAt());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка создания node_execution: {}", e.getMessage());
+        try {
+            nodeExecRepo.save(toGraphNodeExec(ne));
+        } catch (Exception e) {
+            log.error("Error creating node_execution: {}", e.getMessage());
         }
     }
 
-    public void updateNodeExecution(String id, String status, String outputSummary, long tokensUsed,
-                                     long durationMs, int toolCalls, String error) {
-        String sql = """
-            UPDATE node_executions
-            SET status = ?, output_summary = ?, tokens_used = ?, duration_ms = ?,
-                tool_calls = ?, error = ?, completed_at = ?
-            WHERE id = ?
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, status);
-            pstmt.setString(2, outputSummary);
-            pstmt.setLong(3, tokensUsed);
-            pstmt.setLong(4, durationMs);
-            pstmt.setInt(5, toolCalls);
-            pstmt.setString(6, error);
-            pstmt.setString(7, java.time.Instant.now().toString());
-            pstmt.setString(8, id);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка обновления node_execution {}: {}", id, e.getMessage());
+    public void updateNodeExecution(String id, String status, String outputSummary,
+                                     long tokensUsed, long durationMs, int toolCalls, String error) {
+        try {
+            nodeExecRepo.findById(id).ifPresent(graph -> {
+                graph.setStatus(status);
+                graph.setOutputSummary(outputSummary);
+                graph.setTokensUsed(tokensUsed);
+                graph.setDurationMs(durationMs);
+                graph.setToolCalls(toolCalls);
+                graph.setError(error);
+                graph.setCompletedAt(java.time.Instant.now().toString());
+                nodeExecRepo.save(graph);
+            });
+        } catch (Exception e) {
+            log.error("Error updating node_execution {}: {}", id, e.getMessage());
         }
     }
 
-    /** Update node execution including files_written JSON. Backward-compatible addition. */
-    public void updateNodeExecutionWithFiles(String id, String status, String outputSummary, long tokensUsed,
-                                             long durationMs, int toolCalls, String filesWritten, String error) {
-        String sql = """
-            UPDATE node_executions
-            SET status = ?, output_summary = ?, tokens_used = ?, duration_ms = ?,
-                tool_calls = ?, files_written = ?, error = ?, completed_at = ?
-            WHERE id = ?
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, status);
-            pstmt.setString(2, outputSummary);
-            pstmt.setLong(3, tokensUsed);
-            pstmt.setLong(4, durationMs);
-            pstmt.setInt(5, toolCalls);
-            pstmt.setString(6, filesWritten);
-            pstmt.setString(7, error);
-            pstmt.setString(8, java.time.Instant.now().toString());
-            pstmt.setString(9, id);
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка обновления node_execution {}: {}", id, e.getMessage());
+    public void updateNodeExecutionWithFiles(String id, String status, String outputSummary,
+                                              long tokensUsed, long durationMs, int toolCalls,
+                                              String filesWritten, String error) {
+        try {
+            nodeExecRepo.findById(id).ifPresent(graph -> {
+                graph.setStatus(status);
+                graph.setOutputSummary(outputSummary);
+                graph.setTokensUsed(tokensUsed);
+                graph.setDurationMs(durationMs);
+                graph.setToolCalls(toolCalls);
+                graph.setFilesWritten(filesWritten);
+                graph.setError(error);
+                graph.setCompletedAt(java.time.Instant.now().toString());
+                nodeExecRepo.save(graph);
+            });
+        } catch (Exception e) {
+            log.error("Error updating node_execution {}: {}", id, e.getMessage());
         }
     }
 
     public List<NodeExecution> getNodeExecutionsByRun(String runId) {
-        List<NodeExecution> results = new ArrayList<>();
-        String sql = "SELECT * FROM node_executions WHERE run_id = ? ORDER BY started_at ASC";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, runId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) results.add(mapNodeExecution(rs));
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка чтения node_executions для run {}: {}", runId, e.getMessage());
+        try {
+            return nodeExecRepo.findByRunIdOrderByStartedAtAsc(runId)
+                    .stream().map(this::toPocoNodeExec).toList();
+        } catch (Exception e) {
+            log.error("Error reading node_executions for run {}: {}", runId, e.getMessage());
+            return List.of();
         }
-        return results;
     }
 
     // ────────── Checkpoint CRUD ──────────
 
     public void saveCheckpoint(ExecutionCheckpoint checkpoint) {
-        String sql = """
-            INSERT INTO execution_checkpoints (id, run_id, completed_node_ids, current_wave, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, checkpoint.getId());
-            pstmt.setString(2, checkpoint.getRunId());
-            pstmt.setString(3, checkpoint.getCompletedNodeIds());
-            pstmt.setInt(4, checkpoint.getCurrentWave());
-            pstmt.setString(5, checkpoint.getCreatedAt());
-            pstmt.executeUpdate();
-        } catch (SQLException e) {
-            log.error("Ошибка сохранения чекпоинта: {}", e.getMessage());
+        try {
+            checkpointRepo.save(toGraphCheckpoint(checkpoint));
+        } catch (Exception e) {
+            log.error("Error saving checkpoint: {}", e.getMessage());
         }
     }
 
     public ExecutionCheckpoint getLatestCheckpoint(String runId) {
-        String sql = "SELECT * FROM execution_checkpoints WHERE run_id = ? ORDER BY created_at DESC LIMIT 1";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, runId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) return mapCheckpoint(rs);
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка чтения последнего чекпоинта для run {}: {}", runId, e.getMessage());
+        try {
+            return checkpointRepo.findLatestByRunId(runId)
+                    .map(this::toPocoCheckpoint).orElse(null);
+        } catch (Exception e) {
+            log.error("Error reading latest checkpoint for run {}: {}", runId, e.getMessage());
+            return null;
         }
-        return null;
     }
 
     public List<ExecutionCheckpoint> getCheckpointsByRun(String runId) {
-        List<ExecutionCheckpoint> list = new ArrayList<>();
-        String sql = "SELECT * FROM execution_checkpoints WHERE run_id = ? ORDER BY created_at ASC";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, runId);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                while (rs.next()) list.add(mapCheckpoint(rs));
-            }
-        } catch (SQLException e) {
-            log.error("Ошибка чтения чекпоинтов для run {}: {}", runId, e.getMessage());
+        try {
+            return checkpointRepo.findByRunIdOrderByCreatedAtAsc(runId)
+                    .stream().map(this::toPocoCheckpoint).toList();
+        } catch (Exception e) {
+            log.error("Error reading checkpoints for run {}: {}", runId, e.getMessage());
+            return List.of();
         }
-        return list;
     }
 
-    // ────────── Row mappers ──────────
+    // ────────── ExecutionRecord (history) CRUD ──────────
 
-    private ExecutionRun mapRun(ResultSet rs) throws SQLException {
-        ExecutionRun run = new ExecutionRun();
-        run.setId(rs.getString("id"));
-        run.setSchemaId(rs.getString("schema_id"));
-        run.setStatus(rs.getString("status"));
-        run.setMode(rs.getString("mode"));
-        run.setTotalTokens(rs.getLong("total_tokens"));
-        run.setEstimatedCost(rs.getDouble("estimated_cost"));
-        run.setError(rs.getString("error"));
-        run.setResumesFrom(rs.getString("resumes_from"));
-        run.setStartedAt(rs.getString("started_at"));
-        run.setUpdatedAt(rs.getString("updated_at"));
-        run.setCompletedAt(rs.getString("completed_at"));
-        return run;
+    public void saveExecutionRecord(ExecutionRecord record) {
+        try {
+            recordRepo.save(toGraphRecord(record));
+        } catch (Exception e) {
+            log.error("Error saving execution record: {}", e.getMessage());
+        }
     }
 
-    private NodeExecution mapNodeExecution(ResultSet rs) throws SQLException {
-        NodeExecution ne = new NodeExecution();
-        ne.setId(rs.getString("id"));
-        ne.setRunId(rs.getString("run_id"));
-        ne.setNodeId(rs.getString("node_id"));
-        ne.setNodeName(rs.getString("node_name"));
-        ne.setNodeType(rs.getString("node_type"));
-        ne.setStatus(rs.getString("status"));
-        ne.setTokensUsed(rs.getLong("tokens_used"));
-        ne.setDurationMs(rs.getLong("duration_ms"));
-        ne.setToolCalls(rs.getInt("tool_calls"));
-        ne.setError(rs.getString("error"));
-        ne.setInputSummary(rs.getString("input_summary"));
-        ne.setOutputSummary(rs.getString("output_summary"));
-        ne.setFilesWritten(rs.getString("files_written"));
-        ne.setConfigHash(rs.getString("config_hash"));
-        ne.setStartedAt(rs.getString("started_at"));
-        ne.setCompletedAt(rs.getString("completed_at"));
-        return ne;
+    public List<ExecutionRecord> getExecutionRecordsBySchema(String schemaId) {
+        try {
+            return recordRepo.findBySchemaIdOrderByStartTimeDesc(schemaId)
+                    .stream().map(this::toPocoRecord).toList();
+        } catch (Exception e) {
+            log.error("Error reading records for schema {}: {}", schemaId, e.getMessage());
+            return List.of();
+        }
     }
 
-    private ExecutionCheckpoint mapCheckpoint(ResultSet rs) throws SQLException {
-        ExecutionCheckpoint cp = new ExecutionCheckpoint();
-        cp.setId(rs.getString("id"));
-        cp.setRunId(rs.getString("run_id"));
-        cp.setCompletedNodeIds(rs.getString("completed_node_ids"));
-        cp.setCurrentWave(rs.getInt("current_wave"));
-        cp.setCreatedAt(rs.getString("created_at"));
-        return cp;
+    public List<ExecutionRecord> getAllExecutionRecords() {
+        try {
+            return recordRepo.findTop50ByOrderByStartTimeDesc()
+                    .stream().map(this::toPocoRecord).toList();
+        } catch (Exception e) {
+            log.error("Error reading all execution records: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    // ────────── Mapping: POJO ↔ Graph entity ──────────
+
+    private GraphExecutionRun toGraphRun(ExecutionRun r) {
+        GraphExecutionRun g = new GraphExecutionRun(r.getId(), r.getSchemaId(), r.getStatus(), r.getMode());
+        g.setTotalTokens(r.getTotalTokens());
+        g.setEstimatedCost(r.getEstimatedCost());
+        g.setError(r.getError());
+        g.setResumesFrom(r.getResumesFrom());
+        g.setStartedAt(r.getStartedAt());
+        g.setUpdatedAt(r.getUpdatedAt());
+        g.setCompletedAt(r.getCompletedAt());
+        return g;
+    }
+
+    private ExecutionRun toPocoRun(GraphExecutionRun g) {
+        ExecutionRun r = new ExecutionRun();
+        r.setId(g.getId());
+        r.setSchemaId(g.getSchemaId());
+        r.setStatus(g.getStatus());
+        r.setMode(g.getMode());
+        r.setTotalTokens(g.getTotalTokens());
+        r.setEstimatedCost(g.getEstimatedCost());
+        r.setError(g.getError());
+        r.setResumesFrom(g.getResumesFrom());
+        r.setStartedAt(g.getStartedAt());
+        r.setUpdatedAt(g.getUpdatedAt());
+        r.setCompletedAt(g.getCompletedAt());
+        return r;
+    }
+
+    private GraphNodeExecution toGraphNodeExec(NodeExecution n) {
+        GraphNodeExecution g = new GraphNodeExecution();
+        g.setId(n.getId());
+        g.setRunId(n.getRunId());
+        g.setNodeId(n.getNodeId());
+        g.setNodeName(n.getNodeName());
+        g.setNodeType(n.getNodeType());
+        g.setStatus(n.getStatus());
+        g.setTokensUsed(n.getTokensUsed());
+        g.setDurationMs(n.getDurationMs());
+        g.setToolCalls(n.getToolCalls());
+        g.setError(n.getError());
+        g.setInputSummary(n.getInputSummary());
+        g.setOutputSummary(n.getOutputSummary());
+        g.setFilesWritten(n.getFilesWritten());
+        g.setConfigHash(n.getConfigHash());
+        g.setStartedAt(n.getStartedAt());
+        g.setCompletedAt(n.getCompletedAt());
+        return g;
+    }
+
+    private NodeExecution toPocoNodeExec(GraphNodeExecution g) {
+        NodeExecution n = new NodeExecution();
+        n.setId(g.getId());
+        n.setRunId(g.getRunId());
+        n.setNodeId(g.getNodeId());
+        n.setNodeName(g.getNodeName());
+        n.setNodeType(g.getNodeType());
+        n.setStatus(g.getStatus());
+        n.setTokensUsed(g.getTokensUsed());
+        n.setDurationMs(g.getDurationMs());
+        n.setToolCalls(g.getToolCalls());
+        n.setError(g.getError());
+        n.setInputSummary(g.getInputSummary());
+        n.setOutputSummary(g.getOutputSummary());
+        n.setFilesWritten(g.getFilesWritten());
+        n.setConfigHash(g.getConfigHash());
+        n.setStartedAt(g.getStartedAt());
+        n.setCompletedAt(g.getCompletedAt());
+        return n;
+    }
+
+    private GraphCheckpoint toGraphCheckpoint(ExecutionCheckpoint c) {
+        GraphCheckpoint g = new GraphCheckpoint();
+        g.setId(c.getId());
+        g.setRunId(c.getRunId());
+        g.setCompletedNodeIds(c.getCompletedNodeIds());
+        g.setCurrentWave(c.getCurrentWave());
+        g.setCreatedAt(c.getCreatedAt());
+        return g;
+    }
+
+    private ExecutionCheckpoint toPocoCheckpoint(GraphCheckpoint g) {
+        ExecutionCheckpoint c = new ExecutionCheckpoint();
+        c.setId(g.getId());
+        c.setRunId(g.getRunId());
+        c.setCompletedNodeIds(g.getCompletedNodeIds());
+        c.setCurrentWave(g.getCurrentWave());
+        c.setCreatedAt(g.getCreatedAt());
+        return c;
+    }
+
+    private GraphExecutionRecord toGraphRecord(ExecutionRecord r) {
+        GraphExecutionRecord g = new GraphExecutionRecord();
+        g.setId(r.getId());
+        g.setSchemaId(r.getSchemaId());
+        g.setSchemaName(r.getSchemaName());
+        g.setStartTime(r.getStartTime());
+        g.setEndTime(r.getEndTime());
+        g.setTotalTimeMs(r.getTotalTimeMs());
+        g.setTotalNodes(r.getTotalNodes());
+        g.setCompletedNodes(r.getCompletedNodes());
+        g.setStatus(r.getStatus());
+        g.setTotalTokens(r.getTotalTokens());
+        g.setEstimatedCost(r.getEstimatedCost());
+        return g;
+    }
+
+    private ExecutionRecord toPocoRecord(GraphExecutionRecord g) {
+        ExecutionRecord r = new ExecutionRecord();
+        r.setId(g.getId());
+        r.setSchemaId(g.getSchemaId());
+        r.setSchemaName(g.getSchemaName());
+        r.setStartTime(g.getStartTime());
+        r.setEndTime(g.getEndTime());
+        r.setTotalTimeMs(g.getTotalTimeMs());
+        r.setTotalNodes(g.getTotalNodes());
+        r.setCompletedNodes(g.getCompletedNodes());
+        r.setStatus(g.getStatus());
+        r.setTotalTokens(g.getTotalTokens());
+        r.setEstimatedCost(g.getEstimatedCost());
+        return r;
     }
 }

@@ -49,7 +49,7 @@ public class LlmService {
         if (provider == null) {
             String error = "Провайдер LLM не найден: " + providerName + " (доступны: " + providers.keySet() + ")";
             log.error(error);
-            return error;
+            throw new RuntimeException(error);
         }
 
         return provider.chat(model, systemPrompt, userPrompt, config);
@@ -66,7 +66,7 @@ public class LlmService {
         if (provider == null) {
             String error = "Провайдер LLM не найден: " + providerName;
             onToken.accept(error);
-            return error;
+            throw new RuntimeException(error);
         }
 
         return provider.streamingChat(model, systemPrompt, userPrompt, config, onToken);

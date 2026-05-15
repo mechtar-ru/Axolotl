@@ -31,12 +31,13 @@ public class ToolExecutor {
 
     private static final String DELETION_MARKER_FILE = "/Users/Shared/Axolotl/deleted_files.json";
 
-    private static final Set<String> DEFAULT_BLOCKED_COMMANDS = Set.of(
-        "rm -rf", "rm -r /", "del /", "format",
-        "mkfs", "dd if=", "> /dev/sd", ":(){",
-        "curl | sh", "wget | sh", "bash -i", "python -m SimpleHTTPServer",
-        "nc -e", "/bin/sh -i", "nohup ", "pkill -9",
-        "chmod 777 /", "chown -R", "fdisk", "parted"
+    private static final Set<String> DEFAULT_ALLOWED_COMMANDS = Set.of(
+        "ls", "cat", "grep", "find", "git", "cd", "pwd", "echo", "head", "tail",
+        "wc", "sort", "uniq", "diff", "patch", "mkdir", "cp", "mv", "rm", "touch",
+        "chmod", "date", "env", "which", "dirname", "basename", "readlink",
+        "xargs", "cut", "tr", "sed", "awk", "printf", "tee", "zip", "unzip",
+        "tar", "gzip", "gunzip", "make", "mvn", "npm", "node", "python3", "python",
+        "curl", "wget", "ping", "nslookup", "dig", "ssh", "scp", "rsync"
     );
 
     public ToolExecutor() {
@@ -243,10 +244,9 @@ public class ToolExecutor {
             return ToolResult.error("Command blocked by permissions: " + command);
         }
 
-        for (String blocked : DEFAULT_BLOCKED_COMMANDS) {
-            if (command.toLowerCase().contains(blocked)) {
-                return ToolResult.error("Dangerous command blocked: " + blocked);
-            }
+        String cmdName = command.trim().split("\\s+")[0];
+        if (!DEFAULT_ALLOWED_COMMANDS.contains(cmdName)) {
+            return ToolResult.error("Command not allowed: " + cmdName + ". Allowed commands: " + DEFAULT_ALLOWED_COMMANDS);
         }
 
         if (command.trim().startsWith("rm ") || command.trim().equals("rm")) {

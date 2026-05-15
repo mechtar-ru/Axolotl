@@ -4,18 +4,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import com.agent.orchestrator.config.DbConfig;
+import com.agent.orchestrator.graph.model.GraphProviderSetting;
+import com.agent.orchestrator.graph.repository.Neo4jProviderSettingRepository;
 
 import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.sql.*;
 import java.util.*;
 
 /**
- * Хранение настроек провайдеров (API ключи, URL) в SQLite.
+ * Хранение настроек провайдеров (API ключи, URL) в Neo4j.
  * Позволяет обновлять ключи без перезапуска сервера.
  */
 @Service
@@ -28,17 +28,16 @@ public class SettingsService {
     private static final String ENCRYPTION_KEY = System.getProperty(
             "axolotl.encryption.key", "Axolotl2026SecKey!"); // 16+ chars = AES-128
 
-    private final String dbUrl;
+    private final Neo4jProviderSettingRepository neo4jRepo;
     private final SecretKeySpec aesKey;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public SettingsService(DbConfig dbConfig) {
-        this.dbUrl = dbConfig.getDbUrl();
+    public SettingsService(Neo4jProviderSettingRepository neo4jRepo) {
+        this.neo4jRepo = neo4jRepo;
         byte[] keyBytes = ENCRYPTION_KEY.getBytes(StandardCharsets.UTF_8);
         byte[] aesKeyBytes = new byte[16];
         System.arraycopy(keyBytes, 0, aesKeyBytes, 0, Math.min(keyBytes.length, 16));
         this.aesKey = new SecretKeySpec(aesKeyBytes, "AES");
-        createTable();
         // Ensure a sensible global default model exists. User requested DeepSeekV4 flash as default.
         try {
             String global = getGlobalDefaultModel();
@@ -90,83 +89,51 @@ public class SettingsService {
         }
     }
 
-    private void createTable() {
-        String sql = """
-            CREATE TABLE IF NOT EXISTS provider_settings (
-                provider_name TEXT PRIMARY KEY,
-                api_key TEXT,
-                base_url TEXT,
-                default_model TEXT,
-                updated_at TEXT
-            )
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        } catch (SQLException e) {
-            log.error("Ошибка создания таблицы provider_settings: {}", e.getMessage());
-        }
-    }
-
     public Map<String, Object> getProviderSettings(String providerName) {
-        String sql = "SELECT * FROM provider_settings WHERE provider_name = ?";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, providerName);
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
+        try {
+            Optional<GraphProviderSetting> opt = neo4jRepo.findByProviderName(providerName);
+            if (opt.isPresent()) {
+                GraphProviderSetting g = opt.get();
                 Map<String, Object> settings = new LinkedHashMap<>();
-                settings.put("provider", rs.getString("provider_name"));
-                settings.put("baseUrl", rs.getString("base_url"));
-                settings.put("defaultModel", rs.getString("default_model"));
-                String storedKey = rs.getString("api_key");
+                settings.put("provider", g.getProviderName());
+                settings.put("baseUrl", g.getBaseUrl());
+                settings.put("defaultModel", g.getDefaultModel());
+                String storedKey = g.getApiKey();
                 settings.put("hasApiKey", storedKey != null && !storedKey.isBlank());
                 return settings;
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             log.error("Ошибка чтения настроек: {}", e.getMessage());
         }
         return null;
     }
 
     public void updateProviderSettings(String providerName, String apiKey, String baseUrl, String defaultModel) {
-        String sql = """
-            INSERT INTO provider_settings (provider_name, api_key, base_url, default_model, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(provider_name) DO UPDATE SET
-                api_key = excluded.api_key,
-                base_url = excluded.base_url,
-                default_model = excluded.default_model,
-                updated_at = excluded.updated_at
-            """;
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, providerName);
-            pstmt.setString(2, apiKey != null && !apiKey.isBlank() ? encrypt(apiKey) : apiKey);
-            pstmt.setString(3, baseUrl);
-            pstmt.setString(4, defaultModel);
-            pstmt.setString(5, java.time.Instant.now().toString());
-            pstmt.executeUpdate();
+        try {
+            GraphProviderSetting g = new GraphProviderSetting();
+            g.setProviderName(providerName);
+            g.setApiKey(apiKey != null && !apiKey.isBlank() ? encrypt(apiKey) : apiKey);
+            g.setBaseUrl(baseUrl);
+            g.setDefaultModel(defaultModel);
+            g.setUpdatedAt(java.time.Instant.now().toString());
+            neo4jRepo.save(g);
             log.info("Настройки провайдера {} обновлены", providerName);
-        } catch (SQLException e) {
+        } catch (Exception e) {
             throw new RuntimeException("Ошибка сохранения настроек: " + e.getMessage(), e);
         }
     }
 
     public String getApiKey(String providerName) {
         // Check DB first
-        String sql = "SELECT api_key FROM provider_settings WHERE provider_name = ?";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, providerName);
-            ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) {
-                String storedKey = rs.getString("api_key");
+        try {
+            Optional<GraphProviderSetting> opt = neo4jRepo.findByProviderName(providerName);
+            if (opt.isPresent()) {
+                String storedKey = opt.get().getApiKey();
                 if (storedKey != null && !storedKey.isBlank()) {
                     return decrypt(storedKey);
                 }
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             log.error("Ошибка чтения API ключа: {}", e.getMessage());
         }
         // Fallback: env vars
@@ -213,20 +180,18 @@ public class SettingsService {
 
     public List<Map<String, Object>> getAllProviderSettings() {
         List<Map<String, Object>> result = new ArrayList<>();
-        String sql = "SELECT * FROM provider_settings";
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            while (rs.next()) {
+        try {
+            List<GraphProviderSetting> all = neo4jRepo.findAll();
+            for (GraphProviderSetting g : all) {
                 Map<String, Object> settings = new LinkedHashMap<>();
-                settings.put("provider", rs.getString("provider_name"));
-                String storedKey = rs.getString("api_key");
+                settings.put("provider", g.getProviderName());
+                String storedKey = g.getApiKey();
                 settings.put("hasApiKey", storedKey != null && !storedKey.isBlank());
-                settings.put("baseUrl", rs.getString("base_url"));
-                settings.put("defaultModel", rs.getString("default_model"));
+                settings.put("baseUrl", g.getBaseUrl());
+                settings.put("defaultModel", g.getDefaultModel());
                 result.add(settings);
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             log.error("Ошибка чтения всех настроек: {}", e.getMessage());
         }
         return result;

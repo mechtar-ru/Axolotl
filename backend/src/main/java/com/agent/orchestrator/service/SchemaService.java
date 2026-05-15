@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
+import java.util.stream.*;
 
 @Service
 public class SchemaService {
@@ -61,19 +61,6 @@ public class SchemaService {
     private final ExecutorService executionExecutor = Executors.newFixedThreadPool(
             Runtime.getRuntime().availableProcessors());
     private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
-
-    public SchemaService(Neo4jSchemaRepository schemaRepository,
-            ExecutionWebSocketHandler webSocketHandler,
-            MemPalaceClient memPalaceClient,
-            SettingsService settingsService,
-            MetricsService metricsService,
-            NodeExecutor nodeExecutor,
-            SchemaExporter schemaExporter,
-            LlmService llmService,
-            PlanService planService) {
-        this(schemaRepository, webSocketHandler, memPalaceClient, settingsService,
-                metricsService, nodeExecutor, schemaExporter, llmService, planService, null);
-    }
 
     public SchemaService(Neo4jSchemaRepository schemaRepository,
             ExecutionWebSocketHandler webSocketHandler,
@@ -188,7 +175,8 @@ public class SchemaService {
         if (schema == null)
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + id);
-        if (runningExecutions.containsKey(id)) {
+        CompletableFuture<?> existing = runningExecutions.get(id);
+        if (existing != null && !existing.isDone()) {
             log.warn("Схема уже выполняется: {}", id);
             return;
         }
@@ -224,22 +212,20 @@ public class SchemaService {
         run.setMode("EXECUTE");
         run.setStartedAt(Instant.now().toString());
         run.setUpdatedAt(Instant.now().toString());
-        if (executionRepository != null) {
-            executionRepository.createRun(run);
-            // Create NodeExecution for each node
-            if (schema.getNodes() != null) {
-                for (Node node : schema.getNodes()) {
-                    NodeExecution ne = new NodeExecution();
-                    ne.setId(UUID.randomUUID().toString());
-                    ne.setRunId(runId);
-                    ne.setNodeId(node.getId());
-                    ne.setNodeName(node.getName());
-                    ne.setNodeType(node.getType());
-                    ne.setStatus("pending");
-                    ne.setConfigHash(computeConfigHash(node, schema));
-                    ne.setStartedAt(Instant.now().toString());
-                    executionRepository.createNodeExecution(ne);
-                }
+        executionRepository.createRun(run);
+        // Create NodeExecution for each node
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                NodeExecution ne = new NodeExecution();
+                ne.setId(UUID.randomUUID().toString());
+                ne.setRunId(runId);
+                ne.setNodeId(node.getId());
+                ne.setNodeName(node.getName());
+                ne.setNodeType(node.getType());
+                ne.setStatus("pending");
+                ne.setConfigHash(computeConfigHash(node, schema));
+                ne.setStartedAt(Instant.now().toString());
+                executionRepository.createNodeExecution(ne);
             }
         }
 
@@ -284,7 +270,6 @@ public class SchemaService {
      * Find all execution runs for a given schema (persisted).
      */
     public List<ExecutionRun> findExecutionRuns(String schemaId) {
-        if (executionRepository == null) return List.of();
         return executionRepository.getRunsBySchema(schemaId);
     }
 
@@ -292,7 +277,6 @@ public class SchemaService {
      * Get the paused run for a schema, if any (persisted).
      */
     public ExecutionRun getPausedRun(String schemaId) {
-        if (executionRepository == null) return null;
         return executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
     }
 
@@ -310,14 +294,14 @@ public class SchemaService {
                     org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
         }
 
-        ExecutionRun parentRun = executionRepository != null ?
-                executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused") : null;
+        ExecutionRun parentRun =
+                executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
         if (parentRun == null) {
             log.warn("No paused run found for schema: {}", schemaId);
             return;
         }
 
-        if (executionRepository != null && executionRepository.hasActiveRun(schemaId)) {
+        if (executionRepository.hasActiveRun(schemaId)) {
             // If there is an active run, allow resume only when there is no *running* run
             // and the only active run is the paused parent we just fetched. This permits
             // resuming a paused run while still protecting against concurrent running runs.
@@ -329,8 +313,8 @@ public class SchemaService {
         }
 
         // Get parent node executions
-        List<NodeExecution> parentNodeExecs = executionRepository != null ?
-                executionRepository.getNodeExecutionsByRun(parentRun.getId()) : List.of();
+        List<NodeExecution> parentNodeExecs =
+                executionRepository.getNodeExecutionsByRun(parentRun.getId());
 
         // Create child run
         String childRunId = UUID.randomUUID().toString();
@@ -342,9 +326,7 @@ public class SchemaService {
         childRun.setResumesFrom(parentRun.getId());
         childRun.setStartedAt(Instant.now().toString());
         childRun.setUpdatedAt(Instant.now().toString());
-        if (executionRepository != null) {
-            executionRepository.createRun(childRun);
-        }
+        executionRepository.createRun(childRun);
 
         // Compute config hashes for current schema nodes
         List<Node> schemaNodes = schema.getNodes();
@@ -383,9 +365,7 @@ public class SchemaService {
                 newNodeExec.setConfigHash(currentHash);
                 node.setStatus(Node.NodeStatus.IDLE);
             }
-            if (executionRepository != null) {
-                executionRepository.createNodeExecution(newNodeExec);
-            }
+            executionRepository.createNodeExecution(newNodeExec);
 
             // Add skipped node results to nodeExecutor so downstream nodes can read them
             if (matched != null && matched.getOutputSummary() != null) {
@@ -407,29 +387,18 @@ public class SchemaService {
     }
 
     public List<NodeExecution> getExecutionNodes(String runId) {
-        if (executionRepository == null) return List.of();
         return executionRepository.getNodeExecutionsByRun(runId);
     }
 
     // ────────────────────────── History ──────────────────────────
 
     public List<ExecutionRecord> getExecutionHistory(String schemaId) {
-        synchronized (executionHistoryLock) {
-            return executionHistory.stream()
-                    .filter(r -> schemaId.equals(r.getSchemaId()))
-                    .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
-                    .limit(50)
-                    .collect(Collectors.toList());
-        }
+        // Try Neo4j first, fall back to in-memory cache
+        return executionRepository.getExecutionRecordsBySchema(schemaId);
     }
 
     public List<ExecutionRecord> getAllExecutionHistory() {
-        synchronized (executionHistoryLock) {
-            return executionHistory.stream()
-                    .sorted((a, b) -> Long.compare(b.getStartTime(), a.getStartTime()))
-                    .limit(50)
-                    .collect(Collectors.toList());
-        }
+        return executionRepository.getAllExecutionRecords();
     }
 
     public String getOutputFileContent(String schemaId, String nodeId) {
@@ -534,6 +503,9 @@ public class SchemaService {
             }
         }
         record.setNodeResults(nodeResults);
+
+        // Persist to Neo4j
+        executionRepository.saveExecutionRecord(record);
 
         synchronized (executionHistoryLock) {
             executionHistory.add(record);
@@ -653,9 +625,7 @@ public class SchemaService {
             try {
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
                 // Save checkpoint after each wave
-                if (executionRepository != null) {
                     saveCheckpoint(schema, runId, waveNum - 1);
-                }
                 if (webSocketHandler != null) {
                     List<String> execIds = executable.stream().map(Node::getId).toList();
                     webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "completed");
@@ -688,9 +658,7 @@ public class SchemaService {
                 webSocketHandler.sendLog(schema.getId(), "warning", "Выполнение схемы остановлено пользователем", null);
             }
             log.warn("Выполнение схемы отменено: {}", schema.getName());
-            if (executionRepository != null) {
-                executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
-            }
+            executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
         } else {
             if (webSocketHandler != null) {
@@ -726,9 +694,7 @@ public class SchemaService {
                 }
             }
 
-            if (executionRepository != null) {
                 executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
-            }
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
         }
     }
@@ -962,9 +928,7 @@ public class SchemaService {
                 }
             }
             cp.setCompletedNodeIds(new ObjectMapper().writeValueAsString(completedIds));
-            if (executionRepository != null) {
-                executionRepository.saveCheckpoint(cp);
-            }
+            executionRepository.saveCheckpoint(cp);
         } catch (Exception e) {
             log.warn("Ошибка сохранения чекпоинта: {}", e.getMessage());
         }
