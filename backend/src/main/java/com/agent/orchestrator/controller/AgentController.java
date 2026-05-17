@@ -178,12 +178,11 @@ public class AgentController {
         result.put("status", "ok");
         result.put("message", "Axolotl работает!");
         result.put("ollama", llmService.isProviderAvailable("ollama"));
-        result.put("spring-ai", llmService.isProviderAvailable("spring-ai"));
         return result;
     }
 
     @PostMapping("/llm/test")
-    public Map<String, Object> testLlm(@RequestParam(defaultValue = "spring-ai") String provider, 
+    public Map<String, Object> testLlm(@RequestParam(defaultValue = "ollama") String provider, 
                                         @RequestParam(defaultValue = "gemma4:e2b") String model,
                                         @RequestParam(defaultValue = "Say OK") String message) {
         Map<String, Object> result = new HashMap<>();
