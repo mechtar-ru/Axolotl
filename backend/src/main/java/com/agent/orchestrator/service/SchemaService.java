@@ -117,6 +117,17 @@ public class SchemaService {
         schema.setId(id);
         schema.setCreatedAt(Instant.now().toString());
         schema.setUpdatedAt(Instant.now().toString());
+
+        // Auto-create target directory on schema creation
+        if (schema.getTargetPath() != null && !schema.getTargetPath().isBlank()) {
+            try {
+                java.nio.file.Files.createDirectories(java.nio.file.Path.of(schema.getTargetPath()));
+                log.info("Создана директория targetPath: {}", schema.getTargetPath());
+            } catch (java.io.IOException e) {
+                log.warn("Не удалось создать директорию targetPath {}: {}", schema.getTargetPath(), e.getMessage());
+            }
+        }
+
         schemaRepository.save(schema);
         log.info("Создана схема: {} (ID: {})", schema.getName(), id);
         return schema;

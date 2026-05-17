@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, watch, inject, type Ref } from 'vue'
 import type { DesignWorkspaceFile, WorkflowSchema, PlanningModels, PlanQuestion, PlanResponse } from '@/types'
 import { schemaApi } from '@/services/api'
 import PlanningModelsPicker from './PlanningModelsPicker.vue'

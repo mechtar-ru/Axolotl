@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { schemaApi } from '@/services/api'
@@ -11,6 +11,7 @@ import BlueprintView from '@/components/studio/BlueprintView.vue'
 import TimelineView from '@/components/studio/TimelineView.vue'
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import ResumeBanner from '@/components/studio/ResumeBanner.vue'
+import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
 
 type StudioMode = 'blueprint' | 'timeline'
 
@@ -23,6 +24,9 @@ const appId = ref('')
 
 // WebSocket for real-time execution events
 const { connect, disconnect } = useWebSocket()
+
+// Guard against stale updates after unmount
+let isActive = true
 
 // App state
 const app = computed(() => {
@@ -77,6 +81,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
 
   connect(appId.value, {
     onProgress: (data) => {
+      if (!isActive) return
       nodeStatuses.value[data.nodeId] = data.status
       if (!nodeStartTimes.has(data.nodeId)) {
         nodeStartTimes.set(data.nodeId, Date.now())
@@ -86,16 +91,18 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       }
       if (data.progress !== undefined) {
         executionProgress.value = {
-          totalNodes: data.totalNodes || 0,
-          completedNodes: data.completedNodes || 0
+          totalNodes: (data as any).totalNodes || 0,
+          completedNodes: (data as any).completedNodes || 0
         }
       }
     },
     onResult: (data) => {
+      if (!isActive) return
       nodeResults.value[data.nodeId] = data.result
       addStepEvent(data.nodeId, 'completed')
     },
     onComplete: () => {
+      if (!isActive) return
       isRunning.value = false
       addStepEvent('__execution__', 'completed', 'Execution finished')
       if (activeMode.value === 'timeline') {
@@ -103,6 +110,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       }
     },
     onError: (data) => {
+      if (!isActive) return
       nodeStatuses.value[data.nodeId] = 'failed'
       executionError.value = data.error
       isRunning.value = false
@@ -135,6 +143,12 @@ const showQuickStart = ref(false)
 
 function onShowQuickStart() {
   showQuickStart.value = true
+}
+
+const showGenerateFromPrompt = ref(false)
+
+function onShowGenerateFromPrompt() {
+  showGenerateFromPrompt.value = true
 }
 
 function onAddToCanvas(schema: WorkflowSchema) {
@@ -208,6 +222,19 @@ onMounted(async () => {
   }
 })
 
+// Watch route param changes — needed when navigating between schemas
+// while the component stays alive (same route, different :id)
+watch(() => route.params.id, (newId) => {
+  if (newId && newId !== appId.value) {
+    appId.value = newId as string
+    const found = schemaStore.schemas.find(s => s.id === appId.value)
+    if (found) {
+      schemaStore.currentSchema = found
+      document.title = `${found.name} - Axolotl Studio`
+    }
+  }
+})
+
 // Mode switching
 function setMode(mode: StudioMode) {
   activeMode.value = mode
@@ -229,7 +256,30 @@ function toggleRun() {
 
 // Cleanup WebSocket on unmount
 onUnmounted(() => {
+  isActive = false
   disconnect()
+})
+
+// Disconnect WebSocket when navigating away (component cached, not destroyed)
+onDeactivated(() => {
+  if (isRunning.value) {
+    disconnect()
+  }
+})
+
+// Optionally refresh schema data when coming back to a cached session
+onActivated(() => {
+  // Ensure appId matches current route (handles edge case where
+  // user navigates directly to a different /app/:id while cached)
+  const currentId = route.params.id as string
+  if (currentId && currentId !== appId.value) {
+    appId.value = currentId
+    const found = schemaStore.schemas.find(s => s.id === appId.value)
+    if (found) {
+      schemaStore.currentSchema = found
+      document.title = `${found.name} - Axolotl Studio`
+    }
+  }
 })
 
 // Navigate back to dashboard
@@ -248,6 +298,7 @@ function goToDashboard() {
       @toggle-run="toggleRun"
       @back="goToDashboard"
       @show-quick-start="onShowQuickStart"
+      @show-generate-from-prompt="onShowGenerateFromPrompt"
     />
     
     <ResumeBanner
@@ -259,11 +310,11 @@ function goToDashboard() {
     
     <div class="studio-content">
       <BlueprintView
-        v-if="activeMode === 'blueprint'"
+        v-show="activeMode === 'blueprint'"
         :app-id="appId"
       />
       <TimelineView
-        v-else-if="activeMode === 'timeline'"
+        v-show="activeMode === 'timeline'"
         @select-block="(blockId) => {
           if (blockId === '__execution__') return
           activeMode = 'blueprint'
@@ -276,6 +327,11 @@ function goToDashboard() {
       :app-id="appId"
       @close="showQuickStart = false"
       @add-to-canvas="onAddToCanvas"
+    />
+
+    <PromptToSchemaModal
+      :visible="showGenerateFromPrompt"
+      @close="showGenerateFromPrompt = false"
     />
   </div>
 </template>
@@ -301,7 +357,7 @@ function goToDashboard() {
   justify-content: center;
   height: 100%;
   color: var(--text-muted);
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .placeholder-icon {
@@ -311,12 +367,12 @@ function goToDashboard() {
 
 .placeholder-view h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-lg);
   color: var(--text-secondary);
 }
 
 .placeholder-view p {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 </style>

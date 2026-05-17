@@ -214,7 +214,9 @@ public class ToolExecutor {
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
         try {
-            Files.writeString(Path.of(path), content);
+            java.nio.file.Path targetPath = Path.of(path);
+            Files.createDirectories(targetPath.getParent());
+            Files.writeString(targetPath, content);
             return ToolResult.ok("File written: " + path);
         } catch (IOException e) {
             return ToolResult.error("Failed to write file: " + e.getMessage());

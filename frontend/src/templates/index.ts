@@ -9,6 +9,7 @@ export interface AppTemplate {
     name: string
     position: { x: number; y: number }
     data?: Record<string, unknown>
+    agentType?: string
   }>
   defaultEdges: Array<{
     id: string

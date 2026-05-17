@@ -3,6 +3,9 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
 
+// Import app styles (includes design tokens)
+import './assets/main.css'
+
 // Импортируем стили Vue Flow (это важно!)
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'

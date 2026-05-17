@@ -57,6 +57,7 @@ public class OpencodeZenProvider implements LlmProvider {
     public OpencodeZenProvider() {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
         this.objectMapper = new ObjectMapper();
     }
@@ -93,7 +94,30 @@ public class OpencodeZenProvider implements LlmProvider {
 
             log.info("OpenCode Zen запрос: model={}", effectiveModel);
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (Exception e) {
+                log.error("OpenCode Zen первая попытка неудачна: тип={} msg={}", e.getClass().getName(), e.getMessage(), e);
+                // Retry once with a fresh HttpClient to rule out shared-state issues
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                HttpClient retryClient = HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .build();
+                HttpRequest retryRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl + "/chat/completions"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + apiKey)
+                        .POST(HttpRequest.BodyPublishers.ofString(json))
+                        .timeout(Duration.ofSeconds(timeoutSeconds))
+                        .build();
+                log.info("OpenCode Zen повторная попытка: model={}", effectiveModel);
+                response = retryClient.send(retryRequest, HttpResponse.BodyHandlers.ofString());
+            }
 
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
@@ -228,7 +252,30 @@ public class OpencodeZenProvider implements LlmProvider {
 
             log.info("OpenCode Zen streaming запрос: model={}", effectiveModel);
 
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (Exception e) {
+                log.error("OpenCode Zen streaming первая попытка неудачна: тип={} msg={}", e.getClass().getName(), e.getMessage(), e);
+                // Retry once with a fresh HttpClient
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                HttpClient retryClient = HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .build();
+                HttpRequest retryRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(baseUrl + "/chat/completions"))
+                        .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + apiKey)
+                        .POST(HttpRequest.BodyPublishers.ofString(json))
+                        .timeout(Duration.ofSeconds(timeoutSeconds))
+                        .build();
+                log.info("OpenCode Zen streaming повторная попытка: model={}", effectiveModel);
+                response = retryClient.send(retryRequest, HttpResponse.BodyHandlers.ofString());
+            }
             StringBuilder fullResponse = new StringBuilder();
 
             // Track streaming tool calls: index → {id, name, arguments-builder}

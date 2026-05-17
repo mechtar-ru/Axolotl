@@ -48,50 +48,51 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  border-radius: 8px;
-  margin-bottom: 12px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--warning-light);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-3);
 }
 .resume-banner__content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .resume-banner__icon {
-  font-size: 24px;
+  font-size: var(--text-2xl);
 }
 .resume-banner__text p {
   margin: 2px 0 0;
-  font-size: 13px;
-  color: #856404;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
 }
 .resume-banner__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 .btn {
-  padding: 6px 14px;
-  border-radius: 6px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 .btn--primary {
-  background: #ffc107;
-  color: #333;
+  background: var(--warning);
+  color: var(--text-primary);
 }
 .btn--secondary {
-  background: #e9ecef;
-  color: #333;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
 }
 .btn--ghost {
   background: transparent;
-  color: #999;
-  font-size: 18px;
-  padding: 2px 8px;
+  color: var(--text-muted);
+  font-size: var(--text-lg);
+  padding: var(--space-1) var(--space-2);
 }
 </style>

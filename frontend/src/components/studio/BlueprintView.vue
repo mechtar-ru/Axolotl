@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick, inject } from 'vue'
+import { ref, markRaw, onMounted, watch, nextTick, inject } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -26,13 +26,15 @@ const props = defineProps<{
 const schemaStore = useSchemaStore()
 
 // Register custom node types for VueFlow
+// markRaw prevents Vue from wrapping component defs in reactive proxies,
+// which breaks VueFlow's internal component instance tracking
 const nodeTypes = {
-  source: ReceiveBlock,
-  agent: ThinkBlock,
-  verifier: VerifyBlock,
-  review: ReviewBlock,
-  memory: RememberBlock,
-  output: ActBlock,
+  source: markRaw(ReceiveBlock),
+  agent: markRaw(ThinkBlock),
+  verifier: markRaw(VerifyBlock),
+  review: markRaw(ReviewBlock),
+  memory: markRaw(RememberBlock),
+  output: markRaw(ActBlock),
 }
 
 const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView } = useVueFlow({ id: 'blueprint-flow' })
@@ -188,7 +190,7 @@ onConnect((connection) => {
 <template>
   <div class="blueprint-view">
     <!-- Block Palette -->
-    <div v-if="!showExecutionOverlay" class="palette-wrapper">
+    <div v-show="!showExecutionOverlay" class="palette-wrapper">
       <BlockPalette />
     </div>
     
@@ -217,13 +219,13 @@ onConnect((connection) => {
     
     <!-- Config Panel -->
     <BlockConfigPanel
-      v-if="!showExecutionOverlay && configPanelOpen && selectedBlockId"
-      :block-id="selectedBlockId"
+      v-show="!showExecutionOverlay && configPanelOpen && selectedBlockId"
+      :block-id="selectedBlockId || ''"
       @close="configPanelOpen = false"
     />
 
     <!-- Execution Overlay -->
-    <div v-if="showExecutionOverlay" class="execution-overlay">
+    <div v-show="showExecutionOverlay" class="execution-overlay">
       <LiveView :app-id="appId" />
     </div>
   </div>

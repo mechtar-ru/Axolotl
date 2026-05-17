@@ -64,11 +64,11 @@ const parsedChecks = computed(() => {
 .timeline-entry {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.5rem;
-  border-radius: 6px;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .timeline-entry:hover {
@@ -80,7 +80,7 @@ const parsedChecks = computed(() => {
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .timeline-content {
@@ -89,25 +89,25 @@ const parsedChecks = computed(() => {
 }
 
 .timeline-label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--space-1);
 }
 
 .timeline-meta {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   align-items: center;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }
 
 .timeline-status {
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
+  padding: 2px var(--space-1);
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
   font-weight: 600;
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
 }
 
 .timeline-duration {
@@ -120,33 +120,33 @@ const parsedChecks = computed(() => {
 }
 
 .verifier-details {
-  margin-top: 0.5rem;
-  padding: 0.4rem;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
   background: var(--bg-hover);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .verifier-detail-row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.75rem;
-  padding: 0.15rem 0;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  padding: 2px 0;
 }
 
-.check-status.pass { color: #4caf50; }
-.check-status.fail { color: #ef4444; }
+.check-status.pass { color: var(--success); }
+.check-status.fail { color: var(--error); }
 
 .review-details {
-  margin-top: 0.5rem;
-  padding: 0.4rem;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
   background: var(--bg-hover);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .review-detail-row {
-  font-size: 0.75rem;
-  padding: 0.15rem 0;
+  font-size: var(--text-xs);
+  padding: 2px 0;
 }
 
 .review-findings {

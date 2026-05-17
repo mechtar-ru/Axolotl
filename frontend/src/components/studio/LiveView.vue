@@ -28,7 +28,7 @@ const executionResult = computed(() => {
   const keys = Object.keys(results)
   if (keys.length === 0) return null
   // Return the last output node result, or the last result overall
-  const outputKey = keys.find(k => k.startsWith('out-')) || keys[keys.length - 1]
+  const outputKey = (keys.find(k => k.startsWith('out-')) || keys[keys.length - 1]) as string
   return results[outputKey]
 })
 </script>
@@ -84,14 +84,14 @@ const executionResult = computed(() => {
 
 .back-hint {
   position: absolute;
-  bottom: 1rem;
+  bottom: var(--space-4);
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--bg-secondary);
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
 }
 

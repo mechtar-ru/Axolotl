@@ -86,7 +86,7 @@ function formatTime(ts: number): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
   flex-shrink: 0;
@@ -94,13 +94,13 @@ function formatTime(ts: number): string {
 
 .timeline-header h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .event-count {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--bg-hover);
   padding: 0.2rem 0.6rem;
@@ -114,7 +114,7 @@ function formatTime(ts: number): string {
   justify-content: center;
   flex: 1;
   color: var(--text-muted);
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .empty-icon {
@@ -122,19 +122,19 @@ function formatTime(ts: number): string {
 }
 
 .timeline-empty p {
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   margin: 0;
 }
 
 .timeline-list {
   flex: 1;
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: var(--space-6);
 }
 
 .timeline-item-wrapper {
   position: relative;
-  padding-left: 2rem;
+  padding-left: var(--space-8);
 }
 
 .timeline-line {

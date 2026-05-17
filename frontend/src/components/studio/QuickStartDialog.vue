@@ -197,17 +197,17 @@ defineExpose({
 .quickstart-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: var(--z-modal);
 }
 
 .quickstart-dialog {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   width: 100%;
   max-width: 560px;
   max-height: 90vh;
@@ -219,13 +219,13 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 1.5rem;
+  padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border-color);
 }
 
 .dialog-title {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -237,11 +237,11 @@ defineExpose({
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .close-btn:hover:not(:disabled) {
@@ -250,26 +250,26 @@ defineExpose({
 }
 
 .dialog-body {
-  padding: 1.5rem;
+  padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .input-label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .prompt-input {
   width: 100%;
-  padding: 0.75rem;
+  padding: var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-canvas);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-family: inherit;
   resize: vertical;
   min-height: 100px;
@@ -290,16 +290,16 @@ defineExpose({
 .model-row {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: var(--space-1);
 }
 
 .model-select {
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--bg-canvas);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -312,21 +312,21 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--space-4);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--accent);
   color: white;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
 }
 
 .generate-btn:hover:not(:disabled) {
-  background: var(--accent-light);
+  background: var(--accent-hover);
 }
 
 .generate-btn:disabled {
@@ -335,8 +335,8 @@ defineExpose({
 }
 
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: white;
   border-radius: 50%;
@@ -350,12 +350,12 @@ defineExpose({
 .error-section {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border-radius: 8px;
-  background: color-mix(in srgb, #ef4444 10%, transparent);
-  color: #ef4444;
-  font-size: 0.85rem;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--error-light);
+  color: var(--error);
+  font-size: var(--text-sm);
   line-height: 1.4;
 }
 
@@ -367,54 +367,54 @@ defineExpose({
 .result-section {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 8px;
-  background: color-mix(in srgb, #22c55e 8%, transparent);
-  border: 1px solid color-mix(in srgb, #22c55e 20%, transparent);
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--success-light);
+  border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
 }
 
 .result-indicator {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  color: #16a34a;
-  font-size: 0.9rem;
+  gap: var(--space-2);
+  color: var(--success);
+  font-size: var(--text-sm);
   font-weight: 500;
 }
 
 .result-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .add-btn {
   flex: 1;
-  padding: 0.6rem 1rem;
+  padding: var(--space-2) var(--space-4);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--accent);
   color: white;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .add-btn:hover {
-  background: var(--accent-light);
+  background: var(--accent-hover);
 }
 
 .regenerate-btn {
-  padding: 0.6rem 1rem;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .regenerate-btn:hover:not(:disabled) {

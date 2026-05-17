@@ -132,23 +132,25 @@ onMounted(loadApp)
           </div>
 
           <div class="app-title-group">
-            <template v-if="renameMode">
-              <input
-                v-model="newName"
-                class="rename-input"
-                @keyup.enter="handleRename"
-                @keyup.escape="renameMode = false"
-                :placeholder="app.name"
-              />
-              <div class="rename-actions">
-                <button class="btn-sm" @click="handleRename">Save</button>
-                <button class="btn-sm secondary" @click="renameMode = false">Cancel</button>
+            <Transition name="rename-slide" mode="out-in">
+              <div v-if="renameMode" key="edit" class="rename-wrapper">
+                <input
+                  v-model="newName"
+                  class="rename-input"
+                  @keyup.enter="handleRename"
+                  @keyup.escape="renameMode = false"
+                  :placeholder="app.name"
+                />
+                <div class="rename-actions">
+                  <button class="btn-sm" @click="handleRename">Save</button>
+                  <button class="btn-sm secondary" @click="renameMode = false">Cancel</button>
+                </div>
               </div>
-            </template>
-            <template v-else>
-              <h1>{{ app.name }}</h1>
-              <button class="rename-btn" @click="newName = app.name; renameMode = true">✏️ Rename</button>
-            </template>
+              <div v-else key="display" class="rename-wrapper">
+                <h1>{{ app.name }}</h1>
+                <button class="rename-btn" @click="newName = app.name; renameMode = true">✏️ Rename</button>
+              </div>
+            </Transition>
           </div>
 
           <div class="type-badge" :style="{ color: accentColors[app.appType], background: bgColors[app.appType] }">
@@ -262,7 +264,7 @@ onMounted(loadApp)
 .app-dashboard {
   max-width: 960px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: var(--space-8);
   min-height: 100vh;
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -275,7 +277,7 @@ onMounted(loadApp)
   align-items: center;
   justify-content: center;
   min-height: 40vh;
-  gap: 1rem;
+  gap: var(--space-4);
   color: var(--text-muted);
 }
 
@@ -293,27 +295,27 @@ onMounted(loadApp)
 }
 
 .error-state p {
-  color: #e53935;
-  font-size: 1rem;
+  color: var(--error);
+  font-size: var(--text-base);
 }
 
 /* Header */
 .dashboard-header {
-  margin-bottom: 2rem;
+  margin-bottom: var(--space-7);
 }
 
 .back-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1);
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   cursor: pointer;
-  padding: 0.3rem 0;
-  margin-bottom: 0.75rem;
-  transition: color 0.15s;
+  padding: var(--space-1) 0;
+  margin-bottom: var(--space-3);
+  transition: color var(--transition);
 }
 
 .back-btn:hover {
@@ -323,17 +325,17 @@ onMounted(loadApp)
 .app-title-row {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .app-icon {
   width: 48px;
   height: 48px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.2rem;
+  font-size: var(--text-lg);
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -345,7 +347,7 @@ onMounted(loadApp)
 
 .app-title-group h1 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   font-weight: 700;
 }
 
@@ -353,7 +355,7 @@ onMounted(loadApp)
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   padding: 0;
 }
@@ -362,12 +364,32 @@ onMounted(loadApp)
   color: var(--accent);
 }
 
+/* Rename mode slide transition */
+.rename-wrapper {
+  min-height: 2lh;
+}
+
+.rename-slide-enter-active,
+.rename-slide-leave-active {
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.rename-slide-enter-from {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.rename-slide-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
 .rename-input {
-  font-size: 1.1rem;
+  font-size: var(--text-lg);
   font-weight: 600;
-  padding: 0.4rem 0.5rem;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
   width: 100%;
@@ -377,17 +399,17 @@ onMounted(loadApp)
 
 .rename-actions {
   display: flex;
-  gap: 0.4rem;
-  margin-top: 0.4rem;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
 .btn-sm {
-  padding: 0.25rem 0.6rem;
-  font-size: 0.78rem;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
   border: 1px solid var(--accent);
   background: var(--accent);
   color: white;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -398,26 +420,26 @@ onMounted(loadApp)
 }
 
 .type-badge {
-  padding: 0.3rem 0.75rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   font-weight: 600;
 }
 
 .btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1.2rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   background: var(--accent);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.2s, transform 0.1s;
+  transition: background var(--transition), transform 0.1s;
 }
 
 .btn-primary:hover {
@@ -426,12 +448,12 @@ onMounted(loadApp)
 }
 
 .btn-secondary {
-  padding: 0.5rem 1rem;
+  padding: var(--space-2) var(--space-4);
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   cursor: pointer;
 }
 
@@ -443,7 +465,7 @@ onMounted(loadApp)
 .content-grid {
   display: grid;
   grid-template-columns: 1fr 320px;
-  gap: 1.5rem;
+  gap: var(--space-6);
   align-items: start;
 }
 
@@ -457,15 +479,15 @@ onMounted(loadApp)
 .card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 .card h2 {
-  font-size: 0.95rem;
+  font-size: var(--text-sm);
   font-weight: 600;
-  margin: 0 0 1rem 0;
+  margin: 0 0 var(--space-4) 0;
   color: var(--text-primary);
 }
 
@@ -478,7 +500,7 @@ onMounted(loadApp)
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem 0;
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -487,36 +509,36 @@ onMounted(loadApp)
 }
 
 .info-row dt {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
 .info-row dd {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   color: var(--text-primary);
 }
 
 .mono {
   font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
 }
 
 /* Files */
 .empty-card {
   text-align: center;
-  padding: 1.5rem;
+  padding: var(--space-6);
   color: var(--text-muted);
 }
 
 .empty-card p {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
 }
 
 .hint {
-  font-size: 0.78rem;
-  margin-top: 0.3rem;
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
 }
 
 .file-list {
@@ -528,8 +550,8 @@ onMounted(loadApp)
 .file-item {
   display: flex;
   align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.5rem 0;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -550,14 +572,14 @@ onMounted(loadApp)
 
 .file-path {
   display: block;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: var(--text-primary);
   word-break: break-all;
 }
 
 .file-desc {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
@@ -565,19 +587,19 @@ onMounted(loadApp)
 .action-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .action-btn {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
+  gap: var(--space-3);
+  padding: var(--space-3);
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color var(--transition), background var(--transition);
   text-align: left;
   color: inherit;
   font: inherit;
@@ -596,12 +618,12 @@ onMounted(loadApp)
 
 .action-btn strong {
   display: block;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .action-btn span {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
@@ -615,10 +637,10 @@ onMounted(loadApp)
 .history-item {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border-color);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
 }
 
 .history-item:last-child {
@@ -643,13 +665,13 @@ onMounted(loadApp)
 }
 
 .history-time {
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .history-nodes {
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 </style>

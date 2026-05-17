@@ -3,15 +3,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import AppCard from '@/components/app/AppCard.vue'
+import AppModal from '@/components/ui/AppModal.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
 import { appApi, schemaApi } from '@/services/api'
 import { getTemplateById } from '@/templates'
 import type { WorkflowSchema } from '@/types'
-
-// Helper: prompt for confirmation
-function confirmDelete(appName: string): Promise<boolean> {
-  return Promise.resolve(window.confirm(`Delete "${appName}"? This cannot be undone.`))
-}
 
 const router = useRouter()
 const schemaStore = useSchemaStore()
@@ -87,6 +83,9 @@ const generatedApps = computed(() => {
   }
   return Array.from(seen.values())
 })
+
+const showDeleteModal = ref(false)
+const deleteTarget = ref<any>(null)
 
 const searchQuery = ref('')
 
@@ -214,10 +213,16 @@ async function resolveConflict() {
   }
 }
 
-async function handleDeleteApp(app: any) {
-  const confirmed = await confirmDelete(app.name)
-  if (!confirmed) return
-  await schemaStore.deleteSchema(app.id)
+function promptDeleteApp(app: any) {
+  deleteTarget.value = app
+  showDeleteModal.value = true
+}
+
+async function confirmDeleteApp() {
+  if (!deleteTarget.value) return
+  await schemaStore.deleteSchema(deleteTarget.value.id)
+  showDeleteModal.value = false
+  deleteTarget.value = null
 }
 
 async function createBlankApp() {
@@ -305,7 +310,7 @@ async function createBlankApp() {
           :key="app.id"
           :app="app"
           @click="openApp(app.id)"
-          @delete="handleDeleteApp(app)"
+          @delete="promptDeleteApp(app)"
         />
       </div>
     </section>
@@ -324,83 +329,86 @@ async function createBlankApp() {
     </section>
 
     <!-- New App Modal -->
-    <div v-if="showNewAppModal" class="modal-overlay" @click.self="showNewAppModal = false">
-      <div class="modal">
-        <h3>Create New App</h3>
-        <div class="form-group">
-          <label>App Name</label>
-          <input
-            v-model="newAppName"
-            type="text"
-            placeholder="My Awesome App"
-            class="input"
-            @keyup.enter="createBlankApp"
-          />
-        </div>
-        <div class="form-group">
-          <label>App Type</label>
-          <select v-model="newAppType" class="input">
-            <option value="CUSTOM">Custom</option>
-            <option value="CHAT">Chat Bot</option>
-            <option value="ANALYZER">Analyzer</option>
-            <option value="GENERATOR">Generator</option>
-            <option value="EMAIL">Email Agent</option>
-            <option value="GAME">Game</option>
-          </select>
-        </div>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showNewAppModal = false">Cancel</button>
-          <button class="btn-primary" @click="createBlankApp" :disabled="!newAppName.trim()">Create</button>
-        </div>
+    <AppModal v-model="showNewAppModal" title="Create New App">
+      <div class="form-group">
+        <label>App Name</label>
+        <input
+          v-model="newAppName"
+          type="text"
+          placeholder="My Awesome App"
+          class="input"
+          @keyup.enter="createBlankApp"
+        />
       </div>
-    </div>
+      <div class="form-group">
+        <label>App Type</label>
+        <select v-model="newAppType" class="input">
+          <option value="CUSTOM">Custom</option>
+          <option value="CHAT">Chat Bot</option>
+          <option value="ANALYZER">Analyzer</option>
+          <option value="GENERATOR">Generator</option>
+          <option value="EMAIL">Email Agent</option>
+          <option value="GAME">Game</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showNewAppModal = false">Cancel</button>
+        <button class="btn-primary" @click="createBlankApp" :disabled="!newAppName.trim()">Create</button>
+      </div>
+    </AppModal>
 
     <!-- Conflict Resolution Modal -->
-    <div v-if="showConflictModal" class="modal-overlay" @click.self="showConflictModal = false">
-      <div class="modal">
-        <h3>Directory Conflict</h3>
-        <p>The target path already exists for "{{ pendingTemplate?.name }}". Choose how to proceed:</p>
-        <div class="conflict-options">
-          <label class="conflict-option" :class="{ selected: conflictAction === 'CONTINUE' }">
-            <input type="radio" v-model="conflictAction" value="CONTINUE" />
-            <div class="option-content">
-              <strong>Continue</strong>
-              <span>Keep existing files and append new ones</span>
-            </div>
-          </label>
-          <label class="conflict-option" :class="{ selected: conflictAction === 'OVERWRITE' }">
-            <input type="radio" v-model="conflictAction" value="OVERWRITE" />
-            <div class="option-content">
-              <strong>Overwrite</strong>
-              <span>Delete existing directory and start fresh</span>
-            </div>
-          </label>
-          <label class="conflict-option" :class="{ selected: conflictAction === 'CHANGE_PATH' }">
-            <input type="radio" v-model="conflictAction" value="CHANGE_PATH" />
-            <div class="option-content">
-              <strong>Change Path</strong>
-              <span>Specify a different target path</span>
-            </div>
-          </label>
-        </div>
-        <div v-if="conflictAction === 'CHANGE_PATH'" class="form-group">
-          <label>Custom Path</label>
-          <input v-model="customTargetPath" type="text" placeholder="/Users/.../Axolotl/my-app/" class="input" />
-        </div>
-        <div class="modal-actions">
-          <button class="btn-secondary" @click="showConflictModal = false">Cancel</button>
-          <button class="btn-primary" @click="resolveConflict">
-            {{ conflictAction === 'CONTINUE' ? 'Continue' : conflictAction === 'OVERWRITE' ? 'Overwrite' : 'Change Path' }}
-          </button>
-        </div>
+    <AppModal v-model="showConflictModal" title="Directory Conflict">
+      <p>The target path already exists for "{{ pendingTemplate?.name }}". Choose how to proceed:</p>
+      <div class="conflict-options">
+        <label class="conflict-option" :class="{ selected: conflictAction === 'CONTINUE' }">
+          <input type="radio" v-model="conflictAction" value="CONTINUE" />
+          <div class="option-content">
+            <strong>Continue</strong>
+            <span>Keep existing files and append new ones</span>
+          </div>
+        </label>
+        <label class="conflict-option" :class="{ selected: conflictAction === 'OVERWRITE' }">
+          <input type="radio" v-model="conflictAction" value="OVERWRITE" />
+          <div class="option-content">
+            <strong>Overwrite</strong>
+            <span>Delete existing directory and start fresh</span>
+          </div>
+        </label>
+        <label class="conflict-option" :class="{ selected: conflictAction === 'CHANGE_PATH' }">
+          <input type="radio" v-model="conflictAction" value="CHANGE_PATH" />
+          <div class="option-content">
+            <strong>Change Path</strong>
+            <span>Specify a different target path</span>
+          </div>
+        </label>
       </div>
-    </div>
+      <div v-if="conflictAction === 'CHANGE_PATH'" class="form-group">
+        <label>Custom Path</label>
+        <input v-model="customTargetPath" type="text" placeholder="/Users/.../Axolotl/my-app/" class="input" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showConflictModal = false">Cancel</button>
+        <button class="btn-primary" @click="resolveConflict">
+          {{ conflictAction === 'CONTINUE' ? 'Continue' : conflictAction === 'OVERWRITE' ? 'Overwrite' : 'Change Path' }}
+        </button>
+      </div>
+    </AppModal>
+
+    <!-- Delete Confirmation Modal -->
+    <AppModal v-model="showDeleteModal" title="Delete App">
+      <p>Delete "<strong>{{ deleteTarget?.name }}</strong>"? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showDeleteModal = false">Cancel</button>
+        <button class="btn-danger" @click="confirmDeleteApp">Delete</button>
+      </div>
+    </AppModal>
   </div>
 </template>
 
 <style scoped>
 .dashboard {
-  padding: 2rem;
+  padding: var(--space-8);
   max-width: 1200px;
   margin: 0 auto;
   min-height: 100vh;
@@ -411,11 +419,11 @@ async function createBlankApp() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2.5rem;
+  margin-bottom: var(--space-7);
 }
 
 .dashboard-header h1 {
-  font-size: 1.75rem;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
@@ -423,27 +431,27 @@ async function createBlankApp() {
 
 .subtitle {
   color: var(--text-secondary);
-  margin: 0.25rem 0 0 0;
-  font-size: 0.95rem;
+  margin: var(--space-1) 0 0 0;
+  font-size: var(--text-sm);
 }
 
 .btn-primary {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1.25rem;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
   background: var(--accent);
   color: white;
   border: none;
-  border-radius: 8px;
-  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
+  transition: background var(--transition), transform 0.1s;
 }
 
 .btn-primary:hover {
-  background: var(--accent-light);
+  background: var(--accent-hover);
   transform: translateY(-1px);
 }
 
@@ -454,63 +462,79 @@ async function createBlankApp() {
 }
 
 .btn-secondary {
-  padding: 0.625rem 1.25rem;
+  padding: var(--space-3) var(--space-5);
   background: var(--bg-secondary);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--transition);
 }
 
 .btn-secondary:hover {
   background: var(--bg-hover);
 }
 
+.btn-danger {
+  padding: var(--space-3) var(--space-5);
+  background: var(--error);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.btn-danger:hover {
+  background: var(--error-hover);
+}
+
 .icon {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 
 h2 {
-  font-size: 1.15rem;
+  font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
 }
 
 .apps-section,
 .templates-section {
-  margin-bottom: 2.5rem;
+  margin-bottom: var(--space-7);
 }
 
 .apps-grid,
 .templates-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .empty-state {
-  padding: 3rem;
+  padding: var(--space-7);
   text-align: center;
   color: var(--text-muted);
   background: var(--bg-secondary);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   border: 2px dashed var(--border-color);
 }
 
 .search-bar {
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  margin-bottom: 1.5rem;
-  padding: 0.625rem 0.875rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  padding: var(--space-3) var(--space-4);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  transition: border-color 0.2s;
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition);
 }
 
 .search-bar:focus-within {
@@ -519,8 +543,8 @@ h2 {
 }
 
 .search-icon {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -529,7 +553,7 @@ h2 {
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   outline: none;
 }
@@ -538,53 +562,24 @@ h2 {
   color: var(--text-muted);
 }
 
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--bg-secondary);
-  border-radius: 12px;
-  padding: 1.5rem;
-  width: 90%;
-  max-width: 440px;
-  box-shadow: var(--shadow-lg);
-}
-
-.modal h3 {
-  margin: 0 0 1rem 0;
-  font-size: 1.1rem;
-  color: var(--text-primary);
-}
-
 .form-group {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 0.375rem;
-  font-size: 0.85rem;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .input {
   width: 100%;
-  padding: 0.625rem 0.75rem;
+  padding: var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.9rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
   box-sizing: border-box;
@@ -603,31 +598,31 @@ select.input {
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1.25rem;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
 }
 
 /* Conflict modal styles */
 .conflict-options {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin: 1rem 0;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
 }
 
 .conflict-option {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.875rem;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border: 2px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition);
 }
 
 .conflict-option:hover {
-  border-color: var(--accent-light);
+  border-color: var(--accent-hover);
   background: var(--bg-hover);
 }
 
@@ -647,13 +642,13 @@ select.input {
 
 .option-content strong {
   display: block;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--space-1);
 }
 
 .option-content span {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 </style>

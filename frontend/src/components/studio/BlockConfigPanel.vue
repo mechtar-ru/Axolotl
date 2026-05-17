@@ -24,31 +24,6 @@ const model = ref('')
 const prompt = ref('')
 const blockType = ref('agent')
 
-// Populate form fields when the panel opens for a different block
-watch(() => props.blockId, () => {
-  if (!node.value) return
-  blockLabel.value = (node.value.data?.label as string) || ''
-  blockType.value = (node.value.data?.type as string) || 'agent'
-  const config = (node.value.data?.config as Record<string, any>) || {}
-  blockDescription.value = (config.description as string) || ''
-  model.value = (config.model as string) || 'local'
-  prompt.value = (config.prompt as string) || ''
-  // Verifier fields
-  const checks = config.checks as Record<string, any> | undefined
-  syntaxCheck.value = checks?.syntaxCheck ?? true
-  requiredPatterns.value = (checks?.requiredPatterns as string[]) ?? []
-  testCommand.value = checks?.testCommand ?? ''
-    maxFileSizeKb.value = checks?.maxFileSizeKb ?? 500
-    // Review fields
-    reviewPremortem.value = checks?.premortem ?? true
-    reviewPrism.value = checks?.prism ?? false
-    reviewPostmortem.value = checks?.postmortem ?? false
-    reviewMode.value = config?.mode ?? 'manual'
-    reviewMaxIterations.value = config?.maxIterations ?? 3
-    reviewMaxAutoIterations.value = config?.maxAutoIterations ?? 3
-    reviewGeneratePlan.value = config?.generatePlan ?? true
-}, { immediate: true })
-
 // Determine config sections based on block type
 const showModelSelector = computed(() => blockType.value === 'agent')
 const showPrompt = computed(() => blockType.value === 'agent')
@@ -78,6 +53,32 @@ const requiredPatternsText = computed({
     requiredPatterns.value = val.split('\n').filter(s => s.trim().length > 0)
   }
 })
+
+// Populate form fields when the panel opens for a different block
+// NOTE: must be after all ref() declarations to avoid TDZ errors
+watch(() => props.blockId, () => {
+  if (!node.value) return
+  blockLabel.value = (node.value.data?.label as string) || ''
+  blockType.value = (node.value.data?.type as string) || 'agent'
+  const config = (node.value.data?.config as Record<string, any>) || {}
+  blockDescription.value = (config.description as string) || ''
+  model.value = (config.model as string) || 'local'
+  prompt.value = (config.prompt as string) || ''
+  // Verifier fields
+  const checks = config.checks as Record<string, any> | undefined
+  syntaxCheck.value = checks?.syntaxCheck ?? true
+  requiredPatterns.value = (checks?.requiredPatterns as string[]) ?? []
+  testCommand.value = checks?.testCommand ?? ''
+  maxFileSizeKb.value = checks?.maxFileSizeKb ?? 500
+  // Review fields
+  reviewPremortem.value = checks?.premortem ?? true
+  reviewPrism.value = checks?.prism ?? false
+  reviewPostmortem.value = checks?.postmortem ?? false
+  reviewMode.value = config?.mode ?? 'manual'
+  reviewMaxIterations.value = config?.maxIterations ?? 3
+  reviewMaxAutoIterations.value = config?.maxAutoIterations ?? 3
+  reviewGeneratePlan.value = config?.generatePlan ?? true
+}, { immediate: true })
 
 function saveConfig() {
   if (!node.value) return
@@ -394,14 +395,14 @@ function handleKeydown(e: KeyboardEvent) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem;
+  padding: var(--space-4);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .panel-header h3 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -413,11 +414,11 @@ function handleKeydown(e: KeyboardEvent) {
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--transition);
 }
 
 .close-btn:hover {
@@ -428,32 +429,32 @@ function handleKeydown(e: KeyboardEvent) {
 .panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 1rem;
+  padding: var(--space-4);
 }
 
 .config-section {
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--space-5);
 }
 
 .config-label {
   display: block;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-secondary);
-  margin-bottom: 0.375rem;
+  margin-bottom: var(--space-1);
 }
 
 .config-input,
 .config-select {
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
   box-sizing: border-box;
-  transition: border-color 0.15s;
+  transition: border-color var(--transition);
 }
 
 .config-input:focus,
@@ -466,10 +467,10 @@ function handleKeydown(e: KeyboardEvent) {
 
 .config-textarea {
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   background: var(--bg-primary);
   color: var(--text-primary);
   resize: vertical;
@@ -480,16 +481,16 @@ function handleKeydown(e: KeyboardEvent) {
 
 .config-textarea--large {
   min-height: 120px;
-  font-size: 0.82rem;
+  font-size: var(--text-xs);
 }
 
 .config-checkbox {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.85rem;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
   color: var(--text-primary);
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
   cursor: pointer;
 }
 
@@ -500,14 +501,14 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 .config-field {
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
 }
 
 .config-info {
-  padding: 0.4rem 0.6rem;
+  padding: var(--space-1) var(--space-2);
   background: var(--bg-hover);
-  border-radius: 6px;
-  font-size: 0.78rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 </style>

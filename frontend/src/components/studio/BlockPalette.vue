@@ -85,34 +85,34 @@ function onDragStart(event: DragEvent, blockType: BlockType) {
 .block-palette {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
-  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
   box-shadow: var(--shadow-md);
 }
 
 .palette-label {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin-bottom: 0.5rem;
-  padding: 0 0.25rem;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-1);
 }
 
 .palette-items {
   display: flex;
-  gap: 0.375rem;
+  gap: var(--space-1);
 }
 
 .palette-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
   cursor: grab;
-  transition: background 0.15s;
+  transition: background var(--transition);
   user-select: none;
 }
 
@@ -127,7 +127,7 @@ function onDragStart(event: DragEvent, blockType: BlockType) {
 .block-icon {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -135,7 +135,7 @@ function onDragStart(event: DragEvent, blockType: BlockType) {
 }
 
 .block-label {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;

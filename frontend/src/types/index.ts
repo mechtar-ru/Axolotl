@@ -67,10 +67,11 @@ export interface FlowNode {
   collapsed?: boolean;
   name: string;
   position: Position;
-  data: NodeData & { isStreaming?: boolean };
+  data: NodeData & { isStreaming?: boolean; agentType?: string };
   status?: 'idle' | 'running' | 'completed' | 'failed';
   progress?: number;
   executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
+  agentType?: string;
 }
 
 export interface FlowEdge {

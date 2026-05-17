@@ -48,20 +48,20 @@ function getStatusColor(status: string): string {
 <style scoped>
 .timeline-bar {
   position: absolute;
-  bottom: 1rem;
+  bottom: var(--space-4);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 0.5rem 1rem;
+  gap: var(--space-6);
+  padding: var(--space-2) var(--space-4);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
   z-index: 50;
   min-width: 280px;
 }
@@ -74,32 +74,32 @@ function getStatusColor(status: string): string {
 .bar-left {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   color: var(--text-secondary);
 }
 
 .bar-label {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .bar-count {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--bg-hover);
-  padding: 0.125rem 0.5rem;
-  border-radius: 8px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
 }
 
 .bar-right {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .bar-last-event {
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 

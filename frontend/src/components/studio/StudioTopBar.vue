@@ -12,6 +12,7 @@ const emit = defineEmits<{
   'toggle-run': []
   'back': []
   'show-quick-start': []
+  'show-generate-from-prompt': []
 }>()
 
 const modes: { id: StudioMode; label: string; icon: string }[] = [
@@ -58,6 +59,17 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
       </button>
 
       <button
+        class="generate-prompt-btn"
+        @click="emit('show-generate-from-prompt')"
+        title="Generate workflow from prompt"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Generate from Prompt
+      </button>
+
+      <button
         :class="['run-btn', { running: isRunning }]"
         @click="emit('toggle-run')"
       >
@@ -79,18 +91,18 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1rem;
+  padding: 0 var(--space-4);
   height: 52px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -101,11 +113,11 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
   width: 32px;
   height: 32px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
 }
 
@@ -115,7 +127,7 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
 }
 
 .app-title {
-  font-size: 1rem;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -126,25 +138,25 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
 
 .mode-tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--space-1);
   background: var(--bg-primary);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 3px;
 }
 
 .mode-tab {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.375rem 0.75rem;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
   white-space: nowrap;
 }
 
@@ -161,56 +173,76 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .run-btn {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1rem;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: white;
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
 }
 
 .run-btn:hover {
-  background: var(--accent-light);
+  background: var(--accent-hover);
 }
 
 .run-btn.running {
-  background: #ef4444;
+  background: var(--error);
   animation: pulse 1.5s ease-in-out infinite;
 }
 
 .run-btn.running:hover {
-  background: #dc2626;
+  background: var(--error-hover);
 }
 
 .quickstart-btn {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 0.85rem;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--accent);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
 }
 
 .quickstart-btn:hover {
   background: var(--accent);
   color: white;
+}
+
+.generate-prompt-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: white;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.generate-prompt-btn:hover {
+  background: var(--accent-light);
 }
 
 @keyframes pulse {

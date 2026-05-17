@@ -51,33 +51,33 @@ function handleLogout() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
-  padding: 0 1.25rem;
-  background: var(--bg-secondary, #1e1e2e);
-  border-bottom: 1px solid var(--border-color, #4a4a6a);
+  height: var(--toolbar-height);
+  padding: 0 var(--space-5);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .nav-left {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  gap: var(--space-5);
 }
 
 .nav-brand {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   text-decoration: none;
-  color: var(--text-primary, #eee);
+  color: var(--text-primary);
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: var(--text-base);
 }
 
 .nav-logo {
   width: 20px;
   height: 20px;
-  color: var(--accent, #7b5cff);
+  color: var(--accent);
 }
 
 .nav-title {
@@ -87,37 +87,37 @@ function handleLogout() {
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 
 .nav-link {
   text-decoration: none;
-  color: var(--text-secondary, #888);
-  font-size: 0.85rem;
-  padding: 0.375rem 0.75rem;
-  border-radius: 6px;
-  transition: all 0.15s;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
 }
 
 .nav-link:hover {
-  color: var(--text-primary, #eee);
-  background: var(--bg-hover, rgba(255,255,255,0.06));
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .nav-link.active {
-  color: var(--accent, #7b5cff);
-  background: var(--accent-bg, rgba(123,92,255,0.1));
+  color: var(--accent);
+  background: var(--accent-bg);
 }
 
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .nav-username {
-  font-size: 0.8rem;
-  color: var(--text-muted, #666);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -126,17 +126,17 @@ function handleLogout() {
 
 .nav-btn {
   text-decoration: none;
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   font-weight: 600;
-  padding: 0.375rem 0.875rem;
-  border-radius: 6px;
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-sm);
   border: none;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--transition-fast);
 }
 
 .nav-signin {
-  background: var(--accent, #7b5cff);
+  background: var(--accent);
   color: #fff;
 }
 
@@ -146,13 +146,13 @@ function handleLogout() {
 
 .nav-logout {
   background: transparent;
-  color: var(--text-secondary, #888);
-  border: 1px solid var(--border-color, #4a4a6a);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
 }
 
 .nav-logout:hover {
-  color: var(--error, #ff6b6b);
-  border-color: var(--error, #ff6b6b);
+  color: var(--error);
+  border-color: var(--error);
   background: rgba(255, 107, 107, 0.08);
 }
 </style>

@@ -229,22 +229,22 @@ function emitSuggest() {
 .review-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: var(--overlay-heavy);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 3000;
+  z-index: var(--z-tooltip);
 }
 
 .review-modal {
-  background: #1e1e2e;
-  border-radius: 16px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
   width: 760px;
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
   overflow: hidden;
 }
 
@@ -252,54 +252,54 @@ function emitSuggest() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .review-title {
-  color: #eee;
+  color: var(--text-primary);
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--text-sm);
 }
 
 .close-btn {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-hover);
   border: none;
-  color: #eee;
+  color: var(--text-primary);
   width: 30px;
   height: 30px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-sm);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-active);
 }
 
 /* Body */
 .review-body {
   flex: 1;
-  padding: 16px 20px;
+  padding: var(--space-4) var(--space-5);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .review-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .section-title {
   margin: 0;
-  font-size: 13px;
-  color: #888;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -307,15 +307,15 @@ function emitSuggest() {
 
 /* Plan display */
 .plan-text {
-  background: #13131f;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   margin: 0;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
   line-height: 1.6;
-  color: #ccc;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 240px;
@@ -324,13 +324,13 @@ function emitSuggest() {
 
 .plan-textarea {
   width: 100%;
-  background: #13131f;
-  border: 1px solid #3a3a5a;
-  color: #eee;
-  border-radius: 8px;
-  padding: 12px;
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   line-height: 1.6;
   resize: vertical;
   outline: none;
@@ -339,38 +339,38 @@ function emitSuggest() {
 }
 
 .plan-textarea:focus {
-  border-color: #6c63ff;
+  border-color: var(--border-focus);
 }
 
 /* Findings */
 .findings-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .finding-item {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
 }
 
 .finding-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
 }
 
 .finding-icon {
-  font-size: 12px;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 
 .finding-source {
-  font-size: 11px;
-  color: #aaa;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   font-weight: 600;
   text-transform: uppercase;
   margin-left: auto;
@@ -379,52 +379,52 @@ function emitSuggest() {
 .severity-badge {
   font-size: 10px;
   font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .severity-high {
-  background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: color-mix(in srgb, var(--error) 20%, transparent);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
 }
 
 .severity-medium {
-  background: rgba(234, 179, 8, 0.2);
-  color: #eab308;
-  border: 1px solid rgba(234, 179, 8, 0.3);
+  background: color-mix(in srgb, var(--warning) 20%, transparent);
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 30%, transparent);
 }
 
 .severity-low {
-  background: rgba(107, 114, 128, 0.2);
-  color: #6b7280;
-  border: 1px solid rgba(107, 114, 128, 0.3);
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
 }
 
 .severity-info {
-  background: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: color-mix(in srgb, var(--info) 20%, transparent);
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
 }
 
 .finding-description {
   margin: 0;
-  font-size: 13px;
-  color: #ccc;
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: var(--leading-normal);
 }
 
 .finding-suggestion {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: #999;
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   line-height: 1.4;
 }
 
 .suggestion-label {
-  color: #6c63ff;
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -432,41 +432,41 @@ function emitSuggest() {
 .feedback-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .feedback-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.02);
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
 }
 
 .feedback-index {
-  font-size: 11px;
-  color: #666;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   font-weight: 600;
   min-width: 20px;
 }
 
 .feedback-text {
-  font-size: 13px;
-  color: #ccc;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
   flex: 1;
 }
 
 .feedback-applied {
-  font-size: 11px;
-  color: #22c55e;
+  font-size: var(--text-xs);
+  color: var(--success);
   font-weight: 600;
   white-space: nowrap;
 }
 
 .feedback-not-applied {
-  font-size: 11px;
-  color: #888;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -474,42 +474,42 @@ function emitSuggest() {
 /* Your Feedback */
 .feedback-textarea {
   width: 100%;
-  background: #13131f;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #ccc;
-  border-radius: 8px;
-  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
   resize: vertical;
   outline: none;
   box-sizing: border-box;
 }
 
 .feedback-textarea:focus {
-  border-color: #6c63ff;
+  border-color: var(--border-focus);
 }
 
 .feedback-textarea::placeholder {
-  color: #555;
+  color: var(--text-muted);
 }
 
 .add-feedback-btn {
-  background: rgba(108, 99, 255, 0.15);
-  border: 1px solid rgba(108, 99, 255, 0.3);
-  color: #c8c0ff;
+  background: var(--accent-light);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
   padding: 6px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
   align-self: flex-start;
-  transition: background 0.2s;
+  transition: background var(--transition);
 }
 
 .add-feedback-btn:hover {
-  background: rgba(108, 99, 255, 0.3);
+  background: var(--accent-bg);
 }
 
 .feedback-items-list {
@@ -519,70 +519,70 @@ function emitSuggest() {
 }
 
 .feedback-tag {
-  background: rgba(108, 99, 255, 0.15);
-  border: 1px solid rgba(108, 99, 255, 0.3);
-  color: #c8c0ff;
-  padding: 4px 10px;
-  border-radius: 12px;
-  font-size: 12px;
+  background: var(--accent-light);
+  border: 1px solid var(--border-accent);
+  color: var(--accent);
+  padding: var(--space-1) 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
 }
 
 /* Footer */
 .review-footer {
-  padding: 14px 20px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px var(--space-5);
+  border-top: 1px solid var(--border-color);
 }
 
 .footer-actions {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .btn-edit {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--bg-hover);
   border: none;
-  color: #eee;
-  padding: 8px 18px;
-  border-radius: 8px;
+  color: var(--text-primary);
+  padding: var(--space-2) 18px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-xs);
   font-weight: 500;
-  transition: background 0.2s;
+  transition: background var(--transition);
 }
 
 .btn-edit:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--bg-active);
 }
 
 .btn-suggest {
-  background: #6c63ff;
+  background: var(--accent);
   border: none;
   color: white;
-  padding: 8px 18px;
-  border-radius: 8px;
+  padding: var(--space-2) 18px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-xs);
   font-weight: 500;
-  transition: background 0.2s;
+  transition: background var(--transition);
 }
 
 .btn-suggest:hover {
-  background: #5b52e0;
+  background: var(--accent-hover);
 }
 
 .btn-approve {
-  background: #22c55e;
+  background: var(--success);
   border: none;
   color: white;
-  padding: 8px 20px;
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-5);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  transition: background 0.2s;
+  transition: background var(--transition);
 }
 
 .btn-approve:hover {
-  background: #16a34a;
+  background: var(--success-hover);
 }
 </style>

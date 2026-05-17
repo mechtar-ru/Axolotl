@@ -80,15 +80,15 @@ onUnmounted(() => {
 }
 
 .app-modal-content {
-  background: var(--bg-card, #1e1e2e);
-  border-radius: var(--radius-lg, 16px);
-  padding: 24px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
   min-width: 320px;
   max-width: 500px;
   max-height: 85vh;
   overflow-y: auto;
-  box-shadow: var(--shadow-lg, 0 20px 60px rgba(0, 0, 0, 0.5));
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border-color);
 }
 .app-modal-large {
   max-width: 720px;
@@ -98,25 +98,25 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
 }
 .app-modal-header h3 {
   margin: 0;
-  color: var(--text-primary, #eee);
-  font-size: 18px;
+  color: var(--text-primary);
+  font-size: var(--text-lg);
 }
 .app-modal-close {
   background: none;
   border: none;
-  color: var(--text-secondary, #aaa);
-  font-size: 18px;
+  color: var(--text-secondary);
+  font-size: var(--text-lg);
   cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
 }
 .app-modal-close:hover {
-  color: var(--text-primary, #eee);
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .modal-enter-active,
