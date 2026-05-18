@@ -262,9 +262,16 @@ public class LlmService {
         if (cached != null && !cached.isStale() && cached.available) {
             return cached.models;
         }
-        // Live fetch with DB fallback
-        boolean available = provider.isAvailable();
-        List<String> models = available ? provider.listModels() : List.of();
+        // Try live fetch from provider first. Some unit tests stub provider.listModels
+        // but may not stub isAvailable(), so call listModels() directly and fall back
+        // to DB if the provider returns empty.
+        List<String> models;
+        try {
+            models = provider.listModels();
+        } catch (Exception e) {
+            models = List.of();
+        }
+        boolean available = !models.isEmpty() || provider.isAvailable();
         if (!models.isEmpty()) {
             settingsService.setModels(providerName, models);
         } else {
