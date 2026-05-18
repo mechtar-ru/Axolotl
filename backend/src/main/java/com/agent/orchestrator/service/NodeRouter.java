@@ -71,6 +71,7 @@ public class NodeRouter {
 
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
                             ExecutionMode mode, String resolvedModel) {
+        String nodeExecutionId = null;
         try {
             if (cancelFlag.get()) {
                 node.setStatus(Node.NodeStatus.FAILED);
@@ -88,6 +89,7 @@ public class NodeRouter {
                             .filter(exec -> exec.getNodeId().equals(node.getId()))
                             .findFirst().orElse(null);
                     if (ne != null) {
+                        nodeExecutionId = ne.getId();
                         executionRepository.updateNodeExecution(
                                 ne.getId(), "running", null, 0L, 0L, 0, null);
                     }
@@ -200,11 +202,30 @@ public class NodeRouter {
             }
             node.setStatus(Node.NodeStatus.COMPLETED);
 
+            // Persist result to Neo4j
+            if (nodeExecutionId != null) {
+                try {
+                    executionRepository.updateNodeExecution(
+                            nodeExecutionId, "completed", result, 0L, 0L, 0, null);
+                } catch (Exception e) {
+                    log.debug("Не удалось сохранить результат узла в БД: {}", e.getMessage());
+                }
+            }
+
         } catch (Exception e) {
             log.error("Ошибка выполнения узла {}: {}", node.getId(), e.getMessage(), e);
             node.setStatus(Node.NodeStatus.FAILED);
             if (webSocketHandler != null) {
                 webSocketHandler.sendError(schemaId, node.getId(), e.getMessage());
+            }
+            // Persist error to Neo4j
+            if (nodeExecutionId != null) {
+                try {
+                    executionRepository.updateNodeExecution(
+                            nodeExecutionId, "failed", null, 0L, 0L, 0, e.getMessage());
+                } catch (Exception ex) {
+                    log.debug("Не удалось сохранить ошибку узла в БД: {}", ex.getMessage());
+                }
             }
         }
     }
