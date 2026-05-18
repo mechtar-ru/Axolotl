@@ -1,0 +1,19 @@
+- generic [ref=e13]:
+  - generic [ref=e16]:
+    - generic [ref=e17]:
+      - img "Axolotl" [ref=e18]
+      - heading "Axolotl" [level=1] [ref=e19]
+      - paragraph [ref=e20]: Визуальный конструктор AI-агентов
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - generic [ref=e23]: Имя пользователя
+        - textbox "Введите логин" [active] [ref=e24]
+      - generic [ref=e25]:
+        - generic [ref=e26]: Пароль
+        - textbox "Введите пароль" [ref=e27]
+      - button "Войти" [ref=e28] [cursor=pointer]
+  - generic [ref=e1]:
+    - generic "Toggle devtools panel" [ref=e2] [cursor=pointer]:
+      - img [ref=e3]
+    - generic "Toggle Component Inspector" [ref=e8] [cursor=pointer]:
+      - img [ref=e9]

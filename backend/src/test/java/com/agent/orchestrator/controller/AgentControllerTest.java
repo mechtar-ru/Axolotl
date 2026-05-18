@@ -175,43 +175,4 @@ class AgentControllerTest {
             .andExpect(jsonPath("$.status").value("ok"))
             .andExpect(jsonPath("$.message").value("Feedback received and review node resumed"));
     }
-
-    @Test
-    void generateNodes_callsServiceAndReturnsResult() throws Exception {
-        String schemaId = "test-id";
-        Map<String, Object> expected = new HashMap<>();
-        expected.put("success", true);
-        expected.put("schema", new HashMap<>());
-
-        when(schemaService.generateNodes(eq(schemaId), eq("Create a calculator"), eq("gpt-4")))
-            .thenReturn(expected);
-
-        mockMvc.perform(post("/api/schemas/{id}/generate-nodes", schemaId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"prompt": "Create a calculator", "model": "gpt-4"}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(true));
-    }
-
-    @Test
-    void generateNodes_returnsErrorFromService() throws Exception {
-        String schemaId = "test-id";
-        Map<String, Object> errorResult = new HashMap<>();
-        errorResult.put("success", false);
-        errorResult.put("error", "LLM returned empty response");
-
-        when(schemaService.generateNodes(eq(schemaId), eq("Create a calculator"), isNull()))
-            .thenReturn(errorResult);
-
-        mockMvc.perform(post("/api/schemas/{id}/generate-nodes", schemaId)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"prompt": "Create a calculator"}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.success").value(false))
-            .andExpect(jsonPath("$.error").value("LLM returned empty response"));
-    }
 }

@@ -80,10 +80,6 @@ export const schemaApi = {
     return response.data;
   },
 
-  async generateNodes(id: string, prompt: string, model?: string): Promise<{ success: boolean; schema?: WorkflowSchema; error?: string }> {
-    const response = await api.post(`/schemas/${id}/generate-nodes`, { prompt, model });
-    return response.data;
-  },
 
   async plan(id: string, request: PlanRequest): Promise<PlanResponse> {
     const response = await api.post(`/schemas/${id}/plan`, request);

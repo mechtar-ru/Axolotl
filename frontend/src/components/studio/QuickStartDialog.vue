@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { appApi, schemaApi, settingsApi, type ProviderInfo } from '@/services/api'
+import { ref, computed, watch } from 'vue'
+import { appApi, schemaApi } from '@/services/api'
 import type { WorkflowSchema } from '@/types'
 
 const props = defineProps<{
@@ -15,81 +15,54 @@ const emit = defineEmits<{
 
 const createMode = computed(() => !props.appId)
 
-// Presets
+// Presets — pure app descriptions, no pipeline structure
 interface Preset {
   id: string
   name: string
-  prompt: string
+  description: string
 }
 const presets: Preset[] = [
   {
     id: 'emotion-diary',
     name: 'Emotion Diary',
-    prompt: 'Create a mood diary app with 6 emotion categories (joy, sadness, anger, fear, surprise, calm). Include calendar view with mood heatmap, daily prompts for reflection, statistics with weekly/monthly trends, and personalized tips based on mood patterns. Dark/light theme. Offline-first with local storage. 5-node pipeline: source (input diary entry) → review (analyze emotion category + sentiment) → agent (generate reflection prompt + tips) → verifier (validate JSON structure + emotion mapping) → output (save to local storage + render dashboard).'
+    description: 'Мобильное приложение-дневник эмоций с 6 категориями (радость, грусть, гнев, страх, удивление, спокойствие). Календарь с тепловой картой настроения, ежедневные вопросы для рефлексии, статистика за неделю/месяц, персонализированные советы. Тёмная и светлая тема. Офлайн-первый с локальным хранилищем.',
   },
   {
     id: 'chat-bot',
     name: 'Chat Bot',
-    prompt: 'Build an AI chatbot with conversation memory. Pipeline: source (user message input) → agent (generate response with context) → output (display reply). Use system prompt with personality definition, conversation history in memory node, and context window management.'
+    description: 'AI-чат бот с памятью разговора. Поддержка контекста, личности ассистента, управление историей диалога. Веб-интерфейс с адаптивным дизайном.',
   },
   {
     id: 'content-gen',
     name: 'Content Generator',
-    prompt: 'Create a content generation pipeline for articles and social media posts. Pipeline: source (topic + keywords input) → agent (research + outline) → review (validate outline quality) → agent (write full content) → verifier (check tone, grammar, structure) → output (save to file).'
+    description: 'Генератор контента для статей и соцсетей. Ввод темы и ключевых слов, исследование, создание структуры, написание полного текста с проверкой тона и грамматики. Сохранение в файл.',
   },
   {
     id: 'sokoban',
     name: 'Sokoban Game',
-    prompt: 'Generate a complete Sokoban puzzle game for the browser. Pipeline: source (game design spec) → agent (implement game logic + HTML/CSS/JS) → verifier (run tests and validate game mechanics) → output (save game files). The game must have 5 levels, arrow key controls, undo (Z), reset (R), move counter, and win detection.'
+    description: 'Классическая игра Sokoban для браузера на HTML/CSS/JS. 5 уровней, управление стрелками, отмена ходов (Z), сброс (R), счётчик ходов,检测 победы. Адаптивный дизайн.',
   },
 ]
 
 const prompt = ref('')
 const appName = ref('')
-const selectedModel = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
-const result = ref<WorkflowSchema | null>(null)
-const providers = ref<ProviderInfo[]>([])
-const generatedNodeCount = ref(0)
-const generatedEdgeCount = ref(0)
-
-// Fetch available providers on mount
-let defaultModel: string | undefined
-async function loadProviders() {
-  providers.value = await settingsApi.getProviders()
-  const userDefault = await settingsApi.getUserDefaultModel()
-  defaultModel = userDefault || providers.value.find(p => p.available)?.defaultModel
-  if (defaultModel) {
-    selectedModel.value = defaultModel
-  }
-}
-
-function enabledModels(p: ProviderInfo): string[] {
-  const disabled = p.disabledModels ?? []
-  if (disabled.length === 0) return p.models
-  return p.models.filter(m => !disabled.includes(m))
-}
-onMounted(loadProviders)
 
 // Reset state when dialog opens
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     prompt.value = ''
     appName.value = ''
-    selectedModel.value = defaultModel || ''
     loading.value = false
     error.value = null
-    result.value = null
-    generatedNodeCount.value = 0
-    generatedEdgeCount.value = 0
   }
 })
 
 function applyPreset(presetId: string) {
   const preset = presets.find(p => p.id === presetId)
   if (preset) {
-    prompt.value = preset.prompt
+    prompt.value = preset.description
   }
 }
 
@@ -99,7 +72,6 @@ async function generate() {
 
   loading.value = true
   error.value = null
-  result.value = null
 
   try {
     let targetId = props.appId
@@ -119,29 +91,99 @@ async function generate() {
       targetId = created.id
     }
 
-    const response = await schemaApi.generateNodes(
-      targetId,
-      prompt.value,
-      selectedModel.value || undefined
-    )
+    // Fetch the current schema
+    const schema = await schemaApi.getSchema(targetId)
 
-    if (response.success && response.schema) {
-      result.value = response.schema
-      generatedNodeCount.value = response.schema.nodes?.length || 0
-      generatedEdgeCount.value = response.schema.edges?.length || 0
+    // Apply fixed 5-node pipeline: Receive → Review → Agent → Verify → Output
+    const description = prompt.value.trim()
+
+    schema.nodes = [
+      {
+        id: 'receive-1',
+        type: 'source' as any,
+        name: 'Receive',
+        position: { x: 100, y: 200 },
+        data: {
+          sourceData: description,
+          sourceType: 'text',
+          config: { sourceType: 'text' },
+        },
+      },
+      {
+        id: 'review-1',
+        type: 'review' as any,
+        name: 'Review Plan',
+        position: { x: 350, y: 200 },
+        data: {
+          checks: { premortem: true, prism: false, postmortem: false },
+          mode: 'manual',
+          maxAutoIterations: 3,
+          generatePlan: true,
+          config: { premortem: true },
+        },
+      },
+      {
+        id: 'think-1',
+        type: 'agent' as any,
+        name: 'Agent',
+        position: { x: 600, y: 200 },
+        data: {
+          systemPrompt: 'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.',
+          userPrompt: 'Implement the application described in the Receive node:\n\n{{sourceData}}',
+          model: null,
+          agentType: 'coder',
+          enabledTools: ['file_write', 'directory_read', 'file_read', 'bash'],
+          config: {},
+        },
+      },
+      {
+        id: 'verify-1',
+        type: 'verifier' as any,
+        name: 'Verify',
+        position: { x: 850, y: 200 },
+        data: {
+          checks: { syntaxCheck: true, testCommand: '', premortem: true },
+          rewriteOnFail: true,
+          maxRewriteRetries: 3,
+          config: {},
+          validationCriteria: description,
+        },
+      },
+      {
+        id: 'act-1',
+        type: 'output' as any,
+        name: 'Output',
+        position: { x: 1100, y: 200 },
+        data: {
+          mode: 'summary_report',
+          reportPath: 'pipeline-report.md',
+          includeReview: true,
+          includeFiles: true,
+          includeVerification: true,
+          includeMetrics: true,
+          config: {},
+        },
+      },
+    ]
+
+    schema.edges = [
+      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
+      { id: 'e2', source: 'review-1', target: 'think-1', type: 'data' as any },
+      { id: 'e3', source: 'think-1', target: 'verify-1', type: 'data' as any },
+      { id: 'e4', source: 'verify-1', target: 'act-1', type: 'data' as any },
+    ]
+
+    const updated = await schemaApi.updateSchema(targetId, schema)
+
+    if (updated) {
+      emit('add-to-canvas', updated)
     } else {
-      error.value = response.error || 'Generation failed. Try a more specific description.'
+      error.value = 'Failed to save pipeline. Please try again.'
     }
   } catch (e: any) {
     error.value = e?.response?.data?.error || e?.message || 'Network error. Please try again.'
   } finally {
     loading.value = false
-  }
-}
-
-function addToCanvas() {
-  if (result.value) {
-    emit('add-to-canvas', result.value)
   }
 }
 
@@ -153,13 +195,10 @@ function handleKeydown(e: KeyboardEvent) {
 
 defineExpose({
   prompt,
-  selectedModel,
+  appName,
   loading,
   error,
-  result,
-  providers,
   generate,
-  addToCanvas,
 })
 </script>
 
@@ -169,7 +208,7 @@ defineExpose({
       <div class="quickstart-dialog">
         <!-- Header -->
         <div class="dialog-header">
-          <h2 class="dialog-title">Quick Start — Describe Your App</h2>
+          <h2 class="dialog-title">Quick Start</h2>
           <button class="close-btn" @click="emit('close')" :disabled="loading" aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
               <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
@@ -179,6 +218,11 @@ defineExpose({
 
         <!-- Input area -->
         <div class="dialog-body">
+          <p class="dialog-hint">
+            Describe what you want to build. We'll create a pipeline:
+            <strong>Receive → Review Plan → Agent → Verify → Output</strong>
+          </p>
+
           <!-- App Name (create mode only) -->
           <div v-if="createMode" class="field-row">
             <label class="input-label" for="quickstart-name">App Name:</label>
@@ -201,42 +245,20 @@ defineExpose({
               @change="applyPreset(($event.target as HTMLSelectElement).value)"
               :disabled="loading"
             >
-              <option value="">Custom prompt</option>
+              <option value="">Custom</option>
               <option v-for="p in presets" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
           </div>
 
-          <label class="input-label" for="quickstart-prompt">Describe the pipeline you want to build:</label>
+          <label class="input-label" for="quickstart-prompt">Describe your app:</label>
           <textarea
             id="quickstart-prompt"
             v-model="prompt"
             class="prompt-input"
-            rows="4"
+            rows="5"
             placeholder="E.g. Build a Sokoban game in Python with pygame, 5 levels..."
             :disabled="loading"
           />
-
-          <div class="model-row">
-            <label class="input-label" for="quickstart-model">Model:</label>
-            <select
-              id="quickstart-model"
-              v-model="selectedModel"
-              class="model-select"
-              :disabled="loading || providers.length === 0"
-            >
-              <option value="" disabled>Select a model</option>
-              <template v-for="provider in providers" :key="provider.name">
-                <option
-                  v-for="model in enabledModels(provider)"
-                  :key="model"
-                  :value="model"
-                  :selected="model === selectedModel"
-                >
-                  {{ model }}
-                </option>
-              </template>
-            </select>
-          </div>
 
           <!-- Generate button -->
           <button
@@ -246,13 +268,13 @@ defineExpose({
           >
             <template v-if="loading">
               <span class="spinner" />
-              Generating pipeline...
+              Creating pipeline...
             </template>
             <template v-else>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                 <path d="M13 2L12 10H21L11 22L12 14H3L13 2Z" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              Generate Pipeline
+              Create Pipeline
             </template>
           </button>
 
@@ -263,21 +285,6 @@ defineExpose({
               <path d="M15 9l-6 6M9 9l6 6" stroke-linecap="round"/>
             </svg>
             {{ error }}
-          </div>
-
-          <!-- Result section -->
-          <div v-if="result" class="result-section">
-            <div class="result-indicator">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-                <path d="M22 11.08V12a10 10 0 11-5.93-9.14" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M22 4L12 14.01l-3-3" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span>Generated {{ generatedNodeCount }} node{{ generatedNodeCount !== 1 ? 's' : '' }} and {{ generatedEdgeCount }} edge{{ generatedEdgeCount !== 1 ? 's' : '' }}</span>
-            </div>
-            <div class="result-actions">
-              <button class="add-btn" @click="addToCanvas">Add to Canvas</button>
-              <button class="regenerate-btn" @click="generate" :disabled="loading">Regenerate</button>
-            </div>
           </div>
         </div>
       </div>
@@ -320,6 +327,13 @@ defineExpose({
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.dialog-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .close-btn {
@@ -407,27 +421,6 @@ defineExpose({
   cursor: not-allowed;
 }
 
-.model-row {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.model-select {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-input);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.model-select:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .generate-btn {
   display: flex;
   align-items: center;
@@ -482,68 +475,5 @@ defineExpose({
 .error-section svg {
   flex-shrink: 0;
   margin-top: 2px;
-}
-
-.result-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  background: var(--success-light);
-  border: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
-}
-
-.result-indicator {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--success);
-  font-size: var(--text-sm);
-  font-weight: 500;
-}
-
-.result-actions {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.add-btn {
-  flex: 1;
-  padding: var(--space-2) var(--space-4);
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: white;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition-fast);
-}
-
-.add-btn:hover {
-  background: var(--accent-hover);
-}
-
-.regenerate-btn {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
-}
-
-.regenerate-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.regenerate-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 </style>

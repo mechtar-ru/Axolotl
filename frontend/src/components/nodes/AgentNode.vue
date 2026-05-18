@@ -34,7 +34,7 @@
       <button v-if="expanded" class="prompt-editor-btn" @click="openFullEditor" title="Full editor (Ctrl+E)">
         ✏️
       </button>
-      <span v-if="!expanded && localPrompt" class="node-badge">{{ truncate(localPrompt, 30) }}</span>
+      <span v-if="!expanded && localPromptPreview" class="node-badge">{{ truncate(localPromptPreview, 30) }}</span>
     </div>
     
     <div v-if="expanded" class="node-content">
@@ -158,10 +158,13 @@ function copyResult() {
   }
 }
 
-const expanded = ref(true);
+// Start collapsed by default to match editor behavior and unit tests
+const expanded = ref(false);
 const editingName = ref(false);
 const localName = ref(props.data.name);
 const localPrompt = ref(props.data.userPrompt || '');
+// Keep a local copy for display when collapsed
+const localPromptPreview = computed(() => localPrompt.value || '');
 const localModel = ref(props.data.model || 'ollama');
 const nameInput = ref<HTMLInputElement | null>(null);
 const providerOptions = ref<{ value: string; label: string; group: string }[]>([]);

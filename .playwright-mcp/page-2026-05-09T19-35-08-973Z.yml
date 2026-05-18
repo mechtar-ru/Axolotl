@@ -1,0 +1,211 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e6]:
+        - img "Axolotl" [ref=e7]
+        - generic [ref=e8]: Axolotl
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - heading "📋 Схемы" [level=2] [ref=e11]
+          - button "＋" [ref=e12] [cursor=pointer]
+        - list [ref=e13]:
+          - listitem [ref=e14] [cursor=pointer]: ⚖️ Condition Branch
+          - listitem [ref=e15] [cursor=pointer]: 🤖 AI Pipeline
+          - listitem [ref=e16] [cursor=pointer]: "Демо: Анализ данных"
+          - listitem [ref=e17] [cursor=pointer]: "-1"
+          - listitem [ref=e18] [cursor=pointer]: updating ui with suggested ollama prompt
+          - listitem [ref=e19] [cursor=pointer]: test
+          - listitem [ref=e20] [cursor=pointer]: Frontend Refactoring
+          - listitem [ref=e21] [cursor=pointer]: Kimi Deep Analyzer Test
+          - listitem [ref=e22] [cursor=pointer]: Output Node Test
+          - listitem [ref=e23] [cursor=pointer]: Test User Ask
+          - listitem [ref=e24] [cursor=pointer]: Frontend Refactoring v1
+          - listitem [ref=e25] [cursor=pointer]: Axolotl Code Analysis (RLM + Kimi)
+          - listitem [ref=e26] [cursor=pointer]: Новая схема
+          - listitem [ref=e27] [cursor=pointer]: Transform Test
+          - listitem [ref=e28] [cursor=pointer]: RLLM Project Analysis 1
+          - listitem [ref=e29] [cursor=pointer]: Thorough Code Analysis
+          - listitem [ref=e30] [cursor=pointer]: Новая схема
+          - listitem [ref=e31] [cursor=pointer]: Axolotl Production Readiness Workflow
+          - listitem [ref=e32] [cursor=pointer]: Ollama Diagnostic
+          - listitem [ref=e33] [cursor=pointer]: sokoban
+        - generic [ref=e34]:
+          - button "📥 Mermaid" [ref=e35] [cursor=pointer]
+          - button "📦 JSON" [ref=e36] [cursor=pointer]
+          - button "📂 JSON" [ref=e37] [cursor=pointer]
+          - button "📋 План" [ref=e38] [cursor=pointer]
+      - generic [ref=e39]:
+        - button "⚙️ Настройки" [ref=e40] [cursor=pointer]
+        - generic [ref=e41]:
+          - generic [ref=e42]: 👤 tech
+          - button "Выйти" [ref=e43] [cursor=pointer]
+    - generic [ref=e47]:
+      - generic [ref=e48]:
+        - generic [ref=e49] [cursor=pointer]: 📝 ⚖️ Condition Branch
+        - generic [ref=e50]:
+          - combobox "Режим выполнения" [ref=e51] [cursor=pointer]:
+            - option "▶️ Execute" [selected]
+            - option "🔍 Analyze"
+            - option "🎭 Dry Run"
+          - button "▶️ Выполнить" [ref=e52] [cursor=pointer]
+          - button "💾 Сохранить" [ref=e53] [cursor=pointer]
+          - button "📊 Экспорт" [ref=e54] [cursor=pointer]
+          - button "🗑" [ref=e55] [cursor=pointer]
+      - generic [ref=e56]:
+        - generic [ref=e58]:
+          - generic:
+            - img
+            - img:
+              - group "Edge from source-1 to condition-1" [ref=e59] [cursor=pointer]
+            - img:
+              - group "Edge from condition-1 to agent-a" [ref=e62] [cursor=pointer]
+            - img:
+              - group "Edge from condition-1 to agent-b" [ref=e65] [cursor=pointer]
+            - img:
+              - group "Edge from agent-a to output-1" [ref=e68] [cursor=pointer]
+            - img:
+              - group "Edge from agent-b to output-1" [ref=e71] [cursor=pointer]
+            - generic:
+              - group [ref=e74]:
+                - generic [ref=e75]:
+                  - generic [ref=e77]:
+                    - generic [ref=e78]: 📝
+                    - generic [ref=e79] [cursor=pointer]: Вход
+                    - button "▼" [ref=e80] [cursor=pointer]
+                  - generic [ref=e81]:
+                    - generic [ref=e82]:
+                      - button "📝" [ref=e83] [cursor=pointer]
+                      - button "🧠" [ref=e84] [cursor=pointer]
+                      - button "📁" [ref=e85] [cursor=pointer]
+                      - button "🌐" [ref=e86] [cursor=pointer]
+                      - button "📂" [ref=e87] [cursor=pointer]
+                    - textbox "Введите данные или перетащите файл..." [ref=e88]: Текст для классификации
+              - group [ref=e90]:
+                - generic [ref=e91]:
+                  - generic [ref=e96]:
+                    - generic [ref=e97]: ⚖️
+                    - generic [ref=e98] [cursor=pointer]: Классификатор
+                    - button "▶" [ref=e100] [cursor=pointer]
+                  - generic: T
+                  - generic: F
+              - group [ref=e103]:
+                - generic [ref=e106]:
+                  - generic [ref=e107]: 🤖
+                  - generic [ref=e108] [cursor=pointer]: Детальный анализ
+                  - button "▶" [ref=e110] [cursor=pointer]
+              - group [ref=e112]:
+                - generic [ref=e115]:
+                  - generic [ref=e116]: 🤖
+                  - generic [ref=e117] [cursor=pointer]: Быстрый ответ
+                  - button "▶" [ref=e119] [cursor=pointer]
+              - group [ref=e121]:
+                - generic [ref=e122]:
+                  - generic [ref=e124]:
+                    - generic [ref=e125]: 📤
+                    - generic [ref=e126] [cursor=pointer]: Результат
+                    - button "▼" [ref=e128] [cursor=pointer]
+                  - generic [ref=e130]:
+                    - generic [ref=e131]: "Тип вывода:"
+                    - combobox [ref=e132]:
+                      - option "📋 Лог (панель)" [selected]
+                      - option "💾 Файл"
+                      - option "🧠 Память (MemPalace)"
+        - img [ref=e134]
+        - generic [ref=e136]:
+          - button [ref=e137]:
+            - img
+          - button [ref=e139]:
+            - img
+          - button [ref=e141]:
+            - img
+          - button [ref=e143]:
+            - img
+        - img "Vue Flow mini map" [ref=e146]
+        - generic [ref=e153]:
+          - button "＋ Добавить ▼" [ref=e155] [cursor=pointer]
+          - generic [ref=e157]:
+            - button "📦 Группа" [disabled] [ref=e158]
+            - button "📤 Разгрупп." [disabled] [ref=e159]
+          - generic [ref=e161]:
+            - button "📜" [ref=e162] [cursor=pointer]
+            - button "🧠" [ref=e163] [cursor=pointer]
+            - button "🏗️" [ref=e164] [cursor=pointer]
+            - button "📋" [ref=e165] [cursor=pointer]
+            - button "📷" [ref=e166] [cursor=pointer]
+          - combobox "Модель по умолчанию для схемы" [ref=e169]:
+            - 'option "Модель: авто"'
+            - option "deepseek-chat"
+            - option "deepseek-reasoner"
+            - option "gpt-4o"
+            - option "gpt-4o-mini"
+            - option "gpt-4-turbo"
+            - option "gpt-3.5-turbo"
+            - option "big-pickle"
+            - option "hy3-preview-free"
+            - option "ling-2.6-flash-free"
+            - option "trinity-large-preview-free"
+            - option "nemotron-3-super-free"
+            - option "minimax-m2.5-free"
+            - option "claude-opus-4.7"
+            - option "claude-opus-4.6"
+            - option "claude-opus-4.5"
+            - option "claude-opus-4.1"
+            - option "claude-sonnet-4.6"
+            - option "claude-sonnet-4.5"
+            - option "claude-sonnet-4"
+            - option "claude-haiku-4.5"
+            - option "gemini-3.1-pro"
+            - option "gemini-3-flash"
+            - option "gpt-5.5"
+            - option "gpt-5.5-pro"
+            - option "gpt-5.4"
+            - option "gpt-5.4-pro"
+            - option "gpt-5.4-mini"
+            - option "gpt-5.4-nano"
+            - option "gpt-5.3-codex-spark"
+            - option "gpt-5.3-codex"
+            - option "gpt-5.2"
+            - option "gpt-5.2-codex"
+            - option "gpt-5.1"
+            - option "gpt-5.1-codex-max"
+            - option "gpt-5.1-codex"
+            - option "gpt-5.1-codex-mini"
+            - option "gpt-5"
+            - option "gpt-5-codex"
+            - option "gpt-5-nano"
+            - option "glm-5.1"
+            - option "glm-5"
+            - option "minimax-m2.7"
+            - option "minimax-m2.5"
+            - option "kimi-k2.6"
+            - option "kimi-k2.5"
+            - option "qwen3.6-plus"
+            - option "qwen3.5-plus"
+            - option "gpt-4o"
+            - option "gpt-4o-mini"
+            - option "gpt-4-turbo"
+            - option "claude-sonnet-4-20250514"
+            - option "claude-haiku-4-20250514"
+            - option "deepseek-chat"
+            - option "local"
+            - option "kimi:@cf/moonshotai/kimi-k2.6"
+            - option "claude-sonnet-4-20250514"
+            - option "claude-opus-4-20250514"
+            - option "claude-haiku-4-20250414"
+            - option "qwen2.5:0.5b"
+            - option "llama3.2"
+            - option "mistral"
+            - option "qwen2.5"
+            - option "deepseek-r1"
+            - option "gpt-4o"
+            - option "gpt-4o-mini"
+            - option "gpt-3.5-turbo"
+            - option "o1"
+            - option "o1-mini"
+            - option "o3"
+            - option "@cf/moonshotai/kimi-k2.6" [selected]
+  - generic [ref=e189]:
+    - generic "Toggle devtools panel" [ref=e190] [cursor=pointer]:
+      - img [ref=e191]
+    - generic "Toggle Component Inspector" [ref=e196] [cursor=pointer]:
+      - img [ref=e197]

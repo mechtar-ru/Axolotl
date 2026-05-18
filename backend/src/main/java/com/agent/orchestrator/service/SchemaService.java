@@ -669,6 +669,12 @@ public class SchemaService {
                 webSocketHandler.sendLog(schema.getId(), "warning", "Выполнение схемы остановлено пользователем", null);
             }
             log.warn("Выполнение схемы отменено: {}", schema.getName());
+            // Persist schema node statuses so the REST API reflects the cancellation state
+            try {
+                schemaRepository.save(schema);
+            } catch (Exception e) {
+                log.warn("Failed to persist schema after cancellation: {}", e.getMessage());
+            }
             executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
         } else {
@@ -685,6 +691,13 @@ public class SchemaService {
                 webSocketHandler.sendLiveUpdate(schema.getId(), "CUSTOM", payload);
             }
             log.info("Выполнение схемы завершено: {} ({}мс, {}/{} узлов)", schema.getName(), totalTime, nodesCompleted, totalNodes);
+
+            // Persist final node statuses back to the stored schema so clients see updated node states
+            try {
+                schemaRepository.save(schema);
+            } catch (Exception e) {
+                log.warn("Failed to persist schema after completion: {}", e.getMessage());
+            }
 
             // Завершаем задачу в плане, если была создана (схема с targetPath)
             if (executionTask != null) {
@@ -986,78 +999,17 @@ public class SchemaService {
 
     // ────────────────────────── Prompt-to-Schema Generation ──────────────────────────
 
-    private static final String PROMPT_TO_SCHEMA_SYSTEM = """
-            You are a workflow architect. The user will describe an application or workflow they want to build.
-            Design a complete Axolotl workflow schema with REAL, specific prompts and configuration — NOT empty placeholders.
-
-            RULES:
-            - Every agent node MUST have detailed, specific systemPrompt and userPrompt (min 2-3 sentences each)
-            - Choose appropriate models: use "minimax-max" for complex tasks, "minimax-m2.5-free" for simple ones
-            - Include realistic enabledTools and toolPermissions for agent nodes that need file/code access
-            - Create a logical flow: typically source -> (analyze/read) -> (implement/write) -> (verify/test) -> output
-            - Position nodes with x increments of 350, starting at x=100, y=200
-            - Each node needs a unique id: n1, n2, n3, etc.
-            - Include at least 3-7 nodes for non-trivial workflows
-            - Add a planExplanation describing what each node does and why
-
-            Available node types:
-            - "source" — provides initial data/input (has sourceData field)
-            - "agent" — LLM-powered node (has systemPrompt, userPrompt, model, agentType, enabledTools, toolPermissions)
-            - "review" — analyzes and validates plans with configurable checks (premortem, prism, postmortem)
-            - "verifier" — runs tool-enabled tests to verify generated code (PASS/FAIL verdict with rewrite loop)
-            - "output" — writes result to file/log/memory
-            - "condition" — branches based on JS expression
-            - "loop" — iterates with a condition
-            - "memory" — stores/retrieves from memory
-            - "guardrail" — validates/safety-checks output
-            - "transform" — transforms data between nodes
-
-            Available tools: file_read, file_write, directory_read, grep, git, bash, memory_read, memory_write, memory_search, web_search, web_fetch
-
-            Agent types: coder, assistant, researcher, reviewer
-
-            Respond ONLY with valid JSON — no markdown fences, no commentary:
-            {
-              "name": "Descriptive Schema Name",
-              "description": "What this workflow accomplishes",
-              "nodes": [
-                {
-                  "id": "n1",
-                  "type": "source",
-                  "name": "Descriptive name",
-                  "position": {"x": 100, "y": 200},
-                  "data": {
-                    "sourceData": "actual input content or instructions"
-                  }
-                },
-                {
-                  "id": "n2",
-                  "type": "agent",
-                  "name": "Descriptive name",
-                  "position": {"x": 450, "y": 200},
-                  "data": {
-                    "systemPrompt": "Detailed specific system prompt...",
-                    "userPrompt": "Detailed specific user prompt...",
-                    "model": "minimax-max",
-                    "agentType": "coder",
-                    "enabledTools": ["file_read", "file_write", "bash"],
-                    "maxToolCalls": 50,
-                    "toolPermissions": [
-                      {"toolId": "file_read", "allowedPaths": ["/full/path/**"], "enabled": true},
-                      {"toolId": "file_write", "allowedPaths": ["/full/path/**"], "enabled": true}
-                    ]
-                  }
-                }
-              ],
-              "edges": [
-                {"source": "n1", "target": "n2"}
-              ],
-              "planExplanation": "Markdown explanation of the workflow design"
-            }
-            """;
+    // Removed PROMPT_TO_SCHEMA_SYSTEM: LLM-driven schema generation is deprecated.
 
     public Map<String, Object> generateSchemaFromPrompt(String prompt, String model) {
         Map<String, Object> result = new HashMap<>();
+        // Deprecated: Quick Start no longer generates schemas via LLM. Return a clear error
+        // instead of executing expensive LLM calls. Kept for backward-compatibility.
+        result.put("success", false);
+        result.put("error", "generateSchemaFromPrompt has been removed. Use Quick Start fixed pipeline.");
+        return result;
+        // original implementation removed
+        /*
         try {
             String resolvedModel = model;
             if (resolvedModel == null || resolvedModel.isBlank()) {
@@ -1180,130 +1132,4 @@ public class SchemaService {
         return result;
     }
 
-    /**
-     * Generate nodes and edges for an existing schema from a natural language prompt.
-     * Reuses PROMPT_TO_SCHEMA_SYSTEM but constrains LLM to return only nodes/edges.
-     * Saves the new nodes/edges onto the existing schema.
-     */
-    public Map<String, Object> generateNodes(String schemaId, String prompt, String model) {
-        Map<String, Object> result = new HashMap<>();
-        try {
-            // 1. Load existing schema
-            WorkflowSchema schema = schemaRepository.findById(schemaId);
-            if (schema == null) {
-                result.put("success", false);
-                result.put("error", "Schema not found: " + schemaId);
-                return result;
-            }
-
-            // 2. Resolve model
-            String resolvedModel = model;
-            if (resolvedModel == null || resolvedModel.isBlank()) {
-                resolvedModel = settingsService.getGlobalDefaultModel();
-            }
-            if (resolvedModel == null || resolvedModel.isBlank()) {
-                resolvedModel = "minimax-max";
-            }
-
-            log.info("Generating nodes for schema '{}' (model={}): {}", schemaId, resolvedModel, prompt.substring(0, Math.min(100, prompt.length())));
-
-            // 3. Build system prompt — constrain to ONLY return nodes/edges
-            String nodeSystemPrompt = PROMPT_TO_SCHEMA_SYSTEM + "\n\nIMPORTANT: The schema already exists. Return ONLY a JSON object with \"nodes\" and \"edges\" fields. Do NOT include \"name\", \"description\", \"version\", \"planExplanation\", or any other top-level fields. Only the nodes and edges arrays.";
-
-            // 4. Call LLM
-            String llmResponse = llmService.chat(resolvedModel, nodeSystemPrompt, prompt, null);
-
-            if (llmResponse == null || llmResponse.isBlank()) {
-                result.put("success", false);
-                result.put("error", "LLM returned empty response");
-                return result;
-            }
-
-            // 5. Parse JSON (strip markdown code fences if present)
-            String jsonStr = llmResponse.trim();
-            if (jsonStr.startsWith("```")) {
-                jsonStr = jsonStr.replaceFirst("^```\\w*\\n?", "").replaceFirst("\\n?```$", "");
-            }
-
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root;
-            try {
-                root = mapper.readTree(jsonStr);
-            } catch (Exception e) {
-                result.put("success", false);
-                result.put("error", "Failed to parse LLM response as JSON: " + e.getMessage());
-                result.put("raw", llmResponse);
-                return result;
-            }
-
-            // 6. Extract nodes
-            List<Node> nodes = new ArrayList<>();
-            if (root.has("nodes")) {
-                for (JsonNode n : root.get("nodes")) {
-                    Node schemaNode = new Node();
-                    schemaNode.setId(n.has("id") ? n.get("id").asText() : UUID.randomUUID().toString());
-                    schemaNode.setType(n.has("type") ? n.get("type").asText() : "agent");
-                    schemaNode.setName(n.has("name") ? n.get("name").asText() : "Node");
-                    if (n.has("position")) {
-                        Node.Position pos = new Node.Position();
-                        pos.setX(n.get("position").has("x") ? n.get("position").get("x").asInt() : 100);
-                        pos.setY(n.get("position").has("y") ? n.get("position").get("y").asInt() : 200);
-                        schemaNode.setPosition(pos);
-                    }
-                    if (n.has("data")) {
-                        Node.NodeData data = new Node.NodeData();
-                        JsonNode d = n.get("data");
-                        if (d.has("userPrompt")) data.setUserPrompt(d.get("userPrompt").asText());
-                        if (d.has("systemPrompt")) data.setSystemPrompt(d.get("systemPrompt").asText());
-                        if (d.has("model")) data.setModel(d.get("model").asText());
-                        if (d.has("agentType")) data.setAgentType(d.get("agentType").asText());
-                        if (d.has("sourceData")) data.setSourceData(d.get("sourceData").asText());
-                        if (d.has("enabledTools") && d.get("enabledTools").isArray()) {
-                            List<String> tools = new ArrayList<>();
-                            for (JsonNode t : d.get("enabledTools")) tools.add(t.asText());
-                            data.setEnabledTools(tools);
-                        }
-                        if (d.has("maxToolCalls")) data.setMaxToolCalls(d.get("maxToolCalls").asInt());
-                        schemaNode.setData(data);
-                    }
-                    nodes.add(schemaNode);
-                }
-            }
-
-            if (nodes.isEmpty()) {
-                result.put("success", false);
-                result.put("error", "No nodes generated. Try a more specific description.");
-                return result;
-            }
-
-            // 7. Extract edges
-            List<Edge> edges = new ArrayList<>();
-            if (root.has("edges")) {
-                for (JsonNode e : root.get("edges")) {
-                    Edge edge = new Edge();
-                    edge.setId(UUID.randomUUID().toString());
-                    edge.setSource(e.has("source") ? e.get("source").asText() : "");
-                    edge.setTarget(e.has("target") ? e.get("target").asText() : "");
-                    edges.add(edge);
-                }
-            }
-
-            // 8. Update existing schema with new nodes/edges
-            schema.setNodes(nodes);
-            schema.setEdges(edges);
-            schema.setUpdatedAt(Instant.now().toString());
-            schemaRepository.save(schema);
-
-            log.info("Generated {} nodes and {} edges for schema '{}'", nodes.size(), edges.size(), schemaId);
-
-            result.put("success", true);
-            result.put("schema", schema);
-
-        } catch (Exception e) {
-            log.error("Failed to generate nodes for schema {}: {}", schemaId, e.getMessage(), e);
-            result.put("success", false);
-            result.put("error", e.getMessage());
-        }
-        return result;
-    }
 }

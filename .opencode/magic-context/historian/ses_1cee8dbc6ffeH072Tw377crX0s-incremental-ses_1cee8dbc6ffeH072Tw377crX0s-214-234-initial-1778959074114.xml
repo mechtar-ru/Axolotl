@@ -1,0 +1,27 @@
+<output>
+<compartments>
+</compartments>
+<facts>
+<WORKFLOW_RULES>
+* Playwright e2e tests use workers: 1 because BCryptPasswordEncoder (1-22s per comparison under load) causes request contention under parallel execution
+* Playwright e2e tests use page.addInitScript() to set localStorage.setItem('axolotl_token', token) before Vue initializes to bypass the route guard redirect to /login
+</WORKFLOW_RULES>
+<ARCHITECTURE_DECISIONS>
+* VueFlow nodeTypes map in BlueprintView.vue wraps components with markRaw() because Vue script setup reactive proxies break component instance tracking during updateComponent, causing instance.update is not a function on node selection
+* --border-color is the canonical border variable in tokens.css; --border kept as backward-compat alias
+* tokens.css uses constrained scales: --space-1 through --space-8 (4px→64px) for spacing, --text-xs through --text-3xl (12px→36px) for type, --icon-sm/md/lg (16/20/24px) for icon sizing
+* Backend uses BCryptPasswordEncoder (Spring Security) for password hashing; Neo4j stores BCrypt hashes, not SHA-256
+* Neo4j is the primary auth store; SQLite must not be used for auth
+</ARCHITECTURE_DECISIONS>
+<CONSTRAINTS>
+* When toggling DOM siblings of a VueFlow component, use v-show instead of v-if to prevent internal DOM references from going stale (Cannot read properties of null (reading 'nextSibling'))
+</CONSTRAINTS>
+<USER_DIRECTIVES>
+* When generating frontend code, reviewing designs, or advising on visual improvements, apply the Refactoring UI design system: grayscale-first hierarchy, constrained spacing/type scales, systematic color palette, shadow elevation scale, deliberate image/icon treatment, and varied layout compositions
+</USER_DIRECTIVES>
+</facts>
+<meta>
+<messages_processed>(none)</messages_processed>
+<unprocessed_from>214</unprocessed_from>
+</meta>
+</output>

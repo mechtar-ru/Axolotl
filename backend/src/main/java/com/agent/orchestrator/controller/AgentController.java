@@ -351,30 +351,6 @@ public class AgentController {
         return Map.of("content", content);
     }
 
-    @PostMapping("/schemas/generate-from-prompt")
-    public Map<String, Object> generateSchemaFromPrompt(@RequestBody Map<String, String> body) {
-        String prompt = body.get("prompt");
-        String model = body.getOrDefault("model", null);
+    // NOTE: generateSchemaFromPrompt endpoint removed — Quick Start now uses fixed pipeline
 
-        if (prompt == null || prompt.isBlank()) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "prompt is required");
-        }
-
-        Map<String, Object> result = schemaService.generateSchemaFromPrompt(prompt, model);
-        return result;
-    }
-
-    @PostMapping("/schemas/{id}/generate-nodes")
-    public Map<String, Object> generateNodes(@PathVariable String id, @RequestBody Map<String, String> body) {
-        String prompt = body.get("prompt");
-        String model = body.getOrDefault("model", null);
-
-        if (prompt == null || prompt.isBlank()) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                org.springframework.http.HttpStatus.BAD_REQUEST, "prompt is required");
-        }
-
-        return schemaService.generateNodes(id, prompt, model);
-    }
 }

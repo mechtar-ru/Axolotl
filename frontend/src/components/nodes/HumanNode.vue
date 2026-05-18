@@ -19,8 +19,8 @@
         </div>
         <textarea v-model="feedback" placeholder="Comment (optional)..." rows="2" class="feedback-input" />
       </div>
-      <div v-if="approved === true" class="status-badge approved">Approved</div>
-      <div v-if="approved === false" class="status-badge rejected">Rejected</div>
+  <div v-if="approved === true" class="status-badge approved">Подтверждено</div>
+  <div v-if="approved === false" class="status-badge rejected">Отклонено</div>
       <div v-if="props.data.result && approved !== false" class="node-result">
         <strong>Result:</strong>
         <div>{{ props.data.result }}</div>

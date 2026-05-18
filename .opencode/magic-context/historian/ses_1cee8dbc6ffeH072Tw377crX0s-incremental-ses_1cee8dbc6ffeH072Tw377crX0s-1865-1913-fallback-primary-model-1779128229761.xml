@@ -1,0 +1,34 @@
+<output>
+<compartments>
+<compartment start="1865" end="1913" title="Quick Start presets + Dashboard integration">
+Summary: Implemented Quick Start presets and Dashboard integration: QuickStartDialog now includes 4 preset prompts and a create mode (app name + generate) that creates a schema and emits @add-to-canvas for Studio; the Dashboard header gains a Quick Start button that opens the dialog, pushes newly-created schemas into the store, and redirects the user into Studio. Also added header CSS (.header-actions, .header-btn), ensured Dashboard re-fetches schemas on activation, cleaned up Settings (dynamic provider lists, enable/disable toggles, collapsible groups, search, All/None buttons, badges/counters), suppressed Neo4j id() deprecation warnings via NotificationConfig, and fixed ResumeBanner to guard against empty schemaId (double-slash). TypeScript compiles clean and the changes are committed and pushed (commits: 0e759304, 47b4ea40).
+</compartment>
+</compartments>
+<facts>
+<ARCHITECTURE_DECISIONS>
+* QuickStartDialog provides preset prompts (4) and a create mode that generates a schema from the prompt and emits @add-to-canvas for Studio.
+* Dashboard header includes a Quick Start button that opens QuickStartDialog, pushes the created schema to the store, and redirects to Studio after creation.
+* Settings UI uses collapsible model groups, search, All/None controls, status badges, and counters for model management.
+* Studio re-fetches the active schema onActivated when returning to the Studio view.
+</ARCHITECTURE_DECISIONS>
+<CONFIG_DEFAULTS>
+* quickstart.presets=4
+* NotificationConfig suppresses Neo4j id() deprecation warnings.
+</CONFIG_DEFAULTS>
+<WORKFLOW_RULES>
+* When a schema is created from Quick Start, the Dashboard pushes it to the store and navigates the user into Studio.
+</WORKFLOW_RULES>
+<USER_DIRECTIVES>
+* Use the quick start prompt we used previously as a template for Quick Start entries.
+* Add Quick Start as an option on the Dashboard page alongside New App.
+</USER_DIRECTIVES>
+</facts>
+<user_observations>
+* The user prefers UI templates and Quick Start shortcuts rather than typing prompts from scratch.
+* The user gives short, task-focused directives about UI behavior and placement.
+</user_observations>
+<meta>
+<messages_processed>1865-1913</messages_processed>
+<unprocessed_from>0</unprocessed_from>
+</meta>
+</output>

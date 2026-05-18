@@ -3,33 +3,27 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import QuickStartDialog from '../QuickStartDialog.vue'
 
-// Mock the API module
+// Mock data — use vi.hoisted for vars accessed in vi.mock factory
+const mockGetSchema = vi.hoisted(() => ({
+  id: 'test-app-id',
+  name: 'Test App',
+  description: '',
+  version: '',
+  nodes: [],
+  edges: [],
+}))
+
 vi.mock('@/services/api', () => ({
-  schemaApi: {
-    generateNodes: vi.fn(),
+  appApi: {
+    createApp: vi.fn().mockResolvedValue({ id: 'new-app-id', name: 'New App' }),
   },
-  settingsApi: {
-    getProviders: vi.fn().mockResolvedValue([
-      {
-        name: 'openai',
-        available: true,
-        baseUrl: 'https://api.openai.com',
-        models: ['gpt-4', 'gpt-4o-mini'],
-        defaultModel: 'gpt-4o-mini',
-      },
-      {
-        name: 'anthropic',
-        available: true,
-        baseUrl: 'https://api.anthropic.com',
-        models: ['claude-sonnet-4', 'claude-haiku-4'],
-        defaultModel: 'claude-sonnet-4',
-      },
-    ]),
-    getUserDefaultModel: vi.fn().mockResolvedValue(''),
+  schemaApi: {
+    getSchema: vi.fn().mockResolvedValue(mockGetSchema),
+    updateSchema: vi.fn().mockImplementation((_id, schema) => Promise.resolve(schema)),
   },
 }))
 
-import { schemaApi } from '@/services/api'
+import { appApi, schemaApi } from '@/services/api'
 
 describe('QuickStartDialog', () => {
   const baseProps = {
@@ -42,7 +36,6 @@ describe('QuickStartDialog', () => {
   })
 
   afterEach(() => {
-    // Clean up teleported content from document.body
     document.body.innerHTML = ''
   })
 
@@ -73,7 +66,6 @@ describe('QuickStartDialog', () => {
     const wrapper = mount(QuickStartDialog, { props: baseProps })
     await flushPromises()
 
-    // Set prompt via wrapper.vm (exposed via defineExpose)
     wrapper.vm.prompt = 'Create a Sokoban game'
     await wrapper.vm.$nextTick()
 
@@ -81,114 +73,127 @@ describe('QuickStartDialog', () => {
     expect(generateBtn!.disabled).toBe(false)
   })
 
-  it('calls generateNodes on generate click', async () => {
-    const mockSchema = {
-      id: 'test-app-id',
-      name: 'Test App',
-      description: '',
-      version: '',
-      nodes: [{ id: 'n1', type: 'agent', name: 'Agent 1', position: { x: 100, y: 200 }, data: {} }],
-      edges: [],
-    }
-
-    vi.mocked(schemaApi.generateNodes).mockResolvedValue({
-      success: true,
-      schema: mockSchema,
-    })
-
-    const wrapper = mount(QuickStartDialog, { props: baseProps })
+  it('shows app name field only in create mode', async () => {
+    // Create mode (no appId)
+    const wrapper = mount(QuickStartDialog, { props: { visible: true, appId: '' } })
     await flushPromises()
 
-    // Set prompt and call generate via wrapper.vm
-    wrapper.vm.prompt = 'Create a Sokoban game'
-    await wrapper.vm.$nextTick()
-    wrapper.vm.generate()
+    expect(document.body.querySelector('#quickstart-name')).toBeTruthy()
+
+    // Studio mode (has appId)
+    document.body.innerHTML = ''
+    mount(QuickStartDialog, { props: baseProps })
     await flushPromises()
 
-    // The mock provider returns gpt-4o-mini as default model
-    expect(schemaApi.generateNodes).toHaveBeenCalledWith(
-      'test-app-id',
-      'Create a Sokoban game',
-      'gpt-4o-mini'
-    )
+    expect(document.body.querySelector('#quickstart-name')).toBeNull()
   })
 
-  it('shows result section after successful generation', async () => {
-    const mockSchema = {
-      id: 'test-app-id',
-      name: 'Test App',
-      nodes: [
-        { id: 'n1', type: 'agent', name: 'Agent 1', position: { x: 100, y: 200 }, data: {} },
-        { id: 'n2', type: 'source', name: 'Source 1', position: { x: 100, y: 300 }, data: {} },
-        { id: 'n3', type: 'output', name: 'Output 1', position: { x: 100, y: 400 }, data: {} },
-      ],
-      edges: [
-        { id: 'e1', source: 'n1', target: 'n2' },
-      ],
-    }
-
-    vi.mocked(schemaApi.generateNodes).mockResolvedValue({
-      success: true,
-      schema: mockSchema,
-    })
-
+  it('applies fixed 5-node pipeline on generate', async () => {
     const wrapper = mount(QuickStartDialog, { props: baseProps })
     await flushPromises()
 
-    wrapper.vm.prompt = 'Create a game'
+    wrapper.vm.prompt = 'Build a mood diary app'
     await wrapper.vm.$nextTick()
     wrapper.vm.generate()
     await flushPromises()
 
-    expect(document.body.textContent).toContain('Generated 3 nodes and 1 edge')
-    expect(document.body.querySelector('.add-btn')).toBeTruthy()
-    expect(document.body.querySelector('.regenerate-btn')).toBeTruthy()
-  })
+    // Should fetch schema and update it
+    expect(schemaApi.getSchema).toHaveBeenCalledWith('test-app-id')
+    expect(schemaApi.updateSchema).toHaveBeenCalledWith('test-app-id', expect.any(Object))
 
-  it('shows error section on generation failure', async () => {
-    vi.mocked(schemaApi.generateNodes).mockResolvedValue({
-      success: false,
-      error: 'LLM returned empty response',
-    })
-
-    const wrapper = mount(QuickStartDialog, { props: baseProps })
-    await flushPromises()
-
-    wrapper.vm.prompt = 'Create a game'
-    await wrapper.vm.$nextTick()
-    wrapper.vm.generate()
-    await flushPromises()
-
-    expect(document.body.textContent).toContain('LLM returned empty response')
-  })
-
-  it('emits add-to-canvas when Add to Canvas is clicked', async () => {
-    const mockSchema = {
-      id: 'test-app-id',
-      name: 'Test App',
-      nodes: [{ id: 'n1', type: 'agent', name: 'Agent 1', position: { x: 100, y: 200 }, data: {} }],
-      edges: [],
-    }
-
-    vi.mocked(schemaApi.generateNodes).mockResolvedValue({
-      success: true,
-      schema: mockSchema,
-    })
-
-    const wrapper = mount(QuickStartDialog, { props: baseProps })
-    await flushPromises()
-
-    wrapper.vm.prompt = 'Create a game'
-    await wrapper.vm.$nextTick()
-    wrapper.vm.generate()
-    await flushPromises()
-
-    // Click Add to Canvas button via document.body
-    const addBtn = document.body.querySelector<HTMLButtonElement>('.add-btn')
-    addBtn!.click()
-
+    // Should emit the updated schema
     expect(wrapper.emitted('add-to-canvas')).toBeTruthy()
-    expect(wrapper.emitted('add-to-canvas')![0]).toEqual([mockSchema])
+    const emitted = wrapper.emitted('add-to-canvas')![0][0] as any
+    expect(emitted.nodes).toHaveLength(5)
+    expect(emitted.edges).toHaveLength(4)
+
+    // Verify node types in order
+    const types = emitted.nodes.map((n: any) => n.type)
+    expect(types).toEqual(['source', 'review', 'agent', 'verifier', 'output'])
+
+    // Verify edge connections
+    const edgeSources = emitted.edges.map((e: any) => e.source)
+    const edgeTargets = emitted.edges.map((e: any) => e.target)
+    expect(edgeSources).toEqual(['receive-1', 'review-1', 'think-1', 'verify-1'])
+    expect(edgeTargets).toEqual(['review-1', 'think-1', 'verify-1', 'act-1'])
+  })
+
+  it('passes description to Receive node sourceData', async () => {
+    const wrapper = mount(QuickStartDialog, { props: baseProps })
+    await flushPromises()
+
+    wrapper.vm.prompt = 'Build a Sokoban game in Python'
+    await wrapper.vm.$nextTick()
+    wrapper.vm.generate()
+    await flushPromises()
+
+    const emitted = wrapper.emitted('add-to-canvas')![0][0] as any
+    const receiveNode = emitted.nodes.find((n: any) => n.id === 'receive-1')
+    expect(receiveNode.data.sourceData).toBe('Build a Sokoban game in Python')
+    expect(receiveNode.data.sourceType).toBe('text')
+  })
+
+  it('passes description to Verify node validationCriteria', async () => {
+    const wrapper = mount(QuickStartDialog, { props: baseProps })
+    await flushPromises()
+
+    wrapper.vm.prompt = 'Build a Sokoban game in Python'
+    await wrapper.vm.$nextTick()
+    wrapper.vm.generate()
+    await flushPromises()
+
+    const emitted = wrapper.emitted('add-to-canvas')![0][0] as any
+    const verifyNode = emitted.nodes.find((n: any) => n.id === 'verify-1')
+    expect(verifyNode.data.validationCriteria).toBe('Build a Sokoban game in Python')
+  })
+
+  it('creates new app in create mode before applying pipeline', async () => {
+    const wrapper = mount(QuickStartDialog, { props: { visible: true, appId: '' } })
+    await flushPromises()
+
+    wrapper.vm.prompt = 'Build a chat bot'
+    wrapper.vm.appName = 'My Chat Bot'
+    await wrapper.vm.$nextTick()
+    wrapper.vm.generate()
+    await flushPromises()
+
+    expect(appApi.createApp).toHaveBeenCalledWith({
+      name: 'My Chat Bot',
+      appType: 'CUSTOM',
+      description: '',
+    })
+    expect(schemaApi.getSchema).toHaveBeenCalledWith('new-app-id')
+  })
+
+  it('shows error when createApp returns no id', async () => {
+    vi.mocked(appApi.createApp).mockResolvedValueOnce(null)
+
+    const wrapper = mount(QuickStartDialog, { props: { visible: true, appId: '' } })
+    await flushPromises()
+
+    wrapper.vm.prompt = 'Create a game'
+    wrapper.vm.appName = 'My Game'
+    await wrapper.vm.$nextTick()
+    wrapper.vm.generate()
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Failed to create app')
+  })
+
+  it('shows error section on schema update failure', async () => {
+    vi.mocked(schemaApi.updateSchema).mockRejectedValueOnce({
+      response: { data: { error: 'Backend error' } },
+    })
+
+    const wrapper = mount(QuickStartDialog, { props: baseProps })
+    await flushPromises()
+
+    wrapper.vm.prompt = 'Create a game'
+    await wrapper.vm.$nextTick()
+    wrapper.vm.generate()
+    await flushPromises()
+
+    expect(document.body.textContent).toContain('Backend error')
   })
 
   it('emits close event on overlay click', async () => {
@@ -202,8 +207,8 @@ describe('QuickStartDialog', () => {
   })
 
   it('shows loading state during generation', async () => {
-    // Don't resolve the promise immediately so we can see loading state
-    vi.mocked(schemaApi.generateNodes).mockReturnValue(new Promise(() => {}))
+    // Don't resolve so we see loading
+    vi.mocked(schemaApi.getSchema).mockReturnValueOnce(new Promise(() => {}))
 
     const wrapper = mount(QuickStartDialog, { props: baseProps })
     await flushPromises()
@@ -213,7 +218,22 @@ describe('QuickStartDialog', () => {
     wrapper.vm.generate()
     await flushPromises()
 
-    expect(document.body.textContent).toContain('Generating pipeline')
+    expect(document.body.textContent).toContain('Creating pipeline')
     expect(document.body.querySelector('.spinner')).toBeTruthy()
+  })
+
+  it('presets fill prompt with pure app description', async () => {
+    mount(QuickStartDialog, { props: baseProps })
+    await flushPromises()
+
+    const presetSelect = document.body.querySelector<HTMLSelectElement>('#quickstart-preset')
+    expect(presetSelect).toBeTruthy()
+
+    // Verify presets don't contain pipeline language
+    const options = Array.from(presetSelect!.options).map(o => o.text)
+    expect(options).toContain('Emotion Diary')
+    expect(options).toContain('Chat Bot')
+    expect(options).toContain('Content Generator')
+    expect(options).toContain('Sokoban Game')
   })
 })
