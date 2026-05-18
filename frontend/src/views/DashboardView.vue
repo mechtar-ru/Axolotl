@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import AppCard from '@/components/app/AppCard.vue'
 import AppModal from '@/components/ui/AppModal.vue'
+import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
 import { appApi, schemaApi } from '@/services/api'
 import { getTemplateById } from '@/templates'
@@ -86,6 +87,25 @@ const generatedApps = computed(() => {
 
 const showDeleteModal = ref(false)
 const deleteTarget = ref<any>(null)
+
+// Quick Start dialog
+const showQuickStart = ref(false)
+
+function openQuickStart() {
+  showQuickStart.value = true
+}
+
+function onQuickStartCreated(schema: any) {
+  showQuickStart.value = false
+  if (schema?.id) {
+    // Push into store so the Dashboard list stays fresh without re-fetch
+    if (!schemaStore.schemas.find(s => s.id === schema.id)) {
+      schemaStore.schemas.push(schema)
+    }
+    trackRecent(schema.id)
+    router.push(`/app/${schema.id}`)
+  }
+}
 
 const searchQuery = ref('')
 
@@ -323,10 +343,16 @@ async function createBlankApp() {
         <h1>Welcome to Axolotl Studio</h1>
         <p class="subtitle">Build AI-powered apps visually</p>
       </div>
-      <button class="btn-primary" @click="showNewAppModal = true">
-        <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
-        New App
-      </button>
+      <div class="header-actions">
+        <button class="btn-secondary header-btn" @click="openQuickStart">
+          <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z"/></svg>
+          Quick Start
+        </button>
+        <button class="btn-primary" @click="showNewAppModal = true">
+          <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
+          New App
+        </button>
+      </div>
     </header>
 
     <!-- Search Bar -->
@@ -506,6 +532,13 @@ async function createBlankApp() {
         <button class="btn-danger" @click="confirmDeleteApp">Delete</button>
       </div>
     </AppModal>
+
+    <QuickStartDialog
+      :visible="showQuickStart"
+      app-id=""
+      @add-to-canvas="onQuickStartCreated"
+      @close="showQuickStart = false"
+    />
   </div>
 </template>
 
@@ -523,6 +556,21 @@ async function createBlankApp() {
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--space-7);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.header-actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 500;
 }
 
 .dashboard-header h1 {
