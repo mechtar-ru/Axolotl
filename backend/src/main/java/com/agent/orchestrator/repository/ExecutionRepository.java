@@ -242,6 +242,15 @@ public class ExecutionRepository {
         }
     }
 
+    public void deleteExecutionRecordsOlderThan(long cutoffTimestamp) {
+        try {
+            recordRepo.deleteRecordsOlderThan(cutoffTimestamp);
+            log.info("Удалены записи выполнения старше cutoff={}", cutoffTimestamp);
+        } catch (Exception e) {
+            log.error("Ошибка при удалении старых записей выполнения: {}", e.getMessage());
+        }
+    }
+
     // ────────── Mapping: POJO ↔ Graph entity ──────────
 
     private GraphExecutionRun toGraphRun(ExecutionRun r) {
