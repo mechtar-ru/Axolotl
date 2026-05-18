@@ -168,6 +168,7 @@ async function createFromTemplate(templateId: string) {
       name: template.name,
       appType: template.appType,
       description: template.description,
+      templateId: template.id,
     })
     if (!appInfo) return
 
@@ -194,7 +195,8 @@ async function resolveConflict() {
       appType: template.appType,
       description: template.description,
       conflictAction: conflictAction.value,
-      customTargetPath: conflictAction.value === 'CHANGE_PATH' ? customTargetPath.value : undefined
+      customTargetPath: conflictAction.value === 'CHANGE_PATH' ? customTargetPath.value : undefined,
+      templateId: template.id,
     })
     if (appInfo) {
       // Push template nodes/edges if this template has a definition

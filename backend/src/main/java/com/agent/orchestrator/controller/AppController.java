@@ -95,6 +95,12 @@ public class AppController {
         }
 
         WorkflowSchema created = schemaService.createSchema(schema);
+
+        // Copy scaffold files from template if available
+        if (req.templateId() != null && !req.templateId().isBlank()) {
+            copyScaffold(req.templateId(), targetPath);
+        }
+
         return ResponseEntity.ok(AppModel.fromSchema(created));
     }
 
@@ -365,7 +371,8 @@ public class AppController {
             String appType,
             String workspaceId,
             String conflictAction,
-            String customTargetPath) {}
+            String customTargetPath,
+            String templateId) {}
 
     // --- Private helpers ---
 
@@ -375,6 +382,35 @@ public class AppController {
             return auth.getName();
         }
         return null;
+    }
+
+    /**
+     * Copy scaffold files from templates/{templateId}/scaffold/ to targetPath.
+     * If the scaffold directory doesn't exist, no-op.
+     */
+    private void copyScaffold(String templateId, String targetPath) {
+        Path scaffoldDir = Paths.get(appConfig.getBasePath(), "templates", templateId, "scaffold");
+        if (!Files.exists(scaffoldDir)) {
+            log.info("No scaffold dir for template {} at {}", templateId, scaffoldDir);
+            return;
+        }
+        Path dest = Paths.get(targetPath);
+        try {
+            Files.walk(scaffoldDir).forEach(source -> {
+                if (Files.isDirectory(source)) return;
+                Path relative = scaffoldDir.relativize(source);
+                Path target = dest.resolve(relative);
+                try {
+                    Files.createDirectories(target.getParent());
+                    Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                    log.info("Scaffold copied: {}", relative);
+                } catch (IOException e) {
+                    log.warn("Failed to copy scaffold file {}: {}", relative, e.getMessage());
+                }
+            });
+        } catch (IOException e) {
+            log.warn("Failed to walk scaffold dir {}: {}", scaffoldDir, e.getMessage());
+        }
     }
 
     private void deleteDirectory(String path) throws IOException {

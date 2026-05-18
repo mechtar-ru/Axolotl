@@ -177,6 +177,7 @@ export const appApi = {
     description?: string;
     conflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';
     customTargetPath?: string;
+    templateId?: string;
   }): Promise<AppInfo> {
     const response = await api.post('/app', data);
     return response.data;
