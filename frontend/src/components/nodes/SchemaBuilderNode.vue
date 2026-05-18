@@ -71,7 +71,9 @@ onMounted(async () => {
     for (const p of providers) {
       const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
       if (p.models?.length > 0) {
+        const disabled = p.disabledModels ?? [];
         for (const model of p.models) {
+          if (disabled.includes(model)) continue;
           opts.push({ value: model, label: model, group });
         }
       } else {

@@ -2,52 +2,156 @@ package com.agent.orchestrator.llm;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import com.agent.orchestrator.model.CustomLlmEndpoint;
 import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
+import com.agent.orchestrator.service.SettingsService;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Сервис маршрутизации LLM-запросов.
- * Выбирает провайдера на основе имени модели из узла.
+ * LLM request router. Selects provider by model name, caches provider status
+ * and model lists with startup pre-fetch and Neo4j persistence.
+ * Model lists are fetched dynamically from provider APIs at startup and on test.
+ * When an API is unreachable, falls back to the last known list from Neo4j.
  */
 @Service
 public class LlmService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmService.class);
 
+    private static final long CACHE_TTL_MINUTES = 5;
+
     private final Map<String, LlmProvider> providers;
     private final CustomLlmEndpointRepository customEndpointRepository;
+    private final SettingsService settingsService;
+    private final ConcurrentHashMap<String, CachedProviderInfo> providerCache = new ConcurrentHashMap<>();
 
-    public LlmService(List<LlmProvider> providerList, CustomLlmEndpointRepository customEndpointRepository) {
+    public LlmService(List<LlmProvider> providerList, CustomLlmEndpointRepository customEndpointRepository,
+                      SettingsService settingsService) {
         this.providers = new HashMap<>();
         for (LlmProvider provider : providerList) {
             providers.put(provider.getName(), provider);
         }
         this.customEndpointRepository = customEndpointRepository;
-        log.info("LLM провайдеры: {}", providers.keySet());
+        this.settingsService = settingsService;
+        log.info("LLM providers: {}", providers.keySet());
     }
 
     /**
-     * Отправить запрос к LLM через соответствующий провайдер.
-     *
-     * @param model        имя модели или провайдера (например "ollama", "local", "gemma4:e2b")
-     * @param systemPrompt системный промпт
-     * @param userPrompt   пользовательский промпт
-     * @param config       дополнительная конфигурация
-     * @return ответ от LLM
+     * On startup: check all providers, fetch model lists from their APIs,
+     * persist results to Neo4j. Falls back to Neo4j when an API is unreachable.
      */
+    @EventListener(ApplicationReadyEvent.class)
+    public void preloadProviderCache() {
+        log.info("Pre-loading provider status and model lists...");
+        for (LlmProvider provider : providers.values()) {
+            refreshBuiltInProvider(provider);
+        }
+        log.info("Provider cache pre-loaded: {} entries", providerCache.size());
+    }
+
+    /**
+     * Refresh a single built-in provider: fetch from API, persist to Neo4j,
+     * fall back to Neo4j on failure.
+     */
+    private void refreshBuiltInProvider(LlmProvider provider) {
+        String name = provider.getName();
+        try {
+            boolean available = provider.isAvailable();
+            List<String> models = List.of();
+            if (available) {
+                models = provider.listModels();
+            }
+            if (models != null && !models.isEmpty()) {
+                // API returned models — persist to Neo4j
+                settingsService.setModels(name, models);
+            } else {
+                // API returned nothing — try Neo4j fallback
+                List<String> dbModels = settingsService.getModels(name);
+                if (!dbModels.isEmpty()) {
+                    log.info("  {} — using DB fallback ({} models)", name, dbModels.size());
+                    models = dbModels;
+                }
+            }
+            providerCache.put(name, new CachedProviderInfo(available, models));
+            if (available) {
+                log.info("  {} — available ({} models)", name, models.size());
+            } else {
+                log.info("  {} — unavailable", name);
+            }
+        } catch (Exception e) {
+            log.warn("  {} — error checking: {}", name, e.getMessage());
+            // Fall back to Neo4j
+            List<String> dbModels = settingsService.getModels(name);
+            providerCache.put(name, new CachedProviderInfo(false, dbModels));
+        }
+    }
+
+    // --- Cached provider info ---
+
+    private static class CachedProviderInfo {
+        final boolean available;
+        final List<String> models;
+        final Instant lastCheckedAt;
+
+        CachedProviderInfo(boolean available, List<String> models) {
+            this.available = available;
+            this.models = models != null ? models : List.of();
+            this.lastCheckedAt = Instant.now();
+        }
+
+        boolean isStale() {
+            return ChronoUnit.MINUTES.between(lastCheckedAt, Instant.now()) >= CACHE_TTL_MINUTES;
+        }
+    }
+
+    /**
+     * Force-refresh cache for one built-in provider. Persists to Neo4j on success.
+     */
+    public Map<String, Object> refreshProviderCache(String providerName) {
+        LlmProvider provider = providers.get(providerName);
+        if (provider == null) {
+            Map<String, Object> err = new HashMap<>();
+            err.put("available", false);
+            err.put("models", List.of());
+            err.put("error", "Unknown provider: " + providerName);
+            return err;
+        }
+        boolean available = provider.isAvailable();
+        List<String> models = available ? provider.listModels() : List.of();
+        if (!models.isEmpty()) {
+            settingsService.setModels(providerName, models);
+        } else {
+            List<String> dbModels = settingsService.getModels(providerName);
+            if (!dbModels.isEmpty()) {
+                models = dbModels;
+            }
+        }
+        providerCache.put(providerName, new CachedProviderInfo(available, models));
+        Map<String, Object> result = new HashMap<>();
+        result.put("available", available);
+        result.put("models", models);
+        return result;
+    }
+
+    // --- Core methods ---
+
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String providerName = resolveProvider(model);
         LlmProvider provider = providers.get(providerName);
 
         if (provider == null) {
-            String error = "Провайдер LLM не найден: " + providerName + " (доступны: " + providers.keySet() + ")";
+            String error = "Provider not found: " + providerName + " (available: " + providers.keySet() + ")";
             log.error(error);
             throw new RuntimeException(error);
         }
@@ -55,16 +159,13 @@ public class LlmService {
         return provider.chat(model, systemPrompt, userPrompt, config);
     }
 
-    /**
-     * Stream LLM response via token callback.
-     */
     public String streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, java.util.function.Consumer<String> onToken) {
         String providerName = resolveProvider(model);
         LlmProvider provider = providers.get(providerName);
 
         if (provider == null) {
-            String error = "Провайдер LLM не найден: " + providerName;
+            String error = "Provider not found: " + providerName;
             onToken.accept(error);
             throw new RuntimeException(error);
         }
@@ -72,11 +173,6 @@ public class LlmService {
         return provider.streamingChat(model, systemPrompt, userPrompt, config, onToken);
     }
 
-    /**
-     * Определить провайдера по имени модели.
-     * "local"/"ollama" → ollama, "gpt-*" → openai, "claude-*" → anthropic,
-     * "deepseek-*" → deepseek, exact provider name match, fallback → ollama.
-     */
     private String resolveProvider(String model) {
         if (model == null || model.isBlank()) return "ollama";
         String lower = model.toLowerCase();
@@ -91,6 +187,7 @@ public class LlmService {
             default -> {
                 if (stripped.startsWith("gpt-") || stripped.startsWith("o1-") || stripped.startsWith("o3-")) yield "openai";
                 if (stripped.startsWith("claude-")) yield "anthropic";
+                if (stripped.startsWith("deepseek-v4")) yield "zen";
                 if (stripped.startsWith("deepseek-")) yield "deepseek";
                 if (stripped.startsWith("llama") || stripped.startsWith("gemma") || stripped.startsWith("mistral") || stripped.startsWith("qwen")) yield "ollama";
                 if (stripped.endsWith("-pickle") || stripped.startsWith("minimax-") || stripped.startsWith("kimi-") ||
@@ -106,9 +203,6 @@ public class LlmService {
         return colon > 0 ? model.substring(colon + 1) : model;
     }
 
-    /**
-     * Проверить доступность провайдера.
-     */
     public boolean isProviderAvailable(String model) {
         String providerName = resolveProvider(model);
         LlmProvider provider = providers.get(providerName);
@@ -116,16 +210,31 @@ public class LlmService {
     }
 
     /**
-     * Получить информацию о всех провайдерах для настроек.
+     * Get info for all providers (built-in + custom endpoints).
+     * Uses cache if fresh, otherwise live-fetches with DB persistence.
      */
     public List<Map<String, Object>> getProvidersInfo() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (LlmProvider provider : providers.values()) {
             Map<String, Object> info = new HashMap<>();
             info.put("name", provider.getName());
-            info.put("available", provider.isAvailable());
+
+            CachedProviderInfo cached = providerCache.get(provider.getName());
+            if (cached != null && !cached.isStale()) {
+                info.put("available", cached.available);
+                info.put("models", cached.models);
+            } else {
+                boolean available = provider.isAvailable();
+                List<String> models = available ? provider.listModels() : List.of();
+                if (!models.isEmpty()) {
+                    settingsService.setModels(provider.getName(), models);
+                }
+                providerCache.put(provider.getName(), new CachedProviderInfo(available, models));
+                info.put("available", available);
+                info.put("models", models);
+            }
+
             info.put("baseUrl", provider.getBaseUrl());
-            info.put("models", provider.listModels());
             info.put("custom", false);
             result.add(info);
         }
@@ -145,11 +254,71 @@ public class LlmService {
         return result;
     }
 
-    /**
-     * Список моделей провайдера.
-     */
     public List<String> listModels(String providerName) {
         LlmProvider provider = providers.get(providerName);
-        return provider != null ? provider.listModels() : List.of();
+        if (provider == null) return List.of();
+
+        CachedProviderInfo cached = providerCache.get(providerName);
+        if (cached != null && !cached.isStale() && cached.available) {
+            return cached.models;
+        }
+        // Live fetch with DB fallback
+        boolean available = provider.isAvailable();
+        List<String> models = available ? provider.listModels() : List.of();
+        if (!models.isEmpty()) {
+            settingsService.setModels(providerName, models);
+        } else {
+            List<String> dbModels = settingsService.getModels(providerName);
+            if (!dbModels.isEmpty()) {
+                models = dbModels;
+            }
+        }
+        providerCache.put(providerName, new CachedProviderInfo(available, models));
+        return models;
+    }
+
+    /**
+     * Health check for the Settings test button.
+     * Pings the provider live, updates cache, persists models to Neo4j.
+     */
+    public Map<String, Object> checkProviderHealth(String providerName) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("provider", providerName);
+
+        LlmProvider provider = providers.get(providerName);
+        if (provider == null) {
+            result.put("available", false);
+            result.put("models", List.of());
+            result.put("error", "Unknown provider");
+            return result;
+        }
+
+        boolean available;
+        List<String> models = List.of();
+        try {
+            available = provider.isAvailable();
+            if (available) {
+                models = provider.listModels();
+            }
+        } catch (Exception e) {
+            available = false;
+            result.put("error", e.getMessage());
+        }
+
+        // Persist to Neo4j if API returned models, otherwise fall back
+        if (!models.isEmpty()) {
+            settingsService.setModels(providerName, models);
+        } else {
+            List<String> dbModels = settingsService.getModels(providerName);
+            if (!dbModels.isEmpty()) {
+                models = dbModels;
+            }
+        }
+
+        providerCache.put(providerName, new CachedProviderInfo(available, models));
+
+        result.put("available", available);
+        result.put("models", models);
+        return result;
     }
 }

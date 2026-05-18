@@ -16,6 +16,10 @@ const pausedRun = ref<ExecutionRun | null>(null)
 const loading = ref(true)
 
 onMounted(async () => {
+  if (!props.schemaId) {
+    loading.value = false
+    return
+  }
   try {
     pausedRun.value = await schemaApi.getPausedRun(props.schemaId)
   } catch (e) {

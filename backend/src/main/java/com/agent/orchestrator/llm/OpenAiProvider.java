@@ -132,11 +132,12 @@ public class OpenAiProvider implements LlmProvider {
 
     @Override
     public List<String> listModels() {
-        if (apiKey == null || apiKey.isBlank()) return List.of("gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo");
+        String effectiveKey = getEffectiveApiKey();
+        if (effectiveKey == null || effectiveKey.isBlank()) return List.of();
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + getEffectiveApiKey())
+                    .header("Authorization", "Bearer " + effectiveKey)
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
@@ -147,16 +148,16 @@ public class OpenAiProvider implements LlmProvider {
                 List<String> models = new ArrayList<>();
                 for (JsonNode m : data) {
                     String id = m.path("id").asText("");
-                    if (id.startsWith("gpt-")) {
+                    if (!id.isBlank()) {
                         models.add(id);
                     }
                 }
                 return models;
             }
         } catch (Exception e) {
-            log.error("Ошибка получения моделей OpenAI: {}", e.getMessage());
+            log.warn("OpenAI models API unavailable: {}", e.getMessage());
         }
-        return List.of("gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo");
+        return List.of();
     }
 
     @Override

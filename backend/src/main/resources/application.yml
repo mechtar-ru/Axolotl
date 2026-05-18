@@ -79,3 +79,4 @@ logging:
   level:
     com.agent.orchestrator: DEBUG
     org.springframework.web: INFO
+    org.springframework.data.neo4j.cypher.deprecation: ERROR

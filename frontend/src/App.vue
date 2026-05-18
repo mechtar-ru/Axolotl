@@ -24,6 +24,9 @@ const settingsStore = useSettingsStore();
 
 onMounted(() => {
   settingsStore.initTheme();
+  // Pre-fetch provider model lists so Studio and other components
+  // have models available without waiting for Settings page load
+  settingsStore.fetchProviders();
 });
 </script>
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
-import { schemaApi, settingsApi, type ProviderInfo } from '@/services/api'
+import { ref, computed, watch, onMounted } from 'vue'
+import { appApi, schemaApi, settingsApi, type ProviderInfo } from '@/services/api'
 import type { WorkflowSchema } from '@/types'
 
 const props = defineProps<{
@@ -13,7 +13,39 @@ const emit = defineEmits<{
   'add-to-canvas': [schema: WorkflowSchema]
 }>()
 
+const createMode = computed(() => !props.appId)
+
+// Presets
+interface Preset {
+  id: string
+  name: string
+  prompt: string
+}
+const presets: Preset[] = [
+  {
+    id: 'emotion-diary',
+    name: 'Emotion Diary',
+    prompt: 'Create a mood diary app with 6 emotion categories (joy, sadness, anger, fear, surprise, calm). Include calendar view with mood heatmap, daily prompts for reflection, statistics with weekly/monthly trends, and personalized tips based on mood patterns. Dark/light theme. Offline-first with local storage. 5-node pipeline: source (input diary entry) → review (analyze emotion category + sentiment) → agent (generate reflection prompt + tips) → verifier (validate JSON structure + emotion mapping) → output (save to local storage + render dashboard).'
+  },
+  {
+    id: 'chat-bot',
+    name: 'Chat Bot',
+    prompt: 'Build an AI chatbot with conversation memory. Pipeline: source (user message input) → agent (generate response with context) → output (display reply). Use system prompt with personality definition, conversation history in memory node, and context window management.'
+  },
+  {
+    id: 'content-gen',
+    name: 'Content Generator',
+    prompt: 'Create a content generation pipeline for articles and social media posts. Pipeline: source (topic + keywords input) → agent (research + outline) → review (validate outline quality) → agent (write full content) → verifier (check tone, grammar, structure) → output (save to file).'
+  },
+  {
+    id: 'sokoban',
+    name: 'Sokoban Game',
+    prompt: 'Generate a complete Sokoban puzzle game for the browser. Pipeline: source (game design spec) → agent (implement game logic + HTML/CSS/JS) → verifier (run tests and validate game mechanics) → output (save game files). The game must have 5 levels, arrow key controls, undo (Z), reset (R), move counter, and win detection.'
+  },
+]
+
 const prompt = ref('')
+const appName = ref('')
 const selectedModel = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -44,6 +76,7 @@ onMounted(loadProviders)
 watch(() => props.visible, (newVal) => {
   if (newVal) {
     prompt.value = ''
+    appName.value = ''
     selectedModel.value = defaultModel || ''
     loading.value = false
     error.value = null
@@ -53,16 +86,41 @@ watch(() => props.visible, (newVal) => {
   }
 })
 
+function applyPreset(presetId: string) {
+  const preset = presets.find(p => p.id === presetId)
+  if (preset) {
+    prompt.value = preset.prompt
+  }
+}
+
 async function generate() {
   if (!prompt.value.trim()) return
+  if (createMode.value && !appName.value.trim()) return
 
   loading.value = true
   error.value = null
   result.value = null
 
   try {
+    let targetId = props.appId
+
+    // Create mode: create a blank schema first
+    if (createMode.value) {
+      const created = await appApi.createApp({
+        name: appName.value.trim(),
+        appType: 'CUSTOM',
+        description: '',
+      })
+      if (!created || !created.id) {
+        error.value = 'Failed to create app. Please try again.'
+        loading.value = false
+        return
+      }
+      targetId = created.id
+    }
+
     const response = await schemaApi.generateNodes(
-      props.appId,
+      targetId,
       prompt.value,
       selectedModel.value || undefined
     )
@@ -121,6 +179,33 @@ defineExpose({
 
         <!-- Input area -->
         <div class="dialog-body">
+          <!-- App Name (create mode only) -->
+          <div v-if="createMode" class="field-row">
+            <label class="input-label" for="quickstart-name">App Name:</label>
+            <input
+              id="quickstart-name"
+              v-model="appName"
+              class="text-input"
+              type="text"
+              placeholder="My App"
+              :disabled="loading"
+            />
+          </div>
+
+          <!-- Preset selector -->
+          <div class="field-row">
+            <label class="input-label" for="quickstart-preset">Preset:</label>
+            <select
+              id="quickstart-preset"
+              class="text-input"
+              @change="applyPreset(($event.target as HTMLSelectElement).value)"
+              :disabled="loading"
+            >
+              <option value="">Custom prompt</option>
+              <option v-for="p in presets" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+
           <label class="input-label" for="quickstart-prompt">Describe the pipeline you want to build:</label>
           <textarea
             id="quickstart-prompt"
@@ -156,7 +241,7 @@ defineExpose({
           <!-- Generate button -->
           <button
             class="generate-btn"
-            :disabled="!prompt.trim() || loading"
+            :disabled="!prompt.trim() || loading || (createMode && !appName.trim())"
             @click="generate"
           >
             <template v-if="loading">
@@ -267,6 +352,34 @@ defineExpose({
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-secondary);
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.text-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  box-sizing: border-box;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.text-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .prompt-input {

@@ -2,6 +2,8 @@ package com.agent.orchestrator.graph.model;
 
 import org.springframework.data.neo4j.core.schema.*;
 
+import java.util.List;
+
 @Node("ProviderSetting")
 public class GraphProviderSetting {
 
@@ -21,6 +23,12 @@ public class GraphProviderSetting {
     @Property("updatedAt")
     private String updatedAt;
 
+    @Property("disabledModels")
+    private List<String> disabledModels;
+
+    @Property("models")
+    private List<String> models;
+
     public GraphProviderSetting() {}
 
     public String getProviderName() { return providerName; }
@@ -37,4 +45,10 @@ public class GraphProviderSetting {
 
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+
+    public List<String> getDisabledModels() { return disabledModels; }
+    public void setDisabledModels(List<String> disabledModels) { this.disabledModels = disabledModels; }
+
+    public List<String> getModels() { return models; }
+    public void setModels(List<String> models) { this.models = models; }
 }

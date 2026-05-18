@@ -129,7 +129,35 @@ public class AnthropicProvider implements LlmProvider {
 
     @Override
     public List<String> listModels() {
-        return List.of("claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-haiku-4-20250414");
+        String effectiveKey = getEffectiveApiKey();
+        if (effectiveKey == null || effectiveKey.isBlank()) return List.of();
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(baseUrl + "/v1/models"))
+                    .header("x-api-key", effectiveKey)
+                    .header("anthropic-version", "2023-06-01")
+                    .GET()
+                    .timeout(Duration.ofSeconds(5))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode data = root.path("data");
+                List<String> models = new ArrayList<>();
+                if (data.isArray()) {
+                    for (JsonNode m : data) {
+                        String id = m.path("id").asText();
+                        if (id != null && !id.isBlank()) {
+                            models.add(id);
+                        }
+                    }
+                }
+                return models;
+            }
+        } catch (Exception e) {
+            log.warn("Anthropic models API unavailable: {}", e.getMessage());
+        }
+        return List.of();
     }
 
     @Override

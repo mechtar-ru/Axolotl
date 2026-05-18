@@ -1,5 +1,6 @@
 package com.agent.orchestrator.controller;
 
+import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.service.SettingsService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -17,9 +18,11 @@ import java.util.*;
 public class SettingsController {
 
     private final SettingsService settingsService;
+    private final LlmService llmService;
 
-    public SettingsController(SettingsService settingsService) {
+    public SettingsController(SettingsService settingsService, LlmService llmService) {
         this.settingsService = settingsService;
+        this.llmService = llmService;
     }
 
     @GetMapping
@@ -57,16 +60,47 @@ public class SettingsController {
     }
 
     @GetMapping("/{provider}/health")
-    public ResponseEntity<Map<String, Object>> checkProviderHealth(@PathVariable String provider) {
-        String apiKey = settingsService.getApiKey(provider);
-        String baseUrl = settingsService.getBaseUrl(provider);
+    public ResponseEntity<Map<String, Object>> checkProviderHealth(
+            @PathVariable String provider,
+            @RequestParam(required = false) String apiKey,
+            @RequestParam(required = false) String baseUrl) {
+        String storedApiKey = settingsService.getApiKey(provider);
+        String storedBaseUrl = settingsService.getBaseUrl(provider);
+
+        // Use passed values if provided (for test-before-save flow)
+        String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl : storedBaseUrl;
+
+        // Actually ping the provider via LlmService
+        Map<String, Object> health = llmService.checkProviderHealth(provider);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("provider", provider);
-        response.put("apiKeyConfigured", apiKey != null && !apiKey.isBlank());
-        response.put("baseUrl", baseUrl);
-        // TODO: actual health check via HTTP call
-        response.put("available", apiKey != null && !apiKey.isBlank());
+        // Show the effective key status: if user passed a key, consider it configured
+        boolean hasKey = (apiKey != null && !apiKey.isBlank()) || (storedApiKey != null && !storedApiKey.isBlank());
+        response.put("apiKeyConfigured", hasKey);
+        response.put("baseUrl", effectiveBaseUrl);
+        response.put("available", health.getOrDefault("available", false));
+        response.put("models", health.getOrDefault("models", List.of()));
+        if (health.containsKey("error")) {
+            response.put("error", health.get("error"));
+        }
+        return ResponseEntity.ok(response);
+    }
+
+    // --- Model toggle endpoints ---
+
+    @GetMapping("/{provider}/models/disabled")
+    public ResponseEntity<List<String>> getDisabledModels(@PathVariable String provider) {
+        return ResponseEntity.ok(settingsService.getDisabledModels(provider));
+    }
+
+    @PutMapping("/{provider}/models/disabled")
+    public ResponseEntity<Map<String, Object>> setDisabledModels(
+            @PathVariable String provider,
+            @RequestBody List<String> disabledModels) {
+        settingsService.setDisabledModels(provider, disabledModels);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "ok");
         return ResponseEntity.ok(response);
     }
 

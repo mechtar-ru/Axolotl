@@ -267,13 +267,32 @@ onDeactivated(() => {
   }
 })
 
-// Optionally refresh schema data when coming back to a cached session
-onActivated(() => {
-  // Ensure appId matches current route (handles edge case where
-  // user navigates directly to a different /app/:id while cached)
+// Refresh schema data when coming back to a cached session
+onActivated(async () => {
   const currentId = route.params.id as string
-  if (currentId && currentId !== appId.value) {
-    appId.value = currentId
+  if (!currentId) return
+  
+  const changed = currentId !== appId.value
+  appId.value = currentId
+  
+  // Always re-fetch schema from backend to get latest persisted state
+  // This ensures any changes made via BlockConfigPanel (model select, prompt, etc.)
+  // are reflected even if the save was still in-flight when the user navigated away
+  try {
+    const fresh = await schemaApi.getSchema(currentId)
+    if (fresh) {
+      // Update both the schemas list and currentSchema
+      const idx = schemaStore.schemas.findIndex(s => s.id === currentId)
+      if (idx !== -1) {
+        schemaStore.schemas[idx] = fresh
+      } else {
+        schemaStore.schemas.push(fresh)
+      }
+      schemaStore.currentSchema = fresh
+      document.title = `${fresh.name} - Axolotl Studio`
+    }
+  } catch {
+    // Fallback: use cached data
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
       schemaStore.currentSchema = found

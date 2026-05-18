@@ -219,6 +219,7 @@ export interface ProviderInfo {
   available: boolean;
   baseUrl: string;
   models: string[];
+  disabledModels?: string[];
   defaultModel?: string;
   custom?: boolean;
   id?: string;
@@ -242,8 +243,14 @@ export const settingsApi = {
     return response.data;
   },
 
-  async testProvider(provider: string): Promise<{ provider: string; apiKeyConfigured: boolean; baseUrl: string; available: boolean }> {
-    const response = await api.get(`/settings/${provider}/health`);
+  async testProvider(provider: string, apiKey?: string, baseUrl?: string): Promise<{ provider: string; apiKeyConfigured: boolean; baseUrl: string; available: boolean; models: string[]; error?: string }> {
+    let url = `/settings/${provider}/health`;
+    const params = new URLSearchParams();
+    if (apiKey !== undefined && apiKey !== '') params.set('apiKey', apiKey);
+    if (baseUrl !== undefined && baseUrl !== '') params.set('baseUrl', baseUrl);
+    const qs = params.toString();
+    if (qs) url += '?' + qs;
+    const response = await api.get(url);
     return response.data;
   },
 
@@ -263,6 +270,15 @@ export const settingsApi = {
 
   async setUserDefaultModel(model: string): Promise<void> {
     await api.put('/settings/user/default-model', { defaultModel: model });
+  },
+
+  async getDisabledModels(provider: string): Promise<string[]> {
+    const response = await api.get(`/settings/${provider}/models/disabled`);
+    return response.data;
+  },
+
+  async setDisabledModels(provider: string, models: string[]): Promise<void> {
+    await api.put(`/settings/${provider}/models/disabled`, models);
   },
 };
 

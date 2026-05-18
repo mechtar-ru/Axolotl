@@ -11,6 +11,7 @@ import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
 import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
+import com.agent.orchestrator.service.SettingsService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.ResponseEntity;
@@ -33,15 +34,17 @@ public class AgentController {
     private final LlmService llmService;
     private final MemPalaceClient memPalaceClient;
     private final PlanningService planningService;
+    private final SettingsService settingsService;
 
     public AgentController(AgentService agentService, SchemaService schemaService,
                            LlmService llmService, MemPalaceClient memPalaceClient,
-                           PlanningService planningService) {
+                           PlanningService planningService, SettingsService settingsService) {
         this.agentService = agentService;
         this.schemaService = schemaService;
         this.llmService = llmService;
         this.memPalaceClient = memPalaceClient;
         this.planningService = planningService;
+        this.settingsService = settingsService;
     }
 
     @GetMapping("/agents")
@@ -242,7 +245,15 @@ public class AgentController {
 
     @GetMapping("/settings/providers")
     public List<Map<String, Object>> getProviders() {
-        return llmService.getProvidersInfo();
+        List<Map<String, Object>> providers = llmService.getProvidersInfo();
+        // Enrich built-in providers with disabledModels from persisted settings
+        for (Map<String, Object> p : providers) {
+            if (Boolean.FALSE.equals(p.get("custom"))) {
+                String name = (String) p.get("name");
+                p.put("disabledModels", settingsService.getDisabledModels(name));
+            }
+        }
+        return providers;
     }
 
     @GetMapping("/settings/providers/{name}/models")

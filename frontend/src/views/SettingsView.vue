@@ -51,8 +51,8 @@
         </div>
 
         <!-- Built-in providers -->
-        <div v-for="provider in builtInProviders" :key="provider.name" class="provider-card">
-          <div class="provider-header">
+        <div v-for="provider in builtInProviders" :key="provider.name" class="provider-card" :class="{ collapsed: isCollapsed(provider.name) }">
+          <div class="provider-header" @click="toggleCollapse(provider.name)">
             <span class="status-dot" :class="provider.available ? 'online' : 'offline'"></span>
             <h2>
               <svg v-if="provider.name === 'ollama'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C8.13 2 5 5.13 5 9c0 3.87 3.13 7 7 7s7-3.13 7-7c0-3.87-3.13-7-7-7z"/><path d="M8 9c0-2.2 1.8-4 4-4s4 1.8 4 4"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/></svg>
@@ -61,13 +61,16 @@
               <svg v-else-if="provider.name === 'deepseek'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-6-8H2m20 0h-4"/></svg>
               {{ getProviderLabel(provider.name) }}
             </h2>
-            <span class="status-text">{{ provider.available ? 'Connected' : 'Unavailable' }}</span>
-            <button class="refresh-btn" @click="refreshProviders" title="Refresh">
+            <span class="status-pill" :class="provider.available ? 'pill-online' : 'pill-offline'">
+              {{ provider.available ? 'Connected' : 'Unavailable' }}
+            </span>
+            <button class="refresh-btn" @click.stop="refreshProviders" title="Refresh">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             </button>
+            <svg class="collapse-chevron" :class="{ rotated: !isCollapsed(provider.name) }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
 
-          <div class="provider-fields">
+          <div v-show="!isCollapsed(provider.name)" class="provider-fields">
             <div class="field">
               <label>API Key</label>
               <div class="field-row">
@@ -124,9 +127,56 @@
             </div>
 
             <div v-if="provider.models.length > 0" class="field">
-              <label>Available Models</label>
-              <div class="model-list">
-                <span v-for="model in provider.models" :key="model" class="model-tag">{{ model }}</span>
+              <div class="models-header">
+                <label>Models</label>
+                <div class="model-bulk-actions">
+                  <button class="bulk-toggle-btn" @click="enableAllModels(provider.name)">All</button>
+                  <button class="bulk-toggle-btn bulk-off" @click="disableAllModels(provider.name)">None</button>
+                </div>
+              </div>
+              <div class="model-search-wrap">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input
+                  class="model-search-input"
+                  type="text"
+                  placeholder="Search models..."
+                  :value="modelSearch[provider.name] || ''"
+                  @input="modelSearch[provider.name] = ($event.target as HTMLInputElement).value"
+                />
+              </div>
+              <div class="model-toggles">
+                <template v-for="grp in groupedModels(provider)" :key="grp.group">
+                  <div v-if="grp.models.length > 0" class="model-group-header" @click="toggleGroupCollapse(provider.name, grp.group)">
+                    <span class="model-group-arrow">{{ isGroupCollapsed(provider.name, grp.group) ? '▶' : '▼' }}</span>
+                    <span class="model-group-label-text">{{ grp.group }}</span>
+                    <span class="model-group-count">{{ enabledCount(grp, provider) }} / {{ grp.models.length }}</span>
+                    <span class="model-group-actions" @click.stop>
+                      <button class="group-toggle-btn" @click="enableAllInGroup(provider.name, grp.models)">All</button>
+                      <button class="group-toggle-btn group-off" @click="disableAllInGroup(provider.name, grp.models)">None</button>
+                    </span>
+                  </div>
+                  <template v-if="!isGroupCollapsed(provider.name, grp.group)">
+                    <label
+                      v-for="model in grp.models"
+                      :key="model"
+                      class="model-toggle"
+                      :class="{ disabled: provider.disabledModels?.includes(model) }"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="!provider.disabledModels?.includes(model)"
+                        @change="toggleModel(provider.name, model, ($event.target as HTMLInputElement).checked)"
+                      />
+                      <span class="model-name">{{ model }}</span>
+                    </label>
+                  </template>
+                </template>
+                <div v-if="searching(provider) && groupedModels(provider).every(g => g.models.length === 0)" class="search-empty">
+                  No models match
+                </div>
+                <div v-else class="model-summary">
+                  {{ summaryCount(provider) }}
+                </div>
               </div>
             </div>
           </div>
@@ -148,10 +198,13 @@
           </button>
         </div>
 
-        <div v-for="ep in customEndpoints" :key="ep.id" class="provider-card custom-card">
+        <div v-for="ep in customEndpoints" :key="ep.id" class="provider-card custom-card" :class="{ collapsed: isCustomCollapsed(ep.id!) }">
+          <div class="provider-header" @click="toggleCustomCollapse(ep.id!)">
+            <h2 style="flex:1; font-size:var(--text-md);">{{ ep.name || 'New Endpoint' }}</h2>
+            <svg class="collapse-chevron" :class="{ rotated: !isCustomCollapsed(ep.id!) }" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </div>
           <div v-if="customErrors[ep.id!]" class="inline-error">{{ customErrors[ep.id!] }}</div>
-
-          <div class="provider-fields">
+          <div v-show="!isCustomCollapsed(ep.id!)" class="provider-fields">
             <div class="field">
               <label>Name</label>
               <input
@@ -233,8 +286,11 @@
                 <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 {{ customTestResults[ep.id!]?.success ? 'OK' : customTestResults[ep.id!]?.message }}
               </span>
-              <button class="delete-btn" @click="deleteCustomEndpoint(ep.id!)" title="Delete">
+              <button v-if="!confirmDelete[ep.id!]" class="delete-btn" @click="confirmDelete[ep.id!] = true; setTimeout(() => confirmDelete[ep.id!] = false, 4000)" title="Delete">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              </button>
+              <button v-else class="delete-btn confirm-delete" @click="deleteCustomEndpoint(ep.id!)">
+                Delete?
               </button>
             </div>
           </div>
@@ -275,6 +331,9 @@ const editedKeys = reactive<Record<string, string>>({});
 const editedUrls = reactive<Record<string, string>>({});
 const editedModels = reactive<Record<string, string>>({});
 const showKeys = reactive<Record<string, boolean>>({});
+const collapsed = reactive<Record<string, boolean>>({});
+const modelSearch = reactive<Record<string, string>>({});
+const groupCollapsed = reactive<Record<string, Record<string, boolean>>>({});
 
 // Custom endpoints state
 const customEndpoints = ref<CustomLlmEndpoint[]>([]);
@@ -284,6 +343,8 @@ const customTestResults = reactive<Record<string, { success: boolean; message: s
 const customErrors = reactive<Record<string, string>>({});
 const customEditedKeys = reactive<Record<string, string>>({});
 const customShowKeys = reactive<Record<string, boolean>>({});
+const customCollapsed = reactive<Record<string, boolean>>({});
+const confirmDelete = reactive<Record<string, boolean>>({});
 
 // User default model
 const userDefaultModel = ref('');
@@ -340,6 +401,118 @@ async function refreshCustomEndpoints() {
   }
 }
 
+function toggleCollapse(name: string) {
+  collapsed[name] = !collapsed[name];
+}
+
+function isCollapsed(name: string): boolean {
+  // Unavailable providers start collapsed
+  if (collapsed[name] === undefined) {
+    const p = providers.value.find(p => p.name === name);
+    collapsed[name] = p ? !p.available : false;
+  }
+  return collapsed[name] ?? false;
+}
+
+function groupedModels(provider: ProviderInfo): { group: string; models: string[] }[] {
+  const models = provider.models || [];
+  const search = (modelSearch[provider.name] || '').toLowerCase();
+  const filtered = search ? models.filter(m => m.toLowerCase().includes(search)) : models;
+
+  const groups: Record<string, string[]> = {};
+  for (const m of filtered) {
+    let group = 'Other';
+    if (m.startsWith('claude-')) group = 'Claude';
+    else if (m.startsWith('gpt-') || m.startsWith('o1-') || m.startsWith('o3-')) group = 'GPT';
+    else if (m.startsWith('gemini-')) group = 'Gemini';
+    else if (m.startsWith('deepseek-')) group = 'DeepSeek';
+    else if (m.startsWith('qwen')) group = 'Qwen';
+    else if (m.startsWith('minimax-')) group = 'MiniMax';
+    else if (m.startsWith('kimi-')) group = 'Kimi';
+    else if (m.startsWith('glm-')) group = 'GLM';
+    else if (m.startsWith('trinity-') || m.startsWith('hy3-') || m.startsWith('ling-') || m.startsWith('nemotron-') || m.endsWith('-free') || m === 'big-pickle') group = 'Free';
+    else if (m.startsWith('llama') || m.startsWith('mistral') || m.startsWith('gemma')) group = 'Open Source';
+
+    if (!groups[group]) groups[group] = [];
+    groups[group].push(m);
+  }
+  return Object.entries(groups).map(([g, ms]) => ({ group: g, models: ms }));
+}
+
+function searching(provider: ProviderInfo): boolean {
+  return (modelSearch[provider.name] || '').length > 0;
+}
+
+function toggleGroupCollapse(providerName: string, group: string) {
+  if (!groupCollapsed[providerName]) groupCollapsed[providerName] = {};
+  // Default is true (collapsed), so first click should set to false (expanded)
+  groupCollapsed[providerName][group] = !(groupCollapsed[providerName][group] ?? true);
+}
+
+function isGroupCollapsed(providerName: string, group: string): boolean {
+  // Auto-expand when search is active — filtered results should be visible
+  if ((modelSearch[providerName] || '').length > 0) return false;
+  return groupCollapsed[providerName]?.[group] ?? true;
+}
+
+function enabledCount(grp: { models: string[] }, provider: ProviderInfo): number {
+  return grp.models.filter(m => !provider.disabledModels?.includes(m)).length;
+}
+
+function summaryCount(provider: ProviderInfo): string {
+  const total = provider.models?.length ?? 0;
+  const enabled = provider.models?.filter(m => !provider.disabledModels?.includes(m)).length ?? 0;
+  return `${enabled} / ${total} models enabled`;
+}
+
+async function enableAllInGroup(providerName: string, models: string[]) {
+  const p = providers.value.find(p => p.name === providerName);
+  if (!p) return;
+  for (const m of models) {
+    if (p.disabledModels?.includes(m)) {
+      await settingsStore.setModelDisabled(providerName, m, false);
+    }
+  }
+  await refreshProviders();
+  rebuildModelOptions();
+}
+
+async function disableAllInGroup(providerName: string, models: string[]) {
+  const p = providers.value.find(p => p.name === providerName);
+  if (!p) return;
+  for (const m of models) {
+    if (!p.disabledModels?.includes(m)) {
+      await settingsStore.setModelDisabled(providerName, m, true);
+    }
+  }
+  await refreshProviders();
+  rebuildModelOptions();
+}
+
+async function enableAllModels(providerName: string) {
+  const p = providers.value.find(p => p.name === providerName);
+  if (!p) return;
+  for (const m of p.models || []) {
+    if (p.disabledModels?.includes(m)) {
+      await settingsStore.setModelDisabled(providerName, m, false);
+    }
+  }
+  await refreshProviders();
+  rebuildModelOptions();
+}
+
+async function disableAllModels(providerName: string) {
+  const p = providers.value.find(p => p.name === providerName);
+  if (!p) return;
+  for (const m of p.models || []) {
+    if (!p.disabledModels?.includes(m)) {
+      await settingsStore.setModelDisabled(providerName, m, true);
+    }
+  }
+  await refreshProviders();
+  rebuildModelOptions();
+}
+
 async function saveProvider(name: string) {
   saving[name] = true;
   try {
@@ -361,13 +534,46 @@ async function testProvider(name: string) {
   testing[name] = true;
   testResults[name] = null;
   try {
-    const result = await settingsApi.testProvider(name);
-    testResults[name] = { ok: result.available, msg: result.available ? 'OK' : 'No key or unavailable' };
+    const result = await settingsApi.testProvider(
+      name,
+      editedKeys[name] || undefined,
+      editedUrls[name] || undefined
+    );
+    if (result.available) {
+      const modelCount = result.models?.length ?? 0;
+      testResults[name] = {
+        ok: true,
+        msg: modelCount > 0 ? `Connected (${modelCount} models)` : 'Connected',
+      };
+      // Update provider models from health check response
+      const p = providers.value.find(p => p.name === name);
+      if (p && result.models?.length) {
+        p.models = result.models;
+      }
+    } else {
+      testResults[name] = {
+        ok: false,
+        msg: result.error || 'No key or unavailable',
+      };
+    }
   } catch (e: any) {
     testResults[name] = { ok: false, msg: e.message || 'Error' };
   } finally {
     testing[name] = false;
   }
+}
+
+async function toggleModel(providerName: string, model: string, enabled: boolean) {
+  await settingsStore.setModelDisabled(providerName, model, !enabled);
+  // Refresh provider list to sync disabledModels state
+  await refreshProviders();
+  // Rebuild model options for the default model dropdown
+  rebuildModelOptions();
+}
+
+function rebuildModelOptions() {
+  const opts = settingsStore.getAllModelOptions();
+  allModelOptions.value = opts;
 }
 
 function addCustomEndpoint() {
@@ -404,7 +610,6 @@ async function saveCustomEndpoint(ep: CustomLlmEndpoint) {
     if (newKey !== undefined && newKey !== '') {
       payload.apiKey = newKey;
     }
-    const isNew = !customEndpoints.value.some(e => e.id === ep.id && e.name && e.name.trim());
     const saved = await customEndpointApi.create(payload);
     const idx = customEndpoints.value.findIndex(e => e.id === ep.id);
     if (idx >= 0) customEndpoints.value[idx] = saved;
@@ -442,7 +647,17 @@ async function deleteCustomEndpoint(id: string) {
     customEndpoints.value = customEndpoints.value.filter(e => e.id !== id);
   } catch (e: any) {
     console.error('Failed to delete custom endpoint:', e);
+  } finally {
+    confirmDelete[id] = false;
   }
+}
+
+function toggleCustomCollapse(id: string) {
+  customCollapsed[id] = !customCollapsed[id];
+}
+
+function isCustomCollapsed(id: string): boolean {
+  return customCollapsed[id] ?? true;
 }
 
 function goBack() {
@@ -455,17 +670,8 @@ onMounted(async () => {
   try {
     userDefaultModel.value = await settingsApi.getUserDefaultModel();
   } catch {}
-  // Build flat model list from all providers
-  const opts: { value: string; label: string; group: string }[] = [];
-  for (const p of providers.value) {
-    const group = p.name.charAt(0).toUpperCase() + p.name.slice(1);
-    if (p.models?.length > 0) {
-      for (const model of p.models) {
-        opts.push({ value: model, label: model, group });
-      }
-    }
-  }
-  allModelOptions.value = opts;
+  // Build model options using store (respects disabledModels filter)
+  rebuildModelOptions();
 });
 </script>
 
@@ -515,6 +721,44 @@ onMounted(async () => {
   align-items: center;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapsed .provider-header {
+  margin-bottom: 0;
+}
+
+.collapsed .provider-fields {
+  display: none;
+}
+
+.collapse-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+}
+
+.collapse-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.status-pill {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.pill-online {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--success);
+}
+
+.pill-offline {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--error);
 }
 
 .provider-header h2 {
@@ -538,11 +782,6 @@ onMounted(async () => {
 .status-dot.offline {
   background: var(--error);
   box-shadow: var(--shadow-glow-error);
-}
-
-.status-text {
-  font-size: var(--text-xs);
-  color: var(--text-secondary);
 }
 
 .refresh-btn {
@@ -673,19 +912,224 @@ onMounted(async () => {
   color: var(--error);
 }
 
-.model-list {
+.model-toggles {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
 }
 
-.model-tag {
+.model-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  margin: 0 calc(-1 * var(--space-2)) var(--space-1);
+  border-top: 1px solid var(--border-color);
+  cursor: pointer;
+  user-select: none;
+  position: sticky;
+  top: 0;
   background: var(--bg-primary);
-  color: var(--accent);
-  padding: var(--space-1) var(--space-3);
+  z-index: 1;
+}
+
+.model-group-header:first-of-type {
+  border-top: none;
+  margin-top: 0;
+}
+
+.model-group-header:hover {
+  background: var(--bg-hover);
+}
+
+.model-group-arrow {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
+}
+
+.model-group-label-text {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.model-group-count {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  margin-right: var(--space-2);
+}
+
+.model-group-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.model-group-header:hover .model-group-actions {
+  opacity: 1;
+}
+
+.group-toggle-btn {
+  padding: 1px 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  line-height: 1.3;
+}
+
+.group-toggle-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.group-toggle-btn.group-off:hover {
+  background: var(--error);
+  border-color: var(--error);
+  color: white;
+}
+
+.model-summary {
+  text-align: center;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  border-top: 1px solid var(--border-color);
+  margin: var(--space-1) calc(-1 * var(--space-2)) calc(-1 * var(--space-1));
+}
+
+.model-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
+  cursor: pointer;
   font-size: var(--text-xs);
   font-family: var(--font-mono);
+  color: var(--text-primary);
+  transition: background 0.15s;
+}
+
+.model-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.model-toggle.disabled {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.model-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+
+.model-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.models-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.models-header label {
+  margin-bottom: 0 !important;
+}
+
+.model-bulk-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.bulk-toggle-btn {
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+}
+
+.bulk-toggle-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.bulk-toggle-btn.bulk-off:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+.model-search-wrap {
+  position: relative;
+  margin-bottom: var(--space-2);
+}
+
+.search-icon {
+  position: absolute;
+  left: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.model-search-input {
+  width: 100%;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2) var(--space-1) 28px;
+  font-size: var(--text-xs);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.model-search-input:focus {
+  border-color: var(--border-focus);
+}
+
+.model-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-empty {
+  padding: var(--space-3) var(--space-2);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-style: italic;
 }
 
 .loading, .error, .empty {
@@ -771,6 +1215,12 @@ onMounted(async () => {
 .delete-btn:hover {
   background: var(--error);
   color: white;
+}
+
+.confirm-delete {
+  background: var(--error) !important;
+  color: white !important;
+  font-weight: 700;
 }
 
 .empty-hint {
