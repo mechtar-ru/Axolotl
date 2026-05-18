@@ -26,10 +26,17 @@ const generatedEdgeCount = ref(0)
 let defaultModel: string | undefined
 async function loadProviders() {
   providers.value = await settingsApi.getProviders()
-  defaultModel = providers.value.find(p => p.available)?.defaultModel
+  const userDefault = await settingsApi.getUserDefaultModel()
+  defaultModel = userDefault || providers.value.find(p => p.available)?.defaultModel
   if (defaultModel) {
     selectedModel.value = defaultModel
   }
+}
+
+function enabledModels(p: ProviderInfo): string[] {
+  const disabled = p.disabledModels ?? []
+  if (disabled.length === 0) return p.models
+  return p.models.filter(m => !disabled.includes(m))
 }
 onMounted(loadProviders)
 
@@ -135,7 +142,7 @@ defineExpose({
               <option value="" disabled>Select a model</option>
               <template v-for="provider in providers" :key="provider.name">
                 <option
-                  v-for="model in provider.models"
+                  v-for="model in enabledModels(provider)"
                   :key="model"
                   :value="model"
                   :selected="model === selectedModel"

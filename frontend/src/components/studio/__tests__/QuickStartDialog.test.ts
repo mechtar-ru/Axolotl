@@ -25,6 +25,7 @@ vi.mock('@/services/api', () => ({
         defaultModel: 'claude-sonnet-4',
       },
     ]),
+    getUserDefaultModel: vi.fn().mockResolvedValue(''),
   },
 }))
 
