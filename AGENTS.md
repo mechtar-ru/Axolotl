@@ -99,6 +99,30 @@ source .venv/bin/activate && python3 scripts/api.py add-task "Title" "descriptio
 - DB: SQLite (`schema.db`) dev, PostgreSQL in Docker
 - `.env` needs: `VITE_API_URL`, `VITE_WS_URL`, `JWT_SECRET`
 
+## Execution Result Persistence
+
+Execution results (node outputs, review findings, errors) are persisted to Neo4j for durability across page reloads.
+
+### How It Works
+
+1. `NodeRouter.executeNode()` creates a `NodeExecution` record per node at execution start (status: `"running"`)
+2. After the node completes, `updateNodeExecution()` persists the result as `outputSummary` and sets status to `"completed"` (or `"failed"` on error)
+3. Each `NodeExecution` is linked to an `ExecutionRun` which belongs to a schema
+
+### Key Models
+
+| Model | Neo4j Label | DB Fields | Description |
+|-------|-------------|-----------|-------------|
+| `ExecutionRun` | `ExecutionRun` | id, schemaId, status, mode, totalTokens, estimatedCost, error, timestamps | One per schema execution |
+| `NodeExecution` | `NodeExecution` | id, runId, nodeId, nodeType, status, tokensUsed, durationMs, toolCalls, error, **outputSummary**, inputSummary, filesWritten, configHash, timestamps | One per node per run |
+
+### For AI Agents
+
+- **Reading persisted results**: `GET /api/schemas/{id}/runs/{runId}/nodes` returns all `NodeExecution` records for a run, each with `outputSummary` containing the node result JSON
+- **Review node results**: The full review output (status, findings, summary, plan, mode, finalResult) is stored in `outputSummary` as JSON — survives page reloads
+- **Error state**: Failed nodes have status `"failed"` and their error message in the `error` field
+- **Frontend**: Currently reads node results from in-memory `schemaStore`; to show persisted results after reload, fetch from `/api/schemas/{id}/runs/latest/nodes`
+
 ## Neo4j Graph Storage
 
 See `docs/NEO4J_MIGRATION.md` for Neo4j integration specification.
