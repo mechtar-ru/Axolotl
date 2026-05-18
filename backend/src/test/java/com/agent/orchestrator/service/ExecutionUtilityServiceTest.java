@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -438,5 +439,85 @@ class ExecutionUtilityServiceTest {
     void writeOutput_returnsNoData_whenContentBlank() {
         String result = utilityService.writeOutput("file", "/tmp/test.txt", "text", "");
         assertEquals("Нет данных для вывода", result);
+    }
+
+    // ── handleSourceNode - file sourceType ──
+
+    @Test
+    void handleSourceNode_returnsFileNotFound_whenEmptyPath() throws Exception {
+        Node node = new Node();
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        config.put("sourceType", "file");
+        config.put("filePath", "");
+        data.setConfig(config);
+        node.setData(data);
+
+        String result = utilityService.handleSourceNode(node, "schema-1");
+        assertEquals("Файл не указан", result);
+    }
+
+    @Test
+    void handleSourceNode_readsAbsolutePath() throws Exception {
+        // Create temp file
+        java.nio.file.Path tempFile = java.nio.file.Files.createTempFile("test-source-", ".txt");
+        java.nio.file.Files.writeString(tempFile, "file content");
+
+        Node node = new Node();
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        config.put("sourceType", "file");
+        config.put("filePath", tempFile.toString());
+        data.setConfig(config);
+        node.setData(data);
+
+        String result = utilityService.handleSourceNode(node, "schema-1");
+        assertEquals("file content", result);
+
+        java.nio.file.Files.deleteIfExists(tempFile);
+    }
+
+    @Test
+    void handleSourceNode_returnsFileNotFound_whenFileMissing() {
+        Node node = new Node();
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        config.put("sourceType", "file");
+        config.put("filePath", "/tmp/nonexistent-file-12345.txt");
+        data.setConfig(config);
+        node.setData(data);
+
+        String result = utilityService.handleSourceNode(node, "schema-1");
+        assertTrue(result.contains("не найден") || result.contains("not found"));
+    }
+
+    @Test
+    void handleSourceNode_resolvesRelativePathAgainstTargetPath() throws Exception {
+        // Create temp dir with a file inside
+        java.nio.file.Path tempDir = java.nio.file.Files.createTempDirectory("test-schema-");
+        java.nio.file.Path testFile = tempDir.resolve("subdir/test.md");
+        java.nio.file.Files.createDirectories(testFile.getParent());
+        java.nio.file.Files.writeString(testFile, "relative content");
+
+        WorkflowSchema schema = new WorkflowSchema();
+        schema.setId("schema-1");
+        schema.setTargetPath(tempDir.toString());
+        when(schemaRepository.findById("schema-1")).thenReturn(schema);
+
+        Node node = new Node();
+        Node.NodeData data = new Node.NodeData();
+        Map<String, Object> config = new HashMap<>();
+        config.put("sourceType", "file");
+        config.put("filePath", "subdir/test.md");
+        data.setConfig(config);
+        node.setData(data);
+
+        String result = utilityService.handleSourceNode(node, "schema-1");
+        assertEquals("relative content", result);
+
+        // Cleanup
+        java.nio.file.Files.walk(tempDir)
+                .sorted(java.util.Comparator.reverseOrder())
+                .forEach(p -> { try { java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) {} });
     }
 }

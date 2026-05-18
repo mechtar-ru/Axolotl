@@ -1196,7 +1196,38 @@ public class ExecutionUtilityService {
             }
             return readProjectContext(projectPath,
                     node.getData() != null ? node.getData().getConfig() : null);
+        } else if ("file".equals(sourceType)) {
+            String filePath = node.getData() != null && node.getData().getConfig() != null
+                    ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
+            if (filePath == null || filePath.isEmpty()) {
+                return "Файл не указан";
+            }
+            if (webSocketHandler != null) {
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Чтение файла");
+                webSocketHandler.sendLog(schemaId, "info", "Чтение файла: " + filePath, node.getId());
+            }
+            try {
+                Path resolved = Path.of(filePath);
+                if (!resolved.isAbsolute()) {
+                    WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
+                    if (currentSchema != null && currentSchema.getTargetPath() != null
+                            && !currentSchema.getTargetPath().isBlank()) {
+                        resolved = Path.of(currentSchema.getTargetPath(), filePath).normalize();
+                    }
+                }
+                long maxSize = 1024 * 1024; // 1MB
+                if (Files.size(resolved) > maxSize) {
+                    return "Файл слишком большой: " + resolved.getFileName();
+                }
+                return Files.readString(resolved, java.nio.charset.StandardCharsets.UTF_8);
+            } catch (java.nio.file.NoSuchFileException e) {
+                return "Файл не найден: " + filePath;
+            } catch (Exception e) {
+                log.error("Ошибка чтения файла {}: {}", filePath, e.getMessage());
+                return "Ошибка чтения файла: " + e.getMessage();
+            }
         } else {
+            // text mode (default)
             if (node.getData() != null && node.getData().getSourceData() != null
                     && !node.getData().getSourceData().isEmpty()) {
                 return node.getData().getSourceData();

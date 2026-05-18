@@ -1,0 +1,78 @@
+// @vitest-environment jsdom
+import { mount } from '@vue/test-utils'
+import { describe, it, expect, vi } from 'vitest'
+import { ref } from 'vue'
+
+// Mock the schema store
+vi.mock('@/stores/schemaStore', () => ({
+  useSchemaStore: vi.fn(() => ({
+    currentSchema: ref({
+      id: 'test-1',
+      name: 'Test Schema',
+      description: 'A test schema',
+      targetPath: '/Users/test/project',
+      defaultModel: 'gpt-4',
+      nodes: [],
+      edges: [],
+    }),
+    updateSchema: vi.fn(),
+  })),
+}))
+
+import SchemaPropertiesPanel from '../SchemaPropertiesPanel.vue'
+
+describe('SchemaPropertiesPanel', () => {
+  it('renders schema name', () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    const input = wrapper.find('input')
+    expect(input.exists()).toBe(true)
+    expect(input.element.value).toBe('Test Schema')
+  })
+
+  it('renders schema description', () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    const textarea = wrapper.find('textarea')
+    expect(textarea.exists()).toBe(true)
+    expect(textarea.element.value).toBe('A test schema')
+  })
+
+  it('renders target path', () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    expect(wrapper.text()).toContain('/Users/test/project')
+  })
+
+  it('renders default model', () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    expect(wrapper.text()).toContain('gpt-4')
+  })
+
+  it('renders quick action buttons', () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    expect(wrapper.text()).toContain('Add Node')
+    expect(wrapper.text()).toContain('Run')
+    expect(wrapper.text()).toContain('Quick Start')
+  })
+
+  it('emits addNode event when Add Node clicked', async () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    await wrapper.findAll('button')[0]!.trigger('click')
+    expect(wrapper.emitted('addNode')).toBeTruthy()
+  })
+
+  it('emits run event when Run clicked', async () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    // Find button with "Run" text
+    const buttons = wrapper.findAll('button')
+    const runBtn = buttons.find(b => b.text().includes('Run'))
+    await runBtn?.trigger('click')
+    expect(wrapper.emitted('run')).toBeTruthy()
+  })
+
+  it('emits quickStart event when Quick Start clicked', async () => {
+    const wrapper = mount(SchemaPropertiesPanel)
+    const buttons = wrapper.findAll('button')
+    const qsBtn = buttons.find(b => b.text().includes('Quick Start'))
+    await qsBtn?.trigger('click')
+    expect(wrapper.emitted('quickStart')).toBeTruthy()
+  })
+})

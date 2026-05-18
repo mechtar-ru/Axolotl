@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, markRaw, onMounted, watch, nextTick, inject } from 'vue'
+import { ref, markRaw, onMounted, watch, nextTick, inject, onUnmounted } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -9,6 +9,7 @@ import { schemaApi } from '@/services/api'
 import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
 import BlockConfigPanel from '@/components/studio/BlockConfigPanel.vue'
+import SchemaPropertiesPanel from '@/components/studio/SchemaPropertiesPanel.vue'
 import LiveView from '@/components/studio/LiveView.vue'
 
 // Import block components for VueFlow nodeTypes
@@ -39,9 +40,16 @@ const nodeTypes = {
 
 const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView } = useVueFlow({ id: 'blueprint-flow' })
 
+const emit = defineEmits<{
+  'show-quick-start': []
+  'show-generate-from-prompt': []
+}>()
+
 const selectedBlockId = ref<string | null>(null)
 const configPanelOpen = ref(false)
+const schemaPanelOpen = ref(true)
 const showExecutionOverlay = inject('showExecutionOverlay', ref(false))
+const startExecution = inject<(schemaId: string) => Promise<void>>('startExecution', async () => {})
 
 // Build VueFlow nodes from schema data
 function buildVueFlowNodes(schema: any): Node[] {
@@ -134,21 +142,7 @@ function onDropHandler(event: DragEvent) {
       }
       
       addNodes([newNode])
-      
-      // Sync VueFlow nodes back to schema store
-      if (schemaStore.currentSchema) {
-        const updatedNodes: FlowNode[] = nodes.value.map(n => ({
-          id: n.id,
-          type: (n.type || 'agent') as FlowNode['type'],
-          name: (n.data?.label as string) || n.id,
-          position: n.position,
-          data: (n.data?.config as Record<string, any>) || {}
-        }))
-        schemaStore.updateSchema({
-          ...schemaStore.currentSchema,
-          nodes: updatedNodes
-        })
-      }
+      syncFlowToStore()
     }
   } catch (e) {
     console.error('Failed to parse drop data', e)
@@ -161,6 +155,7 @@ function onNodeClickHandler(event: any) {
   if (node) {
     selectedBlockId.value = node.id
     configPanelOpen.value = true
+    schemaPanelOpen.value = false
   }
 }
 
@@ -168,9 +163,53 @@ function onNodeClickHandler(event: any) {
 function onPaneClickHandler() {
   selectedBlockId.value = null
   configPanelOpen.value = false
+  schemaPanelOpen.value = true
 }
 
-// Handle new connections
+function onAddNode() {
+  // Focus on palette — user can drag a new block
+  // For now, no-op; palette is visible
+}
+
+function onRunSchema() {
+  if (schemaStore.currentSchema) {
+    schemaStore.executeSchema(schemaStore.currentSchema.id)
+  }
+}
+
+function onQuickStart() {
+  // Will show QuickStartDialog — the inject ref handles visibility
+  // For now, we can trigger a custom event or just log
+  console.log('Quick start requested')
+}
+
+// Sync VueFlow nodes + edges back to schemaStore so they persist to backend
+function syncFlowToStore() {
+  if (!schemaStore.currentSchema) return
+
+  const updatedNodes: FlowNode[] = nodes.value.map(n => ({
+    id: n.id,
+    type: (n.type || 'agent') as FlowNode['type'],
+    name: (n.data?.label as string) || n.id,
+    position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
+    data: (n.data?.config as Record<string, any>) || {}
+  }))
+
+  const updatedEdges: FlowEdge[] = edges.value.map(e => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    type: 'data'
+  }))
+
+  schemaStore.updateSchema({
+    ...schemaStore.currentSchema,
+    nodes: updatedNodes,
+    edges: updatedEdges
+  })
+}
+
+// Handle new connections — persist immediately
 onConnect((connection) => {
   if (!connection || !connection.source || !connection.target) {
     console.warn('Skipping incomplete connection', connection)
@@ -184,6 +223,7 @@ onConnect((connection) => {
     markerEnd: { type: MarkerType.ArrowClosed }
   }
   addEdges([newEdge])
+  syncFlowToStore()
 })
 </script>
 
@@ -222,6 +262,14 @@ onConnect((connection) => {
       v-show="!showExecutionOverlay && configPanelOpen && selectedBlockId"
       :block-id="selectedBlockId || ''"
       @close="configPanelOpen = false"
+    />
+
+    <!-- Schema Properties Panel (shown when nothing is selected) -->
+    <SchemaPropertiesPanel
+      v-show="!showExecutionOverlay && !configPanelOpen && !selectedBlockId"
+      @add-node="console.log('Add node')"
+      @run="startExecution(props.appId)"
+      @quick-start="emit('show-quick-start')"
     />
 
     <!-- Execution Overlay -->
