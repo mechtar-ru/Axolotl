@@ -89,6 +89,39 @@ const deleteTarget = ref<any>(null)
 
 const searchQuery = ref('')
 
+// Recently opened tracking (localStorage, max 5)
+const RECENT_STORAGE_KEY = 'axolotl_recent_apps'
+const recentAppIds = ref<string[]>(loadRecentIds())
+
+function loadRecentIds(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveRecentIds(ids: string[]) {
+  try {
+    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(ids.slice(0, 5)))
+  } catch { /* storage full — ignore */ }
+}
+
+function trackRecent(id: string) {
+  const ids = recentAppIds.value.filter(i => i !== id)
+  ids.unshift(id)
+  recentAppIds.value = ids.slice(0, 5)
+  saveRecentIds(recentAppIds.value)
+}
+
+const allAppsCollapsed = ref(true)
+
+// Sort helper: updatedAt desc, fallback to createdAt
+function byUpdatedAtDesc(a: any, b: any): number {
+  const aDate = a.updatedAt || a.createdAt || ''
+  const bDate = b.updatedAt || b.createdAt || ''
+  return bDate.localeCompare(aDate)
+}
+
 // Merge generated app metadata into all schemas for unified grid
 const visibleApps = computed(() => {
   const genMap = new Map<string, { targetPath: string; status: 'active' | 'idle' }>()
@@ -102,13 +135,24 @@ const visibleApps = computed(() => {
     isGenerated: genMap.has(s.id),
     targetPath: genMap.get(s.id)?.targetPath || s.targetPath,
     status: genMap.has(s.id) ? ('active' as const) : ('idle' as const),
-  }))
+  })).sort(byUpdatedAtDesc)
 })
 
 const filteredApps = computed(() => {
   if (!searchQuery.value.trim()) return visibleApps.value
   const q = searchQuery.value.toLowerCase()
   return visibleApps.value.filter(app => app.name.toLowerCase().includes(q))
+})
+
+const recentApps = computed(() => {
+  const ids = recentAppIds.value
+  const map = new Map(visibleApps.value.map(a => [a.id, a]))
+  return ids.map(id => map.get(id)).filter(Boolean).slice(0, 5)
+})
+
+const otherApps = computed(() => {
+  const recentIds = new Set(recentApps.value.map(a => a.id))
+  return visibleApps.value.filter(a => !recentIds.has(a.id))
 })
 
 function continueDevelopment(app: any) {
@@ -145,6 +189,7 @@ async function applyTemplateToSchema(schemaId: string, templateId: string): Prom
 }
 
 function openApp(id: string) {
+  trackRecent(id)
   router.push(`/app/${id}`)
 }
 
@@ -299,22 +344,78 @@ async function createBlankApp() {
 
     <!-- My Apps Grid -->
     <section class="apps-section">
-      <h2>My Apps</h2>
+      <div class="apps-section-header">
+        <div class="apps-section-title">
+          <h2>My Apps</h2>
+          <span class="apps-count">{{ visibleApps.length }}</span>
+        </div>
+        <span class="sort-indicator">Last Updated</span>
+      </div>
       <div v-if="schemaStore.schemas.length === 0" class="empty-state">
         <p>No apps yet. Create your first app!</p>
       </div>
       <div v-else-if="filteredApps.length === 0" class="empty-state">
         <p>No apps matching "{{ searchQuery }}"</p>
       </div>
-      <div v-else class="apps-grid">
-        <AppCard
-          v-for="app in filteredApps"
-          :key="app.id"
-          :app="app"
-          @click="openApp(app.id)"
-          @delete="promptDeleteApp(app)"
-        />
-      </div>
+      <template v-else>
+        <!-- During search: flat results, no sections -->
+        <template v-if="searchQuery.trim()">
+          <div class="apps-grid">
+            <AppCard
+              v-for="app in filteredApps"
+              :key="app.id"
+              :app="app"
+              @click="openApp(app.id)"
+              @delete="promptDeleteApp(app)"
+            />
+          </div>
+        </template>
+        <!-- Normal view: sections -->
+        <template v-else>
+          <!-- Recent Apps (always expanded, max 5) -->
+          <div v-if="recentApps.length > 0" class="apps-subsection">
+            <div class="subsection-header" @click="allAppsCollapsed = !allAppsCollapsed">
+              <div class="subsection-title">
+                <svg class="chevron" :class="{ rotated: !allAppsCollapsed }" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+                </svg>
+                <h3>Recent</h3>
+              </div>
+              <span class="subsection-count">{{ recentApps.length }}</span>
+            </div>
+            <div v-show="!allAppsCollapsed" class="apps-grid">
+              <AppCard
+                v-for="app in recentApps"
+                :key="app.id"
+                :app="app"
+                @click="openApp(app.id)"
+                @delete="promptDeleteApp(app)"
+              />
+            </div>
+          </div>
+          <!-- All Apps (collapsed by default) -->
+          <div class="apps-subsection">
+            <div class="subsection-header" @click="allAppsCollapsed = !allAppsCollapsed">
+              <div class="subsection-title">
+                <svg class="chevron" :class="{ rotated: !allAppsCollapsed }" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+                </svg>
+                <h3>All Apps</h3>
+              </div>
+              <span class="subsection-count">{{ otherApps.length + recentApps.length }}</span>
+            </div>
+            <div v-show="!allAppsCollapsed" class="apps-grid">
+              <AppCard
+                v-for="app in otherApps"
+                :key="app.id"
+                :app="app"
+                @click="openApp(app.id)"
+                @delete="promptDeleteApp(app)"
+              />
+            </div>
+          </div>
+        </template>
+      </template>
     </section>
 
     <!-- Templates Section -->
@@ -506,9 +607,101 @@ h2 {
   margin-bottom: var(--space-4);
 }
 
-.apps-section,
-.templates-section {
+.apps-section {
   margin-bottom: var(--space-7);
+}
+
+.apps-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.apps-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.apps-section-title h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.apps-count {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+}
+
+.sort-indicator {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.apps-subsection {
+  margin-bottom: var(--space-4);
+}
+
+.subsection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-1);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+  user-select: none;
+  margin-bottom: var(--space-3);
+}
+
+.subsection-header:hover {
+  background: var(--bg-hover);
+}
+
+.subsection-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.subsection-title h3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.chevron {
+  color: var(--text-muted);
+  transition: transform var(--transition);
+  flex-shrink: 0;
+}
+
+.chevron.rotated {
+  transform: rotate(0deg);
+}
+
+.chevron:not(.rotated) {
+  transform: rotate(-90deg);
+}
+
+.subsection-count {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
 }
 
 .apps-grid,
