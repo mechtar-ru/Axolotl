@@ -1003,6 +1003,8 @@ public class SchemaService {
             Available node types:
             - "source" — provides initial data/input (has sourceData field)
             - "agent" — LLM-powered node (has systemPrompt, userPrompt, model, agentType, enabledTools, toolPermissions)
+            - "review" — analyzes and validates plans with configurable checks (premortem, prism, postmortem)
+            - "verifier" — runs tool-enabled tests to verify generated code (PASS/FAIL verdict with rewrite loop)
             - "output" — writes result to file/log/memory
             - "condition" — branches based on JS expression
             - "loop" — iterates with a condition
