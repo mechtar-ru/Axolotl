@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { settingsApi } from '@/services/api'
 
 const props = defineProps<{
   blockId: string
@@ -47,6 +48,39 @@ const reviewMaxIterations = ref(3)
 const reviewMaxAutoIterations = ref(3)
 const reviewGeneratePlan = ref(true)
 
+const providerOptions = ref<{ value: string; label: string; group: string }[]>([])
+
+const providerGroups = computed(() => {
+  const groups: Record<string, { value: string; label: string }[]> = {}
+  for (const opt of providerOptions.value) {
+    if (!groups[opt.group]) groups[opt.group] = []
+    groups[opt.group].push({ value: opt.value, label: opt.label })
+  }
+  return groups
+})
+
+onMounted(async () => {
+  try {
+    const providers = await settingsApi.getProviders()
+    const opts: { value: string; label: string; group: string }[] = []
+    for (const p of providers) {
+      const group = p.name.charAt(0).toUpperCase() + p.name.slice(1)
+      if (p.models.length > 0) {
+        const disabled = p.disabledModels ?? []
+        for (const model of p.models) {
+          if (disabled.includes(model)) continue
+          opts.push({ value: model, label: model, group })
+        }
+      } else {
+        opts.push({ value: p.name, label: `${group} (default)`, group })
+      }
+    }
+    providerOptions.value = opts
+  } catch {
+    providerOptions.value = []
+  }
+})
+
 const requiredPatternsText = computed({
   get: () => requiredPatterns.value.join('\n'),
   set: (val: string) => {
@@ -61,9 +95,9 @@ watch(() => props.blockId, () => {
   blockLabel.value = (node.value.data?.label as string) || ''
   blockType.value = (node.value.data?.type as string) || 'agent'
   const config = (node.value.data?.config as Record<string, any>) || {}
-  blockDescription.value = (config.description as string) || ''
-  model.value = (config.model as string) || 'local'
-  prompt.value = (config.prompt as string) || ''
+  blockDescription.value = (node.value.data?.description as string) || (config.description as string) || ''
+  model.value = (node.value.data?.model as string) || (config.model as string) || 'local'
+  prompt.value = (node.value.data?.systemPrompt as string) || (config.systemPrompt as string) || (config.prompt as string) || ''
   // Verifier fields
   const checks = config.checks as Record<string, any> | undefined
   syntaxCheck.value = checks?.syntaxCheck ?? true
@@ -91,8 +125,8 @@ function saveConfig() {
       ...((node.value.data?.config as Record<string, any>) || {}),
       description: blockDescription.value,
       model: model.value,
-      prompt: prompt.value,
-    }
+      systemPrompt: prompt.value,
+    },
   }
 
   // Verifier-specific config
@@ -127,12 +161,18 @@ function saveConfig() {
   if (schemaStore.currentSchema?.nodes) {
     const updatedNodes = schemaStore.currentSchema.nodes.map(n => {
       if (n.id !== props.blockId) return n
-      const baseData: Record<string, any> = {
-        ...(n.data || {}),
+    const baseData: Record<string, any> = {
+      ...(n.data || {}),
+      config: {
+        ...((n.data?.config as Record<string, any>) || {}),
         description: blockDescription.value,
         model: model.value,
-        prompt: prompt.value,
-      }
+        systemPrompt: prompt.value,
+      },
+      // Top-level fields for backend NodeData deserialization
+      model: model.value,
+      systemPrompt: prompt.value,
+    }
       if (showReviewConfig.value) {
         baseData.checks = {
           premortem: reviewPremortem.value,
@@ -216,12 +256,12 @@ function handleKeydown(e: KeyboardEvent) {
       <div v-if="showModelSelector" class="config-section">
         <label class="config-label">Model</label>
         <select v-model="model" class="config-select">
-          <option value="local">Local (Ollama)</option>
-          <option value="gpt-4o">GPT-4o</option>
-          <option value="gpt-4o-mini">GPT-4o Mini</option>
-          <option value="claude-sonnet">Claude Sonnet</option>
-          <option value="claude-haiku">Claude Haiku</option>
-          <option value="deepseek">DeepSeek</option>
+          <option value="">Auto (user default)</option>
+          <template v-for="(models, group) in providerGroups" :key="group">
+            <optgroup :label="group">
+              <option v-for="m in models" :key="m.value" :value="m.value">{{ m.label }}</option>
+            </optgroup>
+          </template>
         </select>
       </div>
 
