@@ -19,12 +19,12 @@ const schemaDescription = computed(() => currentSchema.value?.description || '')
 
 function updateName(value: string) {
   if (!currentSchema.value) return
-  schemaStore.updateSchema({ ...currentSchema.value, name: value })
+  schemaStore.markDirty({ ...currentSchema.value, name: value })
 }
 
 function updateDescription(value: string) {
   if (!currentSchema.value) return
-  schemaStore.updateSchema({ ...currentSchema.value, description: value })
+  schemaStore.markDirty({ ...currentSchema.value, description: value })
 }
 </script>
 

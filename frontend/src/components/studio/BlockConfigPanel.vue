@@ -36,7 +36,7 @@ const maxFiles = ref(50)
 const fetching = ref(false)
 
 // Determine config sections based on block type
-const showModelSelector = computed(() => blockType.value === 'agent')
+const showModelSelector = computed(() => ['agent', 'review', 'verifier'].includes(blockType.value))
 const showPrompt = computed(() => blockType.value === 'agent')
 const showMemoryType = computed(() => blockType.value === 'memory')
 const showActionType = computed(() => blockType.value === 'output')
@@ -103,7 +103,7 @@ const requiredPatternsText = computed({
 watch(() => props.blockId, () => {
   if (!node.value) return
   blockLabel.value = (node.value.data?.label as string) || ''
-  blockType.value = (node.value.data?.type as string) || 'agent'
+  blockType.value = (node.value.type as string) || (node.value.data?.type as string) || 'agent'
   const config = (node.value.data?.config as Record<string, any>) || {}
   blockDescription.value = (node.value.data?.description as string) || (config.description as string) || ''
   model.value = (node.value.data?.model as string) || (config.model as string) || 'local'
@@ -227,16 +227,30 @@ function saveConfig() {
           maxFiles: maxFiles.value,
         })
       }
-      if (showReviewConfig.value) {
-        baseData.checks = {
-          premortem: reviewPremortem.value,
-          prism: reviewPrism.value,
-          postmortem: reviewPostmortem.value
+      if (showVerifierConfig.value) {
+        baseData.config = {
+          ...baseData.config,
+          checks: {
+            syntaxCheck: syntaxCheck.value,
+            requiredPatterns: requiredPatterns.value,
+            testCommand: testCommand.value,
+            maxFileSizeKb: maxFileSizeKb.value,
+          },
         }
-        baseData.mode = reviewMode.value
-        baseData.maxIterations = reviewMaxIterations.value
-        baseData.maxAutoIterations = reviewMaxAutoIterations.value
-        baseData.generatePlan = reviewGeneratePlan.value
+      }
+      if (showReviewConfig.value) {
+        baseData.config = {
+          ...baseData.config,
+          checks: {
+            premortem: reviewPremortem.value,
+            prism: reviewPrism.value,
+            postmortem: reviewPostmortem.value
+          },
+          mode: reviewMode.value,
+          maxIterations: reviewMaxIterations.value,
+          maxAutoIterations: reviewMaxAutoIterations.value,
+          generatePlan: reviewGeneratePlan.value,
+        }
       }
       return {
         ...n,
@@ -245,7 +259,7 @@ function saveConfig() {
         data: baseData
       }
     })
-    schemaStore.updateSchema({
+    schemaStore.markDirty({
       ...schemaStore.currentSchema,
       nodes: updatedNodes
     })

@@ -28,6 +28,57 @@ export const useSchemaStore = defineStore('schema', () => {
   const pendingReview = ref(false);
   const reviewData = ref<ReviewData | null>(null);
 
+  // ─── Dirty-flag auto-save state ──────────────────────────────────
+  const isDirty = ref(false)
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  let isFlushing = false
+
+  /**
+   * Mark the schema as having unsaved changes.
+   * Updates `currentSchema` in-memory immediately, starts a 2s debounce
+   * timer to persist to backend. Callers should NOT call updateSchema()
+   * directly for normal edits — use markDirty() instead.
+   */
+  function markDirty(schema: WorkflowSchema) {
+    currentSchema.value = schema
+    isDirty.value = true
+    if (saveTimer) clearTimeout(saveTimer)
+    saveTimer = setTimeout(flushSave, 2000)
+  }
+
+  /**
+   * Persist dirty changes to backend immediately.
+   * Flushes the debounce timer and calls updateSchema. Skip if nothing
+   * is dirty (no-op). Re-throws on failure so callers can handle errors.
+   */
+  async function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (!isDirty.value || !currentSchema.value || isFlushing) return
+    isFlushing = true
+
+    try {
+      const updated = await schemaApi.updateSchema(currentSchema.value.id, currentSchema.value)
+      // Sync returned data back so we stay consistent with backend
+      const idx = schemas.value.findIndex(s => s.id === currentSchema.value!.id)
+      if (idx !== -1) {
+        schemas.value[idx] = updated
+      }
+      currentSchema.value = updated
+      isDirty.value = false
+    } catch (error) {
+      console.error('Flush save failed:', error)
+      isDirty.value = true // Keep dirty so next markDirty retries
+      throw error
+    } finally {
+      isFlushing = false
+    }
+  }
+
+  // ─── Schema CRUD ─────────────────────────────────────────────────
+
   async function loadSchemas() {
     loading.value = true;
     try {
@@ -83,6 +134,7 @@ export const useSchemaStore = defineStore('schema', () => {
       if (currentSchema.value?.id === schema.id) {
         currentSchema.value = updated;
       }
+      isDirty.value = false
       return updated;
     } catch (error) {
       console.error('Ошибка обновления схемы:', error);
@@ -96,6 +148,12 @@ export const useSchemaStore = defineStore('schema', () => {
       schemas.value = schemas.value.filter(s => s.id !== id);
       if (currentSchema.value?.id === id) {
         currentSchema.value = schemas.value[0] || null;
+      }
+      // If deleted schema was dirty, clean up
+      isDirty.value = false
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
       }
     } catch (error) {
       console.error('Ошибка удаления схемы:', error);
@@ -162,6 +220,11 @@ export const useSchemaStore = defineStore('schema', () => {
     schemas,
     currentSchema,
     loading,
+    // Dirty-flag auto-save
+    isDirty,
+    markDirty,
+    flushSave,
+    // Schema CRUD
     loadSchemas,
     createSchema,
     updateSchema,
@@ -169,6 +232,7 @@ export const useSchemaStore = defineStore('schema', () => {
     executeSchema,
     cancelExecution,
     updateCurrentSchema,
+    // Review
     pendingReview,
     reviewData,
     handleReviewAwaitingApproval,

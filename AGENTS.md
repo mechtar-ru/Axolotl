@@ -29,7 +29,12 @@ cd frontend && npm run type-check   # vue-tsc
 ### Python Scripts (always use venv)
 ```bash
 source .venv/bin/activate
-python3 scripts/api.py GET /api/plan
+python3 scripts/api.py GET /api/plan          # Generic REST call
+python3 scripts/api.py execute <schema-id>    # Execute a schema
+python3 scripts/api.py wait <schema-id>       # Poll until execution completes
+python3 scripts/api.py results <schema-id>    # Show node execution results (outputSummary)
+python3 scripts/api.py nodes <schema-id>      # Show node configs (type, model, tools)
+python3 scripts/api.py add-task "Title" "Desc"  # Quick add plan task via MCP
 ```
 
 ## Critical Patterns
@@ -47,6 +52,8 @@ python3 scripts/api.py GET /api/plan
   ```bash
   source .venv/bin/activate
   python3 scripts/api.py GET /api/schemas
+  ```
+- Default `AXOLOTL_URL` is now `http://localhost:8082` (was 8080)
 
 ### Database Architecture
 - **Neo4j** — primary storage for schemas, plans, execution history, code graph

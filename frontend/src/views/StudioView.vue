@@ -119,7 +119,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   })
 
   if (!skipSave) {
-    await schemaStore.updateSchema(currentApp)
+    await schemaStore.flushSave()
   }
 
   try {
@@ -226,6 +226,7 @@ onMounted(async () => {
 // while the component stays alive (same route, different :id)
 watch(() => route.params.id, (newId) => {
   if (newId && newId !== appId.value) {
+    schemaStore.flushSave()  // flush pending changes before switching schemas
     appId.value = newId as string
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
@@ -260,8 +261,9 @@ onUnmounted(() => {
   disconnect()
 })
 
-// Disconnect WebSocket when navigating away (component cached, not destroyed)
+// Flush pending saves + disconnect WebSocket when navigating away
 onDeactivated(() => {
+  schemaStore.flushSave()  // ensure dirty edits reach backend
   if (isRunning.value) {
     disconnect()
   }

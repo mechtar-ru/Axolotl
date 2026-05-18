@@ -202,7 +202,7 @@ function syncFlowToStore() {
     type: 'data'
   }))
 
-  schemaStore.updateSchema({
+  schemaStore.markDirty({
     ...schemaStore.currentSchema,
     nodes: updatedNodes,
     edges: updatedEdges

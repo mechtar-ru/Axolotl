@@ -14,8 +14,15 @@ Usage:
     python3 scripts/api.py mcp add_task '{"title":"My Task","priority":"HIGH"}'
     python3 scripts/api.py mcp read_plan '{"format":"status_summary"}'
 
+    # Schema execution helpers
+    python3 scripts/api.py execute <schema-id>              # Run schema
+    python3 scripts/api.py wait <schema-id>                 # Poll until latest run completes
+    python3 scripts/api.py results <schema-id> [run-id]     # Show node execution results
+    python3 scripts/api.py nodes <schema-id>                # Show node statuses with models
+    python3 scripts/api.py add-task "Title" "Description"   # Quick add plan task
+
 Environment variables:
-    AXOLOTL_URL   Backend URL (default: http://localhost:8080)
+    AXOLOTL_URL   Backend URL (default: http://localhost:8082)
     AXOLOTL_USER  Username for login (default: admin)
     AXOLOTL_PASS  Password for login (default: admin)
 """
@@ -30,7 +37,7 @@ import urllib.error
 
 # ─── Configuration ───────────────────────────────────────────────────
 
-AXOLOTL_URL = os.environ.get("AXOLOTL_URL", "http://localhost:8080")
+AXOLOTL_URL = os.environ.get("AXOLOTL_URL", "http://localhost:8082")
 AXOLOTL_USER = os.environ.get("AXOLOTL_USER", "admin")
 AXOLOTL_PASS = os.environ.get("AXOLOTL_PASS", "admin")
 TOKEN_DIR = os.path.expanduser("~/.axolotl")
@@ -245,6 +252,11 @@ def _print_usage() -> None:
     print(file=sys.stderr)
     print("Commands:", file=sys.stderr)
     print(f"  {prog} login", file=sys.stderr)
+    print(f"  {prog} execute <schema-id>", file=sys.stderr)
+    print(f"  {prog} wait <schema-id>", file=sys.stderr)
+    print(f"  {prog} results <schema-id> [run-id]", file=sys.stderr)
+    print(f"  {prog} nodes <schema-id>", file=sys.stderr)
+    print(f"  {prog} add-task \"Title\" [\"Description\"]", file=sys.stderr)
     print(f"  {prog} GET /api/path", file=sys.stderr)
     print(f"  {prog} POST /api/path '{{\"key\": \"value\"}}'", file=sys.stderr)
     print(f"  {prog} PUT /api/path '{{\"key\": \"value\"}}'", file=sys.stderr)
@@ -256,6 +268,27 @@ def _print_usage() -> None:
     print(f"  AXOLOTL_URL   (default: {AXOLOTL_URL})", file=sys.stderr)
     print(f"  AXOLOTL_USER  (default: {AXOLOTL_USER})", file=sys.stderr)
     print(f"  AXOLOTL_PASS  (default: {AXOLOTL_PASS})", file=sys.stderr)
+
+
+# ─── Schema Execution Helpers ────────────────────────────────────────
+
+def _latest_run(schema_id: str) -> dict | None:
+    """Fetch runs for a schema, return the most recent one by startedAt."""
+    runs = rest_call("GET", f"/api/schemas/{schema_id}/runs")
+    if not runs:
+        return None
+    return max(runs, key=lambda r: r.get("startedAt", ""))
+
+
+def _node_results(schema_id: str, run_id: str | None = None) -> list:
+    """Fetch node execution records for a schema run."""
+    if not run_id:
+        run = _latest_run(schema_id)
+        if not run:
+            return []
+        run_id = run["id"]
+    nodes = rest_call("GET", f"/api/schemas/{schema_id}/runs/{run_id}/nodes")
+    return nodes if nodes else []
 
 
 # ─── CLI Dispatcher ──────────────────────────────────────────────────
@@ -278,6 +311,79 @@ def main() -> None:
         tool = sys.argv[2]
         args = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
         result = mcp_call(tool, args)
+        print_json(result)
+        return
+
+    if command == "execute":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py execute <schema-id>")
+        schema_id = sys.argv[2]
+        result = rest_call("POST", f"/api/schemas/{schema_id}/execute")
+        print_json(result)
+        return
+
+    if command == "wait":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py wait <schema-id>")
+        schema_id = sys.argv[2]
+        print("Waiting for execution to complete...", file=sys.stderr)
+        for _ in range(120):
+            run = _latest_run(schema_id)
+            if not run:
+                print("No runs found for this schema.", file=sys.stderr)
+                return
+            status = run.get("status", "")
+            if status in ("completed", "failed", "paused"):
+                print_json(run)
+                return
+            print(".", end="", flush=True, file=sys.stderr)
+            time.sleep(5)
+        print("\nTimed out waiting for execution.", file=sys.stderr)
+        return
+
+    if command == "results":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py results <schema-id> [run-id]")
+        schema_id = sys.argv[2]
+        run_id = sys.argv[3] if len(sys.argv) > 3 else None
+        nodes = _node_results(schema_id, run_id)
+        if not nodes:
+            print("No node results found.", file=sys.stderr)
+            return
+        for n in nodes:
+            nid = n.get("nodeId", "?")
+            ntype = n.get("nodeType", "?")
+            status = n.get("status", "?")
+            tokens = n.get("tokensUsed", 0)
+            error = n.get("error", "")
+            out = n.get("outputSummary", "")
+            print(f"── {nid:30s} {ntype:12s} status={status:10s} tokens={tokens}")
+            if error:
+                print(f"   ERROR: {error[:200]}")
+            if out:
+                preview = out[:150].replace("\n", "\\n")
+                print(f"   output: {preview}")
+        return
+
+    if command == "nodes":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py nodes <schema-id>")
+        schema_id = sys.argv[2]
+        schema = rest_call("GET", f"/api/schemas/{schema_id}")
+        for n in schema.get("nodes", []):
+            d = n.get("data", {})
+            model = d.get("model", "-")
+            tools = d.get("enabledTools", []) or []
+            tools_str = ",".join(tools) if tools else "-"
+            print(f"  {n['id']:30s} [{n['type']:12s}] model={model:20s} tools={tools_str}")
+        return
+
+    if command == "add-task":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py add-task \"Title\" [\"Description\"]")
+        title = sys.argv[2]
+        description = sys.argv[3] if len(sys.argv) > 3 else ""
+        result = mcp_call("add_task", {"title": title, "description": description})
         print_json(result)
         return
 
