@@ -22,6 +22,7 @@ import java.util.Map;
 public class ReviewNodeStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewNodeStrategy.class);
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private final ExecutionUtilityService utilityService;
     private final LlmService llmService;
@@ -252,11 +253,10 @@ public class ReviewNodeStrategy {
                     node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
 
                     // Store result so downstream can pick up when approved
-                    String resultJson = "{\"status\":\"AWAITING_APPROVAL\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\",\"plan\":\"" + (planText != null ? planText.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\",\"rewrittenPlan\":\"" + (rewrittenPlan != null ? rewrittenPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\"}";
-                    return resultJson;
+                    return buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, rewrittenPlan, null);
                 }
                 // If PASS, no rewrite needed
-                finalResult = "{\"status\":\"PASS\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\",\"plan\":\"" + (planText != null ? planText.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\"}";
+                finalResult = buildResultJson("PASS", findingsText, summary, planText, null, null);
                 break;
 
             case "auto":
@@ -304,8 +304,7 @@ public class ReviewNodeStrategy {
                                 resultMap.put("status", "PASS");
                                 resultMap.put("plan", rewrittenPlan);
                                 resultMap.put("rewriteIterations", autoIteration);
-                                String passResult = "{\"status\":\"PASS\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\",\"plan\":\"" + (rewrittenPlan != null ? rewrittenPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\",\"rewriteIterations\":" + autoIteration + "}";
-                                return passResult;
+                                return buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, autoIteration);
                             }
 
                             if (reRoot.has("rewrittenPlan")) {
@@ -325,11 +324,10 @@ public class ReviewNodeStrategy {
                         webSocketHandler.sendLog(schemaId, "error",
                                 "Auto review failed after " + maxAutoIterations + " iterations", node.getId());
                     }
-                    String failResult = "{\"status\":\"FAILED\",\"findings\":" + findingsText + ",\"summary\":\"Max auto iterations (" + maxAutoIterations + ") reached without PASS\",\"plan\":\"" + (currentPlan != null ? currentPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\",\"rewriteIterations\":" + autoIteration + "}";
-                    return failResult;
+                    return buildResultJson("FAILED", findingsText, "Max auto iterations (" + maxAutoIterations + ") reached without PASS", currentPlan, null, autoIteration);
                 }
 
-                finalResult = "{\"status\":\"PASS\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\",\"plan\":\"" + (currentPlan != null ? currentPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\"}";
+                finalResult = buildResultJson("PASS", findingsText, summary, currentPlan, null, null);
                 break;
 
             case "hybrid":
@@ -374,8 +372,7 @@ public class ReviewNodeStrategy {
                             if ("PASS".equals(hyStatus)) {
                                 resultMap.put("status", "PASS");
                                 resultMap.put("plan", rewrittenPlan);
-                                String passResult = "{\"status\":\"PASS\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\",\"plan\":\"" + (rewrittenPlan != null ? rewrittenPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\"}";
-                                return passResult;
+                                return buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, null);
                             }
 
                             if (hyRoot.has("rewrittenPlan")) {
@@ -407,10 +404,10 @@ public class ReviewNodeStrategy {
                     }
 
                     node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
-                    return "{\"status\":\"AWAITING_APPROVAL\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\",\"plan\":\"" + (hybridPlan != null ? hybridPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\",\"rewrittenPlan\":\"" + (rewrittenPlan != null ? rewrittenPlan.replace("\"", "\\\"").replace("\n", "\\n") : "") + "\"}";
+                    return buildResultJson("AWAITING_APPROVAL", findingsText, summary, hybridPlan, rewrittenPlan, null);
                 }
 
-                finalResult = "{\"status\":\"PASS\",\"findings\":" + findingsText + ",\"summary\":\"" + (summary != null ? summary.replace("\"", "\\\"") : "") + "\"}";
+                finalResult = buildResultJson("PASS", findingsText, summary, null, null, null);
                 break;
         }
 
@@ -421,6 +418,22 @@ public class ReviewNodeStrategy {
         } catch (Exception e) {
             log.warn("Failed to serialize review result: {}", e.getMessage());
             return finalResult;
+        }
+    }
+
+    private String buildResultJson(String status, String findings, String summary, String plan, String rewrittenPlan, Integer rewriteIterations) {
+        try {
+            Map<String, Object> map = new HashMap<>();
+            map.put("status", status);
+            map.put("findings", findings);
+            if (summary != null) map.put("summary", summary);
+            if (plan != null) map.put("plan", plan);
+            if (rewrittenPlan != null) map.put("rewrittenPlan", rewrittenPlan);
+            if (rewriteIterations != null) map.put("rewriteIterations", rewriteIterations);
+            return JSON_MAPPER.writeValueAsString(map);
+        } catch (Exception e) {
+            log.warn("Failed to build review JSON: {}", e.getMessage());
+            return "{\"status\":\"" + status + "\"}";
         }
     }
 }

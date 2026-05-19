@@ -58,8 +58,7 @@ public class SchemaService {
     private final Object executionHistoryLock = new Object();
     private static final int MAX_HISTORY = 100;
     private static final int MAX_NODE_RESTARTS = 3;
-    private final ExecutorService executionExecutor = Executors.newFixedThreadPool(
-            Runtime.getRuntime().availableProcessors());
+    private final ExecutorService executionExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
 
     public SchemaService(Neo4jSchemaRepository schemaRepository,
