@@ -40,7 +40,7 @@ public class PlanRepository {
         try {
             return neo4jRepo.findByWorkspaceId(workspaceId).map(this::toPoco).orElse(null);
         } catch (Exception e) {
-            log.error("Ошибка чтения плана: {}", e.getMessage());
+            log.error("Ошибка чтения плана: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -52,7 +52,7 @@ public class PlanRepository {
                 plans.add(toPoco(g));
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения планов: {}", e.getMessage());
+            log.error("Ошибка чтения планов: {}", e.getMessage(), e);
         }
         return plans;
     }
@@ -61,7 +61,7 @@ public class PlanRepository {
         try {
             return neo4jRepo.findAllWorkspaceIds();
         } catch (Exception e) {
-            log.error("Ошибка чтения workspaces: {}", e.getMessage());
+            log.error("Ошибка чтения workspaces: {}", e.getMessage(), e);
             return List.of();
         }
     }
@@ -81,7 +81,7 @@ public class PlanRepository {
                 plans.add(toPoco(g));
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения дочерних планов: {}", e.getMessage());
+            log.error("Ошибка чтения дочерних планов: {}", e.getMessage(), e);
         }
         return plans;
     }
@@ -90,7 +90,7 @@ public class PlanRepository {
         try {
             return neo4jRepo.findBySchemaId(schemaId).map(this::toPoco).orElse(null);
         } catch (Exception e) {
-            log.error("Ошибка чтения плана по schemaId: {}", e.getMessage());
+            log.error("Ошибка чтения плана по schemaId: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -99,7 +99,7 @@ public class PlanRepository {
         try {
             return neo4jRepo.findById(id).map(this::toPoco).orElse(null);
         } catch (Exception e) {
-            log.error("Ошибка чтения плана: {}", e.getMessage());
+            log.error("Ошибка чтения плана: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -115,7 +115,7 @@ public class PlanRepository {
         try {
             g.setTasksJson(mapper.writeValueAsString(plan.getTasks()));
         } catch (Exception e) {
-            log.error("Error serializing tasks: {}", e.getMessage());
+            log.error("Error serializing tasks: {}", e.getMessage(), e);
             g.setTasksJson("[]");
         }
         g.setCreatedAt(plan.getCreatedAt() != null ? plan.getCreatedAt().toString() : null);

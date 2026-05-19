@@ -25,7 +25,7 @@ public class UserRepository {
         try {
             return neo4jRepo.findByUsername(username).map(this::toPoco).orElse(null);
         } catch (Exception e) {
-            log.error("Error finding user: {}", e.getMessage());
+            log.error("Error finding user: {}", e.getMessage(), e);
             return null;
         }
     }
@@ -37,7 +37,7 @@ public class UserRepository {
                 users.add(toPoco(g));
             }
         } catch (Exception e) {
-            log.error("Error listing users: {}", e.getMessage());
+            log.error("Error listing users: {}", e.getMessage(), e);
         }
         return users;
     }
@@ -46,7 +46,7 @@ public class UserRepository {
         try {
             neo4jRepo.save(toGraph(user));
         } catch (Exception e) {
-            log.error("Error saving user: {}", e.getMessage());
+            log.error("Error saving user: {}", e.getMessage(), e);
         }
     }
 
