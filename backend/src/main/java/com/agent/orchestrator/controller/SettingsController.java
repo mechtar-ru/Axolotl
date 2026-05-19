@@ -42,6 +42,15 @@ public class SettingsController {
         return ResponseEntity.ok(settings);
     }
 
+    @GetMapping("/{provider}/key")
+    public ResponseEntity<Map<String, Object>> getProviderApiKey(@PathVariable String provider) {
+        String apiKey = settingsService.getApiKey(provider);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("provider", provider);
+        response.put("apiKey", apiKey != null ? apiKey : "");
+        return ResponseEntity.ok(response);
+    }
+
     @PutMapping("/{provider}")
     public ResponseEntity<Map<String, Object>> updateProviderSettings(
             @PathVariable String provider,
@@ -70,8 +79,23 @@ public class SettingsController {
         // Use passed values if provided (for test-before-save flow)
         String effectiveBaseUrl = (baseUrl != null && !baseUrl.isBlank()) ? baseUrl : storedBaseUrl;
 
-        // Actually ping the provider via LlmService
-        Map<String, Object> health = llmService.checkProviderHealth(provider);
+        // Temp-save the passed key so providers that read from SettingsService pick it up
+        boolean tempKeySaved = false;
+        if (apiKey != null && !apiKey.isBlank()) {
+            settingsService.updateProviderSettings(provider, apiKey, null, null);
+            tempKeySaved = true;
+        }
+
+        Map<String, Object> health;
+        try {
+            // Actually ping the provider via LlmService
+            health = llmService.checkProviderHealth(provider);
+        } finally {
+            // Restore the old key after the test
+            if (tempKeySaved) {
+                settingsService.updateProviderSettings(provider, storedApiKey, null, null);
+            }
+        }
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("provider", provider);

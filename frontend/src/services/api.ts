@@ -268,6 +268,11 @@ export const settingsApi = {
     await api.put('/settings/user/default-model', { defaultModel: model });
   },
 
+  async getProviderApiKey(provider: string): Promise<string> {
+    const response = await api.get(`/settings/${provider}/key`);
+    return response.data.apiKey || '';
+  },
+
   async getDisabledModels(provider: string): Promise<string[]> {
     const response = await api.get(`/settings/${provider}/models/disabled`);
     return response.data;

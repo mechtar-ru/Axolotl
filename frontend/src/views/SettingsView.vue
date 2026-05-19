@@ -81,7 +81,7 @@
                   class="field-input"
                   @input="editedKeys[provider.name] = ($event.target as HTMLInputElement).value"
                 />
-                <button class="icon-btn" @click="showKeys[provider.name] = !showKeys[provider.name]" title="Show/Hide">
+                <button class="icon-btn" @click="toggleShowKey(provider.name)" title="Show/Hide">
                   <svg v-if="showKeys[provider.name]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                   <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
@@ -235,7 +235,7 @@
                   class="field-input"
                   @input="customEditedKeys[ep.id!] = ($event.target as HTMLInputElement).value"
                 />
-                <button class="icon-btn" @click="customShowKeys[ep.id!] = !customShowKeys[ep.id!]" title="Show/Hide">
+                <button class="icon-btn" @click="toggleCustomShowKey(ep.id!, ep)" title="Show/Hide">
                   <svg v-if="customShowKeys[ep.id!]" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
                   <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                 </button>
@@ -563,6 +563,18 @@ async function testProvider(name: string) {
   }
 }
 
+async function toggleShowKey(providerName: string) {
+  showKeys[providerName] = !showKeys[providerName];
+  if (showKeys[providerName] && !editedKeys[providerName]) {
+    try {
+      const key = await settingsApi.getProviderApiKey(providerName);
+      if (key) editedKeys[providerName] = key;
+    } catch (e) {
+      console.error('Failed to fetch API key:', e);
+    }
+  }
+}
+
 async function toggleModel(providerName: string, model: string, enabled: boolean) {
   await settingsStore.setModelDisabled(providerName, model, !enabled);
   // Refresh provider list to sync disabledModels state
@@ -649,6 +661,13 @@ async function deleteCustomEndpoint(id: string) {
     console.error('Failed to delete custom endpoint:', e);
   } finally {
     confirmDelete[id] = false;
+  }
+}
+
+function toggleCustomShowKey(id: string, endpoint: CustomLlmEndpoint) {
+  customShowKeys[id] = !customShowKeys[id];
+  if (customShowKeys[id] && !customEditedKeys[id] && endpoint.apiKey) {
+    customEditedKeys[id] = endpoint.apiKey;
   }
 }
 

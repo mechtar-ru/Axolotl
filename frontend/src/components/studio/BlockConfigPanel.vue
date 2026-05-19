@@ -34,6 +34,8 @@ const projectPath = ref('')
 const maxDepth = ref(4)
 const maxFiles = ref(50)
 const fetching = ref(false)
+const fileInputRef = ref<HTMLInputElement>()
+const dirInputRef = ref<HTMLInputElement>()
 
 // Determine config sections based on block type
 const showModelSelector = computed(() => ['agent', 'review', 'verifier'].includes(blockType.value))
@@ -134,9 +136,30 @@ watch(() => props.blockId, () => {
   maxFiles.value = (node.value.data?.config as Record<string, any>)?.maxFiles as number || 50
 }, { immediate: true })
 
+function browseFilePath() {
+  fileInputRef.value?.click()
+}
+
+function onFilePicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+  const name = input.files[0].name
+  filePath.value = name
+  saveConfig()
+  input.value = ''
+}
+
 function browseProjectDir() {
-  // For MVP, placeholder — manual path input only
-  // Electron: window.electronAPI?.showOpenDialog
+  dirInputRef.value?.click()
+}
+
+function onDirPicked(e: Event) {
+  const input = e.target as HTMLInputElement
+  if (!input.files?.length) return
+  const file = input.files[0]
+  projectPath.value = file.webkitRelativePath?.split('/')[0] || file.name
+  saveConfig()
+  input.value = ''
 }
 
 function fetchUrlPreview() {
@@ -343,11 +366,12 @@ function handleKeydown(e: KeyboardEvent) {
             placeholder=".ideas/002.md"
             @input="saveConfig"
           />
-          <button class="icon-btn" @click="fetchUrlPreview" title="Browse (manual path)">
+          <button class="icon-btn" @click="browseFilePath" title="Browse">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
           </button>
+          <input ref="fileInputRef" type="file" style="display:none" @change="onFilePicked" />
         </div>
         <div v-if="sourceType === 'file' && filePath" class="config-hint">
           Path is relative to schema target directory
@@ -391,6 +415,7 @@ function handleKeydown(e: KeyboardEvent) {
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
           </button>
+          <input ref="dirInputRef" type="file" webkitdirectory style="display:none" @change="onDirPicked" />
         </div>
         <div class="inline-fields">
           <label class="config-label-inline">

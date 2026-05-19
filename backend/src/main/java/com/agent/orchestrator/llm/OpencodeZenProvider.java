@@ -1,5 +1,6 @@
 package com.agent.orchestrator.llm;
 
+import com.agent.orchestrator.service.SettingsService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ public class OpencodeZenProvider implements LlmProvider {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final SettingsService settingsService;
 
     @Value("${axolotl.llm.zen.base-url:https://opencode.ai/zen/v1}")
     private String baseUrl;
@@ -39,19 +41,26 @@ public class OpencodeZenProvider implements LlmProvider {
     @Value("${axolotl.llm.zen.timeout:3600}")
     private int timeoutSeconds;
 
-    public OpencodeZenProvider() {
+    public OpencodeZenProvider(SettingsService settingsService) {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .version(HttpClient.Version.HTTP_1_1)
                 .build();
         this.objectMapper = new ObjectMapper();
+        this.settingsService = settingsService;
+    }
+
+    private String getEffectiveApiKey() {
+        String key = settingsService.getApiKey("zen");
+        if (key != null && !key.isBlank()) return key;
+        return apiKey;
     }
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String effectiveModel = resolveModel(model);
         
-        if (apiKey == null || apiKey.isBlank()) {
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             return "OpenCode Zen: API ключ не настроен. Установите ZEN_API_KEY в .env файле";
         }
 
@@ -72,7 +81,7 @@ public class OpencodeZenProvider implements LlmProvider {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/chat/completions"))
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + getEffectiveApiKey())
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
@@ -96,7 +105,7 @@ public class OpencodeZenProvider implements LlmProvider {
                 HttpRequest retryRequest = HttpRequest.newBuilder()
                         .uri(URI.create(baseUrl + "/chat/completions"))
                         .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + apiKey)
+                        .header("Authorization", "Bearer " + getEffectiveApiKey())
                         .POST(HttpRequest.BodyPublishers.ofString(json))
                         .timeout(Duration.ofSeconds(timeoutSeconds))
                         .build();
@@ -158,11 +167,12 @@ public class OpencodeZenProvider implements LlmProvider {
 
     @Override
     public boolean isAvailable() {
-        if (apiKey == null || apiKey.isBlank()) return false;
+        String key = getEffectiveApiKey();
+        if (key == null || key.isBlank()) return false;
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + key)
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
@@ -180,10 +190,12 @@ public class OpencodeZenProvider implements LlmProvider {
 
     @Override
     public List<String> listModels() {
+        String key = getEffectiveApiKey();
+        if (key == null || key.isBlank()) return List.of();
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + key)
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
@@ -232,7 +244,8 @@ public class OpencodeZenProvider implements LlmProvider {
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
         
-        if (apiKey == null || apiKey.isBlank()) {
+        String effectiveKey = getEffectiveApiKey();
+        if (effectiveKey == null || effectiveKey.isBlank()) {
             String error = "OpenCode Zen: API ключ не настроен";
             onToken.accept(error);
             return error;
@@ -255,7 +268,7 @@ public class OpencodeZenProvider implements LlmProvider {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/chat/completions"))
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Authorization", "Bearer " + effectiveKey)
                     .POST(HttpRequest.BodyPublishers.ofString(json))
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
@@ -279,7 +292,7 @@ public class OpencodeZenProvider implements LlmProvider {
                 HttpRequest retryRequest = HttpRequest.newBuilder()
                         .uri(URI.create(baseUrl + "/chat/completions"))
                         .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + apiKey)
+                        .header("Authorization", "Bearer " + getEffectiveApiKey())
                         .POST(HttpRequest.BodyPublishers.ofString(json))
                         .timeout(Duration.ofSeconds(timeoutSeconds))
                         .build();
