@@ -52,7 +52,7 @@ public class ExecutionRepository {
         try {
             runRepo.save(toGraphRun(run));
         } catch (Exception e) {
-            log.error("Error creating execution run {}: {}", run.getId(), e.getMessage());
+            log.error("Error creating execution run {}: {}", run.getId(), e.getMessage(), e);
         }
     }
 
@@ -65,7 +65,7 @@ public class ExecutionRepository {
                 runRepo.save(graphRun);
             });
         } catch (Exception e) {
-            log.error("Error updating run status {}: {}", id, e.getMessage());
+            log.error("Error updating run status {}: {}", id, e.getMessage(), e);
         }
     }
 
@@ -81,7 +81,7 @@ public class ExecutionRepository {
                 runRepo.save(graphRun);
             });
         } catch (Exception e) {
-            log.error("Error updating run completion {}: {}", id, e.getMessage());
+            log.error("Error updating run completion {}: {}", id, e.getMessage(), e);
         }
     }
 
@@ -89,7 +89,7 @@ public class ExecutionRepository {
         try {
             return runRepo.findById(id).map(this::toPocoRun).orElse(null);
         } catch (Exception e) {
-            log.error("Error reading run {}: {}", id, e.getMessage());
+            log.error("Error reading run {}: {}", id, e.getMessage(), e);
             return null;
         }
     }
@@ -99,7 +99,7 @@ public class ExecutionRepository {
             return runRepo.findBySchemaIdOrderByStartedAtDesc(schemaId)
                     .stream().map(this::toPocoRun).toList();
         } catch (Exception e) {
-            log.error("Error reading runs for schema {}: {}", schemaId, e.getMessage());
+            log.error("Error reading runs for schema {}: {}", schemaId, e.getMessage(), e);
             return List.of();
         }
     }
@@ -109,7 +109,7 @@ public class ExecutionRepository {
             return runRepo.findLatestBySchemaIdAndStatus(schemaId, status)
                     .map(this::toPocoRun).orElse(null);
         } catch (Exception e) {
-            log.error("Error finding latest run {} status {}: {}", schemaId, status, e.getMessage());
+            log.error("Error finding latest run {} status {}: {}", schemaId, status, e.getMessage(), e);
             return null;
         }
     }
@@ -118,7 +118,7 @@ public class ExecutionRepository {
         try {
             return runRepo.hasActiveRun(schemaId);
         } catch (Exception e) {
-            log.error("Error checking active run: {}", e.getMessage());
+            log.error("Error checking active run: {}", e.getMessage(), e);
             return false;
         }
     }
@@ -129,7 +129,7 @@ public class ExecutionRepository {
         try {
             nodeExecRepo.save(toGraphNodeExec(ne));
         } catch (Exception e) {
-            log.error("Error creating node_execution: {}", e.getMessage());
+            log.error("Error creating node_execution: {}", e.getMessage(), e);
         }
     }
 
@@ -147,7 +147,7 @@ public class ExecutionRepository {
                 nodeExecRepo.save(graph);
             });
         } catch (Exception e) {
-            log.error("Error updating node_execution {}: {}", id, e.getMessage());
+            log.error("Error updating node_execution {}: {}", id, e.getMessage(), e);
         }
     }
 
@@ -167,7 +167,7 @@ public class ExecutionRepository {
                 nodeExecRepo.save(graph);
             });
         } catch (Exception e) {
-            log.error("Error updating node_execution {}: {}", id, e.getMessage());
+            log.error("Error updating node_execution {}: {}", id, e.getMessage(), e);
         }
     }
 
@@ -176,7 +176,7 @@ public class ExecutionRepository {
             return nodeExecRepo.findByRunIdOrderByStartedAtAsc(runId)
                     .stream().map(this::toPocoNodeExec).toList();
         } catch (Exception e) {
-            log.error("Error reading node_executions for run {}: {}", runId, e.getMessage());
+            log.error("Error reading node_executions for run {}: {}", runId, e.getMessage(), e);
             return List.of();
         }
     }
@@ -187,7 +187,7 @@ public class ExecutionRepository {
         try {
             checkpointRepo.save(toGraphCheckpoint(checkpoint));
         } catch (Exception e) {
-            log.error("Error saving checkpoint: {}", e.getMessage());
+            log.error("Error saving checkpoint: {}", e.getMessage(), e);
         }
     }
 
@@ -196,7 +196,7 @@ public class ExecutionRepository {
             return checkpointRepo.findLatestByRunId(runId)
                     .map(this::toPocoCheckpoint).orElse(null);
         } catch (Exception e) {
-            log.error("Error reading latest checkpoint for run {}: {}", runId, e.getMessage());
+            log.error("Error reading latest checkpoint for run {}: {}", runId, e.getMessage(), e);
             return null;
         }
     }
@@ -206,7 +206,7 @@ public class ExecutionRepository {
             return checkpointRepo.findByRunIdOrderByCreatedAtAsc(runId)
                     .stream().map(this::toPocoCheckpoint).toList();
         } catch (Exception e) {
-            log.error("Error reading checkpoints for run {}: {}", runId, e.getMessage());
+            log.error("Error reading checkpoints for run {}: {}", runId, e.getMessage(), e);
             return List.of();
         }
     }
@@ -217,7 +217,7 @@ public class ExecutionRepository {
         try {
             recordRepo.save(toGraphRecord(record));
         } catch (Exception e) {
-            log.error("Error saving execution record: {}", e.getMessage());
+            log.error("Error saving execution record: {}", e.getMessage(), e);
         }
     }
 
@@ -226,7 +226,7 @@ public class ExecutionRepository {
             return recordRepo.findBySchemaIdOrderByStartTimeDesc(schemaId)
                     .stream().map(this::toPocoRecord).toList();
         } catch (Exception e) {
-            log.error("Error reading records for schema {}: {}", schemaId, e.getMessage());
+            log.error("Error reading records for schema {}: {}", schemaId, e.getMessage(), e);
             return List.of();
         }
     }
@@ -236,7 +236,7 @@ public class ExecutionRepository {
             return recordRepo.findTop50ByOrderByStartTimeDesc()
                     .stream().map(this::toPocoRecord).toList();
         } catch (Exception e) {
-            log.error("Error reading all execution records: {}", e.getMessage());
+            log.error("Error reading all execution records: {}", e.getMessage(), e);
             return List.of();
         }
     }
@@ -246,7 +246,7 @@ public class ExecutionRepository {
             recordRepo.deleteRecordsOlderThan(cutoffTimestamp);
             log.info("Удалены записи выполнения старше cutoff={}", cutoffTimestamp);
         } catch (Exception e) {
-            log.error("Ошибка при удалении старых записей выполнения: {}", e.getMessage());
+            log.error("Ошибка при удалении старых записей выполнения: {}", e.getMessage(), e);
         }
     }
 

@@ -317,6 +317,30 @@ onActivated(async () => {
       }
     }
   }
+
+  // Restore execution state from persisted backend data if an active/paused run exists
+  try {
+    const run = await schemaApi.getPausedRun(currentId)
+    if (run) {
+      const nodes = await schemaApi.getRunNodes(currentId, run.id)
+      if (nodes.length > 0) {
+        executionProgress.value = {
+          totalNodes: nodes.length,
+          completedNodes: nodes.filter(n => n.status === 'completed' || n.status === 'failed').length
+        }
+        for (const n of nodes) {
+          if (n.nodeId) {
+            nodeStatuses.value[n.nodeId] = n.status
+            if (n.outputSummary) {
+              nodeResults.value[n.nodeId] = n.outputSummary
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Not critical — ResumeBanner will show independently, or no active run exists
+  }
 })
 
 // Navigate back to dashboard
