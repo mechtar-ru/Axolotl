@@ -61,7 +61,11 @@ function buildVueFlowNodes(schema: any): Node[] {
     data: {
       label: n.name,
       type: n.type,
-      config: n.data,
+      config: {
+        ...((n.data?.config as Record<string, any>) || {}),
+        model: n.data?.model || '',
+        systemPrompt: n.data?.systemPrompt || '',
+      },
       status: n.status
     }
   }))
@@ -69,13 +73,15 @@ function buildVueFlowNodes(schema: any): Node[] {
 
 function buildVueFlowEdges(schema: any): Edge[] {
   if (!schema.edges) return []
-  return schema.edges.map((e: FlowEdge) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: 'smoothstep',
-    markerEnd: { type: MarkerType.ArrowClosed }
-  }))
+  return schema.edges
+    .filter((e: FlowEdge) => e?.source && e?.target)
+    .map((e: FlowEdge) => ({
+      id: e.id || `${e.source}->${e.target}`,
+      source: e.source,
+      target: e.target,
+      type: 'smoothstep',
+      markerEnd: { type: MarkerType.ArrowClosed }
+    }))
 }
 
 // Load full schema (with nodes + edges) from API detail endpoint
@@ -187,13 +193,21 @@ function onQuickStart() {
 function syncFlowToStore() {
   if (!schemaStore.currentSchema) return
 
-  const updatedNodes: FlowNode[] = nodes.value.map(n => ({
-    id: n.id,
-    type: (n.type || 'agent') as FlowNode['type'],
-    name: (n.data?.label as string) || n.id,
-    position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
-    data: (n.data?.config as Record<string, any>) || {}
-  }))
+  const updatedNodes: FlowNode[] = nodes.value.map(n => {
+    const vueFlowConfig = (n.data?.config as Record<string, any>) || {};
+    const { model: m, systemPrompt: sp, ...restConfig } = vueFlowConfig;
+    return {
+      id: n.id,
+      type: (n.type || 'agent') as FlowNode['type'],
+      name: (n.data?.label as string) || n.id,
+      position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
+      data: {
+        model: m || '',
+        systemPrompt: sp || '',
+        config: restConfig
+      }
+    }
+  })
 
   const updatedEdges: FlowEdge[] = edges.value.map(e => ({
     id: e.id,

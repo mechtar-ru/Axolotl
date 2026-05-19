@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useAuthStore } from '@/stores/authStore'
 import { schemaApi } from '@/services/api'
 import type { WorkflowSchema } from '@/types'
 import { useWebSocket } from '@/composables/useWebSocket'
@@ -18,6 +19,7 @@ type StudioMode = 'blueprint' | 'timeline'
 const route = useRoute()
 const router = useRouter()
 const schemaStore = useSchemaStore()
+const authStore = useAuthStore()
 
 const activeMode = ref<StudioMode>('blueprint')
 const appId = ref('')
@@ -273,10 +275,16 @@ onDeactivated(() => {
 onActivated(async () => {
   const currentId = route.params.id as string
   if (!currentId) return
-  
+
+  // Sync auth token from localStorage (may have been updated by addInitScript between navigations)
+  const storedToken = localStorage.getItem('axolotl_token')
+  if (storedToken && authStore.token !== storedToken) {
+    authStore.token = storedToken
+  }
+
   const changed = currentId !== appId.value
   appId.value = currentId
-  
+
   // Always re-fetch schema from backend to get latest persisted state
   // This ensures any changes made via BlockConfigPanel (model select, prompt, etc.)
   // are reflected even if the save was still in-flight when the user navigated away
@@ -299,6 +307,14 @@ onActivated(async () => {
     if (found) {
       schemaStore.currentSchema = found
       document.title = `${found.name} - Axolotl Studio`
+    } else {
+      // Schema not in cached store — try reloading from backend
+      await schemaStore.loadSchemas()
+      const reloaded = schemaStore.schemas.find(s => s.id === appId.value)
+      if (reloaded) {
+        schemaStore.currentSchema = reloaded
+        document.title = `${reloaded.name} - Axolotl Studio`
+      }
     }
   }
 })

@@ -95,17 +95,17 @@ public class SchemaService {
         log.info("getAllSchemas() called - fetching from Neo4j");
         List<WorkflowSchema> schemas = schemaRepository.findAll();
         log.info("Returned {} schemas from repository", schemas.size());
-        return schemas;
+        return schemas.stream().map(this::sanitizeSchema).toList();
     }
 
     public List<WorkflowSchema> getSchemasByUserId(String userId) {
         if (userId != null && !userId.isBlank()) {
             List<WorkflowSchema> userSchemas = schemaRepository.findByUserId(userId);
             if (!userSchemas.isEmpty()) {
-                return userSchemas;
+                return userSchemas.stream().map(this::sanitizeSchema).toList();
             }
         }
-        return schemaRepository.findAll();
+        return schemaRepository.findAll().stream().map(this::sanitizeSchema).toList();
     }
 
     public WorkflowSchema getSchema(String id) {

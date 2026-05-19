@@ -152,10 +152,10 @@ baseTest.describe('Dashboard', () => {
     // Check modal has name input, type select, and action buttons
     await expect(page.locator('.app-modal-content .input[type="text"]')).toBeVisible();
     await expect(page.locator('.app-modal-content select.input')).toBeVisible();
-    await expect(page.locator('.btn-secondary')).toContainText('Cancel');
+    await expect(page.locator('.app-modal-content .btn-secondary')).toContainText('Cancel');
     await expect(page.locator('.app-modal-content .btn-primary')).toContainText('Create');
-    // Close modal
-    await page.locator('.btn-secondary').click();
+    // Close modal — use locator scoped to the modal
+    await page.locator('.app-modal-content .btn-secondary').click();
     await expect(page.locator('.app-modal-content')).not.toBeVisible();
   });
 

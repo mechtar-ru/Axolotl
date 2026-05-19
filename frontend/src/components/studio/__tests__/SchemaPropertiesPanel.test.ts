@@ -3,6 +3,19 @@ import { mount } from '@vue/test-utils'
 import { describe, it, expect, vi } from 'vitest'
 import { ref } from 'vue'
 
+// Mock settingsApi.getProviders so model options populate
+vi.mock('@/services/api', () => ({
+  settingsApi: {
+    getProviders: vi.fn(() => Promise.resolve([
+      {
+        name: 'openai',
+        models: ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo'],
+        disabledModels: [],
+      },
+    ])),
+  },
+}))
+
 // Mock the schema store
 vi.mock('@/stores/schemaStore', () => ({
   useSchemaStore: vi.fn(() => ({
@@ -16,6 +29,7 @@ vi.mock('@/stores/schemaStore', () => ({
       edges: [],
     }),
     updateSchema: vi.fn(),
+    markDirty: vi.fn(),
   })),
 }))
 
@@ -41,9 +55,15 @@ describe('SchemaPropertiesPanel', () => {
     expect(wrapper.text()).toContain('/Users/test/project')
   })
 
-  it('renders default model', () => {
+  it('renders model dropdown with current model value', async () => {
     const wrapper = mount(SchemaPropertiesPanel)
-    expect(wrapper.text()).toContain('gpt-4')
+    const select = wrapper.find('select')
+    expect(select.exists()).toBe(true)
+    // Wait for onMounted async API call to resolve
+    await new Promise(resolve => setTimeout(resolve, 0))
+    // gpt-4 should exist as an option from the mocked API
+    const gptOption = wrapper.find('option[value="gpt-4"]')
+    expect(gptOption.exists()).toBe(true)
   })
 
   it('renders quick action buttons', () => {

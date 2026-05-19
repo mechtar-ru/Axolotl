@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { storeToRefs } from 'pinia'
+import { settingsApi } from '@/services/api'
 
 const emit = defineEmits<{
   addNode: []
@@ -12,11 +13,45 @@ const emit = defineEmits<{
 const schemaStore = useSchemaStore()
 const { currentSchema } = storeToRefs(schemaStore)
 
-const defaultModel = computed(() => currentSchema.value?.defaultModel || '')
-const targetPath = computed(() => currentSchema.value?.targetPath || '')
+const isEditingPath = ref(false)
+
+// ─── Model dropdown ──────────────────────────────────────────────
+const providerOptions = ref<{ value: string; label: string; group: string }[]>([])
+
+const providerGroups = computed(() => {
+  const groups: Record<string, { value: string; label: string }[]> = {}
+  for (const opt of providerOptions.value) {
+    if (!groups[opt.group]) groups[opt.group] = []
+    groups[opt.group].push({ value: opt.value, label: opt.label })
+  }
+  return groups
+})
+
+onMounted(async () => {
+  try {
+    const providers = await settingsApi.getProviders()
+    const opts: { value: string; label: string; group: string }[] = []
+    for (const p of providers) {
+      const disabled = new Set(p.disabledModels || [])
+      for (const m of p.models || []) {
+        if (!disabled.has(m)) {
+          opts.push({ value: m, label: m, group: p.name })
+        }
+      }
+    }
+    providerOptions.value = opts
+  } catch {
+    // providers unavailable — dropdown stays empty
+  }
+})
+
+// ─── Computed values ─────────────────────────────────────────────
 const schemaName = computed(() => currentSchema.value?.name || '')
 const schemaDescription = computed(() => currentSchema.value?.description || '')
+const targetPath = computed(() => currentSchema.value?.targetPath || '')
+const defaultModel = computed(() => currentSchema.value?.defaultModel || '')
 
+// ─── Actions ─────────────────────────────────────────────────────
 function updateName(value: string) {
   if (!currentSchema.value) return
   schemaStore.markDirty({ ...currentSchema.value, name: value })
@@ -25,6 +60,40 @@ function updateName(value: string) {
 function updateDescription(value: string) {
   if (!currentSchema.value) return
   schemaStore.markDirty({ ...currentSchema.value, description: value })
+}
+
+function updateDefaultModel(value: string) {
+  if (!currentSchema.value) return
+  schemaStore.markDirty({
+    ...currentSchema.value,
+    defaultModel: value || undefined,
+  })
+}
+
+function startEditPath() {
+  isEditingPath.value = true
+  // Focus the input on next tick after it renders
+  setTimeout(() => {
+    const input = document.querySelector('.path-input') as HTMLInputElement
+    input?.focus()
+    input?.select()
+  }, 0)
+}
+
+function commitPath(value: string) {
+  isEditingPath.value = false
+  if (!currentSchema.value) return
+  const trimmed = value.trim()
+  if (trimmed === currentSchema.value.targetPath) return // no change
+  if (!trimmed) {
+    // Clear was rejected — just reset
+    return
+  }
+  schemaStore.markDirty({ ...currentSchema.value, targetPath: trimmed })
+}
+
+function cancelEditPath() {
+  isEditingPath.value = false
 }
 </script>
 
@@ -35,6 +104,7 @@ function updateDescription(value: string) {
     </div>
 
     <div class="panel-body">
+      <!-- Name -->
       <div class="config-section">
         <label class="config-label">Name</label>
         <input
@@ -46,6 +116,7 @@ function updateDescription(value: string) {
         />
       </div>
 
+      <!-- Description -->
       <div class="config-section">
         <label class="config-label">Description</label>
         <textarea
@@ -57,23 +128,51 @@ function updateDescription(value: string) {
         />
       </div>
 
+      <!-- Target Path -->
       <div class="config-section">
         <label class="config-label">Target Path</label>
-        <div class="path-display">
+        <div v-if="!isEditingPath" class="path-display clickable" @click="startEditPath">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="icon">
             <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
           </svg>
           <span class="path-text">{{ targetPath || '(not set)' }}</span>
         </div>
-      </div>
-
-      <div class="config-section">
-        <label class="config-label">Default Model</label>
-        <div class="model-display">
-          <span class="model-text">{{ defaultModel || 'Auto (user default)' }}</span>
+        <div v-else class="path-display">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="icon" style="cursor:pointer" @click="cancelEditPath">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+          <input
+            :value="targetPath"
+            @blur="commitPath(($event.target as HTMLInputElement).value)"
+            @keydown.enter="commitPath(($event.target as HTMLInputElement).value)"
+            @keydown.escape="cancelEditPath"
+            type="text"
+            class="path-input"
+            placeholder="e.g. ~/git/Axolotl/my-app"
+          />
         </div>
       </div>
 
+      <!-- Default Model -->
+      <div class="config-section">
+        <label class="config-label">Default Model</label>
+        <select
+          :value="defaultModel"
+          @change="updateDefaultModel(($event.target as HTMLSelectElement).value)"
+          class="config-select"
+        >
+          <option value="">Auto (user default)</option>
+          <template v-for="(models, group) in providerGroups" :key="group">
+            <optgroup :label="group">
+              <option v-for="m in models" :key="m.value" :value="m.value">
+                {{ m.label }}
+              </option>
+            </optgroup>
+          </template>
+        </select>
+      </div>
+
+      <!-- Quick Actions -->
       <div class="config-section quick-actions">
         <label class="config-label">Quick Actions</label>
         <button class="action-btn" @click="emit('addNode')">
@@ -92,23 +191,14 @@ function updateDescription(value: string) {
 
 <style scoped>
 .schema-properties-panel {
-  position: absolute;
-  top: 0;
-  right: 0;
   width: 320px;
-  height: 100%;
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   box-shadow: var(--shadow-lg);
   z-index: 20;
   display: flex;
   flex-direction: column;
-  animation: slideIn 0.2s ease-out;
-}
-
-@keyframes slideIn {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  overflow-y: auto;
 }
 
 .panel-header {
@@ -188,25 +278,36 @@ function updateDescription(value: string) {
   background: var(--bg-hover);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.path-display.clickable {
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.path-display.clickable:hover {
+  background: var(--bg-active);
+}
+
+.path-text {
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.path-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--text-sm);
   font-family: monospace;
   color: var(--text-primary);
+  outline: none;
 }
 
 .icon {
   flex-shrink: 0;
   color: var(--text-muted);
-}
-
-.path-text {
-  word-break: break-all;
-}
-
-.model-display {
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-hover);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  color: var(--text-primary);
 }
 
 .quick-actions {
