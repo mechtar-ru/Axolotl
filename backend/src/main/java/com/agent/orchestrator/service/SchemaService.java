@@ -462,6 +462,63 @@ public class SchemaService {
     }
 
     /**
+     * Handle review approval — store approval flag and resume execution
+     * so the review node can skip re-review on next run.
+     */
+    public void handleReviewApprove(String executionId, String nodeId) {
+        String approvedKey = executionId + ":" + nodeId + ":approved";
+        nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
+                .put(approvedKey, "true");
+
+        WorkflowSchema schema = schemaRepository.findById(executionId);
+        if (schema == null) {
+            log.warn("Approval requested for non-existent schema: {}", executionId);
+            return;
+        }
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
+                    node.setStatus(Node.NodeStatus.IDLE);
+                    log.info("Review node {} approved, resuming execution", nodeId);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(executionId, "info",
+                                "Plan approved, resuming execution", nodeId);
+                        webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                                Map.of("nodeId", nodeId, "status", "RUNNING"));
+                    }
+                    break;
+                }
+            }
+        }
+        resumeExecution(executionId, schema);
+    }
+
+    /**
+     * Handle review rejection — fail the node.
+     */
+    public void handleReviewReject(String executionId, String nodeId) {
+        WorkflowSchema schema = schemaRepository.findById(executionId);
+        if (schema != null && schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
+                    node.setStatus(Node.NodeStatus.FAILED);
+                    log.info("Review node {} rejected, marking FAILED", nodeId);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(executionId, "error",
+                                "Plan rejected by user, node failed: " + nodeId, nodeId);
+                        Map<String, Object> payload = new HashMap<>();
+                        payload.put("nodeId", nodeId);
+                        payload.put("status", "FAILED");
+                        payload.put("error", "Plan rejected by user");
+                        webSocketHandler.sendLiveUpdate(executionId, "review_rejected", payload);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    /**
      * Get all node results for a given execution (used by output summary report).
      */
     public Map<String, String> getExecutionResults(String executionId) {

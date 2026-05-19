@@ -13,6 +13,8 @@ import TimelineView from '@/components/studio/TimelineView.vue'
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import ResumeBanner from '@/components/studio/ResumeBanner.vue'
 import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
+import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
+import type { ReviewData, ReviewFinding } from '@/stores/schemaStore'
 
 type StudioMode = 'blueprint' | 'timeline'
 
@@ -42,6 +44,15 @@ const executionError = ref<string | null>(null)
 const nodeResults = ref<Record<string, any>>({})      // nodeId → result content
 const nodeStatuses = ref<Record<string, string>>({})   // nodeId → status (running/completed/failed)
 const executionProgress = ref<{ totalNodes: number; completedNodes: number } | null>(null)
+
+// Review approval state
+const currentExecutionId = ref('')
+const showReviewDialog = ref(false)
+const reviewPlan = ref('')
+const reviewNodeId = ref('')
+const reviewFindings = ref<ReviewFinding[]>([])
+const reviewIteration = ref(1)
+const reviewMode = ref('manual')
 
 // Provide state for child components
 provide('appState', {
@@ -118,6 +129,19 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       isRunning.value = false
       addStepEvent(data.nodeId, 'failed', data.error)
     },
+    onLiveUpdate: (data) => {
+      if (!isActive) return
+      const payload = data.payload as Record<string, any>
+      if (payload?.status === 'AWAITING_APPROVAL') {
+        currentExecutionId.value = data.schemaId
+        reviewNodeId.value = payload.nodeId || ''
+        reviewPlan.value = payload.rewrittenPlan || payload.plan || ''
+        reviewFindings.value = parseFindings(payload.findings)
+        reviewIteration.value = 1
+        reviewMode.value = payload.mode || 'manual'
+        showReviewDialog.value = true
+      }
+    },
   })
 
   if (!skipSave) {
@@ -175,6 +199,27 @@ function addStepEvent(nodeId: string, status: string, details?: string) {
     duration,
     timestamp: now
   })
+}
+
+function parseFindings(findings: any): ReviewFinding[] {
+  if (!findings) return []
+  if (Array.isArray(findings)) return findings
+  if (typeof findings === 'string') {
+    try {
+      return JSON.parse(findings)
+    } catch {}
+  }
+  return []
+}
+
+function handleReviewApprove() {
+  showReviewDialog.value = false
+  schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
+}
+
+function handleReviewReject() {
+  showReviewDialog.value = false
+  schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
 }
 
 async function handleResume() {
@@ -393,6 +438,22 @@ function goToDashboard() {
     <PromptToSchemaModal
       :visible="showGenerateFromPrompt"
       @close="showGenerateFromPrompt = false"
+    />
+
+    <ReviewApprovalDialog
+      :visible="showReviewDialog"
+      :schema-id="appId"
+      :execution-id="currentExecutionId"
+      :node-id="reviewNodeId"
+      :original-plan="reviewPlan"
+      :rewritten-plan="reviewPlan"
+      :findings="reviewFindings"
+      :iteration="reviewIteration"
+      :max-iterations="3"
+      :mode="reviewMode"
+      :feedback-history="[]"
+      @approve="handleReviewApprove"
+      @reject="handleReviewReject"
     />
   </div>
 </template>

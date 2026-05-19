@@ -92,10 +92,29 @@ public class ReviewNodeStrategy {
                     null, null, null);
         }
 
-        // Check for pending feedback in execution state
+        // Check for pending feedback or approval in execution state
         String feedbackKey = schemaId + ":" + node.getId() + ":feedback";
         String pendingFeedback = stateManager.getNodeResults().get(schemaId) != null
                 ? stateManager.getNodeResults().get(schemaId).get(feedbackKey) : null;
+        String approvedKey = schemaId + ":" + node.getId() + ":approved";
+        boolean isApproved = stateManager.getNodeResults().get(schemaId) != null
+                && "true".equals(stateManager.getNodeResults().get(schemaId).get(approvedKey));
+
+        // If plan was already approved by user, skip re-review and output PASS
+        if (isApproved) {
+            log.info("Review node {} previously approved, skipping re-review", node.getId());
+            Map<String, Object> passResult = new HashMap<>();
+            passResult.put("status", "PASS");
+            passResult.put("findings", JSON_MAPPER.createArrayNode());
+            passResult.put("summary", "Plan was approved by user");
+            passResult.put("plan", inputContent);
+            passResult.put("originalInput", inputContent);
+            passResult.put("mode", mode);
+            passResult.put("finalResult", buildResultJson("PASS", "[]",
+                    "Plan was approved by user", inputContent, null, null));
+            cleanApprovalFlag(schemaId, node.getId(), stateManager);
+            return serializeResult(passResult);
+        }
 
         // ── Phase 1: Plan Generation ──
         String planText;
@@ -214,10 +233,18 @@ public class ReviewNodeStrategy {
             }
         }
 
+        // Parse findings string to JSON node for proper serialization
+        JsonNode findingsNode;
+        try {
+            findingsNode = JSON_MAPPER.readTree(findingsText);
+        } catch (Exception e) {
+            findingsNode = JSON_MAPPER.createArrayNode();
+        }
+
         // Build structured result
         Map<String, Object> resultMap = new HashMap<>();
         resultMap.put("status", reviewStatus);
-        resultMap.put("findings", findingsText);
+        resultMap.put("findings", findingsNode);
         resultMap.put("summary", summary);
         resultMap.put("plan", planText);
         resultMap.put("originalInput", inputContent);
@@ -228,36 +255,31 @@ public class ReviewNodeStrategy {
         String finalResult;
 
         switch (mode) {
-            case "manual":
-                // Always show human approval dialog
-                if (planWasRewritten) {
-                    // Store rewritten plan
-                    resultMap.put("rewrittenPlan", rewrittenPlan);
-                    resultMap.put("requiresApproval", true);
+            case "manual": {
+                // Always show human approval dialog (PASS or REWRITE)
+                resultMap.put("rewrittenPlan", rewrittenPlan != null ? rewrittenPlan : planText);
+                resultMap.put("requiresApproval", true);
 
-                    // Emit review_awaiting_approval WS event
-                    if (webSocketHandler != null) {
-                        Map<String, Object> approvalPayload = new HashMap<>();
-                        approvalPayload.put("nodeId", node.getId());
-                        approvalPayload.put("status", "AWAITING_APPROVAL");
-                        approvalPayload.put("plan", planText);
-                        approvalPayload.put("rewrittenPlan", rewrittenPlan);
-                        approvalPayload.put("findings", findingsText);
-                        approvalPayload.put("summary", summary);
-                        approvalPayload.put("mode", "manual");
-                        approvalPayload.put("iterationInfo", "Iteration 1 of unlimited");
-                        webSocketHandler.sendLiveUpdate(schemaId, "review_awaiting_approval", approvalPayload);
-                    }
-
-                    // Set node to AWAITING_APPROVAL
-                    node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
-
-                    // Store result so downstream can pick up when approved
-                    return buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, rewrittenPlan, null);
+                // Emit review_awaiting_approval WS event
+                if (webSocketHandler != null) {
+                    Map<String, Object> approvalPayload = new HashMap<>();
+                    approvalPayload.put("nodeId", node.getId());
+                    approvalPayload.put("status", "AWAITING_APPROVAL");
+                    approvalPayload.put("plan", planText);
+                    approvalPayload.put("rewrittenPlan", rewrittenPlan != null ? rewrittenPlan : planText);
+                    approvalPayload.put("findings", findingsNode);
+                    approvalPayload.put("summary", summary);
+                    approvalPayload.put("mode", "manual");
+                    approvalPayload.put("iterationInfo", "Requires your approval");
+                    webSocketHandler.sendLiveUpdate(schemaId, "review_awaiting_approval", approvalPayload);
                 }
-                // If PASS, no rewrite needed
-                finalResult = buildResultJson("PASS", findingsText, summary, planText, null, null);
-                break;
+
+                // Set node to AWAITING_APPROVAL
+                node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
+
+                // Store result so downstream can pick up when approved
+                return buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, rewrittenPlan, null);
+            }
 
             case "auto":
                 // Auto-rewrite up to maxAutoIterations
@@ -331,7 +353,7 @@ public class ReviewNodeStrategy {
                 break;
 
             case "hybrid":
-            default:
+            default: {
                 // Auto-rewrite up to maxAutoIterations, then show human gate
                 int hybridIteration = 0;
                 String hybridPlan = planText;
@@ -396,7 +418,7 @@ public class ReviewNodeStrategy {
                         approvalPayload.put("status", "AWAITING_APPROVAL");
                         approvalPayload.put("plan", hybridPlan);
                         approvalPayload.put("rewrittenPlan", rewrittenPlan);
-                        approvalPayload.put("findings", findingsText);
+                        approvalPayload.put("findings", findingsNode);
                         approvalPayload.put("summary", summary);
                         approvalPayload.put("mode", "hybrid");
                         approvalPayload.put("iterationInfo", "Iteration " + hybridIteration + " of " + maxAutoIterations);
@@ -409,6 +431,7 @@ public class ReviewNodeStrategy {
 
                 finalResult = buildResultJson("PASS", findingsText, summary, null, null, null);
                 break;
+            }
         }
 
         ObjectMapper finalMapper = new ObjectMapper();
@@ -434,6 +457,27 @@ public class ReviewNodeStrategy {
         } catch (Exception e) {
             log.warn("Failed to build review JSON: {}", e.getMessage());
             return "{\"status\":\"" + status + "\"}";
+        }
+    }
+
+    private String serializeResult(Map<String, Object> resultMap) {
+        try {
+            return JSON_MAPPER.writeValueAsString(resultMap);
+        } catch (Exception e) {
+            log.warn("Failed to serialize review result: {}", e.getMessage());
+            return "{\"status\":\"ERROR\"}";
+        }
+    }
+
+    private void cleanApprovalFlag(String schemaId, String nodeId, ExecutionStateManager stateManager) {
+        try {
+            String approvedKey = schemaId + ":" + nodeId + ":approved";
+            Map<String, String> nodeResults = stateManager.getNodeResults().get(schemaId);
+            if (nodeResults != null) {
+                nodeResults.remove(approvedKey);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to clean approval flag: {}", e.getMessage());
         }
     }
 }

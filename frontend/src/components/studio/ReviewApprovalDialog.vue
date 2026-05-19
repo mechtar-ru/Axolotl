@@ -84,6 +84,9 @@
 
       <div class="review-footer">
         <div class="footer-actions">
+          <button class="btn-reject" @click="emit('reject')">
+            ✕ Reject
+          </button>
           <button class="btn-edit" @click="startEdit">
             ✏️ Edit Plan
           </button>
@@ -141,9 +144,10 @@ const props = withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{
-  (e: 'approve', plan: string): void;
+  (e: 'approve', plan?: string): void;
   (e: 'suggest', payload: { feedback: string[]; history: FeedbackItem[] }): void;
   (e: 'edit'): void;
+  (e: 'reject'): void;
 }>();
 
 const editing = ref(false);
@@ -568,6 +572,23 @@ function emitSuggest() {
 
 .btn-suggest:hover {
   background: var(--accent-hover);
+}
+
+.btn-reject {
+  background: var(--bg-hover);
+  border: 1px solid var(--error);
+  color: var(--error);
+  padding: var(--space-2) 18px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  transition: background var(--transition);
+  margin-right: auto;
+}
+
+.btn-reject:hover {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
 }
 
 .btn-approve {

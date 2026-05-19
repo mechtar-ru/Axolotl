@@ -534,9 +534,9 @@ function handleKeydown(e: KeyboardEvent) {
         <div class="config-field">
           <label class="config-label">Mode</label>
           <select v-model="reviewMode" class="config-select" @change="saveConfig">
-            <option value="manual">Manual (human review)</option>
-            <option value="auto">Auto (AI review only)</option>
-            <option value="hybrid">Hybrid (auto + human gate)</option>
+            <option value="manual">Manual — Always require my approval</option>
+            <option value="auto">Auto — Fully automatic, no human</option>
+            <option value="hybrid">Hybrid — Auto-fix, then ask me if stuck</option>
           </select>
         </div>
 

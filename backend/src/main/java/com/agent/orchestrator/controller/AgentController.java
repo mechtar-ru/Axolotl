@@ -175,6 +175,24 @@ public class AgentController {
         return Map.of("status", "ok", "message", "Feedback received and review node resumed");
     }
 
+    @PostMapping("/execution/{executionId}/approve-review")
+    public Map<String, String> approveReview(
+            @PathVariable String executionId,
+            @RequestParam String nodeId) {
+        schemaService.handleReviewApprove(executionId, nodeId);
+        log.info("Review approved for execution {} node {}", executionId, nodeId);
+        return Map.of("status", "ok", "message", "Plan approved, resuming execution");
+    }
+
+    @PostMapping("/execution/{executionId}/reject")
+    public Map<String, String> rejectReview(
+            @PathVariable String executionId,
+            @RequestParam String nodeId) {
+        schemaService.handleReviewReject(executionId, nodeId);
+        log.info("Review rejected for execution {} node {}", executionId, nodeId);
+        return Map.of("status", "ok", "message", "Plan rejected, node failed");
+    }
+
     @GetMapping("/health")
     public Map<String, Object> health() {
         Map<String, Object> result = new HashMap<>();
