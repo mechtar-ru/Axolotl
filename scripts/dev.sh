@@ -4,7 +4,7 @@ case "$1" in
   start)
     pkill -f "spring-boot:run" 2>/dev/null
     sleep 1
-    cd backend && mvn spring-boot:run -Dserver.port=8080
+    cd backend && mvn spring-boot:run -Dserver.port=8082
     ;;
   stop)
     pkill -f "spring-boot:run" 2>/dev/null
@@ -18,7 +18,8 @@ case "$1" in
       echo "Usage: $0 execute <schema_id>"
       exit 1
     fi
-    curl -s -X POST http://localhost:8080/api/schema/execute/$2 -H "Content-Type: application/json"
+    source scripts/token.sh 2>/dev/null
+    curl -s -X POST http://localhost:8082/api/schema/execute/$2 -H "$CURL_HEADER" -H "Content-Type: application/json"
     ;;
   *)
     echo "Usage: $0 {start|stop|logs [N]|execute <id>}"

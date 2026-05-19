@@ -24,7 +24,7 @@
 │                     ▼                                      │
 │              ┌──────────────┐  ┌──────────┐               │
 │              │Neo4j Repo    │  │MemPalace │               │
-│              │(+ SQLite fallback)│(memory) │               │
+│              │                    │(memory) │               │
 │              └──────────────┘  └──────────┘               │
 └───────────────────────────────────────────────────────────┘
 ```
@@ -79,7 +79,7 @@
 | A3 | **No test coverage** | `SchemaService` has zero tests despite having test helpers. |
 | A4 | **Analytics package** | 25+ classes in `analytics/` — appear mostly stub/scaffold. Significant dead weight. |
 | A5 | **Mixed languages** | Backend logs in Russian, frontend UI in Russian, code comments in English, commit messages in Russian. |
-| A6 | **CLAUDE.md stale** | Says "SQLite for dev" but code uses Neo4j. Says "OpenClawClient is a stub" but uses LlmService. |
+| A6 | **CLAUDE.md stale** | Says "OpenClawClient is a stub" but uses LlmService. |
 | A7 | **GraalVM dependency** | GraalVM polyglot pulled in solely for condition evaluation. Consider lighter alternative. |
 
 ### Frontend Issues
@@ -96,7 +96,7 @@
 | # | Issue |
 |---|-------|
 | I1 | `nginx.conf` referenced in docker-compose but file doesn't exist at project root. |
-| I2 | `postgres:15` exposed on `5432:5432` publicly. Should be internal-only. |
+| I2 | ~~`postgres:15` exposed on `5432:5432`~~ (postgres removed) |
 | I3 | MemPalace service uses `pip install` at container start — non-reproducible. |
 | I4 | No healthcheck definitions in docker-compose. |
 | I5 | No `.dockerignore` files visible. |

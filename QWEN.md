@@ -10,7 +10,7 @@ Axolotl/
 │   ├── src/main/java/com/agent/orchestrator/
 │   │   ├── controller/               # REST: AgentController, PlanController, AuthController, SettingsController
 │   │   ├── service/                  # Business: SchemaService, PlanService, AgentService, SettingsService
-│   │   ├── repository/               # SQLite DAO: SchemaRepository, PlanRepository, UserRepository
+│   │   ├── repository/               # Neo4j DAO: SchemaRepository, PlanRepository, UserRepository
 │   │   ├── model/                    # Domain: Node, Edge, WorkflowSchema, Task, Plan, AppUser, Priority, TaskStatus
 │   │   ├── mcp/                      # MCP Server: PlanMcpServer, PlanTools
 │   │   ├── llm/                      # LLM: LlmService, LlmProvider, OllamaProvider, OpenAiProvider,
@@ -18,7 +18,7 @@ Axolotl/
 │   │   ├── config/                   # Security: JwtAuthFilter, JwtUtil, SecurityConfig, WebSocketConfig
 │   │   └── websocket/                # ExecutionWebSocketHandler
 │   ├── src/test/java/                # Unit + integration tests (90 total, 90 pass ✅)
-│   └── schema.db                     # SQLite (таблицы: schemas, plans, users, provider_settings)
+│   └── neo4j                         # Neo4j (граф: schemas, plans, users, execution)
 ├── frontend/                         # Vue 3 + TypeScript + Vite
 │   └── src/
 │       ├── components/
@@ -58,7 +58,7 @@ npm run dev                 # Dev server
 - **Backend**: `http://localhost:8080`
 - **MCP прокси**: `node /Users/evgenijtihomirov/axolotl-mcp-proxy.js` (stdio bridge)
 - **MemPalace MCP**: `python -m mempalace.mcp_server` (порт 5890)
-- **SQLite**: `backend/schema.db` (таблицы: schemas, plans, users, provider_settings)
+- **Neo4j**: `bolt://localhost:7687` (граф: schemas, plans, users, provider settings, execution)
 
 ## Архитектура
 
@@ -73,7 +73,7 @@ npm run dev                 # Dev server
 8. **Python export**: `exportToPython()` — генерация исполняемого .py скрипта с топологической сортировкой
 
 ### Plan (PlanService)
-- Хранится в SQLite (таблица plans, поле tasks_json — JSON массив задач)
+- Хранится в Neo4j (узлы Plan, поле tasksJson — JSON массив задач)
 - MCP инструменты: `read_plan`, `add_task`, **`add_tasks`** (batch), `update_task_status`, `move_task`, `delete_task`, `update_task_priority`
 - `read_plan` поддерживает `status_filter` (TODO/IN_PROGRESS/DONE/BLOCKED)
 - REST: `GET /api/plan`, `POST /api/plan/tasks`, **`POST /api/plan/tasks/batch`**, `PUT /api/plan/tasks/{id}/status`
@@ -97,7 +97,7 @@ npm run dev                 # Dev server
 ### Безопасность и Multi-tenancy
 - **JWT авторизация**: JwtAuthFilter, JwtUtil, SecurityConfig
 - **Auth endpoints**: `/api/auth/login`, `/api/auth/register`, `/api/auth/me`
-- **UserRepository**: SQLite таблица users
+- **UserRepository**: Neo4j узлы User
 - **Multi-tenancy**: `WorkflowSchema.userId` — изоляция схем по пользователям
 - **Settings API**: `/api/settings` — CRUD API ключей провайдеров
 - `/mcp` и `/api/plan/**` — без авторизации
@@ -110,12 +110,12 @@ npm run dev                 # Dev server
 
 ## Правила разработки
 
-1. **Бэкенд**: Java 21, Spring Boot 3.2, **SLF4J** logging (все System.out/err заменены), SQLite
+1. **Бэкенд**: Java 21, Spring Boot 3.2, **SLF4J** logging (все System.out/err заменены), Neo4j
 2. **Фронтенд**: Vue 3 Composition API, TypeScript, `<script setup lang="ts">`
 3. **Стиль**: Тёмная тема (#1e1e2e фон, #6c63ff акцент)
 4. **WebSocket**: Execution events — real-time updates
 5. **MCP**: Все изменения плана проходят через MCP tools или REST API
-6. **БД**: `backend/schema.db` — все репозитории используют абсолютный путь
+6. **БД**: Neo4j (bolt://localhost:7687) — все репозитории используют Spring Data Neo4j
 7. **LLM streaming**: все провайдеры поддерживают `streamingChat()` → WebSocket token events
 
 ## Ключевые файлы
@@ -124,7 +124,7 @@ npm run dev                 # Dev server
 |------|-----------|
 | `backend/.../service/SchemaService.java` | Выполнение схем, context management, Python export, convergence monitoring |
 | `backend/.../service/PlanService.java` | CRUD плана, batch add, acceptance criteria |
-| `backend/.../service/SettingsService.java` | Хранение API ключей провайдеров в SQLite |
+| `backend/.../service/SettingsService.java` | Хранение API ключей провайдеров в Neo4j |
 | `backend/.../service/AgentService.java` | Управление агентами, сессии |
 | `backend/.../mcp/PlanTools.java` | MCP инструменты (7 tools: add_tasks, read_plan со status_filter, ...) |
 | `backend/.../mcp/PlanMcpServer.java` | JSON-RPC 2.0 MCP сервер на /mcp |

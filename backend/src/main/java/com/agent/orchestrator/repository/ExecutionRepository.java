@@ -21,7 +21,6 @@ import java.util.List;
 
 /**
  * Repository for execution persistence backed by Neo4j.
- * Replaces the previous SQLite-based implementation.
  * Stores ExecutionRun, NodeExecution, Checkpoint, and ExecutionRecord
  * as separate Neo4j nodes linked via properties.
  */

@@ -10,7 +10,7 @@ git clone https://github.com/anomalyco/axolotl.git
 cd axolotl
 
 # Start development stack
-docker-compose up -d  # frontend + backend + postgres
+docker-compose up -d  # frontend + backend + neo4j
 
 # Or run individually
 cd backend && mvn spring-boot:run    # http://localhost:8080

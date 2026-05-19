@@ -291,51 +291,24 @@ meta:
     - "shouldNotFilter() for public endpoints"
     - "Bearer token extraction"
 
-# ──────── DB CONFIG WITH RAW JDBC ────────
+# ──────── NEO4J REPOSITORY ────────
 
-- title: "DbConfig — raw JDBC with SQLite"
-  source: "backend/src/main/java/com/agent/orchestrator/config/DbConfig.java"
+- title: "Neo4jSchemaRepository — Spring Data Neo4j repository"
+  source: "backend/src/main/java/com/agent/orchestrator/graph/repository/Neo4jSchemaRepository.java"
   code: |
-    @Configuration
-    public class DbConfig {
-
-        private static final Logger log = LoggerFactory.getLogger(DbConfig.class);
-
-        private final String dbUrl;
-
-        public DbConfig(@Value("${axolotl.db.path:}") String dbPath) {
-            if (dbPath != null && !dbPath.isBlank()) {
-                Path resolved = Paths.get(dbPath).toAbsolutePath();
-                dbUrl = "jdbc:sqlite:" + resolved;
-            } else {
-                Path dataDir = Paths.get(System.getProperty("user.home"), ".axolotl");
-                dataDir.toFile().mkdirs();
-                dbUrl = "jdbc:sqlite:" + dataDir.resolve("schema.db");
-            }
-            log.info("DbConfig dbUrl: {}", dbUrl);
-        }
-
-        @PostConstruct
-        public void init() {
-            enableWalMode();
-        }
-
-        private void enableWalMode() {
-            try (Connection conn = DriverManager.getConnection(dbUrl);
-                 Statement stmt = conn.createStatement()) {
-                stmt.execute("PRAGMA journal_mode=WAL");
-                log.info("SQLite WAL mode enabled");
-            } catch (SQLException e) {
-                log.warn("Could not enable WAL mode: {}", e.getMessage());
-            }
-        }
-
-        public String getDbUrl() {
-            return dbUrl;
-        }
+    @Repository
+    public interface Neo4jSchemaRepository extends Neo4jRepository<GraphWorkflowSchema, String> {
+        
+        @Query("MATCH (s:WorkflowSchema) WHERE s.id = $id RETURN s")
+        Optional<GraphWorkflowSchema> findBySchemaId(@Param("id") String id);
+        
+        @Query("MATCH (s:WorkflowSchema) RETURN s ORDER BY s.updatedAt DESC")
+        List<GraphWorkflowSchema> findAllOrderByUpdatedAt();
+        
+        @Query("MATCH (s:WorkflowSchema {userId: $userId}) RETURN s ORDER BY s.updatedAt DESC")
+        List<GraphWorkflowSchema> findByUserId(@Param("userId") String userId);
     }
   patterns:
-    - "DriverManager.getConnection() (NOT JPA)"
-    - "@Value in constructor parameter"
-    - "WAL mode via PRAGMA"
-    - "Russian log messages"
+    - "Spring Data Neo4j repository interface"
+    - "@Query with Cypher for custom queries"
+    - "@Param for named parameters"

@@ -56,7 +56,7 @@ helm install axolotl axolotl/axolotl -f values.yaml
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SPRING_PROFILES_ACTIVE` | `docker` | Spring profile |
-| `AXOLOTL_DB_PATH` | `schema.db` | SQLite database path |
+
 | `AXOLOTL_JWT_SECRET` | — | JWT signing secret (REQUIRED in production) |
 | `AXOLOTL_MEMPALACE_URL` | `http://localhost:5890` | MemPalace MCP URL |
 | `AXOLOTL_MEMPALACE_ENABLED` | `false` | Enable MemPalace |

@@ -1,38 +1,13 @@
 version: '3.8'
 
 services:
-  # PostgreSQL для бэкенда (на замену SQLite для production)
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-axolotl}
-      POSTGRES_USER: ${POSTGRES_USER:-axolotl}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-axolotl}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    # No ports exposed externally — internal only via network
-    networks:
-      - axolotl-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-axolotl}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # Бэкенд на Spring Boot
   backend:
     build: ./backend
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-docker}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-axolotl}
-      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-axolotl}
-      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-axolotl}
       MEMPALACE_URL: ${MEMPALACE_URL:-http://mempalace:8765}
     ports:
       - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - axolotl-network
     healthcheck:
@@ -92,5 +67,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data:
   mempalace_data:

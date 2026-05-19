@@ -16,7 +16,7 @@ backend:
     rules:
       - "Controllers are thin — delegate to services"
       - "Services contain business logic and orchestration"
-      - "Repositories handle data access (SQLite or Neo4j)"
+      - "Repositories handle data access (Neo4j)"
       - "No business logic in controllers or repositories"
 
   llm_strategy_pattern:
@@ -121,20 +121,14 @@ backend:
       - "MAX_NODE_RESTARTS (3) consecutive errors → BLOCKED"
       - "Cancellation via AtomicBoolean flag"
 
-  dual_database:
-    description: "SQLite for operational CRUD + Neo4j for graph queries"
-    sqlite:
-      purpose: "Operational CRUD: schemas, plans, endpoints, auth"
-      access: "Raw JDBC (DriverManager.getConnection)"
-      repositories: "com.agent.orchestrator.repository.*"
-    neo4j:
-      purpose: "Graph queries, codebase analysis, AI features"
-      access: "Spring Data Neo4j + direct Driver"
-      repositories: "com.agent.orchestrator.graph.repository.*"
+  neo4j_storage:
+    description: "Neo4j as the single database for all data"
+    access: "Spring Data Neo4j + direct Driver"
+    repositories: "com.agent.orchestrator.graph.repository.*"
     rules:
-      - "Operational writes go to SQLite"
-      - "Graph queries for analysis go to Neo4j"
-      - "Data may be mirrored (SQLite primary, Neo4j for analysis)"
+      - "All data goes to Neo4j"
+      - "Use Spring Data Neo4j for entity CRUD"
+      - "Direct Driver for complex Cypher queries"
 
   error_handling:
     description: "String-based error returns in LLM providers, try-catch with log"

@@ -80,7 +80,7 @@ cd frontend && npm run type-check         # vue-tsc type checking
 
 ### Docker
 ```bash
-docker-compose up                         # Full stack: backend + frontend + postgres + nginx
+docker-compose up                         # Full stack: backend + frontend + nginx + neo4j
 ```
 
 ## API Authentication
@@ -179,7 +179,7 @@ python3 scripts/api.py PUT /api/plan/tasks/ID/status '{"status":"DONE"}'
 - **Service layer**: `SchemaService.java` is the core — CRUD, topological sort (Kahn's algorithm), async execution via `CompletableFuture`, cancellation. `AgentService.java` manages agents. `LlmService.java` handles real LLM calls (Ollama, Spring AI). `PlanService.java` manages tasks via Plan API
 - **WebSocket**: `ExecutionWebSocketHandler.java` at `/ws/execution?schemaId=X` — sends JSON messages: `progress`, `result`, `error`, `complete`, `metrics`, `log`
 - **Tools**: `ToolExecutor.java` with built-in tools (file_read, file_write, bash), `Tool.java` interface, `ToolPermission.java`
-- **Data**: `SchemaRepository.java` (SQLite `schema.db`), `PlanRepository.java`, `ApiKeyRepository.java`, `UserRepository.java`. Models: `WorkflowSchema`, `Node`, `Plan`, `Task`, `ApiKey`, `AppUser`
+- **Data**: `Neo4jSchemaRepository` (Neo4j), `PlanRepository`, `ApiKeyRepository`, `UserRepository`. Models: `WorkflowSchema`, `Node`, `Plan`, `Task`, `ApiKey`, `AppUser`
 - **Config**: `AgentConfig.java`, `AppConfig.java`, `SecurityConfig.java` (JWT auth), `JwtUtil.java`, `WebSocketConfig.java`
 
 ### Frontend (`frontend/src/`)
@@ -227,12 +227,11 @@ python3 scripts/api.py PUT /api/plan/tasks/ID/status '{"status":"DONE"}'
 - Java: camelCase, Spring Boot conventions, `System.out.println` for logging (no SLF4J yet)
 - Vue: Composition API with `<script setup lang="ts">`, Pinia stores
 - Node types: `source`, `agent`, `output` (more planned: `condition`, `loop`, `memory`, etc.)
-- DB: SQLite for dev (`schema.db`), PostgreSQL for Docker/prod
+- DB: Neo4j
 
 ## Environment
 
 Copy `.env.example` to `.env`. Key variables:
 - `VITE_API_URL` — backend API URL (frontend)
 - `VITE_WS_URL` — WebSocket URL (frontend)
-- `SPRING_PROFILE` — Spring profile (`docker` for PostgreSQL)
-- `POSTGRES_*` — PostgreSQL credentials
+- `SPRING_PROFILE` — Spring profile (`docker`)

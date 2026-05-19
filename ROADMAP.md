@@ -108,7 +108,7 @@ This roadmap outlines the evolution of Axolotl from a visual workflow builder to
 3. **Vue 3 + TypeScript** - Modern frontend framework
 4. **Python 3.11+** - For ML/fine-tuning pipeline components
 5. **Redis or similar** - For distributed caching and state sharing
-6. **PostgreSQL** - For persistent storage of workflows, executions, and learned patterns
+6. **Neo4j** - Graph storage for workflows, executions, and learned patterns
 
 ### Risk Mitigation Strategies
 

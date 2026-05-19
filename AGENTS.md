@@ -56,8 +56,7 @@ python3 scripts/api.py add-task "Title" "Desc"  # Quick add plan task via MCP
 - Default `AXOLOTL_URL` is now `http://localhost:8082` (was 8080)
 
 ### Database Architecture
-- **Neo4j** — primary storage for schemas, plans, execution history, code graph
-- **SQLite** — auth only (users, settings backup)
+- **Neo4j** — primary storage for schemas, plans, execution history, code graph, auth
 
 ### Task Management
 - **NEVER edit plan.json directly** - use Plan API or MCP
@@ -103,7 +102,7 @@ source .venv/bin/activate && python3 scripts/api.py add-task "Title" "descriptio
 - Code in English, commits in Russian with emoji prefix
 - Java: camelCase, `System.out.println` logging (no SLF4J)
 - Vue: Composition API with `<script setup lang="ts">`
-- DB: SQLite (`schema.db`) dev, PostgreSQL in Docker
+- DB: Neo4j
 - `.env` needs: `VITE_API_URL`, `VITE_WS_URL`, `JWT_SECRET`
 
 ## Execution Result Persistence
@@ -153,35 +152,6 @@ Agent nodes can now query Neo4j directly using `graph_query` tool:
   "type": "search"
 }
 ```
-
-### SQLite → Neo4j Migration Plan
-
-**Dual-DB Architecture:**
-- **SQLite** — operational CRUD (schemas, plans, endpoints, auth)
-- **Neo4j** — graph queries, codebase analysis, AI features
-
-Data was migrated to Neo4j for reference/analysis, but operational services still use SQLite:
-| Table | Neo4j Backup | Operational |
-|-------|--------------|-------------|
-| schemas | ✅ 16 nodes | SQLite |
-| plans | ✅ 2 nodes | SQLite |
-| custom_llm_endpoints | ✅ 1 node | SQLite |
-| provider_settings | ✅ 5 nodes | SQLite |
-| users | ✅ 3 nodes | SQLite (auth) |
-
-**Migration script:** `scripts/migrate-to-neo4j.py`
-```bash
-source .venv/bin/activate
-python3 scripts/migrate-to-neo4j.py           # Run migration
-python3 scripts/migrate-to-neo4j.py --dry-run  # Preview
-python3 scripts/migrate-to-neo4j.py --skip-auth  # Skip users table
-```
-
-**Neo4j used for:**
-- Codebase graph (classes, methods, relationships)
-- Graph query tool in agent nodes
-- Context curation for LLM prompts
-- Batch planning with import tiers
 
 ### Graph API (Dirac-inspired Features)
 
@@ -307,7 +277,7 @@ Use test directories (`backend-next/`, `frontend-next/`) to implement and verify
 scripts/sync-to-test.sh
 
 # Start test backend from test dirs
-cd backend-next && mvn spring-boot:run -Dserver.port=8083 -Daxolotl.db.path=/Users/Shared/Axolotl/test-data.db
+cd backend-next && mvn spring-boot:run -Dserver.port=8083
 
 # Start test frontend from test dirs
 cd frontend-next && npm run dev -- --port 5174
@@ -330,4 +300,3 @@ scripts/sync-from-test.sh
 
 - Test backend: `backend-next/src/main/java/com/agent/orchestrator/`
 - Test frontend: `frontend-next/src/`
-- Test DB: `/Users/Shared/Axolotl/test-data.db`

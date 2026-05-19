@@ -131,27 +131,6 @@ anti_patterns:
     description: "LLM providers use java.net.http.HttpClient, never RestTemplate"
     severity: error
 
-  - id: "no-jpa-for-sqlite"
-    title: "No JPA/Hibernate for SQLite access"
-    description: "Use raw JDBC with DriverManager and SQL text blocks"
-    bad: |
-      @Entity
-      @Table(name = "schemas")
-      public class SchemaEntity {
-          @Id private String id;
-      }
-    good: |
-      // Raw JDBC with text blocks
-      String sql = """
-          SELECT * FROM schemas WHERE id = ?
-      """;
-      try (Connection conn = DriverManager.getConnection(dbUrl);
-           PreparedStatement stmt = conn.prepareStatement(sql)) {
-          stmt.setString(1, id);
-          // ...
-      }
-    severity: error
-
   - id: "no-livedependency-injection"
     title: "No live dependency in tests"
     description: "Use @ExtendWith(MockitoExtension.class) and @Mock for unit tests"

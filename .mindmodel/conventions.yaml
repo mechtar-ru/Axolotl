@@ -42,7 +42,7 @@ backend:
       - ".graph.config"
       - ".graph.metrics"
       - ".graph.scheduler"
-      - ".repository"    # SQLite repositories
+      - ".repository"    # Neo4j repositories
       - ".websocket"     # WebSocket handler
       - ".client"        # External clients
 
@@ -81,17 +81,14 @@ backend:
       - "Enum inner types with @JsonCreator/@JsonValue for custom serialization"
       - "TextBlock for multi-line strings (SQL, JSON schemas)"
 
-  sql:
-    style: "Raw JDBC with TextBlock (\"\"\"...\"\"\")"
-    db: "SQLite"
-    connection: "DriverManager.getConnection()"
+  neo4j:
+    style: "Spring Data Neo4j repositories + @Query annotations"
+    db: "Neo4j"
+    connection: "Bolt driver via spring.neo4j.uri"
     examples:
       - |
-        String sql = """
-            SELECT * FROM schemas
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-        """;
+        @Query("MATCH (s:WorkflowSchema {id: $id}) RETURN s")
+        WorkflowSchema findBySchemaId(@Param("id") String id);
 
   llm_provider_pattern:
     description: "Strategy pattern via LlmProvider interface"

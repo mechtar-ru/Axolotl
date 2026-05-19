@@ -1,11 +1,11 @@
 # Execution Resilience — Implementation Plan
 
 Date: 2026-05-15
-Scope: implement persisted execution runs, node-level persistence, checkpoints, resume flow using SQLite ExecutionRepository already present in repo.
+Scope: implement persisted execution runs, node-level persistence, checkpoints, resume flow using Neo4j ExecutionRepository already present in repo.
 
 Assumptions (stated):
 - Batch 1 (models + ExecutionRepository) is already implemented and passing tests.
-- We must NOT change Neo4j schema; persistence is additive in SQLite.
+- Persistence uses Neo4j for execution data.
 - In-memory executionHistory remains unchanged for backward compatibility.
 - All changes are backend-only in this rollout; frontend ResumeBanner and Timeline integration follow in Batch 3.
 
@@ -96,7 +96,7 @@ Batch 4 — Tests & Integration
 Rollback & Safety
 -----------------
 - Table creation is idempotent (`CREATE TABLE IF NOT EXISTS`) — safe to deploy.
-- Before changing production DB, ensure backup of SQLite file (scripts/backup-sqlite.sh) — add small script if missing.
+- Before changing production DB, ensure backup.
 - ExecutionRepository methods swallow SQL exceptions (log) to avoid runtime crash; if updating method signatures, keep old methods as overloads for backward compatibility.
 - Feature toggle: Add a `settings.execution.persistence.enabled` flag read from SettingsService; when false, SchemaService will not create ExecutionRun/NodeExecution rows (keep toggling during rollout).
 

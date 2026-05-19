@@ -35,18 +35,6 @@ backend:
 
   database:
     primary:
-      name: "SQLite"
-      access: "Raw JDBC"
-      driver: "org.sqlite.JDBC"
-      connection: "DriverManager.getConnection()"
-      constraints:
-        - "NO JPA/Hibernate for SQLite — use raw JDBC"
-        - "Manual SQL with TextBlock (triple-quoted strings)"
-        - "WAL mode enabled via PRAGMA"
-        - "Repository pattern with custom *Repository classes"
-        - "Package: com.agent.orchestrator.repository"
-
-    secondary:
       name: "Neo4j"
       type: "Graph database"
       access:
@@ -54,8 +42,9 @@ backend:
         - "Direct Neo4j Java Driver (org.neo4j.driver)"
       package: "com.agent.orchestrator.graph"
       constraints:
-        - "For codebase graph, plans, entities"
-        - "NOT for operational CRUD (use SQLite for that)"
+        - "All data in Neo4j: schemas, plans, users, execution, code graph"
+        - "Spring Data Neo4j for standard CRUD"
+        - "Direct Driver for complex Cypher queries"
         - "Hash-anchored edits via 16-hex-char stable hashes"
 
   llm_integration:

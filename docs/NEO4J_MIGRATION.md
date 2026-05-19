@@ -2,7 +2,7 @@
 
 ## Overview
 
-Replace MemPalace (ChromaDB + SQLite) with Neo4j (Community Edition) for unified graph storage of:
+Replace MemPalace (ChromaDB) with Neo4j (Community Edition) for unified graph storage of:
 - Codebase structure (packages, classes, methods, dependencies)
 - Architectural decisions from agent dialogues
 - Projects, schemas, execution results
@@ -16,7 +16,7 @@ Replace MemPalace (ChromaDB + SQLite) with Neo4j (Community Edition) for unified
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Vue 3 Frontend ──► Spring Boot Backend ──► Neo4j (Community Edition)    │
 │       │                    │                              │               │
-│       │              SQLite ◄────── (legacy data)        │               │
+│       │                                                    │               │
 │       │                                               │               │
 │       │                    │                              │               │
 │       │              MCP Server ◄────── (agents)       │               │
@@ -1168,7 +1168,7 @@ CALL db.index.fulltext.createNodeIndex('content', ['Decision', 'CodeClass', 'Cod
 1. Create remaining entities (Project, Schema, ExecutionRun, Instruction)
 2. Implement code parser (JavaParser integration)
 3. Implement decision import from LLM
-4. Move Schema/Execution from SQLite to Neo4j
+4. Move Schema/Execution to Neo4j
 5. Create search operations
 6. Create context building for agents
 
@@ -1177,7 +1177,7 @@ CALL db.index.fulltext.createNodeIndex('content', ['Decision', 'CodeClass', 'Cod
 2. Create MCP server for Neo4j
 3. Add full-text indexes
 4. Performance tuning
-5. Test migration scripts (SQLite ↔ Neo4j)
+5. Test migration scripts
 
 ### Phase 4: Production (Week 7-8)
 1. Set up Neo4j cluster (if needed)

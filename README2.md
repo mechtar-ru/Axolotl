@@ -211,7 +211,7 @@ public interface MetaLearner {
 - **Spring Boot 3.2** - Reactive programming and native compilation
 - **Python 3.11** - ML pipeline and fine-tuning components
 - **Redis** - Distributed caching for shared learning states
-- **PostgreSQL** - Persistent storage for workflows, executions, and learned patterns
+- **Neo4j** - Graph storage for workflows, executions, and learned patterns
 - **Apache Kafka** - Event streaming for real-time adaptation signals
 
 ### Frontend

@@ -15,7 +15,7 @@
 | Spring AI | 1.1.4 | LLM abstraction layer |
 | Maven | - | Build |
 | Neo4j | 5.x | Primary database (schemas, plans, execution, code graph) |
-| SQLite | 3.x | Auth only (users, settings) |
+| Neo4j | 5.x | All operational data, code graph, auth |
 | WebSocket | Spring | Real-time execution streaming |
 | Micrometer + Prometheus | - | Metrics |
 | springdoc OpenAPI | 3.0 | API docs |
@@ -61,7 +61,7 @@ Axolotl/
 │       │   └── mcp/            # Graph MCP tools
 │       ├── mcp/                # MCP (Model Context Protocol) server
 │       ├── model/              # Domain model (Node, Edge, Schema, Plan, etc.)
-│       ├── repository/         # SQLite repositories
+│       ├── repository/         # Neo4j repositories
 │       └── websocket/          # WebSocket handler
 ├── frontend/                   # Vue 3 + TypeScript + Vite
 │   └── src/
@@ -95,8 +95,7 @@ Axolotl/
 The backend follows a **layered architecture with domain packages**:
 
 ```
-controller/  →  service/  →  repository/ (SQLite)
-                              graph/repository/ (Neo4j)
+controller/  →  service/  →  repository/ (Neo4j)
                     ↓
                llm/ (providers)
                graph/ (Neo4j access)
@@ -281,13 +280,7 @@ Source, Agent, Output, Condition, Loop, Memory, Guardrail, Human, Fallback, Suba
 - `LlmEndpoint` — provider config backups
 - `ProviderConfig` — settings backups
 
-**SQLite (auth + lightweight CRUD):**
-- `users` — username, password hash, role
-- `custom_llm_endpoints` — user-configured LLM providers
-- `share_links` — read-only sharing
-- `api_keys` — remote API authentication
-
-**Key decision:** Neo4j is the primary data store for all functional data. SQLite handles auth and small-footprint config. The `Application.java` entry point sets `spring.ai` system properties from `.env` before Spring Boot initializes.
+**Key decision:** Neo4j is the single data store for all data. The `Application.java` entry point sets `spring.ai` system properties from `.env` before Spring Boot initializes.
 
 ---
 
@@ -395,7 +388,7 @@ POST /api/graph/load?path=backend/src
 | **Circuit Breaker** | Convergence monitor (error threshold → BLOCKED) | Prevent cascading failures |
 | **MCP (Model Context Protocol)** | JSON-RPC 2.0 tool server | Standardized agent-tool interface |
 | **Hash-Anchored References** | Neo4j code graph (16-char hashes) | Stable references despite refactoring |
-| **Repository Pattern** | `Neo4j*Repository`, `*Repository` (SQLite) | Abstract data access from business logic |
+| **Repository Pattern** | `Neo4j*Repository` | Abstract data access from business logic |
 | **Builder/Factory** | Schema generation from prompt | Parse LLM output into structured model |
 | **Composition API** | All Vue components | Reusable logic via composables |
 | **Pinia Stores** | Centralized state | Predictable state mutations, devtools |
@@ -428,4 +421,4 @@ POST /api/graph/load?path=backend/src
 - **Docker Compose**: full stack (backend + frontend + Neo4j)
 - **Kubernetes**: Helm chart at `kubernetes/axolotl/`
 - **CI/CD**: GitHub Actions — compile → test → build → Docker → GHCR
-- **Database**: SQLite for dev, PostgreSQL in Docker, Neo4j always
+- **Database**: Neo4j

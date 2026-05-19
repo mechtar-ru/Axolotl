@@ -156,8 +156,7 @@ docker-compose up -d
 |-----------|---------|
 | Java | 21 |
 | Spring Boot | 3.2 |
-| SQLite | 3.x |
-| PostgreSQL | (Docker) |
+| Neo4j | 5.x |
 | WebSocket | Spring |
 | Micrometer | Prometheus |
 | springdoc | OpenAPI 3.0 |

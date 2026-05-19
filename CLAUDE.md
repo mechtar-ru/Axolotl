@@ -26,7 +26,7 @@ cd frontend && npm run type-check         # vue-tsc type checking
 
 ### Docker
 ```bash
-docker-compose up                         # Full stack: backend + frontend + postgres + nginx
+docker-compose up                         # Full stack: backend + frontend + nginx + neo4j
 ```
 
 ## Architecture
@@ -80,7 +80,7 @@ docker-compose up                         # Full stack: backend + frontend + pos
 - Language: code in English, commit messages in Russian with emoji prefixes
 - Java: camelCase, Spring Boot conventions, SLF4J logging
 - Vue: Composition API with `<script setup lang="ts">`, Pinia stores
-- DB: Neo4j (primary via `Neo4jSchemaRepository`), PostgreSQL for Docker/prod
+- DB: Neo4j (via `Neo4jSchemaRepository`)
 - Auth: JWT (Spring Security), configurable secret via `axolotl.jwt.secret`
 
 ## Environment
@@ -88,8 +88,7 @@ docker-compose up                         # Full stack: backend + frontend + pos
 Copy `.env.example` to `.env`. Key variables:
 - `VITE_API_URL` — backend API URL (frontend, build-time)
 - `VITE_WS_URL` — WebSocket URL (frontend, build-time)
-- `SPRING_PROFILE` — Spring profile (`docker` for PostgreSQL)
-- `POSTGRES_*` — PostgreSQL credentials
+- `SPRING_PROFILE` — Spring profile (`docker`)
 - `axolotl.jwt.secret` — JWT signing key (auto-generated if not set)
 - `axolotl.sandbox.allowedWriteDirs` — allowed directories for file write node
 

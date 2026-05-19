@@ -324,7 +324,7 @@ class PlanServiceTest {
         assertTrue(completed.isEmpty());
     }
 
-    // ===== Test helper: in-memory PlanService (no SQLite) =====
+    // ===== Test helper: in-memory PlanService =====
 
     static class TestPlanService extends PlanService {
 
