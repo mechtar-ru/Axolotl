@@ -100,7 +100,7 @@ source .venv/bin/activate && python3 scripts/api.py add-task "Title" "descriptio
 ## Conventions
 
 - Code in English, commits in Russian with emoji prefix
-- Java: camelCase, `System.out.println` logging (no SLF4J)
+- Java: camelCase, SLF4J logging with `LoggerFactory.getLogger(...)`
 - Vue: Composition API with `<script setup lang="ts">`
 - DB: Neo4j
 - `.env` needs: `VITE_API_URL`, `VITE_WS_URL`, `JWT_SECRET`

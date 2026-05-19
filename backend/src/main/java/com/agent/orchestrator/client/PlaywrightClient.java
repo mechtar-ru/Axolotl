@@ -57,8 +57,15 @@ public class PlaywrightClient {
             }
             return line;
         } catch (IOException e) {
-            log.error("Playwright tool error: {}", e.getMessage());
-            return "{\"ok\": false, \"data\": \"" + e.getMessage() + "\"}";
+            log.error("Playwright tool error: {}", e.getMessage(), e);
+            try {
+                Map<String, Object> err = new LinkedHashMap<>();
+                err.put("ok", false);
+                err.put("data", e.getMessage());
+                return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(err);
+            } catch (Exception ex) {
+                return "{\"ok\": false, \"data\": \"Unknown error\"}";
+            }
         }
     }
 

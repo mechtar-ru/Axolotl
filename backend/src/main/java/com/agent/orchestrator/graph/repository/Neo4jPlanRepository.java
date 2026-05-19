@@ -138,8 +138,15 @@ public class Neo4jPlanRepository {
     public List<Plan> findByParentId(String parentId) {
         List<Plan> result = new ArrayList<>();
         try (Session session = driver.session()) {
-            Result rs = session.run("MATCH (p:Plan) WHERE p.data CONTAINS $parentId RETURN p.data", 
-                org.neo4j.driver.Values.parameters("parentId", "\"parentId\":\"" + parentId + "\""));
+            // Use Jackson to properly escape parentId for JSON substring search
+            String searchFragment;
+            try {
+                searchFragment = "\"parentId\":" + mapper.writeValueAsString(parentId);
+            } catch (Exception e) {
+                searchFragment = "\"parentId\":\"" + parentId + "\"";
+            }
+            Result rs = session.run("MATCH (p:Plan) WHERE p.data CONTAINS $parentId RETURN p.data",
+                org.neo4j.driver.Values.parameters("parentId", searchFragment));
             while (rs.hasNext()) {
                 try {
                     Plan plan = mapper.readValue(rs.next().get("p.data").asString(), Plan.class);
@@ -153,8 +160,14 @@ public class Neo4jPlanRepository {
     public List<Plan> findBySchemaId(String schemaId) {
         List<Plan> result = new ArrayList<>();
         try (Session session = driver.session()) {
-            Result rs = session.run("MATCH (p:Plan) WHERE p.data CONTAINS $schemaId RETURN p.data", 
-                org.neo4j.driver.Values.parameters("schemaId", "\"schemaId\":\"" + schemaId + "\""));
+            String searchFragment;
+            try {
+                searchFragment = "\"schemaId\":" + mapper.writeValueAsString(schemaId);
+            } catch (Exception e) {
+                searchFragment = "\"schemaId\":\"" + schemaId + "\"";
+            }
+            Result rs = session.run("MATCH (p:Plan) WHERE p.data CONTAINS $schemaId RETURN p.data",
+                org.neo4j.driver.Values.parameters("schemaId", searchFragment));
             while (rs.hasNext()) {
                 try {
                     Plan plan = mapper.readValue(rs.next().get("p.data").asString(), Plan.class);

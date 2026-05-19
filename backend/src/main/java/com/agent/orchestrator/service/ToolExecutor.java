@@ -14,7 +14,9 @@ import org.springframework.stereotype.Service;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.*;
 import java.util.stream.*;
 import java.time.Instant;
@@ -23,7 +25,6 @@ import java.time.Instant;
 public class ToolExecutor {
     private final Map<String, Tool> tools = new ConcurrentHashMap<>();
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
     private LlmService llmService;
     private Driver neo4jDriver;
 
