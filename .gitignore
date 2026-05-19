@@ -42,3 +42,8 @@ Thumbs.db
 # Test instances
 backend-next/
 frontend-next/
+
+# Auto-generated agent session artifacts
+.opencode/magic-context/
+.opencode/mnemonica/
+.opencode/mnemoria/
