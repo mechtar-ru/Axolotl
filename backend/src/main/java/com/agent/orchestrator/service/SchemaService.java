@@ -123,7 +123,7 @@ public class SchemaService {
                 java.nio.file.Files.createDirectories(java.nio.file.Path.of(schema.getTargetPath()));
                 log.info("Создана директория targetPath: {}", schema.getTargetPath());
             } catch (java.io.IOException e) {
-                log.warn("Не удалось создать директорию targetPath {}: {}", schema.getTargetPath(), e.getMessage());
+                log.warn("Не удалось создать директорию targetPath {}: {}", schema.getTargetPath(), e.getMessage(), e);
             }
         }
 
@@ -257,7 +257,7 @@ public class SchemaService {
             runningExecutions.remove(id);
             cancelFlags.remove(id);
             if (ex != null && !(ex instanceof CancellationException)) {
-                log.error("Ошибка выполнения схемы {}: {}", id, ex.getMessage());
+                log.error("Ошибка выполнения схемы {}: {}", id, ex.getMessage(), ex);
             }
         });
     }
@@ -560,7 +560,7 @@ public class SchemaService {
                             "Создана задача отслеживания выполнения", null);
                 }
             } catch (Exception e) {
-                log.warn("Не удалось создать задачу выполнения: {}", e.getMessage());
+                log.warn("Не удалось создать задачу выполнения: {}", e.getMessage(), e);
             }
         }
 
@@ -641,7 +641,7 @@ public class SchemaService {
                     webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "completed");
                 }
             } catch (Exception e) {
-                log.error("Ошибка при параллельном выполнении уровня: {}", e.getMessage());
+                log.error("Ошибка при параллельном выполнении уровня: {}", e.getMessage(), e);
             }
 
             completedCount += executable.size();
@@ -672,7 +672,7 @@ public class SchemaService {
             try {
                 schemaRepository.save(schema);
             } catch (Exception e) {
-                log.warn("Failed to persist schema after cancellation: {}", e.getMessage());
+                log.warn("Failed to persist schema after cancellation: {}", e.getMessage(), e);
             }
             executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
             recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
@@ -695,7 +695,7 @@ public class SchemaService {
             try {
                 schemaRepository.save(schema);
             } catch (Exception e) {
-                log.warn("Failed to persist schema after completion: {}", e.getMessage());
+                log.warn("Failed to persist schema after completion: {}", e.getMessage(), e);
             }
 
             // Завершаем задачу в плане, если была создана (схема с targetPath)
@@ -713,7 +713,7 @@ public class SchemaService {
                     planService.completeTaskForExecution(executionTask.getId(), wsId, generatedFiles);
                     log.info("Задача выполнения завершена: {} ({} файлов)", executionTask.getId(), generatedFiles.size());
                 } catch (Exception e) {
-                    log.warn("Не удалось завершить задачу выполнения: {}", e.getMessage());
+                    log.warn("Не удалось завершить задачу выполнения: {}", e.getMessage(), e);
                 }
             }
 
@@ -930,7 +930,7 @@ public class SchemaService {
             byte[] digest = md.digest(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return java.util.HexFormat.of().formatHex(digest);
         } catch (Exception e) {
-            log.error("Ошибка вычисления config hash: {}", e.getMessage());
+            log.error("Ошибка вычисления config hash: {}", e.getMessage(), e);
             return UUID.randomUUID().toString();
         }
     }
@@ -953,7 +953,7 @@ public class SchemaService {
             cp.setCompletedNodeIds(new ObjectMapper().writeValueAsString(completedIds));
             executionRepository.saveCheckpoint(cp);
         } catch (Exception e) {
-            log.warn("Ошибка сохранения чекпоинта: {}", e.getMessage());
+            log.warn("Ошибка сохранения чекпоинта: {}", e.getMessage(), e);
         }
     }
 
