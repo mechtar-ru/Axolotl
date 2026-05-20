@@ -72,7 +72,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
     private void sendMessage(String schemaId, String jsonMessage) {
         List<WebSocketSession> sessionList = sessions.get(schemaId);
         if (sessionList == null || sessionList.isEmpty()) {
-            log.warn("Нет активной WS сессии для схемы {}", schemaId);
+            log.debug("Нет активной WS сессии для схемы {}", schemaId);
             return;
         }
         ReentrantLock lock = sessionLocks.computeIfAbsent(schemaId, k -> new ReentrantLock());
