@@ -198,6 +198,7 @@ public class PipelineService {
                 String stageNodeId = stage.getId();
                 Node existingNode = nodeMap.get(stageNodeId);
 
+                Node scratch = null;
                 try {
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schema.getId(), "info",
@@ -212,14 +213,14 @@ public class PipelineService {
                         nodeExecutor.executeNode(existingNode, schema.getId(), cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                     } else {
-                        Node scratch = stageToScratchNode(stage, schema.getId());
+                        scratch = stageToScratchNode(stage, schema.getId());
                         nodeExecutor.executeNode(scratch, schema.getId(), cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                         stageResults.get(schema.getId()).put(stageNodeId,
                                 scratch.getData() != null ? scratch.getData().getResult() : "");
                     }
 
-                    Node executedNode = existingNode != null ? existingNode : null;
+                    Node executedNode = existingNode != null ? existingNode : scratch;
                     if (executedNode != null
                             && "review".equals(executedNode.getType())
                             && executedNode.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
