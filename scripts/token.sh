@@ -5,7 +5,7 @@
 #   source scripts/token.sh        # exports $TOKEN and $CURL_HEADER
 #   curl -s -H "$CURL_HEADER" http://localhost:8082/api/schemas
 #
-# Caches token in ~/.axolotl/token, reuses until expiry (24h).
+# Caches token in ~/.axolotl/token, reuses until expiry (23h).
 # Falls back to tech/tech auth if no env vars set.
 #
 # ────────────────────────────────────────────────────────────────────────
@@ -30,23 +30,36 @@ _token_valid() {
 
 _fetch_token() {
   mkdir -p "$TOKEN_DIR"
-  local json
-  json=$(curl -s -X POST "${AXOLOTL_URL}/api/auth/login" \
+  local json curl_exit
+  json=$(curl -s --fail -X POST "${AXOLOTL_URL}/api/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"${AXOLOTL_USER}\",\"password\":\"${AXOLOTL_PASS}\"}")
-  echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" > "$TOKEN_FILE"
+  curl_exit=$?
+  if [[ $curl_exit -ne 0 ]]; then
+    echo "[token.sh] ERROR: failed to get token (curl exit $curl_exit, url=$AXOLOTL_URL)" >&2
+    echo "" > "$TOKEN_FILE"
+    return 1
+  fi
+  local token
+  token=$(echo "$json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))" 2>/dev/null || echo "")
+  if [[ -z "$token" ]]; then
+    echo "[token.sh] ERROR: login response did not contain a token" >&2
+    echo "" > "$TOKEN_FILE"
+    return 1
+  fi
+  echo "$token" > "$TOKEN_FILE"
 }
 
 # ─── main ─────────────────────────────────────────────────────────────
 
 if ! _token_valid; then
-  _fetch_token >/dev/null 2>&1
+  _fetch_token
 fi
 
 TOKEN=$(cat "$TOKEN_FILE" 2>/dev/null || echo "")
 
 if [[ -z "$TOKEN" ]]; then
-  echo "[token.sh] ERROR: failed to get token" >&2
+  echo "[token.sh] ERROR: no token available. Check backend at $AXOLOTL_URL" >&2
   return 1 2>/dev/null || exit 1
 fi
 

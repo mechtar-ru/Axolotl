@@ -16,12 +16,11 @@
 
 set -euo pipefail
 
-# --- Configuration ------------------------------------------------
+# ─── Configuration ───────────────────────────────────────────────
 
-# Resolve script directory for reliable api.py path
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 API_SCRIPT="$SCRIPT_DIR/api.py"
-AXOLOTL_URL="${AXOLOTL_URL:-http://localhost:8080}"
+AXOLOTL_URL="${AXOLOTL_URL:-http://localhost:8082}"
 
 # Flags
 SCHEMA_ONLY=false
@@ -40,11 +39,15 @@ for arg in "$@"; do
     esac
 done
 
-# Timestamp for unique schema names
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+SCHEMA_ID=""
 
-# --- Schema Template ---------------------------------------------
-# Minimal viable workflow: Source -> Agent -> Output
+# ─── Schema Template ─────────────────────────────────────────────
+# Matches current NodeData schema:
+#   nodes[].data.model, data.systemPrompt, data.enabledTools
+#   source node: config.sourceType
+#   agent node:  config.tools, config.outputMode
+#   output node: config.outputType
 
 SCHEMA_TEMPLATE='{
   "name": "Workflow Demo",
@@ -52,39 +55,70 @@ SCHEMA_TEMPLATE='{
     {
       "id": "source-1",
       "type": "source",
-      "label": "Input",
-      "config": {
-        "inputType": "static",
-        "content": "Hello from Axolotl workflow demo!"
+      "data": {
+        "label": "Input",
+        "model": "",
+        "config": {
+          "sourceType": "text",
+          "content": "Hello from Axolotl workflow demo!"
+        }
       }
     },
     {
       "id": "agent-1",
       "type": "agent",
-      "label": "Demo Agent",
-      "config": {
-        "agentType": "assistant",
+      "data": {
+        "label": "Demo Agent",
+        "model": "big-pickle",
         "systemPrompt": "You are a helpful assistant that responds concisely.",
-        "prompt": "Say: Workflow execution successful and nothing else"
+        "config": {
+          "prompt": "Say: Workflow execution successful and nothing else",
+          "tools": []
+        }
       }
     },
     {
       "id": "output-1",
       "type": "output",
-      "label": "Output",
-      "config": {
-        "outputType": "stdout"
+      "data": {
+        "label": "Output",
+        "config": {
+          "outputType": "stdout"
+        }
       }
     }
   ],
   "edges": [
-    {"id": "e1", "source": "source-1", "target": "agent-1", "type": "data"},
-    {"id": "e2", "source": "agent-1", "target": "output-1", "type": "data"}
+    {"id": "e1", "source": "source-1", "target": "agent-1"},
+    {"id": "e2", "source": "agent-1", "target": "output-1"}
   ]
 }'
 
+# ─── Cleanup ─────────────────────────────────────────────────────
 
-# --- Helper Functions ---------------------------------------------
+SCHEMAS_CREATED=()
+
+cleanup() {
+    local exit_code=$?
+    echo ""
+    if [ ${#SCHEMAS_CREATED[@]} -gt 0 ] && [ "$DRY_RUN" = false ]; then
+        echo "=== Cleanup ==="
+        for sid in "${SCHEMAS_CREATED[@]}"; do
+            if [ -n "$sid" ]; then
+                echo "  Deleting schema $sid..."
+                python3 "$API_SCRIPT" DELETE "/api/schemas/$sid" 2>/dev/null || true
+            fi
+        done
+    fi
+    if [ $exit_code -ne 0 ]; then
+        echo ""
+        echo "=== Interrupt ==="
+        echo "Partial execution — check backend state for artifacts."
+    fi
+}
+trap cleanup EXIT INT TERM
+
+# ─── Helper Functions ────────────────────────────────────────────
 
 info()  { echo "  [INFO]  $*"; }
 error() { echo "  [ERROR] $*" >&2; }
@@ -96,7 +130,6 @@ step() {
     echo "=== Step $num: $* ==="
 }
 
-# Run api.py with dry-run awareness
 run_api() {
     if [ "$DRY_RUN" = true ]; then
         echo "  [DRY-RUN] python3 $API_SCRIPT $*" >&2
@@ -106,7 +139,6 @@ run_api() {
     python3 "$API_SCRIPT" "$@"
 }
 
-# Curl call for health check (before login)
 run_curl() {
     if [ "$DRY_RUN" = true ]; then
         echo "  [DRY-RUN] curl -s $*"
@@ -115,68 +147,51 @@ run_curl() {
     curl -s "$@"
 }
 
-# JSON pretty-print via python3
 pretty_json() {
     echo "$1" | python3 -m json.tool 2>/dev/null || echo "$1"
 }
 
-# Extract a field from JSON using python3 (no jq dependency)
 json_extract() {
     local json="$1"
     local key="$2"
     python3 -c "
 import sys, json
 try:
-    data = json.loads(sys.stdin.read())
+    data = json.loads('''$json''')
     print(data.get('$key', ''))
 except Exception:
     pass
-" <<< "$json" 2>/dev/null || echo ""
+"
 }
 
-# Cleanup trap handler
-cleanup() {
-    echo ""
-    echo "=== Interrupt ==="
-    echo "Partial execution -- check backend state for artifacts."
-    echo "Schema may have been created (check with: python3 $API_SCRIPT GET /api/schemas)"
-}
-trap cleanup EXIT INT TERM
 
+# ─── Step 1: Health Check ────────────────────────────────────────
 
-# --- Step 1: Health Check -----------------------------------------
+step 1 "Health Check — verify backend is reachable"
 
-step 1 "Health Check -- verify backend is reachable"
+HEALTH_ATTEMPTS=5
+HEALTH_DELAY=2
+HEALTHY=false
 
-if [ "$DRY_RUN" = true ]; then
-    echo "  [DRY-RUN] Would verify $AXOLOTL_URL/mcp responds"
-    echo "  [DRY-RUN] Would retry up to 5 times with 2s interval"
-else
-    HEALTH_ATTEMPTS=5
-    HEALTH_DELAY=2
-    HEALTHY=false
-
-    for i in $(seq 1 "$HEALTH_ATTEMPTS"); do
-        http_code=$(run_curl -o /dev/null -w "%{http_code}" "$AXOLOTL_URL/mcp" 2>/dev/null || echo "000")
-        # /mcp returns 405 (Method Not Allowed) for GET, which means it's alive
-        if [ "$http_code" = "200" ] || [ "$http_code" = "404" ] || [ "$http_code" = "405" ]; then
-            HEALTHY=true
-            info "Backend is reachable at $AXOLOTL_URL (HTTP $http_code)"
-            break
-        fi
-        info "Waiting for backend at $AXOLOTL_URL... (attempt $i/$HEALTH_ATTEMPTS, HTTP $http_code)"
-        sleep "$HEALTH_DELAY"
-    done
-
-    if [ "$HEALTHY" != true ]; then
-        die "Backend not reachable at $AXOLOTL_URL after $HEALTH_ATTEMPTS attempts"
+for i in $(seq 1 "$HEALTH_ATTEMPTS"); do
+    http_code=$(run_curl -o /dev/null -w "%{http_code}" "$AXOLOTL_URL/api/schemas" 2>/dev/null || echo "000")
+    if [ "$http_code" = "200" ] || [ "$http_code" = "401" ]; then
+        HEALTHY=true
+        info "Backend is reachable at $AXOLOTL_URL (HTTP $http_code)"
+        break
     fi
+    info "Waiting for backend at $AXOLOTL_URL... (attempt $i/$HEALTH_ATTEMPTS, HTTP $http_code)"
+    sleep "$HEALTH_DELAY"
+done
+
+if [ "$HEALTHY" != true ]; then
+    die "Backend not reachable at $AXOLOTL_URL after $HEALTH_ATTEMPTS attempts"
 fi
 
 
-# --- Step 2: Login ------------------------------------------------
+# ─── Step 2: Login ───────────────────────────────────────────────
 
-step 2 "Login -- authenticate and cache JWT token"
+step 2 "Login — authenticate and cache JWT token"
 
 LOGIN_RESULT=$(run_api login)
 if [ "$DRY_RUN" = false ]; then
@@ -185,16 +200,19 @@ import sys, json
 try:
     d = json.load(sys.stdin)
     token = d.get('token', '')
-    print(f'  Token obtained: {token[:20]}...{token[-10:]}' if len(token) > 30 else '  Token obtained')
+    if len(token) > 30:
+        print(f'  Token obtained: {token[:20]}...{token[-10:]}')
+    else:
+        print(f'  Token obtained')
 except Exception as e:
     print(f'  Login result: (could not parse: {e})')
 " 2>/dev/null || { error "Login failed"; exit 1; }
 fi
 
 
-# --- Step 3: Create Plan ------------------------------------------
+# ─── Step 3: Create Plan ─────────────────────────────────────────
 
-step 3 "Create Plan -- MCP add_task for workflow title"
+step 3 "Create Plan — MCP add_task for workflow title"
 
 if [ "$SCHEMA_ONLY" = true ]; then
     info "Skipping plan creation (--schema-only)"
@@ -202,31 +220,38 @@ else
     PLAN_RESULT=$(run_api mcp add_task \
         "{\"title\":\"Workflow Demo $TIMESTAMP\",\"priority\":\"HIGH\",\"description\":\"Automated workflow demo executed by workflow.sh\"}")
     if [ "$DRY_RUN" = false ]; then
-        echo "  $(echo "$PLAN_RESULT" | python3 -c "
+        echo "$PLAN_RESULT" | python3 -c "
 import sys
 text = sys.stdin.read().strip()
 print(text[:120] + '...' if len(text) > 120 else text)
-" 2>/dev/null || echo "$PLAN_RESULT")"
+" 2>/dev/null || echo "  $(echo "$PLAN_RESULT" | head -c 120)"
     fi
 fi
 
 
-# --- Step 4: Add Tasks --------------------------------------------
+# ─── Step 4: Add Tasks ───────────────────────────────────────────
 
-step 4 "Add Tasks -- create subtasks via MCP"
+step 4 "Add Tasks — create subtasks via MCP"
 
 if [ "$SCHEMA_ONLY" = true ]; then
     info "Skipping task creation (--schema-only)"
 else
-    # Add 3 subtasks for the demo
-    TASKS=(
-        "Prepare input data|HIGH|Create source node with test input for the workflow"
-        "Execute workflow|HIGH|Run the agent workflow and capture results"
-        "Verify output|MEDIUM|Check execution results for expected response"
+    TASK_TITLES=(
+        "Prepare input data"
+        "Execute workflow"
+        "Verify output"
+    )
+    TASK_PRIORITIES=("HIGH" "HIGH" "MEDIUM")
+    TASK_DESCS=(
+        "Create source node with test input for the workflow"
+        "Run the agent workflow and capture results"
+        "Check execution results for expected response"
     )
 
-    for task_entry in "${TASKS[@]}"; do
-        IFS='|' read -r title priority desc <<< "$task_entry"
+    for idx in "${!TASK_TITLES[@]}"; do
+        title="${TASK_TITLES[$idx]}"
+        priority="${TASK_PRIORITIES[$idx]}"
+        desc="${TASK_DESCS[$idx]}"
         TASK_RESULT=$(run_api mcp add_task \
             "{\"title\":\"$title\",\"priority\":\"$priority\",\"description\":\"$desc\"}")
         if [ "$DRY_RUN" = false ]; then
@@ -235,15 +260,15 @@ import sys
 text = sys.stdin.read().strip()
 print(text[:100] + '...' if len(text) > 100 else text)
 " 2>/dev/null || echo "$TASK_RESULT")
-            echo "  Added task: $title -> $task_text"
+            echo "  Added task: $title → $task_text"
         fi
     done
 fi
 
 
-# --- Step 5: Create Schema ----------------------------------------
+# ─── Step 5: Create Schema ───────────────────────────────────────
 
-step 5 "Create Schema -- POST /api/schemas with workflow template"
+step 5 "Create Schema — POST /api/schemas with workflow template"
 
 SCHEMA_BODY="${SCHEMA_TEMPLATE/\"Workflow Demo\"/\"Workflow Demo $TIMESTAMP\"}"
 SCHEMA_RESULT=$(run_api POST /api/schemas "$SCHEMA_BODY")
@@ -261,26 +286,25 @@ try:
     print(f'  Nodes: {len(nodes)}, Edges: {len(edges)}')
 except Exception as e:
     print(f'  Schema response: (could not parse: {e})')
-    print(json.dumps(data, indent=2) if 'data' in dir() else '')
 " 2>/dev/null || echo "$SCHEMA_RESULT" | python3 -m json.tool 2>/dev/null || echo "$SCHEMA_RESULT"
 fi
 
-# Extract schema ID for subsequent steps
 SCHEMA_ID=$(json_extract "$SCHEMA_RESULT" "id")
 if [ -z "$SCHEMA_ID" ] && [ "$DRY_RUN" = false ]; then
     die "Could not extract schema ID from response"
 fi
+SCHEMAS_CREATED+=("$SCHEMA_ID")
 
 if [ "$DRY_RUN" = false ]; then
     info "Using schema ID: $SCHEMA_ID"
 fi
 
 
-# --- Step 6: Execute Schema ---------------------------------------
+# ─── Step 6: Execute Schema ──────────────────────────────────────
 
-step 6 "Execute Schema -- POST /api/schemas/{id}/execute"
+step 6 "Execute Schema — POST /api/schemas/{id}/execute"
 
-EXEC_RESULT=$(run_api POST "/api/schemas/$SCHEMA_ID/execute?mode=EXECUTE" "{}")
+EXEC_RESULT=$(run_api POST "/api/schemas/$SCHEMA_ID/execute" "{}")
 if [ "$DRY_RUN" = false ]; then
     echo "$EXEC_RESULT" | python3 -c "
 import sys, json
@@ -296,25 +320,46 @@ except Exception as e:
 fi
 
 
-# --- Step 7: Poll for Completion ----------------------------------
+# ─── Step 7: Poll for Completion ─────────────────────────────────
 
-step 7 "Poll for Completion -- polling /api/schemas/{id}/history"
+step 7 "Poll for Completion — polling /api/schemas/{id}/runs"
 
 MAX_ATTEMPTS=30
 POLL_DELAY=5
 COMPLETED=false
 FINAL_STATUS=""
+RUN_ID=""
 
 if [ "$DRY_RUN" = true ]; then
-    echo "  [DRY-RUN] Would poll GET /api/schemas/$SCHEMA_ID/history every ${POLL_DELAY}s"
+    echo "  [DRY-RUN] Would poll GET /api/schemas/$SCHEMA_ID/runs every ${POLL_DELAY}s"
     echo "  [DRY-RUN] Max wait: $((MAX_ATTEMPTS * POLL_DELAY))s"
 else
     for i in $(seq 1 "$MAX_ATTEMPTS"); do
         sleep "$POLL_DELAY"
 
-        HISTORY=$(run_api GET "/api/schemas/$SCHEMA_ID/history" 2>/dev/null || true)
-        if [ -z "$HISTORY" ]; then
-            info "No history yet (attempt $i/$MAX_ATTEMPTS)"
+        RUNS=$(run_api GET "/api/schemas/$SCHEMA_ID/runs" 2>/dev/null || true)
+        if [ -z "$RUNS" ] || [ "$RUNS" = "[]" ]; then
+            info "No runs yet (attempt $i/$MAX_ATTEMPTS)"
+            continue
+        fi
+
+        # Get the most recent run
+        RUN_ID=$(python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if isinstance(data, list) and len(data) > 0:
+        # Sort by startedAt descending, take first
+        sorted_runs = sorted(data, key=lambda r: r.get('startedAt', ''), reverse=True)
+        print(sorted_runs[0].get('id', ''))
+    else:
+        print('')
+except Exception:
+    print('')
+" <<< "$RUNS" 2>/dev/null)
+
+        if [ -z "$RUN_ID" ]; then
+            info "No run ID found (attempt $i/$MAX_ATTEMPTS)"
             continue
         fi
 
@@ -323,120 +368,127 @@ import sys, json
 try:
     data = json.load(sys.stdin)
     if isinstance(data, list) and len(data) > 0:
-        rec = data[0]
-    elif isinstance(data, dict):
-        rec = data
+        sorted_runs = sorted(data, key=lambda r: r.get('startedAt', ''), reverse=True)
+        r = sorted_runs[0]
     else:
-        rec = {}
-    print(rec.get('status', ''))
+        r = data
+    print(r.get('status', ''))
 except Exception:
     print('')
-" <<< "$HISTORY" 2>/dev/null)
+" <<< "$RUNS" 2>/dev/null)
 
         case "$STATUS" in
             completed)
                 COMPLETED=true
                 FINAL_STATUS="$STATUS"
-                info "Execution completed!"
+                info "Execution completed! (run: $RUN_ID)"
                 break
                 ;;
             failed|cancelled)
                 FINAL_STATUS="$STATUS"
-                error "Execution ended with status: $STATUS"
-                echo "$HISTORY" | python3 -m json.tool 2>/dev/null || echo "$HISTORY"
+                error "Execution ended with status: $STATUS (run: $RUN_ID)"
+                # Show error details
+                RUN_ERROR=$(python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if isinstance(data, list) and len(data) > 0:
+        sorted_runs = sorted(data, key=lambda r: r.get('startedAt', ''), reverse=True)
+        r = sorted_runs[0]
+        print(r.get('error', '')[:300])
+    else:
+        print('')
+except Exception:
+    print('')
+" <<< "$RUNS" 2>/dev/null)
+                [ -n "$RUN_ERROR" ] && error "Error: $RUN_ERROR"
                 exit 1
+                ;;
+            paused)
+                info "Execution paused (awaiting human approval, run: $RUN_ID)"
+                FINAL_STATUS="$STATUS"
+                break
                 ;;
             "")
                 info "No status yet (attempt $i/$MAX_ATTEMPTS)"
                 ;;
             *)
-                info "Status: $STATUS (attempt $i/$MAX_ATTEMPTS)"
+                info "Status: $STATUS (attempt $i/$MAX_ATTEMPTS, run: $RUN_ID)"
                 ;;
         esac
     done
 
-    if [ "$COMPLETED" != true ]; then
+    if [ "$COMPLETED" != true ] && [ "$FINAL_STATUS" != "paused" ]; then
         die "Execution did not complete within $((MAX_ATTEMPTS * POLL_DELAY)) seconds (last status: ${FINAL_STATUS:-unknown})"
     fi
 fi
 
 
-# --- Step 8: Show Results -----------------------------------------
+# ─── Step 8: Show Results ────────────────────────────────────────
 
-step 8 "Show Results -- execution summary"
+step 8 "Show Results — node execution results"
 
 if [ "$DRY_RUN" = true ]; then
-    echo "  [DRY-RUN] Would display formatted execution summary"
+    echo "  [DRY-RUN] Would display node execution results"
 else
-    FINAL_HISTORY=$(run_api GET "/api/schemas/$SCHEMA_ID/history")
+    NODES=$(run_api GET "/api/schemas/$SCHEMA_ID/runs/$RUN_ID/nodes" 2>/dev/null || echo "[]")
 
     echo ""
-    echo "+----------------------------------------------------+"
-    echo "|                 Execution Summary                    |"
-    echo "+----------------------------------------------------+"
+    echo "+----------------------------------------------------------+"
+    echo "|                 Execution Summary                         |"
+    echo "+----------------------------------------------------------+"
 
     python3 -c "
 import sys, json
 try:
-    data = json.load(sys.stdin)
+    nodes = json.load(sys.stdin) if sys.stdin.read(0) is None else []
+except:
+    nodes = []
+" 2>/dev/null || true
+
+    python3 -c "
+import sys, json
+try:
+    data = json.loads('''$NODES''')
     if isinstance(data, list) and len(data) > 0:
-        r = data[0]
-    elif isinstance(data, dict):
-        r = data
+        print(f'  |  {len(data)} node(s) executed')
+        print(f'  +----------------------------------------------------------+')
+        for n in data:
+            nid = n.get('nodeId', '?')
+            ntype = n.get('nodeType', '?')
+            status = n.get('status', '?')
+            tokens = n.get('tokensUsed', 0)
+            duration = n.get('durationMs', 0)
+            error = n.get('error', '')
+            out = n.get('outputSummary', '')
+            print(f'  |  Node:  {nid}')
+            print(f'  |  Type:  {ntype}')
+            print(f'  |  Status: {status}  |  Tokens: {tokens}  |  Duration: {duration}ms')
+            if error:
+                print(f'  |  ERROR: {error[:200]}')
+            if out:
+                preview = str(out)[:150].replace(chr(10), ' ')
+                print(f'  |  Output: {preview}')
+            print(f'  +----------------------------------------------------------+')
     else:
-        r = {}
-
-    fields = [
-        ('Status',      r.get('status', 'N/A')),
-        ('Schema ID',   r.get('schemaId', r.get('id', 'N/A'))),
-        ('Duration',    f\"{r.get('duration', 'N/A')} s\"),
-        ('Total Nodes', r.get('totalNodes', r.get('totalNodes', 'N/A'))),
-        ('Completed',   r.get('completedNodes', r.get('completedCount', 'N/A'))),
-        ('Tokens Used', r.get('tokensUsed', r.get('tokenCount', 'N/A'))),
-        ('Cost',        r.get('cost', 'N/A')),
-    ]
-
-    for label, value in fields:
-        val_str = str(value) if value is not None else 'N/A'
-        print(f'  | {label:<14} {val_str}')
-
-    outputs = r.get('outputs', r.get('nodeResults', r.get('results', [])))
-    if outputs and isinstance(outputs, list) and len(outputs) > 0:
-        print(f'  +----------------------------------------------------+')
-        print(f'  | Output Details')
-        for node in outputs[:5]:
-            if isinstance(node, dict):
-                nid = node.get('nodeId', node.get('id', '?'))
-                result_text = str(node.get('result', node.get('output', node.get('text', ''))))[:150]
-                print(f'  |   [{nid}] {result_text}')
-    elif isinstance(outputs, dict):
-        print(f'  +----------------------------------------------------+')
-        print(f'  | Output Details')
-        result_text = str(outputs.get('result', outputs.get('output', json.dumps(outputs))))[:200]
-        print(f'  |   {result_text}')
-
-    print(f'  +----------------------------------------------------+')
-
+        print(f'  |  No node results found for run $RUN_ID')
+        print(f'  +----------------------------------------------------------+')
 except Exception as e:
     print(f'  | Error parsing results: {e}')
-    print(f'  +----------------------------------------------------+')
-    print()
-    print(json.dumps(data, indent=2)[:500] if 'data' in dir() else '')
-" <<< "$FINAL_HISTORY" 2>/dev/null || {
-    echo "  (raw history output:)"
-    echo "$FINAL_HISTORY" | python3 -m json.tool 2>/dev/null || echo "$FINAL_HISTORY"
-    echo "  +----------------------------------------------------+"
-}
+    print(f'  +----------------------------------------------------------+')
+"
+
 fi
 
 
-# --- Done ---------------------------------------------------------
+# ─── Done ─────────────────────────────────────────────────────────
 
 echo ""
 echo "========================================="
 echo "  Workflow Demo Complete"
 echo "========================================="
 echo "  Schema ID:  ${SCHEMA_ID:-N/A}"
+echo "  Run ID:     ${RUN_ID:-N/A}"
 echo "  Timestamp:  $TIMESTAMP"
 
 # Remove trap on success
