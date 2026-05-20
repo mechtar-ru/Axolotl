@@ -14,6 +14,7 @@ import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import ResumeBanner from '@/components/studio/ResumeBanner.vue'
 import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
 import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
+import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/schemaStore'
 
 type StudioMode = 'blueprint' | 'timeline'
@@ -53,6 +54,8 @@ const reviewNodeId = ref('')
 const reviewFindings = ref<ReviewFinding[]>([])
 const reviewIteration = ref(1)
 const reviewMode = ref('manual')
+
+const showPipelinePanel = ref(false)
 
 // Provide state for child components
 provide('appState', {
@@ -414,18 +417,34 @@ function goToDashboard() {
       @dismiss="handleDismiss"
     />
     
-    <div class="studio-content">
-      <BlueprintView
-        v-show="activeMode === 'blueprint'"
-        :app-id="appId"
-      />
-      <TimelineView
-        v-show="activeMode === 'timeline'"
-        @select-block="(blockId) => {
-          if (blockId === '__execution__') return
-          activeMode = 'blueprint'
-        }"
-      />
+    <div class="studio-toolbar">
+      <button
+        class="toolbar-btn"
+        :class="{ active: showPipelinePanel }"
+        title="Pipeline"
+        @click="showPipelinePanel = !showPipelinePanel"
+      >
+        ⚙ Pipeline
+      </button>
+    </div>
+
+    <div class="studio-content" :class="{ 'with-pipeline': showPipelinePanel }">
+      <div class="pipeline-sidebar" v-if="showPipelinePanel && activeMode === 'blueprint'">
+        <PipelinePanel />
+      </div>
+      <div class="main-content">
+        <BlueprintView
+          v-show="activeMode === 'blueprint'"
+          :app-id="appId"
+        />
+        <TimelineView
+          v-show="activeMode === 'timeline'"
+          @select-block="(blockId) => {
+            if (blockId === '__execution__') return
+            activeMode = 'blueprint'
+          }"
+        />
+      </div>
     </div>
 
     <QuickStartDialog
@@ -466,12 +485,6 @@ function goToDashboard() {
   background: var(--bg-canvas);
 }
 
-.studio-content {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-
 .placeholder-view {
   display: flex;
   flex-direction: column;
@@ -496,5 +509,60 @@ function goToDashboard() {
 .placeholder-view p {
   margin: 0;
   font-size: var(--text-sm);
+}
+
+.studio-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolbar-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toolbar-btn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.studio-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+}
+
+.studio-content.with-pipeline {
+  display: flex;
+}
+
+.pipeline-sidebar {
+  width: 320px;
+  min-width: 320px;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  background: var(--bg-surface);
+}
+
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }
 </style>

@@ -9,6 +9,7 @@ import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
+import com.agent.orchestrator.service.PipelineService;
 import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
 import com.agent.orchestrator.service.SettingsService;
@@ -31,16 +32,19 @@ public class AgentController {
 
     private final AgentService agentService;
     private final SchemaService schemaService;
+    private final PipelineService pipelineService;
     private final LlmService llmService;
     private final MemPalaceClient memPalaceClient;
     private final PlanningService planningService;
     private final SettingsService settingsService;
 
     public AgentController(AgentService agentService, SchemaService schemaService,
+                           PipelineService pipelineService,
                            LlmService llmService, MemPalaceClient memPalaceClient,
                            PlanningService planningService, SettingsService settingsService) {
         this.agentService = agentService;
         this.schemaService = schemaService;
+        this.pipelineService = pipelineService;
         this.llmService = llmService;
         this.memPalaceClient = memPalaceClient;
         this.planningService = planningService;
@@ -369,6 +373,52 @@ public class AgentController {
         return Map.of("content", content);
     }
 
-    // NOTE: generateSchemaFromPrompt endpoint removed — Quick Start now uses fixed pipeline
+    // ── Multi-Stage Pipeline ────────────────────────────────────
+
+    @PostMapping("/schemas/{id}/pipeline/build")
+    public Map<String, Object> buildPipelineNodes(@PathVariable String id) {
+        try {
+            WorkflowSchema schema = pipelineService.buildPipelineNodes(id);
+            return Map.of("status", "ok", "nodes", schema.getNodes() != null ? schema.getNodes().size() : 0,
+                    "edges", schema.getEdges() != null ? schema.getEdges().size() : 0);
+        } catch (Exception e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/execute")
+    public Map<String, String> executePipeline(@PathVariable String id) {
+        pipelineService.executePipeline(id);
+        return Map.of("status", "ok", "message", "Pipeline execution started");
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/cancel")
+    public Map<String, String> cancelPipeline(@PathVariable String id) {
+        pipelineService.cancelPipeline(id);
+        return Map.of("status", "ok", "message", "Pipeline cancelled");
+    }
+
+    @GetMapping("/schemas/{id}/pipeline/status")
+    public Map<String, Object> pipelineStatus(@PathVariable String id) {
+        boolean running = pipelineService.isPipelineRunning(id);
+        Map<String, String> results = pipelineService.getStageResults(id);
+        return Map.of("running", running, "stageResults", results);
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/default")
+    public Map<String, Object> createDefaultPipeline(@PathVariable String id,
+                                                      @RequestBody Map<String, Object> body) {
+        WorkflowSchema schema = schemaService.getSchema(id);
+        if (schema == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found");
+        }
+        String appType = (String) body.getOrDefault("appType", "custom");
+        String description = (String) body.getOrDefault("description", schema.getDescription());
+        schema.setPipeline(PipelineService.createDefaultPipeline(appType, description));
+        schemaService.updateSchema(id, schema);
+        return Map.of("status", "ok", "pipeline", "Default pipeline created");
+    }
 
 }

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
+import type { Pipeline, Stage, PipelineStatus } from '../types/pipeline';
 import { schemaApi, settingsApi } from '../services/api';
 import { api } from '../services/api';
 
@@ -216,6 +217,44 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
 
+  // ─── Pipeline state ────────────────────────────────────────────
+  const pipelineStatus = ref<PipelineStatus>({ running: false, stageResults: {} })
+  const pipelineExpanded = ref(false)
+
+  async function buildPipelineNodes(schemaId: string) {
+    const res = await api.post(`/api/schemas/${schemaId}/pipeline/build`)
+    return res.data
+  }
+
+  async function executePipeline(schemaId: string) {
+    await api.post(`/api/schemas/${schemaId}/pipeline/execute`)
+    pipelineStatus.value = { running: true, stageResults: {} }
+  }
+
+  async function cancelPipelineExecution(schemaId: string) {
+    await api.post(`/api/schemas/${schemaId}/pipeline/cancel`)
+    pipelineStatus.value.running = false
+  }
+
+  async function refreshPipelineStatus(schemaId: string) {
+    const res = await api.get(`/api/schemas/${schemaId}/pipeline/status`)
+    pipelineStatus.value = res.data
+  }
+
+  async function createDefaultPipeline(schemaId: string, appType?: string, description?: string) {
+    const res = await api.post(`/api/schemas/${schemaId}/pipeline/default`, {
+      appType: appType || 'custom',
+      description: description || ''
+    })
+    return res.data
+  }
+
+  function setPipeline(pipeline: Pipeline | undefined) {
+    if (currentSchema.value) {
+      currentSchema.value.pipeline = pipeline
+    }
+  }
+
   return {
     schemas,
     currentSchema,
@@ -239,5 +278,14 @@ export const useSchemaStore = defineStore('schema', () => {
     clearReview,
     approveReview,
     rejectReview,
+    // Pipeline
+    pipelineStatus,
+    pipelineExpanded,
+    buildPipelineNodes,
+    executePipeline,
+    cancelPipelineExecution,
+    refreshPipelineStatus,
+    createDefaultPipeline,
+    setPipeline,
   };
 });

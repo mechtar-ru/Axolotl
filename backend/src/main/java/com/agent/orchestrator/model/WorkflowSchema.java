@@ -26,6 +26,10 @@ public class WorkflowSchema {
     private String planningOutline;
     private String planningRefinedPlan;
     private String planningContext;
+    private Pipeline pipeline;
+
+    public Pipeline getPipeline() { return pipeline; }
+    public void setPipeline(Pipeline pipeline) { this.pipeline = pipeline; }
 
     // Геттеры и сеттеры
     public String getId() { return id; }

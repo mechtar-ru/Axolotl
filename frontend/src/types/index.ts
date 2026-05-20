@@ -106,6 +106,7 @@ export interface WorkflowSchema {
   appType?: string;
   targetPath?: string;
   targetPathConflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';
+  pipeline?: import('./pipeline').Pipeline;
 }
 
 export interface PlanningModels {
