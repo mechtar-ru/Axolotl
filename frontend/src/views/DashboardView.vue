@@ -186,12 +186,24 @@ onMounted(() => {
 
 /** After creating a schema from a template, push the template's nodes and edges into it.
  *  Returns the updated full schema, or undefined if template has no nodes to apply.
+ *  Retries getSchema up to 3 times with backoff to handle Neo4j async replication delay.
  */
 async function applyTemplateToSchema(schemaId: string, templateId: string): Promise<WorkflowSchema | undefined> {
   const fullTemplate = getTemplateById(templateId)
   if (!fullTemplate || fullTemplate.defaultNodes.length === 0) return
 
-  const schema = await schemaApi.getSchema(schemaId)
+  // Retry getSchema to handle Neo4j async replication delay
+  let schema: WorkflowSchema | null = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    schema = await schemaApi.getSchema(schemaId)
+    if (schema) break
+    await new Promise(r => setTimeout(r, 200 * (attempt + 1)))
+  }
+  if (!schema) {
+    console.error('Failed to fetch schema after retries:', schemaId)
+    return
+  }
+
   schema.nodes = fullTemplate.defaultNodes.map(n => ({
     id: n.id,
     type: n.type as any,
