@@ -71,7 +71,12 @@ const providerGroups = computed(() => {
   return groups
 })
 
-onMounted(async () => {
+onMounted(() => loadProviders())
+
+// Reload providers on every block change to pick up new providers from Settings
+watch(() => props.blockId, () => loadProviders(), { immediate: false })
+
+async function loadProviders() {
   try {
     const providers = await settingsApi.getProviders()
     const opts: { value: string; label: string; group: string }[] = []
@@ -91,7 +96,7 @@ onMounted(async () => {
   } catch {
     providerOptions.value = []
   }
-})
+}
 
 const requiredPatternsText = computed({
   get: () => requiredPatterns.value.join('\n'),

@@ -54,8 +54,8 @@ watch(() => props.executionResult, async (result) => {
     output.value = typeof result === 'string' ? result : JSON.stringify(result, null, 2)
     isRunning.value = false
     viewMode.value = 'preview'
-    // Fetch generated files after execution completes
-    if (props.schemaId) {
+    // Fetch generated files after execution completes (only once per result)
+    if (props.schemaId && output.value !== null) {
       await fetchGeneratedFiles()
     }
   }
@@ -85,8 +85,12 @@ function run() {
   }, 800)
 }
 
+let lastFetchSchemaId = ''
+
 async function fetchGeneratedFiles() {
   if (!props.schemaId) return
+  if (props.schemaId === lastFetchSchemaId && generatedFiles.value.length > 0) return
+  lastFetchSchemaId = props.schemaId
   loadingFiles.value = true
   try {
     const files = await appApi.getGeneratedFiles(props.schemaId)
