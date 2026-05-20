@@ -29,6 +29,8 @@ public class Neo4jIndexesInitializer {
             session.run("CREATE INDEX method_signature_idx IF NOT EXISTS FOR (m:Method) ON (m.signature)");
             session.run("CREATE INDEX method_name_idx IF NOT EXISTS FOR (m:Method) ON (m.name)");
             session.run("CREATE INDEX class_name_idx IF NOT EXISTS FOR (c:Class) ON (c.name)");
+            session.run("CREATE INDEX exec_run_schema_id_idx IF NOT EXISTS FOR (r:ExecutionRun) ON (r.schemaId)");
+            session.run("CREATE INDEX exec_run_status_idx IF NOT EXISTS FOR (r:ExecutionRun) ON (r.status)");
 
             log.info("Neo4j indexes created successfully");
         } catch (Exception e) {
