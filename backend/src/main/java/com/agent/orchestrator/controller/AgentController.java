@@ -393,6 +393,16 @@ public class AgentController {
         return Map.of("status", "ok", "message", "Pipeline execution started");
     }
 
+    @PostMapping("/schemas/{id}/pipeline/retry")
+    public Map<String, String> retryPipeline(@PathVariable String id) {
+        try {
+            pipelineService.retryPipeline(id);
+            return Map.of("status", "ok", "message", "Pipeline retry started from first failed stage");
+        } catch (Exception e) {
+            return Map.of("status", "error", "error", e.getMessage());
+        }
+    }
+
     @PostMapping("/schemas/{id}/pipeline/cancel")
     public Map<String, String> cancelPipeline(@PathVariable String id) {
         pipelineService.cancelPipeline(id);
@@ -418,14 +428,10 @@ public class AgentController {
         String description = (String) body.getOrDefault("description", schema.getDescription());
         schema.setPipeline(PipelineService.createDefaultPipeline(appType, description));
 
-        // Set default model from global settings or use a known-working model
+        // Use user's default model — execution engine handles routing/availability
         String globalModel = settingsService.getGlobalDefaultModel();
-        if (globalModel != null && !globalModel.isBlank() && !"deepseek-v4-flash".equals(globalModel)) {
-            schema.setDefaultModel(globalModel);
-        } else {
-            // deepseek-v4-flash is not supported by Zen API; use the free variant
-            schema.setDefaultModel("deepseek-v4-flash-free");
-        }
+        schema.setDefaultModel(globalModel != null && !globalModel.isBlank()
+                ? globalModel : "deepseek-v4-flash-free");
         if (schema.getPipeline() != null && schema.getPipeline().getStages() != null) {
             for (var stage : schema.getPipeline().getStages()) {
                 if (stage.getModel() == null || stage.getModel().isBlank()) {

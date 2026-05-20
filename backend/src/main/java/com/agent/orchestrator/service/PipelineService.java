@@ -7,6 +7,7 @@ import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.*;
@@ -117,6 +118,7 @@ public class PipelineService {
         return schema;
     }
 
+    @Transactional
     public void executePipeline(String schemaId) {
         WorkflowSchema schema = schemaRepository.findById(schemaId);
         if (schema == null) {
@@ -140,6 +142,14 @@ public class PipelineService {
         run.setMode("PIPELINE");
         run.setStartedAt(Instant.now().toString());
         run.setUpdatedAt(Instant.now().toString());
+        // Initialize stage status map
+        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null) {
+            Map<String, String> initStatus = new HashMap<>();
+            for (Stage s : schema.getPipeline().getStages()) {
+                initStatus.put(s.getId(), "pending");
+            }
+            run.setStageStatus(initStatus);
+        }
         executionRepository.createRun(run);
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
@@ -201,6 +211,8 @@ public class PipelineService {
 
                 Node scratch = null;
                 try {
+                    executionRepository.updateRunStageStatus(runId, stageNodeId, "running");
+
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schema.getId(), "info",
                                 "Stage started: " + stage.getName(), stageNodeId);
@@ -225,6 +237,7 @@ public class PipelineService {
                     if (executedNode != null
                             && "review".equals(executedNode.getType())
                             && executedNode.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
+                        executionRepository.updateRunStageStatus(runId, stageNodeId, "paused");
                         log.info("Pipeline paused at stage {} awaiting approval", stageNodeId);
                         executionRepository.updateRunStatus(runId, "paused",
                                 "Awaiting review approval for " + stageNodeId);
@@ -238,6 +251,8 @@ public class PipelineService {
                         break;
                     }
 
+                    executionRepository.updateRunStageStatus(runId, stageNodeId, "completed");
+
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schema.getId(), "success",
                                 "Stage completed: " + stage.getName(), stageNodeId);
@@ -246,6 +261,7 @@ public class PipelineService {
                     }
                 } catch (Exception e) {
                     hasFailure = true;
+                    executionRepository.updateRunStageStatus(runId, stageNodeId, "failed");
                     log.error("Stage {} failed: {}", stage.getName(), e.getMessage(), e);
                     if (webSocketHandler != null) {
                         webSocketHandler.sendError(schema.getId(), stageNodeId,
@@ -286,6 +302,183 @@ public class PipelineService {
         if (!isPaused) {
             executionRepository.updateRunCompleted(runId, cancelFlag.get() ? "cancelled" : "completed", 0, 0.0);
         }
+    }
+
+    public void retryPipeline(String schemaId) {
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        if (schema == null) {
+            throw new RuntimeException("Schema not found: " + schemaId);
+        }
+
+        ExecutionRun failedRun = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "failed");
+        if (failedRun == null) {
+            throw new RuntimeException("No failed pipeline run found for schema " + schemaId);
+        }
+
+        Pipeline pipeline = schema.getPipeline();
+        List<Stage> stages = pipeline.getStages();
+        if (stages == null || stages.isEmpty()) {
+            throw new RuntimeException("Pipeline has no stages to retry");
+        }
+
+        Map<String, String> persistedStatus = failedRun.getStageStatus();
+        int firstFailedIndex = -1;
+        for (int i = 0; i < stages.size(); i++) {
+            String sid = stages.get(i).getId();
+            String st = persistedStatus != null ? persistedStatus.get(sid) : null;
+            if ("failed".equals(st)) {
+                firstFailedIndex = i;
+                break;
+            }
+        }
+        if (firstFailedIndex == -1) {
+            throw new RuntimeException("No failed stages found in run " + failedRun.getId()
+                    + " — cannot retry");
+        }
+
+        // Create child run
+        String runId = UUID.randomUUID().toString();
+        ExecutionRun run = new ExecutionRun();
+        run.setId(runId);
+        run.setSchemaId(schemaId);
+        run.setStatus("running");
+        run.setMode("PIPELINE");
+        run.setResumesFrom(failedRun.getId());
+        run.setStartedAt(Instant.now().toString());
+        run.setUpdatedAt(Instant.now().toString());
+
+        // Copy stage status from failed run, resetting failed + downstream to pending
+        Map<String, String> newStatus = new HashMap<>();
+        for (Stage s : stages) {
+            String sid = s.getId();
+            String oldSt = persistedStatus != null ? persistedStatus.get(sid) : null;
+            boolean isFailedOrAfter = false;
+            for (int j = firstFailedIndex; j < stages.size(); j++) {
+                if (stages.get(j).getId().equals(sid)) {
+                    isFailedOrAfter = true;
+                    break;
+                }
+            }
+            if (isFailedOrAfter) {
+                newStatus.put(sid, "pending");
+            } else {
+                newStatus.put(sid, oldSt != null ? oldSt : "skipped");
+            }
+        }
+        run.setStageStatus(newStatus);
+        executionRepository.createRun(run);
+
+        // Notify
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schema.getId(), "info", "Retrying pipeline from stage "
+                    + stages.get(firstFailedIndex).getName(), null);
+            webSocketHandler.sendProgress(schema.getId(), "system", "PIPELINE_RETRY",
+                    (int) ((double) firstFailedIndex / stages.size() * 100),
+                    "Retrying from stage " + (firstFailedIndex + 1) + "/" + stages.size());
+        }
+
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        cancelFlags.put(schemaId, cancelFlag);
+        stageResults.put(schemaId, new ConcurrentHashMap<>());
+
+        // Re-run stages from first failed onwards — same logic as inner loop of runPipelineStages
+        Map<String, Node> nodeMap = new HashMap<>();
+        if (schema.getNodes() != null) {
+            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), n);
+        }
+
+        // Only run stages at or after firstFailedIndex
+        List<Stage> retryStages = new ArrayList<>();
+        Set<String> completedBefore = new HashSet<>();
+        for (int i = 0; i < stages.size(); i++) {
+            if (i >= firstFailedIndex) {
+                Stage s = stages.get(i);
+                Stage copy = copyStage(s);
+                // Filter deps to only those completed in the original run
+                List<String> filtered = new ArrayList<>();
+                if (s.getDependencies() != null) {
+                    for (String dep : s.getDependencies()) {
+                        String depSt = persistedStatus != null ? persistedStatus.get(dep) : null;
+                        if ("completed".equals(depSt)) {
+                            filtered.add(dep);
+                        } else if (i < firstFailedIndex) {
+                            filtered.add(dep);
+                        }
+                        // Failed deps of retried stages stay — topological sort will error if cyclic
+                    }
+                }
+                copy.setDependencies(filtered);
+                retryStages.add(copy);
+            } else {
+                completedBefore.add(stages.get(i).getId());
+            }
+        }
+
+        List<List<Stage>> retryLevels = topologicalSortStages(retryStages);
+        int totalRetry = retryStages.size();
+        int completedRetry = 0;
+
+        for (List<Stage> level : retryLevels) {
+            if (cancelFlag.get()) break;
+            for (Stage stage : level) {
+                if (cancelFlag.get()) break;
+
+                Node existingNode = nodeMap.get(stage.getId());
+                try {
+                    executionRepository.updateRunStageStatus(runId, stage.getId(), "running");
+
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schema.getId(), "info",
+                                "Stage started: " + stage.getName(), stage.getId());
+                    }
+
+                    String resolvedModel = resolveStageModel(stage, schema);
+                    if (existingNode != null) {
+                        nodeExecutor.executeNode(existingNode, schemaId, cancelFlag,
+                                ExecutionMode.EXECUTE, resolvedModel);
+                    } else {
+                        Node scratch = stageToScratchNode(stage, schema.getId());
+                        nodeExecutor.executeNode(scratch, schemaId, cancelFlag,
+                                ExecutionMode.EXECUTE, resolvedModel);
+                    }
+
+                    executionRepository.updateRunStageStatus(runId, stage.getId(), "completed");
+
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schema.getId(), "success",
+                                "Stage completed: " + stage.getName(), stage.getId());
+                    }
+                } catch (Exception e) {
+                    executionRepository.updateRunStageStatus(runId, stage.getId(), "failed");
+                    log.error("Retry stage {} failed: {}", stage.getName(), e.getMessage(), e);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendError(schema.getId(), stage.getId(),
+                                "Retry stage failed: " + stage.getName() + " - " + e.getMessage());
+                    }
+                    executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
+                    return;
+                }
+            }
+            completedRetry += level.size();
+        }
+
+        if (cancelFlag.get()) {
+            executionRepository.updateRunCompleted(runId, "cancelled", 0, 0.0);
+        } else {
+            executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
+            if (webSocketHandler != null) {
+                int totalCompleted = completedBefore.size() + completedRetry;
+                webSocketHandler.sendLog(schema.getId(), "success",
+                        "Pipeline retry completed: " + totalCompleted + "/" + stages.size()
+                                + " stages", null);
+                webSocketHandler.sendComplete(schema.getId(), 0, totalCompleted);
+                webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_completed",
+                        Map.of("status", "completed", "stagesCompleted", totalCompleted));
+            }
+        }
+
+        cancelFlags.remove(schemaId);
+        stageResults.remove(schemaId);
     }
 
     public void resumePipeline(String schemaId) {
@@ -468,9 +661,33 @@ public class PipelineService {
         return levels;
     }
 
+    private Stage copyStage(Stage s) {
+        Stage copy = new Stage();
+        copy.setId(s.getId());
+        copy.setName(s.getName());
+        copy.setNodeType(s.getNodeType());
+        copy.setModel(s.getModel());
+        copy.setSystemPrompt(s.getSystemPrompt());
+        copy.setUserPrompt(s.getUserPrompt());
+        copy.setConfig(s.getConfig() != null ? new HashMap<>(s.getConfig()) : null);
+        copy.setPositionX(s.getPositionX());
+        copy.setPositionY(s.getPositionY());
+        if (s.getDependencies() != null) {
+            copy.setDependencies(new ArrayList<>(s.getDependencies()));
+        }
+        if (s.getSubagentSchemaId() != null) {
+            copy.setSubagentSchemaId(s.getSubagentSchemaId());
+        }
+        if (s.getLoopCondition() != null) {
+            copy.setLoopCondition(s.getLoopCondition());
+            copy.setMaxIterations(s.getMaxIterations());
+        }
+        return copy;
+    }
+
     private Node stageToScratchNode(Stage stage, String schemaId) {
         Node node = new Node();
-        node.setId(stage.getId() != null ? stage.getId() : "stage-" + UUID.randomUUID());
+        node.setId(stage.getId() != null ? stage.getId() : "stage-" + UUID.randomUUID().toString().substring(0, 8));
         node.setType(stage.getNodeType() != null ? stage.getNodeType() : "agent");
         node.setName(stage.getName() != null ? stage.getName() : "Scratch Stage");
         node.setStatus(Node.NodeStatus.IDLE);

@@ -17,7 +17,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Repository for execution persistence backed by Neo4j.
@@ -120,6 +122,42 @@ public class ExecutionRepository {
         } catch (Exception e) {
             log.error("Error checking active run: {}", e.getMessage(), e);
             return false;
+        }
+    }
+
+    // ────────── Stage-level persistence (for pipeline mode) ──────────
+
+    public void updateRunStageStatus(String runId, String stageId, String status) {
+        try {
+            runRepo.findById(runId).ifPresent(graphRun -> {
+                Map<String, String> statusMap = graphRun.getStageStatus();
+                if (statusMap == null) {
+                    statusMap = new HashMap<>();
+                }
+                statusMap.put(stageId, status);
+                graphRun.setStageStatus(statusMap);
+                graphRun.setUpdatedAt(java.time.Instant.now().toString());
+                runRepo.save(graphRun);
+            });
+        } catch (Exception e) {
+            log.error("Error updating stage status run {} stage {}: {}", runId, stageId, e.getMessage(), e);
+        }
+    }
+
+    public void updateRunStageOutput(String runId, String stageId, String output) {
+        try {
+            runRepo.findById(runId).ifPresent(graphRun -> {
+                Map<String, String> outputMap = graphRun.getStageOutputs();
+                if (outputMap == null) {
+                    outputMap = new HashMap<>();
+                }
+                outputMap.put(stageId, output);
+                graphRun.setStageOutputs(outputMap);
+                graphRun.setUpdatedAt(java.time.Instant.now().toString());
+                runRepo.save(graphRun);
+            });
+        } catch (Exception e) {
+            log.error("Error updating stage output run {} stage {}: {}", runId, stageId, e.getMessage(), e);
         }
     }
 
@@ -261,6 +299,8 @@ public class ExecutionRepository {
         g.setStartedAt(r.getStartedAt());
         g.setUpdatedAt(r.getUpdatedAt());
         g.setCompletedAt(r.getCompletedAt());
+        g.setStageStatus(r.getStageStatus() != null ? r.getStageStatus() : new HashMap<>());
+        g.setStageOutputs(r.getStageOutputs() != null ? r.getStageOutputs() : new HashMap<>());
         return g;
     }
 
@@ -277,6 +317,8 @@ public class ExecutionRepository {
         r.setStartedAt(g.getStartedAt());
         r.setUpdatedAt(g.getUpdatedAt());
         r.setCompletedAt(g.getCompletedAt());
+        r.setStageStatus(g.getStageStatus() != null ? g.getStageStatus() : new HashMap<>());
+        r.setStageOutputs(g.getStageOutputs() != null ? g.getStageOutputs() : new HashMap<>());
         return r;
     }
 

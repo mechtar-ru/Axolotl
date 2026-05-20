@@ -1,37 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useSchemaStore } from '../../stores/schemaStore'
 
 const store = useSchemaStore()
+const buildResult = ref<string | null>(null)
 
 const pipeline = computed(() => store.currentSchema?.pipeline)
 const stages = computed(() => pipeline.value?.stages ?? [])
 const running = computed(() => store.pipelineStatus.running)
 
-const nodeTypeIcons: Record<string, string> = {
-  source: '📥',
-  review: '🔍',
-  agent: '🤖',
-  verifier: '✅',
-  output: '📤',
-  transform: '🔄',
-  custom: '⚙️',
-}
-
-function getIcon(type: string | undefined) {
-  return nodeTypeIcons[type ?? ''] ?? '⬜'
+const nodeTypeColors: Record<string, string> = {
+  source: 'var(--success)',
+  review: 'var(--warning)',
+  agent: 'var(--accent)',
+  verifier: 'var(--info)',
+  output: 'var(--text-muted)',
+  transform: 'var(--text-secondary)',
 }
 
 function getTypeColor(type: string | undefined) {
-  const colors: Record<string, string> = {
-    source: '#4CAF50',
-    review: '#FF9800',
-    agent: '#2196F3',
-    verifier: '#9C27B0',
-    output: '#607D8B',
-    transform: '#795548',
-  }
-  return colors[type ?? ''] ?? '#999'
+  return nodeTypeColors[type ?? ''] ?? 'var(--text-muted)'
 }
 
 function stageLevels() {
@@ -67,16 +55,35 @@ function handleCancel() {
   }
 }
 
-function handleBuildNodes() {
+async function handleRetry() {
   if (store.currentSchema) {
-    store.buildPipelineNodes(store.currentSchema.id)
+    try {
+      await store.retryPipeline(store.currentSchema.id)
+    } catch {
+      // Backend handles validation — if no failed run exists, error is logged
+    }
   }
 }
 
-function handleCreateDefault() {
+async function handleBuildNodes() {
   if (store.currentSchema) {
-    store.createDefaultPipeline(store.currentSchema.id)
+    buildResult.value = null
+    try {
+      const res = await store.buildPipelineNodes(store.currentSchema.id)
+      buildResult.value = `Built ${res.nodes ?? 0} nodes, ${res.edges ?? 0} edges`
+    } catch {
+      buildResult.value = 'Failed to build pipeline nodes'
+    }
+    setTimeout(() => { buildResult.value = null }, 3000)
   }
+}
+
+async function handleCreateDefault() {
+  if (!store.currentSchema) return
+  if (store.currentSchema.pipeline) {
+    if (!window.confirm('A pipeline already exists. Replace it with the default pipeline?')) return
+  }
+  await store.createDefaultPipeline(store.currentSchema.id)
 }
 </script>
 
@@ -89,35 +96,66 @@ function handleCreateDefault() {
           v-if="!pipeline"
           class="btn btn-sm btn-outline"
           @click="handleCreateDefault"
+          title="Create default 5-stage pipeline"
         >
-          + Create Default Pipeline
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Create Default
         </button>
         <button
           v-if="pipeline && !running"
           class="btn btn-sm btn-primary"
           @click="handleExecute"
+          title="Execute pipeline stages"
         >
-          ▶ Execute Pipeline
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5,3 19,12 5,21"/>
+          </svg>
+          Execute
         </button>
         <button
           v-if="running"
           class="btn btn-sm btn-danger"
           @click="handleCancel"
+          title="Cancel pipeline execution"
         >
-          ⏹ Cancel
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+          Cancel
+        </button>
+        <button
+          v-if="pipeline && !running && Object.keys(store.pipelineStatus.stageResults).length > 0"
+          class="btn btn-sm btn-outline retry-btn"
+          @click="handleRetry"
+          title="Retry failed stages"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+          Retry
         </button>
         <button
           v-if="pipeline"
           class="btn btn-sm btn-outline"
           @click="handleBuildNodes"
+          title="Generate canvas nodes from pipeline stages"
         >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
           Build Nodes
         </button>
       </div>
     </div>
 
     <div v-if="!pipeline" class="empty-state">
-      <p>No pipeline defined. Create a default pipeline or define stages in the schema JSON.</p>
+      <svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+      <p>No pipeline defined. Set stages in the schema or create a default pipeline.</p>
     </div>
 
     <div v-else class="pipeline-content">
@@ -126,6 +164,8 @@ function handleCreateDefault() {
         <span class="pipeline-strategy">{{ pipeline.parallelStrategy ?? 'sequential' }}</span>
         <span class="pipeline-stages-count">{{ pipeline.stages?.length ?? 0 }} stages</span>
       </div>
+
+      <div v-if="buildResult" class="build-result">{{ buildResult }}</div>
 
       <div class="stages-flow">
         <div v-for="(level, li) in stageLevels()" :key="li" class="stage-level">
@@ -137,18 +177,40 @@ function handleCreateDefault() {
               class="stage-card"
               :style="{ borderLeftColor: getTypeColor(stage.nodeType) }"
             >
-              <div class="stage-icon">{{ getIcon(stage.nodeType) }}</div>
+              <div class="stage-icon">
+                <svg v-if="stage.nodeType === 'source'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0z"/><path d="M12 6v6l4 2"/>
+                </svg>
+                <svg v-else-if="stage.nodeType === 'review'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg v-else-if="stage.nodeType === 'verifier'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <svg v-else-if="stage.nodeType === 'output'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0z"/><path d="M16 12H8"/><path d="m12 8 4 4-4 4"/>
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 6V4"/><path d="M6 6V2"/><path d="M18 6V2"/>
+                </svg>
+              </div>
               <div class="stage-body">
                 <div class="stage-name">{{ stage.name }}</div>
                 <div class="stage-type">{{ stage.nodeType }}</div>
                 <div class="stage-model" v-if="stage.model">Model: {{ stage.model }}</div>
               </div>
-              <div class="stage-status" v-if="store.pipelineStatus.stageResults[stage.id]">
-                ✔
+              <div class="stage-status completed" v-if="store.pipelineStatus.stageResults[stage.id]">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
               </div>
             </div>
           </div>
-          <div v-if="li < stageLevels().length - 1" class="level-arrow">↓</div>
+          <div v-if="li < stageLevels().length - 1" class="level-arrow">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
+            </svg>
+          </div>
         </div>
       </div>
     </div>
@@ -171,9 +233,9 @@ function handleCreateDefault() {
 
 .panel-header h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #e0e0e0;
+  color: var(--text-primary);
 }
 
 .header-actions {
@@ -182,28 +244,40 @@ function handleCreateDefault() {
 }
 
 .btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px 10px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 500;
   transition: opacity 0.2s;
+  white-space: nowrap;
 }
 
 .btn:hover { opacity: 0.85; }
 
-.btn-sm { padding: 3px 8px; font-size: 11px; }
+.btn-sm { padding: 3px 8px; font-size: var(--text-xs); }
 
-.btn-primary { background: #4CAF50; color: white; }
-.btn-danger { background: #f44336; color: white; }
-.btn-outline { background: transparent; border: 1px solid #555; color: #ccc; }
+.btn-primary { background: var(--success); color: white; }
+.btn-danger { background: var(--error); color: white; }
+.btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
+.retry-btn { background: transparent; border: 1px solid var(--warning, #f59e0b); color: var(--warning, #f59e0b); }
 
 .empty-state {
   padding: 24px;
   text-align: center;
-  color: #888;
-  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.empty-icon {
+  opacity: 0.3;
 }
 
 .pipeline-info {
@@ -212,21 +286,31 @@ function handleCreateDefault() {
   align-items: center;
   margin-bottom: 16px;
   padding: 8px 12px;
-  background: #1e1e1e;
+  background: var(--bg-surface);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--text-xs);
 }
 
-.pipeline-name { color: #e0e0e0; font-weight: 600; }
+.pipeline-name { color: var(--text-primary); font-weight: 600; }
 .pipeline-strategy {
-  color: #888;
-  background: #2a2a2a;
+  color: var(--text-muted);
+  background: var(--bg-hover);
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 10px;
   text-transform: uppercase;
 }
-.pipeline-stages-count { color: #888; margin-left: auto; }
+.pipeline-stages-count { color: var(--text-muted); margin-left: auto; }
+
+.build-result {
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  background: var(--accent-bg, rgba(33, 150, 243, 0.1));
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  text-align: center;
+}
 
 .stages-flow {
   display: flex;
@@ -245,7 +329,7 @@ function handleCreateDefault() {
 
 .level-label {
   font-size: 10px;
-  color: #666;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
@@ -261,9 +345,9 @@ function handleCreateDefault() {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #1e1e1e;
-  border: 1px solid #333;
-  border-left: 3px solid #999;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--text-muted);
   border-radius: 6px;
   padding: 10px 14px;
   min-width: 160px;
@@ -272,11 +356,15 @@ function handleCreateDefault() {
 }
 
 .stage-card:hover {
-  border-color: #555;
-  background: #252525;
+  border-color: var(--text-muted);
+  background: var(--bg-hover);
 }
 
-.stage-icon { font-size: 20px; }
+.stage-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary);
+}
 
 .stage-body {
   flex: 1;
@@ -284,32 +372,35 @@ function handleCreateDefault() {
 }
 
 .stage-name {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: #e0e0e0;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .stage-type {
-  font-size: 11px;
-  color: #888;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   text-transform: uppercase;
 }
 
 .stage-model {
   font-size: 10px;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .stage-status {
-  font-size: 16px;
+  display: flex;
+  align-items: center;
 }
 
 .level-arrow {
-  font-size: 18px;
-  color: #555;
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+  opacity: 0.5;
   padding: 2px 0;
 }
 </style>

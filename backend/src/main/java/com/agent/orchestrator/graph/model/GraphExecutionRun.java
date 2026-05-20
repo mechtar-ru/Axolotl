@@ -2,6 +2,8 @@ package com.agent.orchestrator.graph.model;
 
 import org.springframework.data.annotation.Version;
 import org.springframework.data.neo4j.core.schema.*;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Node("ExecutionRun")
@@ -43,6 +45,12 @@ public class GraphExecutionRun {
 
     @Property("completedAt")
     private String completedAt;
+
+    @Property("stageStatus")
+    private Map<String, String> stageStatus = new HashMap<>();
+
+    @Property("stageOutputs")
+    private Map<String, String> stageOutputs = new HashMap<>();
 
     public GraphExecutionRun() {}
 
@@ -88,4 +96,10 @@ public class GraphExecutionRun {
 
     public String getCompletedAt() { return completedAt; }
     public void setCompletedAt(String completedAt) { this.completedAt = completedAt; }
+
+    public Map<String, String> getStageStatus() { return stageStatus; }
+    public void setStageStatus(Map<String, String> stageStatus) { this.stageStatus = stageStatus; }
+
+    public Map<String, String> getStageOutputs() { return stageOutputs; }
+    public void setStageOutputs(Map<String, String> stageOutputs) { this.stageOutputs = stageOutputs; }
 }

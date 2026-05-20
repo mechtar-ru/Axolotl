@@ -236,6 +236,11 @@ export const useSchemaStore = defineStore('schema', () => {
     pipelineStatus.value.running = false
   }
 
+  async function retryPipeline(schemaId: string) {
+    await api.post(`/api/schemas/${schemaId}/pipeline/retry`)
+    pipelineStatus.value = { running: true, stageResults: {} }
+  }
+
   async function refreshPipelineStatus(schemaId: string) {
     const res = await api.get(`/api/schemas/${schemaId}/pipeline/status`)
     pipelineStatus.value = res.data
@@ -284,6 +289,7 @@ export const useSchemaStore = defineStore('schema', () => {
     buildPipelineNodes,
     executePipeline,
     cancelPipelineExecution,
+    retryPipeline,
     refreshPipelineStatus,
     createDefaultPipeline,
     setPipeline,

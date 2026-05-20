@@ -1,5 +1,8 @@
 package com.agent.orchestrator.model;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Сущность запуска выполнения схемы.
  * Один "клик по Run" = один ExecutionRun.
@@ -17,6 +20,8 @@ public class ExecutionRun {
     private String startedAt;
     private String updatedAt;
     private String completedAt;
+    private Map<String, String> stageStatus = new HashMap<>();
+    private Map<String, String> stageOutputs = new HashMap<>();
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -50,4 +55,10 @@ public class ExecutionRun {
 
     public String getCompletedAt() { return completedAt; }
     public void setCompletedAt(String completedAt) { this.completedAt = completedAt; }
+
+    public Map<String, String> getStageStatus() { return stageStatus; }
+    public void setStageStatus(Map<String, String> stageStatus) { this.stageStatus = stageStatus; }
+
+    public Map<String, String> getStageOutputs() { return stageOutputs; }
+    public void setStageOutputs(Map<String, String> stageOutputs) { this.stageOutputs = stageOutputs; }
 }
