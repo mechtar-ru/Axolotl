@@ -161,6 +161,18 @@ public class ExecutionRepository {
         }
     }
 
+    public void updateRunResumeIndex(String runId, int resumeIndex) {
+        try {
+            runRepo.findById(runId).ifPresent(graphRun -> {
+                graphRun.setResumeIndex(resumeIndex);
+                graphRun.setUpdatedAt(java.time.Instant.now().toString());
+                runRepo.save(graphRun);
+            });
+        } catch (Exception e) {
+            log.error("Error updating resume index run {}: {}", runId, e.getMessage(), e);
+        }
+    }
+
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {
@@ -301,6 +313,7 @@ public class ExecutionRepository {
         g.setCompletedAt(r.getCompletedAt());
         g.setStageStatus(r.getStageStatus() != null ? r.getStageStatus() : new HashMap<>());
         g.setStageOutputs(r.getStageOutputs() != null ? r.getStageOutputs() : new HashMap<>());
+        g.setResumeIndex(r.getResumeIndex());
         return g;
     }
 
@@ -319,6 +332,7 @@ public class ExecutionRepository {
         r.setCompletedAt(g.getCompletedAt());
         r.setStageStatus(g.getStageStatus() != null ? g.getStageStatus() : new HashMap<>());
         r.setStageOutputs(g.getStageOutputs() != null ? g.getStageOutputs() : new HashMap<>());
+        r.setResumeIndex(g.getResumeIndex());
         return r;
     }
 

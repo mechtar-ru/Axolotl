@@ -22,6 +22,7 @@ public class ExecutionRun {
     private String completedAt;
     private Map<String, String> stageStatus = new HashMap<>();
     private Map<String, String> stageOutputs = new HashMap<>();
+    private int resumeIndex = -1;     // -1 = not set; stores the stage index to resume from
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -61,4 +62,7 @@ public class ExecutionRun {
 
     public Map<String, String> getStageOutputs() { return stageOutputs; }
     public void setStageOutputs(Map<String, String> stageOutputs) { this.stageOutputs = stageOutputs; }
+
+    public int getResumeIndex() { return resumeIndex; }
+    public void setResumeIndex(int resumeIndex) { this.resumeIndex = resumeIndex; }
 }

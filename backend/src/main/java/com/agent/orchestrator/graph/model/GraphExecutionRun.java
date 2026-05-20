@@ -52,6 +52,9 @@ public class GraphExecutionRun {
     @Property("stageOutputs")
     private Map<String, String> stageOutputs = new HashMap<>();
 
+    @Property("resumeIndex")
+    private int resumeIndex = -1;
+
     public GraphExecutionRun() {}
 
     public GraphExecutionRun(String id, String schemaId, String status, String mode) {
@@ -102,4 +105,7 @@ public class GraphExecutionRun {
 
     public Map<String, String> getStageOutputs() { return stageOutputs; }
     public void setStageOutputs(Map<String, String> stageOutputs) { this.stageOutputs = stageOutputs; }
+
+    public int getResumeIndex() { return resumeIndex; }
+    public void setResumeIndex(int resumeIndex) { this.resumeIndex = resumeIndex; }
 }

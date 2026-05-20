@@ -11,10 +11,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 public class PipelineService {
@@ -32,6 +34,11 @@ public class PipelineService {
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
+
+    /** Per-stage timeout — 5 minutes default. Stages exceeding this are failed. */
+    private static final Duration STAGE_TIMEOUT = Duration.ofMinutes(5);
+
+    enum StageRunResult { COMPLETED, PAUSED, FAILED }
 
     public PipelineService(Neo4jSchemaRepository schemaRepository,
                            NodeExecutor nodeExecutor,
@@ -206,80 +213,21 @@ public class PipelineService {
 
             boolean paused = false;
             boolean hasFailure = false;
+            int stageIndex = completedStages;
             for (Stage stage : level) {
                 if (cancelFlag.get() || paused || hasFailure) break;
 
-                String stageNodeId = stage.getId();
-                Node existingNode = nodeMap.get(stageNodeId);
-
-                Node scratch = null;
-                try {
-                    executionRepository.updateRunStageStatus(runId, stageNodeId, "running");
-
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "info",
-                                "Stage started: " + stage.getName(), stageNodeId);
-                        webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_started",
-                                Map.of("stageId", stageNodeId, "name", stage.getName(), "status", "running"));
-                    }
-
-                    String resolvedModel = resolveStageModel(stage, schema);
-
-                    // Resolve input mappings from upstream stages
-                    if (existingNode != null && existingNode.getData() != null) {
-                        resolveInputMappings(stage, existingNode.getData(), schema.getId());
-                    }
-
-                    if (existingNode != null) {
-                        nodeExecutor.executeNode(existingNode, schema.getId(), cancelFlag,
-                                ExecutionMode.EXECUTE, resolvedModel);
-                    } else {
-                        scratch = stageToScratchNode(stage, schema.getId());
-                        resolveInputMappings(stage, scratch.getData(), schema.getId());
-                        nodeExecutor.executeNode(scratch, schema.getId(), cancelFlag,
-                                ExecutionMode.EXECUTE, resolvedModel);
-                    }
-
-                    // Store stage result for downstream input mappings
-                    storeStageResult(schema.getId(), runId, stageNodeId, existingNode, scratch);
-
-                    Node executedNode = existingNode != null ? existingNode : scratch;
-                    if (executedNode != null
-                            && "review".equals(executedNode.getType())
-                            && executedNode.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
-                        executionRepository.updateRunStageStatus(runId, stageNodeId, "paused");
-                        log.info("Pipeline paused at stage {} awaiting approval", stageNodeId);
-                        executionRepository.updateRunStatus(runId, "paused",
-                                "Awaiting review approval for " + stageNodeId);
-                        if (webSocketHandler != null) {
-                            webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_paused",
-                                    Map.of("stageId", stageNodeId, "status", "paused",
-                                            "reason", "awaiting_approval"));
-                        }
-                        pipelineResumeState.put(schema.getId(), completedStages + 1);
-                        paused = true;
-                        break;
-                    }
-
-                    executionRepository.updateRunStageStatus(runId, stageNodeId, "completed");
-
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "success",
-                                "Stage completed: " + stage.getName(), stageNodeId);
-                        webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_completed",
-                                Map.of("stageId", stageNodeId, "status", "completed"));
-                    }
-                } catch (Exception e) {
+                StageRunResult result = executeSingleStage(stage, schema, runId, nodeMap,
+                        cancelFlag, schema.getId(), stageIndex, false);
+                stageIndex++;
+                if (result == StageRunResult.PAUSED) {
+                    paused = true;
+                    break;
+                } else if (result == StageRunResult.FAILED) {
                     hasFailure = true;
-                    executionRepository.updateRunStageStatus(runId, stageNodeId, "failed");
-                    log.error("Stage {} failed: {}", stage.getName(), e.getMessage(), e);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendError(schema.getId(), stageNodeId,
-                                "Stage failed: " + stage.getName() + " - " + e.getMessage());
-                        webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_failed",
-                                Map.of("stageId", stageNodeId, "status", "failed", "error", e.getMessage()));
-                    }
+                    // Continue to next stage in the level
                 }
+                // COMPLETED: continue to next
             }
 
             if (paused) break;
@@ -435,60 +383,24 @@ public class PipelineService {
         }
 
         List<List<Stage>> retryLevels = topologicalSortStages(retryStages);
-        int totalRetry = retryStages.size();
         int completedRetry = 0;
-
+        int retryStageIndex = firstFailedIndex;
         for (List<Stage> level : retryLevels) {
             if (cancelFlag.get()) break;
             for (Stage stage : level) {
                 if (cancelFlag.get()) break;
 
-                Node existingNode = nodeMap.get(stage.getId());
-                try {
-                    executionRepository.updateRunStageStatus(runId, stage.getId(), "running");
-
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "info",
-                                "Stage started: " + stage.getName(), stage.getId());
-                    }
-
-                    String resolvedModel = resolveStageModel(stage, schema);
-
-                    // Resolve input mappings from upstream stages
-                    if (existingNode != null && existingNode.getData() != null) {
-                        resolveInputMappings(stage, existingNode.getData(), schemaId);
-                    }
-
-                    Node scratchNode = null;
-                    if (existingNode != null) {
-                        nodeExecutor.executeNode(existingNode, schemaId, cancelFlag,
-                                ExecutionMode.EXECUTE, resolvedModel);
-                    } else {
-                        scratchNode = stageToScratchNode(stage, schema.getId());
-                        resolveInputMappings(stage, scratchNode.getData(), schemaId);
-                        nodeExecutor.executeNode(scratchNode, schemaId, cancelFlag,
-                                ExecutionMode.EXECUTE, resolvedModel);
-                    }
-
-                    // Store stage result for downstream input mappings
-                    storeStageResult(schemaId, runId, stage.getId(), existingNode, scratchNode);
-
-                    executionRepository.updateRunStageStatus(runId, stage.getId(), "completed");
-
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "success",
-                                "Stage completed: " + stage.getName(), stage.getId());
-                    }
-                } catch (Exception e) {
-                    executionRepository.updateRunStageStatus(runId, stage.getId(), "failed");
-                    log.error("Retry stage {} failed: {}", stage.getName(), e.getMessage(), e);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendError(schema.getId(), stage.getId(),
-                                "Retry stage failed: " + stage.getName() + " - " + e.getMessage());
-                    }
+                StageRunResult result = executeSingleStage(stage, schema, runId, nodeMap,
+                        cancelFlag, schemaId, retryStageIndex, true);
+                retryStageIndex++;
+                if (result == StageRunResult.FAILED) {
                     executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
+                    cancelFlags.remove(schemaId);
+                    stageResults.remove(schemaId);
                     return;
                 }
+                // PAUSED with skipApprovalCheck=true: the stage was force-completed.
+                // COMPLETED: normal success. Either way the stage is done.
             }
             completedRetry += level.size();
         }
@@ -519,21 +431,34 @@ public class PipelineService {
         }
 
         Integer resumeIndex = pipelineResumeState.remove(schemaId);
+        ExecutionRun run = null;
+
         if (resumeIndex == null) {
-            log.warn("No pipeline resume state found for schema {}", schemaId);
-            return;
+            // Try the DB — the index may have been persisted before a restart
+            ExecutionRun pausedRun = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
+            if (pausedRun == null) {
+                log.warn("No pipeline resume state found for schema {}", schemaId);
+                return;
+            }
+            int dbIndex = pausedRun.getResumeIndex();
+            if (dbIndex < 0) {
+                log.warn("No resume index in DB for schema {}", schemaId);
+                return;
+            }
+            resumeIndex = dbIndex;
+            run = pausedRun;
+        } else {
+            run = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
+            if (run == null) {
+                log.warn("No paused pipeline run found for schema {}", schemaId);
+                return;
+            }
         }
 
         Pipeline pipeline = schema.getPipeline();
         List<Stage> stages = pipeline.getStages();
         if (stages == null || stages.isEmpty() || resumeIndex >= stages.size()) {
             log.warn("No stages to resume for schema {}", schemaId);
-            return;
-        }
-
-        ExecutionRun run = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
-        if (run == null) {
-            log.warn("No paused pipeline run found for schema {}", schemaId);
             return;
         }
 
@@ -607,77 +532,21 @@ public class PipelineService {
         }
 
         boolean resumedPaused = false;
+        int resumeStageIndex = resumeIndex;
         for (List<Stage> level : remainingLevels) {
             if (cancelFlag.get()) break;
 
             for (Stage stage : level) {
                 if (cancelFlag.get() || resumedPaused) break;
 
-                Node existingNode = nodeMap.get(stage.getId());
-                try {
-                    executionRepository.updateRunStageStatus(run.getId(), stage.getId(), "running");
-
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "info",
-                                "Stage started: " + stage.getName(), stage.getId());
-                        webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_started",
-                                Map.of("stageId", stage.getId(), "name", stage.getName(), "status", "running"));
-                    }
-
-                    String resolvedModel = resolveStageModel(stage, schema);
-
-                    if (existingNode != null && existingNode.getData() != null) {
-                        resolveInputMappings(stage, existingNode.getData(), schemaId);
-                    }
-
-                    Node scratchNode = null;
-                    if (existingNode != null) {
-                        nodeExecutor.executeNode(existingNode, schemaId, cancelFlag,
-                                ExecutionMode.EXECUTE, resolvedModel);
-                    } else {
-                        scratchNode = stageToScratchNode(stage, schema.getId());
-                        resolveInputMappings(stage, scratchNode.getData(), schemaId);
-                        nodeExecutor.executeNode(scratchNode, schemaId, cancelFlag,
-                                ExecutionMode.EXECUTE, resolvedModel);
-                    }
-
-                    storeStageResult(schemaId, run.getId(), stage.getId(), existingNode, scratchNode);
-
-                    Node executedNode = existingNode != null ? existingNode : scratchNode;
-                    if (executedNode != null
-                            && "review".equals(executedNode.getType())
-                            && executedNode.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
-                        executionRepository.updateRunStageStatus(run.getId(), stage.getId(), "paused");
-                        log.info("Pipeline paused again at stage {} awaiting approval", stage.getId());
-                        executionRepository.updateRunStatus(run.getId(), "paused",
-                                "Awaiting review approval for " + stage.getId());
-                        if (webSocketHandler != null) {
-                            webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_paused",
-                                    Map.of("stageId", stage.getId(), "status", "paused",
-                                            "reason", "awaiting_approval"));
-                        }
-                        pipelineResumeState.put(schema.getId(), initialCompleted + completedRemaining + 1);
-                        resumedPaused = true;
-                        break;
-                    }
-
-                    executionRepository.updateRunStageStatus(run.getId(), stage.getId(), "completed");
-
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "success",
-                                "Stage completed: " + stage.getName(), stage.getId());
-                        webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_completed",
-                                Map.of("stageId", stage.getId(), "status", "completed"));
-                    }
-                } catch (Exception e) {
-                    executionRepository.updateRunStageStatus(run.getId(), stage.getId(), "failed");
-                    log.error("Stage {} failed: {}", stage.getName(), e.getMessage(), e);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendError(schema.getId(), stage.getId(),
-                                "Stage failed: " + stage.getName() + " - " + e.getMessage());
-                        webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_failed",
-                                Map.of("stageId", stage.getId(), "status", "failed", "error", e.getMessage()));
-                    }
+                StageRunResult result = executeSingleStage(stage, schema, run.getId(), nodeMap,
+                        cancelFlag, schemaId, resumeStageIndex, false);
+                resumeStageIndex++;
+                if (result == StageRunResult.PAUSED) {
+                    resumedPaused = true;
+                    break;
+                } else if (result == StageRunResult.FAILED) {
+                    // Continue to next stage in level
                 }
             }
 
@@ -805,16 +674,16 @@ public class PipelineService {
      * Resolve input mappings for a stage by pulling output fields from upstream stages
      * stored in stageResults. Handles both "sourceStageId.fieldName" (JSON field extraction)
      * and "sourceStageId" (entire result as value) patterns.
+     * Operates on a defensive copy of the config to avoid mutating schema nodes in-place.
      */
     private void resolveInputMappings(Stage stage, Node.NodeData data, String schemaId) {
         Map<String, String> mapping = stage.getInputMapping();
         if (mapping == null || mapping.isEmpty() || data == null) return;
 
-        Map<String, Object> config = data.getConfig();
-        if (config == null) {
-            config = new HashMap<>();
-            data.setConfig(config);
-        }
+        // Clone config to avoid mutating the shared schema node
+        Map<String, Object> config = new HashMap<>();
+        if (data.getConfig() != null) config.putAll(data.getConfig());
+        data.setConfig(config);
 
         Map<String, String> results = stageResults.get(schemaId);
         if (results == null) return;
@@ -852,6 +721,113 @@ public class PipelineService {
                 log.warn("Failed to resolve input mapping {} for stage {}: {}",
                         sourceKey, stage.getId(), e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Persist resume state both in-memory and to Neo4j ExecutionRun so that
+     * paused pipelines survive server restarts.
+     */
+    private void persistResumeState(String schemaId, String runId, int resumeIndex) {
+        pipelineResumeState.put(schemaId, resumeIndex);
+        executionRepository.updateRunResumeIndex(runId, resumeIndex);
+    }
+
+    /**
+     * Core stage execution — used by runPipelineStages, retryPipeline, and resumePipeline.
+     * Handles: input mapping resolution, node execution with timeout, result storage,
+     * AWAITING_APPROVAL detection, stage status persistence, and WS event dispatch.
+     *
+     * @return COMPLETED if the stage ran to completion, PAUSED if it needs approval, FAILED on error.
+     */
+    private StageRunResult executeSingleStage(Stage stage, WorkflowSchema schema, String runId,
+                                               Map<String, Node> nodeMap, AtomicBoolean cancelFlag,
+                                               String schemaId, int stageIndex, boolean skipApprovalCheck) {
+        AtomicReference<Node> existingNodeRef = new AtomicReference<>(nodeMap.get(stage.getId()));
+        AtomicReference<Node> scratchRef = new AtomicReference<>();
+
+        try {
+            executionRepository.updateRunStageStatus(runId, stage.getId(), "running");
+
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schema.getId(), "info",
+                        "Stage started: " + stage.getName(), stage.getId());
+                webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_started",
+                        Map.of("stageId", stage.getId(), "name", stage.getName(), "status", "running"));
+            }
+
+            String resolvedModel = resolveStageModel(stage, schema);
+
+            // Execute node with timeout
+            Runnable executionTask = () -> {
+                // Resolve input mappings from upstream stages
+                if (existingNodeRef.get() != null && existingNodeRef.get().getData() != null) {
+                    resolveInputMappings(stage, existingNodeRef.get().getData(), schemaId);
+                }
+
+                if (existingNodeRef.get() != null) {
+                    nodeExecutor.executeNode(existingNodeRef.get(), schemaId, cancelFlag,
+                            ExecutionMode.EXECUTE, resolvedModel);
+                } else {
+                    Node s = stageToScratchNode(stage, schemaId);
+                    scratchRef.set(s);
+                    resolveInputMappings(stage, s.getData(), schemaId);
+                    nodeExecutor.executeNode(s, schemaId, cancelFlag,
+                            ExecutionMode.EXECUTE, resolvedModel);
+                }
+            };
+
+            try {
+                CompletableFuture.runAsync(executionTask, pipelineExecutor)
+                        .orTimeout(STAGE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
+                        .join();
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TimeoutException) {
+                    throw new RuntimeException("Stage timed out after " + STAGE_TIMEOUT.getSeconds() + "s: "
+                            + stage.getName(), e.getCause());
+                }
+                throw e;
+            }
+
+            storeStageResult(schemaId, runId, stage.getId(), existingNodeRef.get(), scratchRef.get());
+
+            Node executedNode = existingNodeRef.get() != null ? existingNodeRef.get() : scratchRef.get();
+            if (!skipApprovalCheck && executedNode != null
+                    && "review".equals(executedNode.getType())
+                    && executedNode.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
+                executionRepository.updateRunStageStatus(runId, stage.getId(), "paused");
+                log.info("Pipeline paused at stage {} awaiting approval", stage.getId());
+                executionRepository.updateRunStatus(runId, "paused",
+                        "Awaiting review approval for " + stage.getId());
+                persistResumeState(schemaId, runId, stageIndex);
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_paused",
+                            Map.of("stageId", stage.getId(), "status", "paused",
+                                    "reason", "awaiting_approval"));
+                }
+                return StageRunResult.PAUSED;
+            }
+
+            executionRepository.updateRunStageStatus(runId, stage.getId(), "completed");
+
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schema.getId(), "success",
+                        "Stage completed: " + stage.getName(), stage.getId());
+                webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_completed",
+                        Map.of("stageId", stage.getId(), "status", "completed"));
+            }
+
+            return StageRunResult.COMPLETED;
+        } catch (Exception e) {
+            executionRepository.updateRunStageStatus(runId, stage.getId(), "failed");
+            log.error("Stage {} failed: {}", stage.getName(), e.getMessage(), e);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendError(schema.getId(), stage.getId(),
+                        "Stage failed: " + stage.getName() + " - " + e.getMessage());
+                webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_failed",
+                        Map.of("stageId", stage.getId(), "status", "failed", "error", e.getMessage()));
+            }
+            return StageRunResult.FAILED;
         }
     }
 
