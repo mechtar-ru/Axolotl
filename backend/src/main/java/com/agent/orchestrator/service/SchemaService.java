@@ -48,6 +48,7 @@ public class SchemaService {
     private final LlmService llmService;
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
+    private final PipelineService pipelineService;
 
     private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
     private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
@@ -70,7 +71,8 @@ public class SchemaService {
             SchemaExporter schemaExporter,
             LlmService llmService,
             PlanService planService,
-            ExecutionRepository executionRepository) {
+            ExecutionRepository executionRepository,
+            PipelineService pipelineService) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -81,6 +83,7 @@ public class SchemaService {
         this.llmService = llmService;
         this.planService = planService;
         this.executionRepository = executionRepository;
+        this.pipelineService = pipelineService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -470,6 +473,24 @@ public class SchemaService {
         nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
                 .put(approvedKey, "true");
 
+        // Check if this is a pipeline execution — delegate to PipelineService
+        // The executionId from frontend is the schemaId for pipeline runs
+        List<ExecutionRun> runs = executionRepository.getRunsBySchema(executionId);
+        ExecutionRun pipelineRun = runs.stream()
+                .filter(r -> "PIPELINE".equals(r.getMode()) && "paused".equals(r.getStatus()))
+                .findFirst().orElse(null);
+        if (pipelineRun != null) {
+            log.info("Pipeline review approved for schema {}, run {} node {}", executionId, pipelineRun.getId(), nodeId);
+            pipelineService.resumePipeline(executionId);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(executionId, "info",
+                        "Plan approved, resuming pipeline execution", nodeId);
+                webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                        Map.of("nodeId", nodeId, "status", "RUNNING"));
+            }
+            return;
+        }
+
         WorkflowSchema schema = schemaRepository.findById(executionId);
         if (schema == null) {
             log.warn("Approval requested for non-existent schema: {}", executionId);
@@ -497,6 +518,25 @@ public class SchemaService {
      * Handle review rejection — fail the node.
      */
     public void handleReviewReject(String executionId, String nodeId) {
+        List<ExecutionRun> runs = executionRepository.getRunsBySchema(executionId);
+        ExecutionRun pipelineRun = runs.stream()
+                .filter(r -> "PIPELINE".equals(r.getMode()) && "paused".equals(r.getStatus()))
+                .findFirst().orElse(null);
+        if (pipelineRun != null) {
+            log.info("Pipeline review rejected for schema {}, run {} node {}", executionId, pipelineRun.getId(), nodeId);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(executionId, "error",
+                        "Plan rejected by user, pipeline failed: " + nodeId, nodeId);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("nodeId", nodeId);
+                payload.put("status", "FAILED");
+                payload.put("error", "Plan rejected by user");
+                webSocketHandler.sendLiveUpdate(executionId, "review_rejected", payload);
+            }
+            executionRepository.updateRunStatus(pipelineRun.getId(), "failed", "User rejected review at " + nodeId);
+            return;
+        }
+
         WorkflowSchema schema = schemaRepository.findById(executionId);
         if (schema != null && schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
