@@ -46,13 +46,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                 var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
-            } else {
-                // Token present but invalid/expired — return 401 immediately
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"error\":\"Token expired or invalid\"}");
-                return;
             }
+            // Invalid/expired token: silently skip — SecurityConfig.permitAll() or .authenticated() decides
         }
         filterChain.doFilter(request, response);
     }
