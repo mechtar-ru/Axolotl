@@ -19,11 +19,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401, clear auth state and redirect to login
+// On 401/403, clear auth state and redirect to login
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    if (status === 401 || status === 403) {
       localStorage.removeItem('axolotl_token');
       localStorage.removeItem('axolotl_username');
       localStorage.removeItem('axolotl_role');

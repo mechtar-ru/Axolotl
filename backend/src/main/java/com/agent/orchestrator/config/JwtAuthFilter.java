@@ -36,7 +36,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                      FilterChain filterChain) throws ServletException, IOException {
+                                       FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
@@ -46,9 +46,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                 var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
+            } else {
+                // Token present but invalid/expired — return 401 immediately
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"error\":\"Token expired or invalid\"}");
+                return;
             }
         }
-        // If still unauthenticated after filter, SecurityConfig's authorizeHttpRequests will handle 403
         filterChain.doFilter(request, response);
     }
 }
