@@ -1,5 +1,6 @@
 package com.agent.orchestrator.graph.model;
 
+import org.springframework.data.annotation.Version;
 import org.springframework.data.neo4j.core.schema.*;
 import java.util.UUID;
 
@@ -9,6 +10,9 @@ public class GraphExecutionRun {
     @Id
     @Property("id")
     private String id;
+
+    @Version
+    private Long version;
 
     @Property("schemaId")
     private String schemaId;
@@ -51,6 +55,9 @@ public class GraphExecutionRun {
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
+
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 
     public String getSchemaId() { return schemaId; }
     public void setSchemaId(String schemaId) { this.schemaId = schemaId; }
