@@ -79,6 +79,10 @@ provide('executionProgress', executionProgress)
  * @param skipSave — if true, skip schemaStore.updateSchema (caller already saved)
  */
 const startExecution = async (skipSave: boolean = false): Promise<void> => {
+  if (isRunning.value) {
+    console.warn('Execution already running, ignoring duplicate start')
+    return
+  }
   isRunning.value = true
   executionError.value = null
   nodeResults.value = {}
@@ -148,7 +152,11 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   })
 
   if (!skipSave) {
-    await schemaStore.flushSave()
+    try {
+      await schemaStore.flushSave()
+    } catch (e) {
+      console.error('Failed to flush pending saves:', e)
+    }
   }
 
   try {
@@ -215,21 +223,30 @@ function parseFindings(findings: any): ReviewFinding[] {
   return []
 }
 
-function handleReviewApprove() {
+async function handleReviewApprove() {
   showReviewDialog.value = false
-  schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
+  try {
+    await schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
+  } catch (e) {
+    console.error('Failed to approve review:', e)
+    executionError.value = 'Failed to approve review — execution may still be paused'
+  }
 }
 
-function handleReviewReject() {
+async function handleReviewReject() {
   showReviewDialog.value = false
-  schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
+  try {
+    await schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
+  } catch (e) {
+    console.error('Failed to reject review:', e)
+    executionError.value = 'Failed to reject review'
+  }
 }
 
 async function handleResume() {
   try {
     await schemaApi.resumeSchema(appId.value)
-    // Start execution without saving first (schema already saved)
-    startExecution(true)
+    await startExecution(true)
   } catch (e) {
     console.error('Failed to resume:', e)
   }
@@ -276,7 +293,11 @@ onMounted(async () => {
 // while the component stays alive (same route, different :id)
 watch(() => route.params.id, (newId) => {
   if (newId && newId !== appId.value) {
-    schemaStore.flushSave()  // flush pending changes before switching schemas
+    try {
+      schemaStore.flushSave()
+    } catch (e) {
+      console.error('Failed to flush saves before switching schemas:', e)
+    }
     appId.value = newId as string
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
@@ -293,11 +314,12 @@ function setMode(mode: StudioMode) {
 
 function toggleRun() {
   if (isRunning.value) {
-    // Stop execution
+    executionError.value = null
     disconnect()
     schemaApi.stopSchema(appId.value)
       .catch((err: Error) => {
         console.error('Failed to stop execution:', err)
+        executionError.value = 'Failed to stop execution'
       })
     isRunning.value = false
   } else {
@@ -313,7 +335,11 @@ onUnmounted(() => {
 
 // Flush pending saves + disconnect WebSocket when navigating away
 onDeactivated(() => {
-  schemaStore.flushSave()  // ensure dirty edits reach backend
+  try {
+    schemaStore.flushSave()  // ensure dirty edits reach backend
+  } catch (e) {
+    console.error('Failed to flush saves on deactivate:', e)
+  }
   if (isRunning.value) {
     disconnect()
   }

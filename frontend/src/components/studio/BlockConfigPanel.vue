@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { settingsApi } from '@/services/api'
@@ -100,10 +100,44 @@ const requiredPatternsText = computed({
   }
 })
 
+// Debounce guard for markDirty — avoids excessive saves on rapid input
+let saveDirtyTimeout: ReturnType<typeof setTimeout> | null = null
+let isAlive = true
+onUnmounted(() => { isAlive = false; if (saveDirtyTimeout) clearTimeout(saveDirtyTimeout) })
+
+function resetRefs() {
+  blockLabel.value = ''
+  blockDescription.value = ''
+  model.value = ''
+  prompt.value = ''
+  blockType.value = 'agent'
+  sourceType.value = 'text'
+  sourceContent.value = ''
+  filePath.value = ''
+  url.value = ''
+  projectPath.value = ''
+  maxDepth.value = 4
+  maxFiles.value = 50
+  syntaxCheck.value = true
+  requiredPatterns.value = []
+  testCommand.value = ''
+  maxFileSizeKb.value = 500
+  reviewPremortem.value = true
+  reviewPrism.value = false
+  reviewPostmortem.value = false
+  reviewMode.value = 'manual'
+  reviewMaxIterations.value = 3
+  reviewMaxAutoIterations.value = 3
+  reviewGeneratePlan.value = true
+}
+
 // Populate form fields when the panel opens for a different block
 // NOTE: must be after all ref() declarations to avoid TDZ errors
 watch(() => props.blockId, () => {
-  if (!node.value) return
+  if (!node.value) {
+    resetRefs()
+    return
+  }
   blockLabel.value = (node.value.data?.label as string) || ''
   blockType.value = (node.value.type as string) || (node.value.data?.type as string) || 'agent'
   const config = (node.value.data?.config as Record<string, any>) || {}
@@ -164,6 +198,15 @@ function onDirPicked(e: Event) {
 
 function fetchUrlPreview() {
   // For MVP, URL preview not implemented — config is saved, backend handles at execution
+}
+
+function debounceMarkDirty(data: any) {
+  if (saveDirtyTimeout) clearTimeout(saveDirtyTimeout)
+  saveDirtyTimeout = setTimeout(() => {
+    if (!isAlive) return
+    schemaStore.markDirty(data)
+    saveDirtyTimeout = null
+  }, 400)
 }
 
 function saveConfig() {
@@ -282,7 +325,7 @@ function saveConfig() {
         data: baseData
       }
     })
-    schemaStore.markDirty({
+    debounceMarkDirty({
       ...schemaStore.currentSchema,
       nodes: updatedNodes
     })

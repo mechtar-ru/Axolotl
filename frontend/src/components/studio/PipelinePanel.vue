@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onUnmounted } from 'vue'
 import { useSchemaStore } from '../../stores/schemaStore'
 
 const store = useSchemaStore()
 const buildResult = ref<string | null>(null)
+let buildTimeout: ReturnType<typeof setTimeout> | null = null
+const executeError = ref<string | null>(null)
+
+onUnmounted(() => {
+  if (buildTimeout) clearTimeout(buildTimeout)
+})
 
 const pipeline = computed(() => store.currentSchema?.pipeline)
 const stages = computed(() => pipeline.value?.stages ?? [])
@@ -22,7 +28,7 @@ function getTypeColor(type: string | undefined) {
   return nodeTypeColors[type ?? ''] ?? 'var(--text-muted)'
 }
 
-function stageLevels() {
+const stageLevels = computed(() => {
   if (!stages.value.length) return []
   const deps = new Map<string, Set<string>>()
   for (const s of stages.value) {
@@ -41,41 +47,50 @@ function stageLevels() {
     levels.push(level)
   }
   return levels
-}
+})
 
-function handleExecute() {
-  if (store.currentSchema) {
-    store.executePipeline(store.currentSchema.id)
+async function handleExecute() {
+  if (!store.currentSchema) return
+  executeError.value = null
+  try {
+    await store.executePipeline(store.currentSchema.id)
+  } catch (e) {
+    executeError.value = (e as Error).message || 'Failed to execute pipeline'
   }
 }
 
-function handleCancel() {
-  if (store.currentSchema) {
-    store.cancelPipelineExecution(store.currentSchema.id)
+async function handleCancel() {
+  if (!store.currentSchema) return
+  executeError.value = null
+  try {
+    await store.cancelPipelineExecution(store.currentSchema.id)
+  } catch (e) {
+    executeError.value = (e as Error).message || 'Failed to cancel pipeline'
   }
 }
 
 async function handleRetry() {
-  if (store.currentSchema) {
-    try {
-      await store.retryPipeline(store.currentSchema.id)
-    } catch {
-      // Backend handles validation — if no failed run exists, error is logged
-    }
+  if (!store.currentSchema) return
+  executeError.value = null
+  try {
+    await store.retryPipeline(store.currentSchema.id)
+  } catch (e) {
+    executeError.value = (e as Error).message || 'Failed to retry pipeline'
   }
 }
 
 async function handleBuildNodes() {
-  if (store.currentSchema) {
-    buildResult.value = null
-    try {
-      const res = await store.buildPipelineNodes(store.currentSchema.id)
-      buildResult.value = `Built ${res.nodes ?? 0} nodes, ${res.edges ?? 0} edges`
-    } catch {
-      buildResult.value = 'Failed to build pipeline nodes'
-    }
-    setTimeout(() => { buildResult.value = null }, 3000)
+  if (!store.currentSchema) return
+  buildResult.value = null
+  executeError.value = null
+  try {
+    const res = await store.buildPipelineNodes(store.currentSchema.id)
+    buildResult.value = `Built ${res.nodes ?? 0} nodes, ${res.edges ?? 0} edges`
+  } catch {
+    buildResult.value = 'Failed to build pipeline nodes'
   }
+  if (buildTimeout) clearTimeout(buildTimeout)
+  buildTimeout = setTimeout(() => { buildResult.value = null }, 3000)
 }
 
 async function handleCreateDefault() {
@@ -166,9 +181,10 @@ async function handleCreateDefault() {
       </div>
 
       <div v-if="buildResult" class="build-result">{{ buildResult }}</div>
+      <div v-if="executeError" class="error-result">{{ executeError }}</div>
 
       <div class="stages-flow">
-        <div v-for="(level, li) in stageLevels()" :key="li" class="stage-level">
+        <div v-for="(level, li) in stageLevels" :key="li" class="stage-level">
           <div class="level-label">Level {{ li }}</div>
           <div class="level-stages">
             <div
@@ -206,7 +222,7 @@ async function handleCreateDefault() {
               </div>
             </div>
           </div>
-          <div v-if="li < stageLevels().length - 1" class="level-arrow">
+          <div v-if="li < stageLevels.length - 1" class="level-arrow">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>
             </svg>
@@ -309,6 +325,16 @@ async function handleCreateDefault() {
   border-radius: 4px;
   font-size: var(--text-xs);
   color: var(--accent);
+  text-align: center;
+}
+
+.error-result {
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: 4px;
+  font-size: var(--text-xs);
+  color: var(--error, #f44336);
   text-align: center;
 }
 

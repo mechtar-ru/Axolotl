@@ -84,13 +84,15 @@ function buildVueFlowEdges(schema: any): Edge[] {
     }))
 }
 
+let syncing = false
+
 // Load full schema (with nodes + edges) from API detail endpoint
 async function loadFullSchema() {
   try {
     const fullSchema = await schemaApi.getSchema(props.appId)
     if (fullSchema?.nodes?.length) {
-      addNodes(buildVueFlowNodes(fullSchema))
-      addEdges(buildVueFlowEdges(fullSchema))
+      nodes.value = buildVueFlowNodes(fullSchema) as any
+      edges.value = buildVueFlowEdges(fullSchema) as any
       nextTick(() => fitView({ padding: 0.2 }))
     }
   } catch (err) {
@@ -100,14 +102,19 @@ async function loadFullSchema() {
 
 onMounted(loadFullSchema)
 
-// Watch for schema updates (e.g. after save)
+// Watch for schema updates (e.g. after save) — prevent re-entrant sync loops
 watch(() => schemaStore.currentSchema, (schema) => {
+  if (syncing) return
   if (!schema || schema.id !== props.appId) return
   if (!schema.nodes?.length) return
 
-  addNodes(buildVueFlowNodes(schema))
-  addEdges(buildVueFlowEdges(schema))
-  nextTick(() => fitView({ padding: 0.2 }))
+  syncing = true
+  nodes.value = buildVueFlowNodes(schema) as any
+  edges.value = buildVueFlowEdges(schema) as any
+  nextTick(() => {
+    fitView({ padding: 0.2 })
+    syncing = false
+  })
 }, { deep: true })
 
 // Handle drag and drop from BlockPalette
@@ -193,6 +200,8 @@ function onQuickStart() {
 function syncFlowToStore() {
   if (!schemaStore.currentSchema) return
 
+  syncing = true
+
   const updatedNodes: FlowNode[] = nodes.value.map(n => {
     const vueFlowConfig = (n.data?.config as Record<string, any>) || {};
     const { model: m, systemPrompt: sp, ...restConfig } = vueFlowConfig;
@@ -221,6 +230,7 @@ function syncFlowToStore() {
     nodes: updatedNodes,
     edges: updatedEdges
   })
+  syncing = false
 }
 
 // Handle new connections — persist immediately
