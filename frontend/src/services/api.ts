@@ -19,21 +19,62 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401 (real auth failure), clear auth state and redirect to login.
-// Do NOT react to 403 — Spring Security returns 403 for anonymous users
-// hitting non-permitAll endpoints with a stale token. Clearing auth on 403
-// causes a redirect loop: user opens schema → some endpoint returns 403
-// → auth cleared → login → repeat.
+/**
+ * Decode JWT payload without verification (client-side).
+ * Returns null for malformed tokens.
+ */
+function decodeJwt(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    return JSON.parse(atob(parts[1]));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if the stored JWT is expired by decoding its exp claim.
+ * Returns false if no token, malformed token, or token has no exp.
+ */
+function isTokenExpired(): boolean {
+  const token = localStorage.getItem('axolotl_token');
+  if (!token) return false;
+  const payload = decodeJwt(token);
+  if (!payload || typeof payload.exp !== 'number') return false;
+  return Date.now() >= payload.exp * 1000;
+}
+
+/**
+ * Clear auth state and redirect to login page.
+ */
+function clearAuthAndRedirect(): void {
+  localStorage.removeItem('axolotl_token');
+  localStorage.removeItem('axolotl_username');
+  localStorage.removeItem('axolotl_role');
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+}
+
+/**
+ * On 401: always clear auth (real auth failure).
+ * On 403: only clear auth if the token is provably expired client-side.
+ *   Spring Security returns 403 (not 401) for anonymous users hitting
+ *   non-permitAll endpoints with an expired/stale token.  Clearing auth
+ *   on every 403 would cause a redirect loop (open schema → 403 on some
+ *   endpoint → login → repeat).  But ignoring 403 entirely means expired
+ *   tokens silently fail.  Checking exp client-side splits the difference.
+ * On other errors: pass through.
+ */
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('axolotl_token');
-      localStorage.removeItem('axolotl_username');
-      localStorage.removeItem('axolotl_role');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
-      }
+    const status = error.response?.status;
+    if (status === 401) {
+      clearAuthAndRedirect();
+    } else if (status === 403 && isTokenExpired()) {
+      clearAuthAndRedirect();
     }
     return Promise.reject(error);
   }
