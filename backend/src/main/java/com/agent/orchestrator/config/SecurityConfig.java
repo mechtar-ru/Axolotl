@@ -44,6 +44,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/history", "/api/history/**").permitAll()
                 .requestMatchers("/api/fetch-url").permitAll()
                 .requestMatchers("/api/share/t/**").permitAll()
+                .requestMatchers("/api/app", "/api/app/**").permitAll()
                 .requestMatchers("/api/plan", "/api/plan/**").permitAll()
                 .requestMatchers("/api/plugins", "/api/plugins/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
