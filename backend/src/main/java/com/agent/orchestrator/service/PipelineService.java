@@ -192,8 +192,9 @@ public class PipelineService {
             }
 
             boolean paused = false;
+            boolean hasFailure = false;
             for (Stage stage : level) {
-                if (cancelFlag.get() || paused) break;
+                if (cancelFlag.get() || paused || hasFailure) break;
 
                 String stageNodeId = stage.getId();
                 Node existingNode = nodeMap.get(stageNodeId);
@@ -244,6 +245,7 @@ public class PipelineService {
                                 Map.of("stageId", stageNodeId, "status", "completed"));
                     }
                 } catch (Exception e) {
+                    hasFailure = true;
                     log.error("Stage {} failed: {}", stage.getName(), e.getMessage(), e);
                     if (webSocketHandler != null) {
                         webSocketHandler.sendError(schema.getId(), stageNodeId,

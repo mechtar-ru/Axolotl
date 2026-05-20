@@ -196,11 +196,15 @@ public class NodeRouter {
             if (node.getData() != null) {
                 node.getData().setResult(result);
             }
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "COMPLETED", 100, "Завершено");
-                webSocketHandler.sendLog(schemaId, "success", "Узел успешно выполнен", node.getId());
+            // Don't override review nodes waiting for human approval
+            boolean isAwaitingApproval = node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL;
+            if (!isAwaitingApproval) {
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "COMPLETED", 100, "Завершено");
+                    webSocketHandler.sendLog(schemaId, "success", "Узел успешно выполнен", node.getId());
+                }
+                node.setStatus(Node.NodeStatus.COMPLETED);
             }
-            node.setStatus(Node.NodeStatus.COMPLETED);
 
             // Persist result to Neo4j
             if (nodeExecutionId != null) {

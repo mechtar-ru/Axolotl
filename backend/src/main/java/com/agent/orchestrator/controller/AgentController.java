@@ -417,6 +417,23 @@ public class AgentController {
         String appType = (String) body.getOrDefault("appType", "custom");
         String description = (String) body.getOrDefault("description", schema.getDescription());
         schema.setPipeline(PipelineService.createDefaultPipeline(appType, description));
+
+        // Set default model from global settings or use a known-working model
+        String globalModel = settingsService.getGlobalDefaultModel();
+        if (globalModel != null && !globalModel.isBlank() && !"deepseek-v4-flash".equals(globalModel)) {
+            schema.setDefaultModel(globalModel);
+        } else {
+            // deepseek-v4-flash is not supported by Zen API; use the free variant
+            schema.setDefaultModel("deepseek-v4-flash-free");
+        }
+        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null) {
+            for (var stage : schema.getPipeline().getStages()) {
+                if (stage.getModel() == null || stage.getModel().isBlank()) {
+                    stage.setModel(schema.getDefaultModel());
+                }
+            }
+        }
+
         schemaService.updateSchema(id, schema);
         return Map.of("status", "ok", "pipeline", "Default pipeline created");
     }
