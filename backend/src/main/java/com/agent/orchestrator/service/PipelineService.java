@@ -328,8 +328,35 @@ public class PipelineService {
             }
         }
 
-        // Re-run remaining stages
-        List<Stage> remainingStages = stages.subList(resumeIndex, stages.size());
+        // Re-run remaining stages — strip deps on already-completed stages
+        List<Stage> remainingStages = new ArrayList<>();
+        Set<String> completedStageIds = new HashSet<>();
+        for (int i = 0; i < resumeIndex; i++) {
+            completedStageIds.add(stages.get(i).getId());
+        }
+        for (int i = resumeIndex; i < stages.size(); i++) {
+            Stage s = stages.get(i);
+            Stage copy = new Stage();
+            copy.setId(s.getId());
+            copy.setName(s.getName());
+            copy.setNodeType(s.getNodeType());
+            copy.setModel(s.getModel());
+            copy.setSystemPrompt(s.getSystemPrompt());
+            copy.setUserPrompt(s.getUserPrompt());
+            copy.setConfig(s.getConfig());
+            copy.setPositionX(s.getPositionX());
+            copy.setPositionY(s.getPositionY());
+            List<String> filteredDeps = new ArrayList<>();
+            if (s.getDependencies() != null) {
+                for (String dep : s.getDependencies()) {
+                    if (!completedStageIds.contains(dep)) {
+                        filteredDeps.add(dep);
+                    }
+                }
+            }
+            copy.setDependencies(filteredDeps);
+            remainingStages.add(copy);
+        }
         Pipeline remainingPipeline = new Pipeline();
         remainingPipeline.setId(pipeline.getId());
         remainingPipeline.setName(pipeline.getName());
