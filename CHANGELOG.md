@@ -5,6 +5,12 @@ All notable changes to Axolotl are documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/)  
 Versioning: SemVer via git tags.
 
+## [Unreleased]
+
+### Fixed
+
+- **Trailing slash 403 on API endpoints**: Spring Boot 3.x disables trailing-slash matching, causing `MvcRequestMatcher` to reject endpoints like `/api/schemas/`. Added `TrailingSlashFilter` that normalizes request URIs before Spring Security processing — strips trailing slashes from `getRequestURI()`, `getRequestURL()`, `getServletPath()`, `getPathInfo()` (`fc67cd34`).
+
 ## [v0.3.0] - 2026-05-20
 
 ### Added
