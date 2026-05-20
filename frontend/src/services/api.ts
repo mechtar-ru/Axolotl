@@ -19,16 +19,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// On 401/403, clear auth state and redirect to login
+// On 401 (real auth failure), clear auth state and redirect to login.
+// Do NOT react to 403 — Spring Security returns 403 for anonymous users
+// hitting non-permitAll endpoints with a stale token. Clearing auth on 403
+// causes a redirect loop: user opens schema → some endpoint returns 403
+// → auth cleared → login → repeat.
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const status = error.response?.status;
-    if (status === 401 || status === 403) {
+    if (error.response?.status === 401) {
       localStorage.removeItem('axolotl_token');
       localStorage.removeItem('axolotl_username');
       localStorage.removeItem('axolotl_role');
-      // Avoid redirect loop if already on login page
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }
