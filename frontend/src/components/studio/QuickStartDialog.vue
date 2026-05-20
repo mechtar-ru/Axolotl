@@ -78,6 +78,17 @@ async function generate() {
 
     // Create mode: create a blank schema first
     if (createMode.value) {
+      // Check for path conflict before creating
+      try {
+        const pathCheck = await appApi.checkTargetPath(appName.value.trim(), 'CUSTOM')
+        if (pathCheck.exists) {
+          error.value = `Directory "${pathCheck.targetPath}" already exists. Create the app from the Dashboard to choose a conflict resolution strategy.`
+          loading.value = false
+          return
+        }
+      } catch {
+        // Path check failed — proceed anyway, createApp will handle it
+      }
       const created = await appApi.createApp({
         name: appName.value.trim(),
         appType: 'CUSTOM',

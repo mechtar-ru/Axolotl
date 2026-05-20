@@ -49,11 +49,15 @@ const blockTypes = ref<BlockType[]>([
 
 function onDragStart(event: DragEvent, blockType: BlockType) {
   if (event.dataTransfer) {
-    event.dataTransfer.setData('application/json', JSON.stringify({
-      type: 'new-block',
-      blockType: blockType.type,
-      blockLabel: blockType.label
-    }))
+    try {
+      event.dataTransfer.setData('application/json', JSON.stringify({
+        type: 'new-block',
+        blockType: blockType.type,
+        blockLabel: blockType.label
+      }))
+    } catch {
+      console.warn('Failed to serialize drag data for block:', blockType.type)
+    }
     event.dataTransfer.effectAllowed = 'copy'
   }
 }

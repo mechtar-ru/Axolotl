@@ -523,6 +523,7 @@ async function saveProvider(name: string) {
     await settingsApi.updateProvider(name, data);
     await refreshProviders();
     editedKeys[name] = '';
+    collapsed[name] = true; // auto-collapse after save
   } catch (e: any) {
     error.value = 'Save error: ' + (e.message || e);
   } finally {
@@ -550,6 +551,7 @@ async function testProvider(name: string) {
       if (p && result.models?.length) {
         p.models = result.models;
       }
+      collapsed[name] = true; // auto-collapse after successful test
     } else {
       testResults[name] = {
         ok: false,
@@ -611,6 +613,12 @@ function updateCustomField(id: string, field: string, value: any) {
 async function saveCustomEndpoint(ep: CustomLlmEndpoint) {
   if (!ep.name || !ep.name.trim()) {
     customErrors[ep.id!] = 'Name is required';
+    return;
+  }
+  // Client-side duplicate check
+  const duplicate = customEndpoints.value.find(e => e.id !== ep.id && e.name === ep.name.trim())
+  if (duplicate) {
+    customErrors[ep.id!] = `Name "${ep.name}" already exists`;
     return;
   }
   customSaving[ep.id!] = true;

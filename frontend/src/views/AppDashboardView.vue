@@ -2,11 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { appApi, historyApi } from '@/services/api'
+import { useSchemaStore } from '@/stores/schemaStore'
 import type { AppInfo } from '@/services/api'
 import type { ExecutionRecord } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const schemaStore = useSchemaStore()
 const appId = route.params.id as string
 
 const app = ref<AppInfo | null>(null)
@@ -63,6 +65,9 @@ async function handleRename() {
     const updated = await appApi.updateApp(appId, { name: newName.value.trim() })
     app.value = updated
     renameMode.value = false
+    // Sync with schemaStore so dashboard shows new name without reload
+    const schema = schemaStore.schemas.find(s => s.id === appId)
+    if (schema) schema.name = newName.value.trim()
   } catch (e: any) {
     console.error('Failed to rename:', e)
   }
