@@ -158,7 +158,6 @@
             <version>1.19.3</version>
             <scope>test</scope>
         </dependency>
-
     </dependencies>
 
     <repositories>
