@@ -84,7 +84,7 @@
 
       <div class="review-footer">
         <div class="footer-actions">
-          <button class="btn-reject" @click="emit('reject')">
+          <button class="btn-reject" @click="handleReject">
             ✕ Reject
           </button>
           <button class="btn-edit" @click="startEdit">
@@ -156,7 +156,8 @@ const feedbackText = ref('');
 const feedbackItems = ref<string[]>([]);
 
 const plan = computed(() => {
-  return editing.value ? editedPlan.value : props.rewrittenPlan;
+  if (editing.value) return editedPlan.value
+  return props.rewrittenPlan || props.originalPlan || ''
 });
 
 const modeLabel = computed(() => {
@@ -226,6 +227,12 @@ function emitSuggest() {
     feedback: feedbackItems.value,
     history: props.feedbackHistory,
   });
+}
+
+function handleReject() {
+  if (window.confirm('Reject this review? This will mark the node as failed and cannot be undone.')) {
+    emit('reject');
+  }
 }
 </script>
 

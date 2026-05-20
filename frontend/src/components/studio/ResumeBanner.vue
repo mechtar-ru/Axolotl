@@ -28,6 +28,32 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function handleResume() {
+  // Re-verify the run is still paused before emitting
+  try {
+    const run = await schemaApi.getPausedRun(props.schemaId)
+    if (!run) {
+      pausedRun.value = null
+      return
+    }
+    pausedRun.value = run
+    emit('resume')
+  } catch {
+    pausedRun.value = null
+  }
+}
+
+async function handleRestart() {
+  // Re-verify before restart too
+  try {
+    const run = await schemaApi.getPausedRun(props.schemaId)
+    pausedRun.value = run
+    emit('restart')
+  } catch {
+    pausedRun.value = null
+  }
+}
 </script>
 
 <template>
@@ -40,8 +66,8 @@ onMounted(async () => {
       </div>
     </div>
     <div class="resume-banner__actions">
-      <button class="btn btn--primary" @click="emit('resume')">Продолжить</button>
-      <button class="btn btn--secondary" @click="emit('restart')">Запустить заново</button>
+      <button class="btn btn--primary" @click="handleResume">Продолжить</button>
+      <button class="btn btn--secondary" @click="handleRestart">Запустить заново</button>
       <button class="btn btn--ghost" @click="emit('dismiss')">×</button>
     </div>
   </div>

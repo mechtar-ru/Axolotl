@@ -87,7 +87,9 @@ function buildVueFlowEdges(schema: any): Edge[] {
 let syncing = false
 
 // Load full schema (with nodes + edges) from API detail endpoint
+// Only loads if VueFlow has no nodes yet (avoids overwriting unsaved canvas edits)
 async function loadFullSchema() {
+  if (nodes.value.length > 0) return
   try {
     const fullSchema = await schemaApi.getSchema(props.appId)
     if (fullSchema?.nodes?.length) {

@@ -18,6 +18,7 @@ export interface WebSocketCallbacks {
   // New Wave 3 events
   onStep?: (data: { schemaId: string; stepIndex: number; blockId: string; blockType: string; label: string; status: string; details: string; duration: number }) => void;
   onLiveUpdate?: (data: { schemaId: string; appType: string; payload: Record<string, unknown> }) => void;
+  onDisconnect?: () => void;
 }
 
 export function useWebSocket() {
@@ -121,6 +122,8 @@ export function useWebSocket() {
       ws.value.onclose = (event) => {
         isConnected.value = false;
         console.log('🔌 WebSocket отключен, код:', event.code, 'причина:', event.reason);
+        // Notify caller of unexpected disconnect (callbacks still set means not deliberate)
+        callbacks?.onDisconnect?.();
         if (event.code !== 1000 && reconnectAttempts.value < maxReconnectAttempts) {
           reconnectTimeout = window.setTimeout(() => {
             reconnectAttempts.value++;

@@ -100,6 +100,11 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   }
 
   connect(appId.value, {
+    onDisconnect: () => {
+      if (isActive) {
+        isRunning.value = false
+      }
+    },
     onProgress: (data) => {
       if (!isActive) return
       nodeStatuses.value[data.nodeId] = data.status
@@ -142,8 +147,13 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       if (payload?.status === 'AWAITING_APPROVAL') {
         currentExecutionId.value = data.schemaId
         reviewNodeId.value = payload.nodeId || ''
-        reviewPlan.value = payload.rewrittenPlan || payload.plan || ''
-        reviewFindings.value = parseFindings(payload.findings)
+
+        // Plan may be at payload.plan, payload.rewrittenPlan, or nested inside payload.findings.plan
+        const findingsObj = payload.findings as Record<string, any> | undefined
+        reviewPlan.value = payload.rewrittenPlan || payload.plan || findingsObj?.plan || ''
+
+        // Findings items may be at payload.findings (array/string) or payload.findings.findings
+        reviewFindings.value = parseFindings(findingsObj?.findings ?? payload.findings)
         reviewIteration.value = 1
         reviewMode.value = payload.mode || 'manual'
         showReviewDialog.value = true
