@@ -4,6 +4,8 @@ import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ public class PipelineService {
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public PipelineService(Neo4jSchemaRepository schemaRepository,
                            NodeExecutor nodeExecutor,
@@ -222,16 +225,23 @@ public class PipelineService {
 
                     String resolvedModel = resolveStageModel(stage, schema);
 
+                    // Resolve input mappings from upstream stages
+                    if (existingNode != null && existingNode.getData() != null) {
+                        resolveInputMappings(stage, existingNode.getData(), schema.getId());
+                    }
+
                     if (existingNode != null) {
                         nodeExecutor.executeNode(existingNode, schema.getId(), cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                     } else {
                         scratch = stageToScratchNode(stage, schema.getId());
+                        resolveInputMappings(stage, scratch.getData(), schema.getId());
                         nodeExecutor.executeNode(scratch, schema.getId(), cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
-                        stageResults.get(schema.getId()).put(stageNodeId,
-                                scratch.getData() != null ? scratch.getData().getResult() : "");
                     }
+
+                    // Store stage result for downstream input mappings
+                    storeStageResult(schema.getId(), runId, stageNodeId, existingNode, scratch);
 
                     Node executedNode = existingNode != null ? existingNode : scratch;
                     if (executedNode != null
@@ -414,6 +424,16 @@ public class PipelineService {
             }
         }
 
+        // Pre-populate stageResults with completed stages' outputs from the original run
+        if (failedRun.getStageOutputs() != null) {
+            for (String completedId : completedBefore) {
+                String output = failedRun.getStageOutputs().get(completedId);
+                if (output != null) {
+                    stageResults.get(schemaId).put(completedId, output);
+                }
+            }
+        }
+
         List<List<Stage>> retryLevels = topologicalSortStages(retryStages);
         int totalRetry = retryStages.size();
         int completedRetry = 0;
@@ -433,14 +453,25 @@ public class PipelineService {
                     }
 
                     String resolvedModel = resolveStageModel(stage, schema);
+
+                    // Resolve input mappings from upstream stages
+                    if (existingNode != null && existingNode.getData() != null) {
+                        resolveInputMappings(stage, existingNode.getData(), schemaId);
+                    }
+
+                    Node scratchNode = null;
                     if (existingNode != null) {
                         nodeExecutor.executeNode(existingNode, schemaId, cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                     } else {
-                        Node scratch = stageToScratchNode(stage, schema.getId());
-                        nodeExecutor.executeNode(scratch, schemaId, cancelFlag,
+                        scratchNode = stageToScratchNode(stage, schema.getId());
+                        resolveInputMappings(stage, scratchNode.getData(), schemaId);
+                        nodeExecutor.executeNode(scratchNode, schemaId, cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                     }
+
+                    // Store stage result for downstream input mappings
+                    storeStageResult(schemaId, runId, stage.getId(), existingNode, scratchNode);
 
                     executionRepository.updateRunStageStatus(runId, stage.getId(), "completed");
 
@@ -570,6 +601,17 @@ public class PipelineService {
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(schemaId, cancelFlag);
+        stageResults.put(schemaId, new ConcurrentHashMap<>());
+
+        // Pre-populate stageResults with completed stages' outputs
+        if (run.getStageOutputs() != null) {
+            for (String completedId : completedStageIds) {
+                String output = run.getStageOutputs().get(completedId);
+                if (output != null) {
+                    stageResults.get(schemaId).put(completedId, output);
+                }
+            }
+        }
 
         for (List<Stage> level : remainingLevels) {
             if (cancelFlag.get()) break;
@@ -585,14 +627,25 @@ public class PipelineService {
                     }
 
                     String resolvedModel = resolveStageModel(stage, schema);
+
+                    // Resolve input mappings from upstream stages
+                    if (existingNode != null && existingNode.getData() != null) {
+                        resolveInputMappings(stage, existingNode.getData(), schemaId);
+                    }
+
+                    Node scratchNode = null;
                     if (existingNode != null) {
                         nodeExecutor.executeNode(existingNode, schemaId, cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                     } else {
-                        Node scratch = stageToScratchNode(stage, schema.getId());
-                        nodeExecutor.executeNode(scratch, schemaId, cancelFlag,
+                        scratchNode = stageToScratchNode(stage, schema.getId());
+                        resolveInputMappings(stage, scratchNode.getData(), schemaId);
+                        nodeExecutor.executeNode(scratchNode, schemaId, cancelFlag,
                                 ExecutionMode.EXECUTE, resolvedModel);
                     }
+
+                    // Store stage result for downstream input mappings
+                    storeStageResult(schemaId, run.getId(), stage.getId(), existingNode, scratchNode);
 
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schema.getId(), "success",
@@ -727,6 +780,80 @@ public class PipelineService {
     public boolean isPipelineRunning(String schemaId) {
         CompletableFuture<?> future = runningPipelines.get(schemaId);
         return future != null && !future.isDone();
+    }
+
+    /**
+     * Resolve input mappings for a stage by pulling output fields from upstream stages
+     * stored in stageResults. Handles both "sourceStageId.fieldName" (JSON field extraction)
+     * and "sourceStageId" (entire result as value) patterns.
+     */
+    private void resolveInputMappings(Stage stage, Node.NodeData data, String schemaId) {
+        Map<String, String> mapping = stage.getInputMapping();
+        if (mapping == null || mapping.isEmpty() || data == null) return;
+
+        Map<String, Object> config = data.getConfig();
+        if (config == null) {
+            config = new HashMap<>();
+            data.setConfig(config);
+        }
+
+        Map<String, String> results = stageResults.get(schemaId);
+        if (results == null) return;
+
+        for (Map.Entry<String, String> entry : mapping.entrySet()) {
+            String sourceKey = entry.getKey();
+            String targetField = entry.getValue();
+
+            int dotIdx = sourceKey.indexOf('.');
+            String sourceStageId;
+            String fieldName;
+            if (dotIdx < 0) {
+                sourceStageId = sourceKey;
+                fieldName = null; // use entire result
+            } else {
+                sourceStageId = sourceKey.substring(0, dotIdx);
+                fieldName = sourceKey.substring(dotIdx + 1);
+            }
+
+            String sourceResult = results.get(sourceStageId);
+            if (sourceResult == null || sourceResult.isEmpty()) continue;
+
+            try {
+                if (fieldName == null) {
+                    config.put(targetField, sourceResult);
+                } else {
+                    JsonNode json = mapper.readTree(sourceResult);
+                    JsonNode field = json.get(fieldName);
+                    if (field != null) {
+                        config.put(targetField, field.isTextual() ? field.asText() : field.toString());
+                    }
+                }
+                log.debug("Resolved input mapping: {} -> {} = {}", sourceKey, targetField, config.get(targetField));
+            } catch (Exception e) {
+                log.warn("Failed to resolve input mapping {} for stage {}: {}",
+                        sourceKey, stage.getId(), e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * Store stage execution result in the in-memory stageResults map and persist
+     * to Neo4j for downstream input mapping resolution.
+     */
+    private void storeStageResult(String schemaId, String runId, String stageNodeId,
+                                   Node existingNode, Node scratchNode) {
+        Node executed = existingNode != null ? existingNode : scratchNode;
+        if (executed == null) return;
+
+        String result = executed.getData() != null && executed.getData().getResult() != null
+                ? executed.getData().getResult() : "";
+
+        stageResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                .put(stageNodeId, result);
+
+        if (result != null && !result.isEmpty()) {
+            executionRepository.updateRunStageOutput(runId, stageNodeId, result);
+        }
     }
 
     public static Pipeline createDefaultPipeline(String appType, String description) {
