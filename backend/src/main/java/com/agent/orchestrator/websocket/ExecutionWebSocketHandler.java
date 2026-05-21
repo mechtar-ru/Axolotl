@@ -63,8 +63,16 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
 
     private String getSchemaIdFromSession(WebSocketSession session) {
         String query = session.getUri().getQuery();
-        if (query != null && query.startsWith("schemaId=")) {
-            return query.substring(9);
+        if (query == null) return null;
+        for (String param : query.split("&")) {
+            String[] kv = param.split("=", 2);
+            if (kv.length == 2 && "schemaId".equals(kv[0])) {
+                try {
+                    return java.net.URLDecoder.decode(kv[1], java.nio.charset.StandardCharsets.UTF_8);
+                } catch (Exception e) {
+                    return kv[1];
+                }
+            }
         }
         return null;
     }
@@ -254,9 +262,12 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             msg.put("workspaceId", workspaceId);
             msg.put("plan", plan);
             String json = objectMapper.writeValueAsString(msg);
-            for (var entry : sessions.entrySet()) {
-                String schemaId = entry.getKey();
-                List<WebSocketSession> sessionList = entry.getValue();
+            // Acquire locks in sorted order to prevent ABBA deadlock
+            List<String> sortedIds = new ArrayList<>(sessions.keySet());
+            Collections.sort(sortedIds);
+            for (String schemaId : sortedIds) {
+                List<WebSocketSession> sessionList = sessions.get(schemaId);
+                if (sessionList == null) continue;
                 ReentrantLock lock = sessionLocks.computeIfAbsent(schemaId, k -> new ReentrantLock());
                 lock.lock();
                 try {

@@ -178,9 +178,15 @@ public class PipelineService {
         future.whenComplete((result, ex) -> {
             runningPipelines.remove(schemaId);
             cancelFlags.remove(schemaId);
-            if (ex != null && !(ex instanceof CancellationException)) {
-                log.error("Pipeline execution failed for {}: {}", schemaId, ex.getMessage(), ex);
-                executionRepository.updateRunStatus(runId, "failed", ex.getMessage());
+            stageResults.remove(schemaId);
+            if (ex != null) {
+                if (ex instanceof CancellationException || ex.getCause() instanceof CancellationException) {
+                    log.info("Pipeline cancelled for schema {}", schemaId);
+                    executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
+                } else {
+                    log.error("Pipeline execution failed for {}: {}", schemaId, ex.getMessage(), ex);
+                    executionRepository.updateRunStatus(runId, "failed", ex.getMessage());
+                }
             }
         });
     }
@@ -192,7 +198,7 @@ public class PipelineService {
 
         Map<String, Node> nodeMap = new HashMap<>();
         if (schema.getNodes() != null) {
-            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), n);
+            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), cloneNode(n));
         }
 
         List<List<Stage>> stageLevels = topologicalSortStages(stages);
@@ -342,7 +348,7 @@ public class PipelineService {
         // Re-run stages from first failed onwards — same logic as inner loop of runPipelineStages
         Map<String, Node> nodeMap = new HashMap<>();
         if (schema.getNodes() != null) {
-            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), n);
+            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), cloneNode(n));
         }
 
         // Only run stages at or after firstFailedIndex
@@ -624,6 +630,10 @@ public class PipelineService {
             copy.setMaxIterations(s.getMaxIterations());
         }
         return copy;
+    }
+
+    private Node cloneNode(Node original) {
+        return mapper.convertValue(original, Node.class);
     }
 
     private Node stageToScratchNode(Stage stage, String schemaId) {

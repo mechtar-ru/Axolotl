@@ -307,22 +307,11 @@ public class SchemaService {
                     org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
         }
 
-        ExecutionRun parentRun =
-                executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
+        // Atomically claim the paused run — prevents concurrent resume races
+        ExecutionRun parentRun = executionRepository.claimPausedRun(schemaId);
         if (parentRun == null) {
             log.warn("No paused run found for schema: {}", schemaId);
             return;
-        }
-
-        if (executionRepository.hasActiveRun(schemaId)) {
-            // If there is an active run, allow resume only when there is no *running* run
-            // and the only active run is the paused parent we just fetched. This permits
-            // resuming a paused run while still protecting against concurrent running runs.
-            ExecutionRun running = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "running");
-            if (running != null) {
-                log.warn("Schema {} already has an active running run ({}), cannot resume", schemaId, running.getId());
-                return;
-            }
         }
 
         // Get parent node executions
@@ -350,7 +339,7 @@ public class SchemaService {
             currentConfigHashes.put(node.getId(), computeConfigHash(node, schema));
         }
 
-        // Reset node statuses and create NodeExecution records
+        // Reset node statuses and create NodeExecution records (use runtime state, not schema entity mutations)
         for (Node node : schemaNodes) {
             String currentHash = currentConfigHashes.get(node.getId());
             NodeExecution matched = parentNodeExecs.stream()
@@ -372,11 +361,9 @@ public class SchemaService {
                 newNodeExec.setOutputSummary(matched.getOutputSummary());
                 newNodeExec.setConfigHash(currentHash);
                 newNodeExec.setCompletedAt(Instant.now().toString());
-                node.setStatus(Node.NodeStatus.COMPLETED);
             } else {
                 newNodeExec.setStatus("pending");
                 newNodeExec.setConfigHash(currentHash);
-                node.setStatus(Node.NodeStatus.IDLE);
             }
             executionRepository.createNodeExecution(newNodeExec);
 
@@ -496,20 +483,14 @@ public class SchemaService {
             log.warn("Approval requested for non-existent schema: {}", executionId);
             return;
         }
-        if (schema.getNodes() != null) {
-            for (Node node : schema.getNodes()) {
-                if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
-                    node.setStatus(Node.NodeStatus.IDLE);
-                    log.info("Review node {} approved, resuming execution", nodeId);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(executionId, "info",
-                                "Plan approved, resuming execution", nodeId);
-                        webSocketHandler.sendLiveUpdate(executionId, "review_approved",
-                                Map.of("nodeId", nodeId, "status", "RUNNING"));
-                    }
-                    break;
-                }
-            }
+        // Note: node status is tracked via NodeExecution records + getNodeResults approvedKey.
+        // No need to mutate the schema entity — AWAITING_APPROVAL is a runtime-only state.
+        log.info("Review node {} approved, resuming execution", nodeId);
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(executionId, "info",
+                    "Plan approved, resuming execution", nodeId);
+            webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                    Map.of("nodeId", nodeId, "status", "RUNNING"));
         }
         resumeExecution(executionId, schema);
     }
@@ -1089,8 +1070,8 @@ public class SchemaService {
         String global = settingsService.getGlobalDefaultModel();
         log.debug("resolveModel: global='{}'", global);
         if (global != null && !global.isBlank()) return global;
-        log.warn("resolveModel: all fallbacks exhausted, returning null");
-        return null;
+        log.warn("resolveModel: all fallbacks exhausted, using hardcoded default");
+        return "deepseek-v4-flash-free";
     }
 
     // ────────────────────────── Prompt-to-Schema Generation ──────────────────────────

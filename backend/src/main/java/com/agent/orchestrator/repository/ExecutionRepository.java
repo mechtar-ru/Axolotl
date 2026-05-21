@@ -14,6 +14,7 @@ import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.NodeExecution;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -25,11 +26,17 @@ import java.util.Map;
  * Repository for execution persistence backed by Neo4j.
  * Stores ExecutionRun, NodeExecution, Checkpoint, and ExecutionRecord
  * as separate Neo4j nodes linked via properties.
+ * <p>
+ * All write methods throw RuntimeException on failure so callers
+ * can detect and handle persistence errors. Optimistic locking
+ * failures are retried up to 3 times with backoff.
  */
 @Repository
 public class ExecutionRepository {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionRepository.class);
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_BACKOFF_MS = 100;
 
     private final Neo4jExecutionRunRepository runRepo;
     private final Neo4jNodeExecutionRepository nodeExecRepo;
@@ -51,40 +58,28 @@ public class ExecutionRepository {
     // ────────── ExecutionRun CRUD ──────────
 
     public void createRun(ExecutionRun run) {
-        try {
-            runRepo.save(toGraphRun(run));
-        } catch (Exception e) {
-            log.error("Error creating execution run {}: {}", run.getId(), e.getMessage(), e);
-        }
+        withRetry(() -> runRepo.save(toGraphRun(run)));
     }
 
     public void updateRunStatus(String id, String status, String error) {
-        try {
-            runRepo.findById(id).ifPresent(graphRun -> {
-                graphRun.setStatus(status);
-                graphRun.setError(error);
-                graphRun.setUpdatedAt(java.time.Instant.now().toString());
-                runRepo.save(graphRun);
-            });
-        } catch (Exception e) {
-            log.error("Error updating run status {}: {}", id, e.getMessage(), e);
-        }
+        withRetry(() -> runRepo.findById(id).ifPresent(graphRun -> {
+            graphRun.setStatus(status);
+            graphRun.setError(error);
+            graphRun.setUpdatedAt(java.time.Instant.now().toString());
+            runRepo.save(graphRun);
+        }));
     }
 
     public void updateRunCompleted(String id, String status, long totalTokens, double estimatedCost) {
-        try {
-            runRepo.findById(id).ifPresent(graphRun -> {
-                String now = java.time.Instant.now().toString();
-                graphRun.setStatus(status);
-                graphRun.setTotalTokens(totalTokens);
-                graphRun.setEstimatedCost(estimatedCost);
-                graphRun.setUpdatedAt(now);
-                graphRun.setCompletedAt(now);
-                runRepo.save(graphRun);
-            });
-        } catch (Exception e) {
-            log.error("Error updating run completion {}: {}", id, e.getMessage(), e);
-        }
+        withRetry(() -> runRepo.findById(id).ifPresent(graphRun -> {
+            String now = java.time.Instant.now().toString();
+            graphRun.setStatus(status);
+            graphRun.setTotalTokens(totalTokens);
+            graphRun.setEstimatedCost(estimatedCost);
+            graphRun.setUpdatedAt(now);
+            graphRun.setCompletedAt(now);
+            runRepo.save(graphRun);
+        }));
     }
 
     public ExecutionRun getRun(String id) {
@@ -125,100 +120,70 @@ public class ExecutionRepository {
         }
     }
 
-    // ────────── Stage-level persistence (for pipeline mode) ──────────
+    /** Atomically claims a paused run by setting its status to 'resuming'.
+     *  Returns the claimed ExecutionRun or null if no paused run exists. */
+    public ExecutionRun claimPausedRun(String schemaId) {
+        try {
+            return runRepo.claimPausedRun(schemaId)
+                    .map(this::toPocoRun).orElse(null);
+        } catch (Exception e) {
+            log.error("Error claiming paused run for schema {}: {}", schemaId, e.getMessage(), e);
+            return null;
+        }
+    }
+
+    // ────────── Stage-level persistence (atomic Cypher, no read-modify-write race) ──────────
 
     public void updateRunStageStatus(String runId, String stageId, String status) {
-        try {
-            runRepo.findById(runId).ifPresent(graphRun -> {
-                Map<String, String> statusMap = graphRun.getStageStatus();
-                if (statusMap == null) {
-                    statusMap = new HashMap<>();
-                }
-                statusMap.put(stageId, status);
-                graphRun.setStageStatus(statusMap);
-                graphRun.setUpdatedAt(java.time.Instant.now().toString());
-                runRepo.save(graphRun);
-            });
-        } catch (Exception e) {
-            log.error("Error updating stage status run {} stage {}: {}", runId, stageId, e.getMessage(), e);
-        }
+        Map<String, String> update = new HashMap<>();
+        update.put(stageId, status);
+        withRetry(() -> runRepo.updateStageStatusAtomic(runId, update));
     }
 
     public void updateRunStageOutput(String runId, String stageId, String output) {
-        try {
-            runRepo.findById(runId).ifPresent(graphRun -> {
-                Map<String, String> outputMap = graphRun.getStageOutputs();
-                if (outputMap == null) {
-                    outputMap = new HashMap<>();
-                }
-                outputMap.put(stageId, output);
-                graphRun.setStageOutputs(outputMap);
-                graphRun.setUpdatedAt(java.time.Instant.now().toString());
-                runRepo.save(graphRun);
-            });
-        } catch (Exception e) {
-            log.error("Error updating stage output run {} stage {}: {}", runId, stageId, e.getMessage(), e);
-        }
+        Map<String, String> update = new HashMap<>();
+        update.put(stageId, output);
+        withRetry(() -> runRepo.updateStageOutputAtomic(runId, update));
     }
 
     public void updateRunResumeIndex(String runId, int resumeIndex) {
-        try {
-            runRepo.findById(runId).ifPresent(graphRun -> {
-                graphRun.setResumeIndex(resumeIndex);
-                graphRun.setUpdatedAt(java.time.Instant.now().toString());
-                runRepo.save(graphRun);
-            });
-        } catch (Exception e) {
-            log.error("Error updating resume index run {}: {}", runId, e.getMessage(), e);
-        }
+        withRetry(() -> runRepo.updateStatusAndResumeIndex(runId, null, resumeIndex));
     }
 
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {
-        try {
-            nodeExecRepo.save(toGraphNodeExec(ne));
-        } catch (Exception e) {
-            log.error("Error creating node_execution: {}", e.getMessage(), e);
-        }
+        withRetry(() -> nodeExecRepo.save(toGraphNodeExec(ne)));
     }
 
     public void updateNodeExecution(String id, String status, String outputSummary,
                                      long tokensUsed, long durationMs, int toolCalls, String error) {
-        try {
-            nodeExecRepo.findById(id).ifPresent(graph -> {
-                graph.setStatus(status);
-                graph.setOutputSummary(outputSummary);
-                graph.setTokensUsed(tokensUsed);
-                graph.setDurationMs(durationMs);
-                graph.setToolCalls(toolCalls);
-                graph.setError(error);
-                graph.setCompletedAt(java.time.Instant.now().toString());
-                nodeExecRepo.save(graph);
-            });
-        } catch (Exception e) {
-            log.error("Error updating node_execution {}: {}", id, e.getMessage(), e);
-        }
+        withRetry(() -> nodeExecRepo.findById(id).ifPresent(graph -> {
+            graph.setStatus(status);
+            graph.setOutputSummary(outputSummary);
+            graph.setTokensUsed(tokensUsed);
+            graph.setDurationMs(durationMs);
+            graph.setToolCalls(toolCalls);
+            graph.setError(error);
+            graph.setCompletedAt(java.time.Instant.now().toString());
+            nodeExecRepo.save(graph);
+        }));
     }
 
     public void updateNodeExecutionWithFiles(String id, String status, String outputSummary,
                                               long tokensUsed, long durationMs, int toolCalls,
                                               String filesWritten, String error) {
-        try {
-            nodeExecRepo.findById(id).ifPresent(graph -> {
-                graph.setStatus(status);
-                graph.setOutputSummary(outputSummary);
-                graph.setTokensUsed(tokensUsed);
-                graph.setDurationMs(durationMs);
-                graph.setToolCalls(toolCalls);
-                graph.setFilesWritten(filesWritten);
-                graph.setError(error);
-                graph.setCompletedAt(java.time.Instant.now().toString());
-                nodeExecRepo.save(graph);
-            });
-        } catch (Exception e) {
-            log.error("Error updating node_execution {}: {}", id, e.getMessage(), e);
-        }
+        withRetry(() -> nodeExecRepo.findById(id).ifPresent(graph -> {
+            graph.setStatus(status);
+            graph.setOutputSummary(outputSummary);
+            graph.setTokensUsed(tokensUsed);
+            graph.setDurationMs(durationMs);
+            graph.setToolCalls(toolCalls);
+            graph.setFilesWritten(filesWritten);
+            graph.setError(error);
+            graph.setCompletedAt(java.time.Instant.now().toString());
+            nodeExecRepo.save(graph);
+        }));
     }
 
     public List<NodeExecution> getNodeExecutionsByRun(String runId) {
@@ -234,11 +199,7 @@ public class ExecutionRepository {
     // ────────── Checkpoint CRUD ──────────
 
     public void saveCheckpoint(ExecutionCheckpoint checkpoint) {
-        try {
-            checkpointRepo.save(toGraphCheckpoint(checkpoint));
-        } catch (Exception e) {
-            log.error("Error saving checkpoint: {}", e.getMessage(), e);
-        }
+        withRetry(() -> checkpointRepo.save(toGraphCheckpoint(checkpoint)));
     }
 
     public ExecutionCheckpoint getLatestCheckpoint(String runId) {
@@ -264,11 +225,7 @@ public class ExecutionRepository {
     // ────────── ExecutionRecord (history) CRUD ──────────
 
     public void saveExecutionRecord(ExecutionRecord record) {
-        try {
-            recordRepo.save(toGraphRecord(record));
-        } catch (Exception e) {
-            log.error("Error saving execution record: {}", e.getMessage(), e);
-        }
+        withRetry(() -> recordRepo.save(toGraphRecord(record)));
     }
 
     public List<ExecutionRecord> getExecutionRecordsBySchema(String schemaId) {
@@ -292,12 +249,37 @@ public class ExecutionRepository {
     }
 
     public void deleteExecutionRecordsOlderThan(long cutoffTimestamp) {
-        try {
+        withRetry(() -> {
             recordRepo.deleteRecordsOlderThan(cutoffTimestamp);
-            log.info("Удалены записи выполнения старше cutoff={}", cutoffTimestamp);
-        } catch (Exception e) {
-            log.error("Ошибка при удалении старых записей выполнения: {}", e.getMessage(), e);
+            log.info("Deleted execution records older than cutoff={}", cutoffTimestamp);
+        });
+    }
+
+    // ────────── Retry helper for writes ──────────
+
+    private void withRetry(Runnable operation) {
+        Exception lastException = null;
+        for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                operation.run();
+                return;
+            } catch (OptimisticLockingFailureException e) {
+                lastException = e;
+                if (attempt < MAX_RETRIES - 1) {
+                    log.warn("Optimistic lock conflict (attempt {}/{}), retrying...", attempt + 1, MAX_RETRIES);
+                    try { Thread.sleep(RETRY_BACKOFF_MS * (attempt + 1)); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("Interrupted while retrying optimistic lock", e);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Error in Neo4j write: {}", e.getMessage(), e);
+                throw new RuntimeException("Neo4j write failed", e);
+            }
         }
+        // All retries exhausted for optimistic locking failure
+        log.error("Optimistic lock conflict after {} retries", MAX_RETRIES);
+        throw new RuntimeException("Neo4j write failed after retries", lastException);
     }
 
     // ────────── Mapping: POJO ↔ Graph entity ──────────

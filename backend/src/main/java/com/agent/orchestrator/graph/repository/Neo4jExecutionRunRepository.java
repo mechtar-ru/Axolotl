@@ -35,4 +35,37 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         RETURN r ORDER BY r.startedAt DESC LIMIT 1
         """)
     Optional<GraphExecutionRun> findLatestRunningBySchemaId(@Param("schemaId") String schemaId);
+
+    @Query("""
+        MATCH (r:ExecutionRun {id: $runId})
+        SET r.stageStatus = coalesce(r.stageStatus, {}) + $update
+        SET r.updatedAt = toString(datetime())
+        """)
+    void updateStageStatusAtomic(@Param("runId") String runId, @Param("update") java.util.Map<String, String> update);
+
+    @Query("""
+        MATCH (r:ExecutionRun {id: $runId})
+        SET r.stageOutputs = coalesce(r.stageOutputs, {}) + $update
+        SET r.updatedAt = toString(datetime())
+        """)
+    void updateStageOutputAtomic(@Param("runId") String runId, @Param("update") java.util.Map<String, String> update);
+
+    @Query("""
+        MATCH (r:ExecutionRun {id: $runId})
+        SET r.status = $status
+        SET r.resumeIndex = $resumeIndex
+        SET r.updatedAt = toString(datetime())
+        """)
+    void updateStatusAndResumeIndex(@Param("runId") String runId,
+                                     @Param("status") String status,
+                                     @Param("resumeIndex") int resumeIndex);
+
+    @Query("""
+        MATCH (r:ExecutionRun {schemaId: $schemaId})
+        WHERE r.status = 'paused'
+        SET r.status = 'resuming'
+        SET r.updatedAt = toString(datetime())
+        RETURN r
+        """)
+    Optional<GraphExecutionRun> claimPausedRun(@Param("schemaId") String schemaId);
 }
