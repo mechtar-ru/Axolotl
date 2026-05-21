@@ -72,7 +72,7 @@ public class AgentNodeStrategy {
         String systemPrompt = node.getData() != null ? node.getData().getSystemPrompt() : null;
 
         String model = resolvedModel;
-        if (model == null) {
+        if (model == null || model.isBlank()) {
             model = utilityService.resolveModel(node.getData() != null ? node.getData().getModel() : null,
                     null, null, null);
         }
@@ -154,7 +154,7 @@ public class AgentNodeStrategy {
 
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
         String model = resolvedModel;
-        if (model == null) {
+        if (model == null || model.isBlank()) {
             model = utilityService.resolveModel(node.getData().getModel(), null, null, null);
         }
         Map<String, Object> predecessorResults = utilityService.collectPredecessorResults(currentSchema, node.getId());

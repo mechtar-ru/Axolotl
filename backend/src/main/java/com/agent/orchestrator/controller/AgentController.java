@@ -436,7 +436,7 @@ public class AgentController {
         // Use user's default model — execution engine handles routing/availability
         String globalModel = settingsService.getGlobalDefaultModel();
         schema.setDefaultModel(globalModel != null && !globalModel.isBlank()
-                ? globalModel : "");
+                ? globalModel : "deepseek-v4-flash-free");
         if (schema.getPipeline() != null && schema.getPipeline().getStages() != null) {
             for (var stage : schema.getPipeline().getStages()) {
                 if (stage.getModel() == null || stage.getModel().isBlank()) {

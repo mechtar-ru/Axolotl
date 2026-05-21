@@ -576,7 +576,7 @@ public class PipelineService {
             }
         } catch (Exception e) {
             log.error("Pipeline resume failed for schema {}: {}", schemaId, e.getMessage(), e);
-            executionRepository.releasePausedRun(schemaId);
+            executionRepository.updateRunStatus(run.getId(), "paused", null);
             if (webSocketHandler != null) {
                 webSocketHandler.sendError(schema.getId(), "system",
                         "Pipeline resume failed: " + e.getMessage());
