@@ -317,6 +317,9 @@ public class NodeRouter {
         int maxIter = node.getData() != null ? node.getData().getMaxIterations() : 10;
         if (maxIter <= 0) maxIter = 10;
 
+        // Fetch schema once before loop instead of per iteration
+        var schema = schemaRepository.findById(schemaId);
+
         int iterations = 0;
         boolean shouldContinue = true;
 
@@ -325,8 +328,7 @@ public class NodeRouter {
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("iterations", iterations);
             ctx.put("maxIterations", maxIter);
-            ctx.putAll(utilityService.collectPredecessorResults(
-                    schemaRepository.findById(schemaId), node.getId()));
+            ctx.putAll(utilityService.collectPredecessorResults(schema, node.getId()));
 
             if (webSocketHandler != null) {
                 int pct = (int) ((iterations / (double) maxIter) * 90);
