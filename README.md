@@ -163,7 +163,17 @@ Copy `.env.example` to `.env` in the project root and configure:
 | `VITE_API_URL` | `http://localhost:8082` | Backend API URL |
 | `VITE_WS_URL` | `ws://localhost:8082` | WebSocket URL |
 | `JWT_SECRET` | *(random)* | JWT signing secret (set a fixed value to persist tokens across restarts) |
-| `ZEN_API_KEY` | — | API key for Zen provider (required for LLM features) |
+
+**Provider API keys (set at least one for LLM features):**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZEN_API_KEY` | — | API key for Zen provider |
+| `OPENAI_API_KEY` | — | API key for OpenAI provider |
+| `ANTHROPIC_API_KEY` | — | API key for Anthropic provider |
+| `DEEPSEEK_API_KEY` | — | API key for DeepSeek provider |
+
+**No key required for:** Ollama (local), Custom OpenAI-compatible endpoints (configured via Settings UI).
 
 ## 📡 API
 
