@@ -11,6 +11,14 @@ Versioning: SemVer via git tags.
 
 - **TDD cross-stage input mappings**: TDD stages now wire `inputMapping` so upstream outputs flow downstream — verify-test-X receives test output, impl-X receives test output to satisfy, verify-X receives impl output. System prompts reference upstream results (`b5cdde65`).
 
+### Known Issues (from 2026-05-21 audit)
+
+- **ExecutionUtilityService regression risk (High)**: Monolith utility with high blast radius. Critical bugs silently break all execution. Needs decomposition or test coverage.
+- **NodeRouter inline handlers (Medium)**: Inline handler logic creates untestable paths. Should extract to strategy classes for testable dispatch.
+- **In-memory pipeline state (High)**: PipelineService uses `ConcurrentHashMap` — all state lost on process crash. Needs crash-resilient state machine (Neo4j-driven).
+- **Silent error propagation (High)**: LLM failures, agent errors, backend exceptions caught-and-logged without reaching Studio UI. Needs end-to-end error surfacing.
+- **Deepest finding**: Axolotl's single-path orchestration makes complex workflows fast — until state/scale/resource failures hit. Lack of defensive contracts, e2e coverage, and architectural split pushes system into "invisible break" mode where failures are silent and user is unaware.
+
 ### Fixed
 
 - **Pipeline resume crash releases paused run**: `resumePipeline` now wraps core execution in try-catch and calls `releasePausedRun()` on failure, preventing runs from being stuck permanently in 'resuming' status. Added Cypher query and `ExecutionRepository.releasePausedRun()` wrapper.
