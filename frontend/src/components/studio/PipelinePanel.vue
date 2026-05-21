@@ -29,6 +29,13 @@ function getTypeColor(type: string | undefined) {
   return nodeTypeColors[type ?? ''] ?? 'var(--text-muted)'
 }
 
+function getStageTag(stageId: string): string | null {
+  if (stageId.startsWith('test-')) return 'Test'
+  if (stageId.startsWith('verify-test-')) return 'Verify Test'
+  if (stageId.startsWith('impl-')) return 'Impl'
+  return null
+}
+
 const stageLevels = computed(() => {
   if (!stages.value.length) return []
   const deps = new Map<string, Set<string>>()
@@ -183,6 +190,7 @@ async function handleCreateDefault() {
         <span class="pipeline-name">{{ pipeline.name }}</span>
         <span class="pipeline-strategy">{{ pipeline.parallelStrategy ?? 'sequential' }}</span>
         <span class="pipeline-stages-count">{{ pipeline.stages?.length ?? 0 }} stages</span>
+        <span v-if="pipeline.tddEnabled" class="tdd-badge">TDD</span>
       </div>
 
       <div v-if="buildResult" class="build-result">{{ buildResult }}</div>
@@ -218,6 +226,7 @@ async function handleCreateDefault() {
               <div class="stage-body">
                 <div class="stage-name">{{ stage.name }}</div>
                 <div class="stage-type">{{ stage.nodeType }}</div>
+                <div v-if="getStageTag(stage.id)" class="stage-tag" :class="'tag-' + getStageTag(stage.id)!.toLowerCase().replace(' ', '-')">{{ getStageTag(stage.id) }}</div>
                 <div class="stage-model" v-if="stage.model">Model: {{ stage.model }}</div>
               </div>
               <div class="stage-status completed" v-if="store.pipelineStatus.stageResults[stage.id]">
@@ -450,6 +459,32 @@ async function handleCreateDefault() {
 .stage-model {
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.stage-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-top: 2px;
+}
+.tag-test { background: rgba(33, 150, 243, 0.15); color: #2196f3; }
+.tag-verify-test { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
+.tag-impl { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+
+.tdd-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(156, 39, 176, 0.15);
+  color: #9c27b0;
+  margin-left: auto;
 }
 
 .stage-status {
