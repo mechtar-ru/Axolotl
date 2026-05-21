@@ -246,10 +246,11 @@ export const useSchemaStore = defineStore('schema', () => {
     pipelineStatus.value = res.data
   }
 
-  async function createDefaultPipeline(schemaId: string, appType?: string, description?: string) {
+  async function createDefaultPipeline(schemaId: string, appType?: string, description?: string, tddEnabled?: boolean) {
     const res = await api.post(`/api/schemas/${schemaId}/pipeline/default`, {
       appType: appType || 'custom',
-      description: description || ''
+      description: description || '',
+      tddEnabled: !!tddEnabled
     })
     return res.data
   }

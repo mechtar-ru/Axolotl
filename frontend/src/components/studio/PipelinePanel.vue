@@ -6,6 +6,7 @@ const store = useSchemaStore()
 const buildResult = ref<string | null>(null)
 let buildTimeout: ReturnType<typeof setTimeout> | null = null
 const executeError = ref<string | null>(null)
+const tddEnabled = ref(false)
 
 onUnmounted(() => {
   if (buildTimeout) clearTimeout(buildTimeout)
@@ -98,7 +99,7 @@ async function handleCreateDefault() {
   if (store.currentSchema.pipeline) {
     if (!window.confirm('A pipeline already exists. Replace it with the default pipeline?')) return
   }
-  await store.createDefaultPipeline(store.currentSchema.id)
+  await store.createDefaultPipeline(store.currentSchema.id, undefined, undefined, tddEnabled.value)
 }
 </script>
 
@@ -107,6 +108,10 @@ async function handleCreateDefault() {
     <div class="panel-header">
       <h3>Pipeline</h3>
       <div class="header-actions">
+        <label v-if="!pipeline" class="tdd-toggle" title="Expand each agent→verifier pair into 4 stages (test→verify-test→impl→verify)">
+          <input type="checkbox" v-model="tddEnabled" />
+          <span class="tdd-label">TDD</span>
+        </label>
         <button
           v-if="!pipeline"
           class="btn btn-sm btn-outline"
@@ -281,6 +286,36 @@ async function handleCreateDefault() {
 .btn-danger { background: var(--error); color: white; }
 .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
 .retry-btn { background: transparent; border: 1px solid var(--warning, #f59e0b); color: var(--warning, #f59e0b); }
+
+.tdd-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.2s, background 0.2s;
+  user-select: none;
+}
+
+.tdd-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.tdd-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+.tdd-label {
+  font-weight: 500;
+}
 
 .empty-state {
   padding: 24px;

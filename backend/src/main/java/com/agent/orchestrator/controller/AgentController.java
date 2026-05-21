@@ -6,6 +6,7 @@ import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.WorkflowSchema;
+import com.agent.orchestrator.model.Pipeline;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
@@ -426,7 +427,11 @@ public class AgentController {
         }
         String appType = (String) body.getOrDefault("appType", "custom");
         String description = (String) body.getOrDefault("description", schema.getDescription());
-        schema.setPipeline(PipelineService.createDefaultPipeline(appType, description));
+        boolean tddEnabled = Boolean.TRUE.equals(body.getOrDefault("tddEnabled", false));
+        Pipeline pipeline = PipelineService.createDefaultPipeline(appType, description);
+        pipeline.setTddEnabled(tddEnabled);
+        PipelineService.expandTddStages(pipeline);
+        schema.setPipeline(pipeline);
 
         // Use user's default model — execution engine handles routing/availability
         String globalModel = settingsService.getGlobalDefaultModel();
@@ -441,7 +446,7 @@ public class AgentController {
         }
 
         schemaService.updateSchema(id, schema);
-        return Map.of("status", "ok", "pipeline", "Default pipeline created");
+        return Map.of("status", "ok", "pipeline", tddEnabled ? "TDD pipeline created" : "Default pipeline created");
     }
 
 }
