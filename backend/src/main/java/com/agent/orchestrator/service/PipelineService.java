@@ -482,9 +482,6 @@ public class PipelineService {
             return;
         }
 
-        // Mark run as running again
-        executionRepository.updateRunStatus(run.getId(), "running", null);
-
         // Set approval flag so review nodes are skipped
         if (resumeIndex > 0) {
             Stage previousStage = stages.get(resumeIndex - 1);
@@ -554,6 +551,9 @@ public class PipelineService {
         boolean resumedPaused = false;
         int resumeStageIndex = resumeIndex;
         try {
+            // Mark run as running now that we're inside the catchable scope
+            executionRepository.updateRunStatus(run.getId(), "running", null);
+
             for (List<Stage> level : remainingLevels) {
                 if (cancelFlag.get()) break;
 
