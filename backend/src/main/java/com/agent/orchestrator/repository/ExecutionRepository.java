@@ -113,6 +113,16 @@ public class ExecutionRepository {
         }
     }
 
+    /** Returns the most recent ExecutionRun for a schema (any status), or null if none exist. */
+    public ExecutionRun getLatestRunBySchema(String schemaId) {
+        try {
+            return getRunsBySchema(schemaId).stream().findFirst().orElse(null);
+        } catch (Exception e) {
+            log.error("Error fetching latest run for schema {}: {}", schemaId, e.getMessage(), e);
+            return null;
+        }
+    }
+
     public boolean hasActiveRun(String schemaId) {
         try {
             return runRepo.hasActiveRun(schemaId);

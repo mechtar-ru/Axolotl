@@ -39,4 +39,8 @@ export interface StageResult {
 export interface PipelineStatus {
   running: boolean
   stageResults: StageResult
+  /** Status of the most recent completed/cancelled/failed execution run: 'completed' | 'failed' | 'cancelled' | null */
+  lastRunStatus?: string | null
+  /** Error message from the most recent failed execution run */
+  lastRunError?: string | null
 }

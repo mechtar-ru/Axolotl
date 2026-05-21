@@ -59,7 +59,11 @@ async function handleRestart() {
 <template>
   <div v-if="pausedRun && !loading" class="resume-banner">
     <div class="resume-banner__content">
-      <span class="resume-banner__icon">⏸</span>
+      <span class="resume-banner__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+        </svg>
+      </span>
       <div class="resume-banner__text">
         <strong>Выполнение приостановлено</strong>
         <p v-if="pausedRun.error">{{ pausedRun.error }}</p>

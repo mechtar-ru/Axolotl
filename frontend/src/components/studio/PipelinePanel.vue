@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSchemaStore } from '../../stores/schemaStore'
 
 const store = useSchemaStore()
@@ -24,6 +24,10 @@ function startPolling() {
         stopPolling()
         executing.value = false
         hasBeenExecuted.value = true
+        // Surface error from fast-fail (pipeline completed before first poll)
+        if (store.pipelineStatus.lastRunStatus === 'failed') {
+          executeError.value = store.pipelineStatus.lastRunError || 'Pipeline execution failed'
+        }
       }
     } catch {
       stopPolling()
@@ -32,12 +36,28 @@ function startPolling() {
   }, 2000)
 }
 
+async function fetchInitialStatus() {
+  if (!store.currentSchema?.pipeline) return
+  try {
+    await store.refreshPipelineStatus(store.currentSchema.id)
+    if (!store.pipelineStatus.running) {
+      hasBeenExecuted.value = true
+    }
+  } catch {
+    // Ignore — status endpoint not available means no runs yet
+  }
+}
+
 function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
   }
 }
+
+onMounted(() => {
+  fetchInitialStatus()
+})
 
 onUnmounted(() => {
   if (buildTimeout) clearTimeout(buildTimeout)

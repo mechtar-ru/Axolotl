@@ -14,6 +14,7 @@ import com.agent.orchestrator.service.PipelineService;
 import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
 import com.agent.orchestrator.service.SettingsService;
+import com.agent.orchestrator.repository.ExecutionRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.ResponseEntity;
@@ -38,11 +39,13 @@ public class AgentController {
     private final MemPalaceClient memPalaceClient;
     private final PlanningService planningService;
     private final SettingsService settingsService;
+    private final ExecutionRepository executionRepository;
 
     public AgentController(AgentService agentService, SchemaService schemaService,
                            PipelineService pipelineService,
                            LlmService llmService, MemPalaceClient memPalaceClient,
-                           PlanningService planningService, SettingsService settingsService) {
+                           PlanningService planningService, SettingsService settingsService,
+                           ExecutionRepository executionRepository) {
         this.agentService = agentService;
         this.schemaService = schemaService;
         this.pipelineService = pipelineService;
@@ -50,6 +53,7 @@ public class AgentController {
         this.memPalaceClient = memPalaceClient;
         this.planningService = planningService;
         this.settingsService = settingsService;
+        this.executionRepository = executionRepository;
     }
 
     @GetMapping("/agents")
@@ -414,7 +418,11 @@ public class AgentController {
     public Map<String, Object> pipelineStatus(@PathVariable String id) {
         boolean running = pipelineService.isPipelineRunning(id);
         Map<String, String> results = pipelineService.getStageResults(id);
-        return Map.of("running", running, "stageResults", results);
+        ExecutionRun lastRun = executionRepository.getLatestRunBySchema(id);
+        String lastRunStatus = lastRun != null ? lastRun.getStatus() : null;
+        String lastRunError = lastRun != null ? lastRun.getError() : null;
+        return Map.of("running", running, "stageResults", results,
+                "lastRunStatus", lastRunStatus, "lastRunError", lastRunError);
     }
 
     @PostMapping("/schemas/{id}/pipeline/default")
