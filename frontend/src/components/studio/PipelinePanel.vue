@@ -6,15 +6,50 @@ const store = useSchemaStore()
 const buildResult = ref<string | null>(null)
 let buildTimeout: ReturnType<typeof setTimeout> | null = null
 const executeError = ref<string | null>(null)
+const executing = ref(false)
+const creating = ref(false)
+const building = ref(false)
+const hasBeenExecuted = ref(false)
 const tddEnabled = ref(store.currentSchema?.pipeline?.tddEnabled ?? false)
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function startPolling() {
+  stopPolling()
+  if (!store.currentSchema) return
+  pollTimer = setInterval(async () => {
+    try {
+      await store.refreshPipelineStatus(store.currentSchema!.id)
+      if (!store.pipelineStatus.running) {
+        stopPolling()
+        executing.value = false
+        hasBeenExecuted.value = true
+      }
+    } catch {
+      stopPolling()
+      executing.value = false
+    }
+  }, 2000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
 
 onUnmounted(() => {
   if (buildTimeout) clearTimeout(buildTimeout)
+  stopPolling()
 })
 
 const pipeline = computed(() => store.currentSchema?.pipeline)
 const stages = computed(() => pipeline.value?.stages ?? [])
 const running = computed(() => store.pipelineStatus.running)
+const hasFailedStages = computed(() =>
+  Object.values(store.pipelineStatus.stageResults).some(s => s === 'failed' || s === 'paused')
+)
 
 const nodeTypeColors: Record<string, string> = {
   source: 'var(--success)',
@@ -58,12 +93,15 @@ const stageLevels = computed(() => {
 })
 
 async function handleExecute() {
-  if (!store.currentSchema) return
+  if (!store.currentSchema || executing.value) return
   executeError.value = null
+  executing.value = true
   try {
     await store.executePipeline(store.currentSchema.id)
+    startPolling()
   } catch (e) {
     executeError.value = (e as Error).message || 'Failed to execute pipeline'
+    executing.value = false
   }
 }
 
@@ -72,44 +110,57 @@ async function handleCancel() {
   executeError.value = null
   try {
     await store.cancelPipelineExecution(store.currentSchema.id)
+    executing.value = false
+    stopPolling()
   } catch (e) {
     executeError.value = (e as Error).message || 'Failed to cancel pipeline'
   }
 }
 
 async function handleRetry() {
-  if (!store.currentSchema) return
+  if (!store.currentSchema || executing.value) return
   executeError.value = null
+  executing.value = true
   try {
     await store.retryPipeline(store.currentSchema.id)
+    startPolling()
   } catch (e) {
     executeError.value = (e as Error).message || 'Failed to retry pipeline'
+    executing.value = false
   }
 }
 
 async function handleBuildNodes() {
-  if (!store.currentSchema) return
+  if (!store.currentSchema || building.value) return
+  building.value = true
   buildResult.value = null
   executeError.value = null
   try {
     const res = await store.buildPipelineNodes(store.currentSchema.id)
     buildResult.value = `Built ${res.nodes ?? 0} nodes, ${res.edges ?? 0} edges`
+    // Re-fetch schema so canvas (BlueprintView watch) picks up new nodes
+    await store.refreshCurrentSchema(store.currentSchema.id)
   } catch {
     buildResult.value = 'Failed to build pipeline nodes'
+  } finally {
+    building.value = false
   }
   if (buildTimeout) clearTimeout(buildTimeout)
   buildTimeout = setTimeout(() => { buildResult.value = null }, 3000)
 }
 
 async function handleCreateDefault() {
-  if (!store.currentSchema) return
+  if (!store.currentSchema || creating.value) return
   if (store.currentSchema.pipeline) {
     if (!window.confirm('A pipeline already exists. Replace it with the default pipeline?')) return
   }
+  creating.value = true
   try {
     await store.createDefaultPipeline(store.currentSchema.id, undefined, undefined, tddEnabled.value)
   } catch (e: any) {
     executeError.value = 'Pipeline creation failed: ' + (e.message || e)
+  } finally {
+    creating.value = false
   }
 }
 </script>
@@ -126,24 +177,64 @@ async function handleCreateDefault() {
         <button
           v-if="!pipeline"
           class="btn btn-sm btn-outline"
+          :disabled="creating"
           @click="handleCreateDefault"
           title="Create default 5-stage pipeline"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg v-if="creating" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+            <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          Create Default
+          {{ creating ? 'Creating...' : 'Create Default' }}
         </button>
+      </div>
+    </div>
+
+    <div v-if="pipeline" class="pipeline-actions-header">
+      <div class="action-group setup-group">
+        <button
+          v-if="pipeline"
+          class="btn btn-sm btn-outline"
+          :disabled="building || executing"
+          @click="handleBuildNodes"
+          title="Generate canvas nodes from pipeline stages"
+        >
+          <svg v-if="building" class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+            <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+          </svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
+          {{ building ? 'Building...' : 'Build Nodes' }}
+        </button>
+      </div>
+      <div class="action-group run-group">
         <button
           v-if="pipeline && !running"
           class="btn btn-sm btn-primary"
+          :disabled="executing"
           @click="handleExecute"
           title="Execute pipeline stages"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <svg v-if="executing" class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+            <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+          </svg>
+          <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5,3 19,12 5,21"/>
           </svg>
-          Execute
+          {{ executing ? 'Executing...' : 'Execute' }}
         </button>
         <button
           v-if="running"
@@ -157,8 +248,9 @@ async function handleCreateDefault() {
           Cancel
         </button>
         <button
-          v-if="pipeline && !running && Object.keys(store.pipelineStatus.stageResults).length > 0"
+          v-if="pipeline && !running && hasFailedStages"
           class="btn btn-sm btn-outline retry-btn"
+          :disabled="executing"
           @click="handleRetry"
           title="Retry failed stages"
         >
@@ -166,18 +258,6 @@ async function handleCreateDefault() {
             <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
           </svg>
           Retry
-        </button>
-        <button
-          v-if="pipeline"
-          class="btn btn-sm btn-outline"
-          @click="handleBuildNodes"
-          title="Generate canvas nodes from pipeline stages"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-          </svg>
-          Build Nodes
         </button>
       </div>
     </div>
@@ -292,6 +372,11 @@ async function handleCreateDefault() {
 }
 
 .btn:hover { opacity: 0.85; }
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
 .btn-sm { padding: 3px 8px; font-size: var(--text-xs); }
 
@@ -299,6 +384,39 @@ async function handleCreateDefault() {
 .btn-danger { background: var(--error); color: white; }
 .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
 .retry-btn { background: transparent; border: 1px solid var(--warning, #f59e0b); color: var(--warning, #f59e0b); }
+
+.pipeline-actions-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.action-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.setup-group {
+  margin-right: auto;
+}
+
+.run-group {
+  margin-left: auto;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
 
 .tdd-toggle {
   display: flex;
@@ -475,9 +593,11 @@ async function handleCreateDefault() {
   border-radius: 3px;
   margin-top: 2px;
 }
-.tag-test { background: rgba(33, 150, 243, 0.15); color: #2196f3; }
-.tag-verify-test { background: rgba(255, 152, 0, 0.15); color: #ff9800; }
-.tag-impl { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+.tag-test { --tag-bg: rgba(33, 150, 243, 0.15); --tag-fg: #2196f3; }
+.tag-verify-test { --tag-bg: rgba(255, 152, 0, 0.15); --tag-fg: #ff9800; }
+.tag-impl { --tag-bg: rgba(76, 175, 80, 0.15); --tag-fg: #4caf50; }
+.stage-tag { background: var(--tag-bg); color: var(--tag-fg); }
+
 
 .tdd-badge {
   font-size: 9px;

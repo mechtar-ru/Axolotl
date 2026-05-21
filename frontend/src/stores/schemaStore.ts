@@ -267,6 +267,19 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
 
+  async function refreshCurrentSchema(schemaId: string) {
+    try {
+      const resp = await api.get(`/schemas/${schemaId}`)
+      if (resp.data) {
+        currentSchema.value = resp.data
+        const idx = schemas.value.findIndex(s => s.id === schemaId)
+        if (idx !== -1) {
+          schemas.value[idx] = resp.data
+        }
+      }
+    } catch {}
+  }
+
   return {
     schemas,
     currentSchema,
@@ -300,5 +313,6 @@ export const useSchemaStore = defineStore('schema', () => {
     refreshPipelineStatus,
     createDefaultPipeline,
     setPipeline,
+    refreshCurrentSchema,
   };
 });

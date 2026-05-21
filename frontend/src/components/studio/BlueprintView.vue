@@ -292,14 +292,14 @@ onConnect((connection) => {
     
     <!-- Config Panel -->
     <BlockConfigPanel
-      v-show="!showExecutionOverlay && configPanelOpen && selectedBlockId"
+      v-if="!showExecutionOverlay && configPanelOpen && selectedBlockId"
       :block-id="selectedBlockId || ''"
       @close="configPanelOpen = false"
     />
 
     <!-- Schema Properties Panel (shown when nothing is selected) -->
     <SchemaPropertiesPanel
-      v-show="!showExecutionOverlay && !configPanelOpen && !selectedBlockId"
+      v-if="!showExecutionOverlay && !configPanelOpen && !selectedBlockId"
       @add-node="console.log('Add node')"
       @run="startExecution(props.appId)"
       @quick-start="emit('show-quick-start')"
