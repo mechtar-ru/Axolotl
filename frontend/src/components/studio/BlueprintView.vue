@@ -38,7 +38,8 @@ const nodeTypes = {
   output: markRaw(ActBlock),
 }
 
-const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView } = useVueFlow({ id: 'blueprint-flow' })
+const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView, setNodes, setEdges } = useVueFlow({ id: 'blueprint-flow' })
+const flowReady = ref(false)
 
 const emit = defineEmits<{
   'show-quick-start': []
@@ -74,8 +75,9 @@ function buildVueFlowNodes(schema: any): Node[] {
 
 function buildVueFlowEdges(schema: any): Edge[] {
   if (!schema.edges) return []
+  const nodeIds = new Set((schema.nodes || []).map((n: any) => n.id))
   return schema.edges
-    .filter((e: FlowEdge) => e?.source && e?.target)
+    .filter((e: FlowEdge) => e?.source && e?.target && nodeIds.has(e.source) && nodeIds.has(e.target))
     .map((e: FlowEdge) => ({
       id: e.id || `${e.source}->${e.target}`,
       source: e.source,
@@ -88,14 +90,15 @@ function buildVueFlowEdges(schema: any): Edge[] {
 let syncing = false
 
 // Load full schema (with nodes + edges) from API detail endpoint
-// Only loads if VueFlow has no nodes yet (avoids overwriting unsaved canvas edits)
+// Only loads if flow hasn't been initialized yet
 async function loadFullSchema() {
-  if (nodes.value.length > 0) return
+  if (flowReady.value) return
   try {
     const fullSchema = await schemaApi.getSchema(props.appId)
     if (fullSchema?.nodes?.length) {
-      nodes.value = buildVueFlowNodes(fullSchema) as any
-      edges.value = buildVueFlowEdges(fullSchema) as any
+      setNodes(buildVueFlowNodes(fullSchema))
+      setEdges(buildVueFlowEdges(fullSchema))
+      flowReady.value = true
       nextTick(() => fitView({ padding: 0.2 }))
     }
   } catch (err) {
@@ -112,13 +115,14 @@ watch(() => schemaStore.currentSchema, (schema) => {
   if (!schema.nodes?.length) return
 
   syncing = true
-  nodes.value = buildVueFlowNodes(schema) as any
-  edges.value = buildVueFlowEdges(schema) as any
+  setNodes(buildVueFlowNodes(schema))
+  setEdges(buildVueFlowEdges(schema))
+  flowReady.value = true
   nextTick(() => {
     fitView({ padding: 0.2 })
     syncing = false
   })
-}, { deep: true })
+}, { deep: true, immediate: true })
 
 // Handle drag and drop from BlockPalette
 const dropPosition = ref({ x: 0, y: 0 })
@@ -265,6 +269,7 @@ onConnect((connection) => {
     <!-- Canvas -->
     <div class="canvas-wrapper">
       <VueFlow
+        v-if="flowReady"
         id="blueprint-flow"
         :node-types="nodeTypes as any"
         :default-viewport="{ x: 0, y: 0, zoom: 1 }"
