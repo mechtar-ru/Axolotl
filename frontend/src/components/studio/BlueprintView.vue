@@ -58,6 +58,7 @@ function buildVueFlowNodes(schema: any): Node[] {
     id: n.id,
     type: n.type || 'agent',
     position: n.position || { x: 100, y: 200 },
+    dimensions: { width: 200, height: 100 },
     data: {
       label: n.name,
       type: n.type,
@@ -149,6 +150,7 @@ function onDropHandler(event: DragEvent) {
         id: newId,
         type: parsed.blockType,
         position,
+        dimensions: { width: 200, height: 100 },
         data: {
           label: parsed.blockLabel || parsed.blockType,
           type: parsed.blockType,
