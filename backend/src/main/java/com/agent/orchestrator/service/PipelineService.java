@@ -921,6 +921,134 @@ public class PipelineService {
         stages.add(output);
 
         pipeline.setStages(stages);
+        expandTddStages(pipeline);
         return pipeline;
+    }
+
+    /**
+     * When {@code pipeline.tddEnabled == true}, expands each agent → verifier stage pair
+     * into a 4-stage TDD block: test → verify-test → impl → verify.
+     * <p>
+     * Dependencies: verify-test depends on test; impl depends on test (not verify-test);
+     * verify depends on impl. This enables parallel execution of verify-test and impl
+     * once test completes.
+     * <p>
+     * Stages that depended on the original agent are rewritten to depend on impl;
+     * stages that depended on the original verifier are rewritten to depend on the new verify.
+     * <p>
+     * No-op when {@code tddEnabled == false} or when no agent → verifier pairs are found.
+     */
+    public static void expandTddStages(Pipeline pipeline) {
+        if (pipeline == null || !pipeline.isTddEnabled()) return;
+
+        List<Stage> stages = new ArrayList<>(pipeline.getStages());
+        List<Stage> expanded = new ArrayList<>();
+        Map<String, String> depRewrites = new HashMap<>();
+        Set<String> skipIds = new HashSet<>();
+
+        for (Stage s : stages) {
+            if (skipIds.contains(s.getId())) continue;
+
+            Stage verifier = findVerifierForAgent(stages, s);
+
+            if (verifier != null) {
+                String x = s.getId(); // e.g., "think-1"
+
+                // test-X — same deps as the original agent (e.g., depends on review)
+                Stage test = new Stage();
+                test.setId("test-" + x);
+                test.setName("Write Tests");
+                test.setNodeType("agent");
+                test.setDependencies(s.getDependencies() != null
+                        ? new ArrayList<>(s.getDependencies()) : null);
+                test.setSystemPrompt("Write tests for the planned implementation. "
+                        + "Cover edge cases, normal operation, and expected failures.\n"
+                        + (s.getSystemPrompt() != null ? s.getSystemPrompt() : ""));
+                test.setModel(s.getModel());
+                test.setConfig(s.getConfig() != null ? new HashMap<>(s.getConfig()) : null);
+                test.setPositionX(s.getPositionX());
+                test.setPositionY(s.getPositionY());
+
+                // verify-test-X — depends on test-X
+                Stage verifyTest = new Stage();
+                verifyTest.setId("verify-test-" + x);
+                verifyTest.setName("Verify Tests");
+                verifyTest.setNodeType("verifier");
+                verifyTest.setDependencies(List.of(test.getId()));
+                verifyTest.setSystemPrompt("Verify that the tests are correctly written, "
+                        + "are executable, and cover the planned functionality. "
+                        + "Run them to confirm the test harness works.");
+                verifyTest.setModel(s.getModel());
+                verifyTest.setPositionX(s.getPositionX() + 200);
+                verifyTest.setPositionY(s.getPositionY());
+
+                // impl-X — replaces original agent, depends on test-X only (not verify-test-X)
+                Stage impl = new Stage();
+                impl.setId("impl-" + x);
+                impl.setName("Implement");
+                impl.setNodeType("agent");
+                impl.setDependencies(List.of(test.getId()));
+                impl.setSystemPrompt(s.getSystemPrompt());
+                impl.setModel(s.getModel());
+                impl.setConfig(s.getConfig() != null ? new HashMap<>(s.getConfig()) : null);
+                impl.setPositionX(s.getPositionX() + 400);
+                impl.setPositionY(s.getPositionY());
+
+                // verify-X — replaces original verifier, depends on impl-X
+                Stage verify = new Stage();
+                verify.setId("verify-" + x);
+                verify.setName("Verify Implementation");
+                verify.setNodeType("verifier");
+                verify.setDependencies(List.of(impl.getId()));
+                verify.setSystemPrompt(verifier.getSystemPrompt());
+                verify.setModel(verifier.getModel());
+                verify.setPositionX(s.getPositionX() + 600);
+                verify.setPositionY(s.getPositionY());
+
+                expanded.add(test);
+                expanded.add(verifyTest);
+                expanded.add(impl);
+                expanded.add(verify);
+
+                // Rewrite downstream dependency references: old IDs → new
+                depRewrites.put(s.getId(), impl.getId());       // old agent → new impl
+                depRewrites.put(verifier.getId(), verify.getId()); // old verifier → new verify
+
+                skipIds.add(verifier.getId());
+            } else {
+                expanded.add(s);
+            }
+        }
+
+        // Fix up any downstream stages that referenced the replaced stage IDs
+        for (Stage stage : expanded) {
+            if (stage.getDependencies() != null) {
+                List<String> updated = new ArrayList<>();
+                for (String dep : stage.getDependencies()) {
+                    updated.add(depRewrites.getOrDefault(dep, dep));
+                }
+                stage.setDependencies(updated);
+            }
+        }
+
+        pipeline.setStages(expanded);
+        log.info("expandTddStages: expanded {} stages to {} stages (tddEnabled=true)",
+                stages.size(), expanded.size());
+    }
+
+    /**
+     * Finds the first verifier stage whose dependencies include the given agent stage's ID.
+     * Returns null if the given stage is not an agent or no matching verifier is found.
+     */
+    private static Stage findVerifierForAgent(List<Stage> stages, Stage agent) {
+        if (!"agent".equals(agent.getNodeType())) return null;
+        for (Stage s : stages) {
+            if ("verifier".equals(s.getNodeType())
+                    && s.getDependencies() != null
+                    && s.getDependencies().contains(agent.getId())) {
+                return s;
+            }
+        }
+        return null;
     }
 }

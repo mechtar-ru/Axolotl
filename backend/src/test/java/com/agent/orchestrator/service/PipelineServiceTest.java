@@ -248,4 +248,130 @@ class PipelineServiceTest {
     void getStageResults_isEmptyBeforeExecution() {
         assertTrue(pipelineService.getStageResults("new").isEmpty());
     }
+
+    // ────────── expandTddStages ──────────
+
+    @Test
+    void expandTddStages_noopWhenTddDisabled() {
+        Pipeline pipeline = PipelineService.createDefaultPipeline("app", "desc");
+        // createDefaultPipeline sets tddEnabled=false, expandTddStages is a no-op
+        assertEquals(5, pipeline.getStages().size());
+        assertEquals("think-1", pipeline.getStages().get(2).getId());
+        assertEquals("verify-1", pipeline.getStages().get(3).getId());
+    }
+
+    @Test
+    void expandTddStages_expandsAgentVerifierPair() {
+        Pipeline pipeline = createTddPipeline();
+
+        assertEquals(7, pipeline.getStages().size(),
+                "5 stages + (4 TDD - 2 original) = 7 stages");
+
+        // Verify IDs in order
+        List<String> ids = pipeline.getStages().stream().map(Stage::getId).toList();
+        assertEquals(List.of("receive-1", "review-1",
+                "test-think-1", "verify-test-think-1",
+                "impl-think-1", "verify-think-1",
+                "act-1"), ids);
+    }
+
+    @Test
+    void expandTddStages_correctTypes() {
+        Pipeline pipeline = createTddPipeline();
+
+        List<Stage> stages = pipeline.getStages();
+        Map<String, Stage> byId = stages.stream().collect(java.util.stream.Collectors.toMap(Stage::getId, s -> s));
+
+        assertEquals("source", byId.get("receive-1").getNodeType());
+        assertEquals("review", byId.get("review-1").getNodeType());
+        assertEquals("agent", byId.get("test-think-1").getNodeType());
+        assertEquals("verifier", byId.get("verify-test-think-1").getNodeType());
+        assertEquals("agent", byId.get("impl-think-1").getNodeType());
+        assertEquals("verifier", byId.get("verify-think-1").getNodeType());
+        assertEquals("output", byId.get("act-1").getNodeType());
+    }
+
+    @Test
+    void expandTddStages_correctDependencies() {
+        Pipeline pipeline = createTddPipeline();
+
+        Map<String, Stage> byId = pipeline.getStages().stream()
+                .collect(java.util.stream.Collectors.toMap(Stage::getId, s -> s));
+
+        // test-think-1 inherits think-1's original deps (review-1)
+        assertEquals(List.of("review-1"), byId.get("test-think-1").getDependencies());
+
+        // verify-test-think-1 depends on test-think-1
+        assertEquals(List.of("test-think-1"), byId.get("verify-test-think-1").getDependencies());
+
+        // impl-think-1 depends on test-think-1 ONLY (not verify-test-think-1)
+        assertEquals(List.of("test-think-1"), byId.get("impl-think-1").getDependencies());
+
+        // verify-think-1 depends on impl-think-1
+        assertEquals(List.of("impl-think-1"), byId.get("verify-think-1").getDependencies());
+
+        // act-1's dependency was rewritten from verify-1 → verify-think-1
+        assertEquals(List.of("verify-think-1"), byId.get("act-1").getDependencies());
+    }
+
+    @Test
+    void expandTddStages_downstreamDepsRewritten() {
+        Pipeline pipeline = createTddPipeline();
+
+        // Verify no stage still references the old verify-1 or think-1 IDs
+        for (Stage s : pipeline.getStages()) {
+            if (s.getDependencies() != null) {
+                assertFalse(s.getDependencies().contains("think-1"),
+                        "Stage " + s.getId() + " should not depend on old 'think-1'");
+                assertFalse(s.getDependencies().contains("verify-1"),
+                        "Stage " + s.getId() + " should not depend on old 'verify-1'");
+            }
+        }
+    }
+
+    @Test
+    void expandTddStages_hasPositions() {
+        Pipeline pipeline = createTddPipeline();
+
+        for (Stage s : pipeline.getStages()) {
+            assertTrue(s.getPositionX() > 0, "Stage " + s.getId() + " should have X position");
+            assertTrue(s.getPositionY() > 0, "Stage " + s.getId() + " should have Y position");
+        }
+    }
+
+    @Test
+    void expandTddStages_noopOnNoAgentVerifierPair() {
+        Pipeline pipeline = new Pipeline();
+        pipeline.setTddEnabled(true);
+
+        Stage a = new Stage();
+        a.setId("s1");
+        a.setName("Source");
+        a.setNodeType("source");
+
+        Stage b = new Stage();
+        b.setId("o1");
+        b.setName("Output");
+        b.setNodeType("output");
+        b.setDependencies(List.of("s1"));
+
+        pipeline.setStages(List.of(a, b));
+        PipelineService.expandTddStages(pipeline);
+
+        assertEquals(2, pipeline.getStages().size(),
+                "No agent → verifier pair, no expansion");
+    }
+
+    @Test
+    void expandTddStages_nullPipelineDoesNotThrow() {
+        assertDoesNotThrow(() -> PipelineService.expandTddStages(null));
+    }
+
+    /** Helper: creates a default pipeline with tddEnabled=true */
+    private static Pipeline createTddPipeline() {
+        Pipeline pipeline = PipelineService.createDefaultPipeline("app", "desc");
+        pipeline.setTddEnabled(true);
+        PipelineService.expandTddStages(pipeline);
+        return pipeline;
+    }
 }
