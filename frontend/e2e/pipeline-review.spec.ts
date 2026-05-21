@@ -32,7 +32,7 @@ test.describe('Pipeline Review Dialog', () => {
     console.log('Pipeline panel opened');
 
     // Click Execute
-    const execBtn = page.locator('button', { hasText: 'Execute Pipeline' });
+    const execBtn = page.locator('button', { hasText: 'Execute' });
     await expect(execBtn).toBeVisible({ timeout: 5000 });
     await execBtn.click();
     console.log('Execute clicked');

@@ -197,7 +197,7 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function approveReview(executionId: string, nodeId: string) {
     try {
-      await api.post(`/api/execution/${executionId}/approve-review?nodeId=${nodeId}`);
+      await api.post(`/execution/${executionId}/approve-review?nodeId=${nodeId}`);
       pendingReview.value = false;
       reviewData.value = null;
     } catch (error) {
@@ -208,7 +208,7 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function rejectReview(executionId: string, nodeId: string) {
     try {
-      await api.post(`/api/execution/${executionId}/reject?nodeId=${nodeId}`);
+      await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}`);
       pendingReview.value = false;
       reviewData.value = null;
     } catch (error) {
@@ -222,37 +222,41 @@ export const useSchemaStore = defineStore('schema', () => {
   const pipelineExpanded = ref(false)
 
   async function buildPipelineNodes(schemaId: string) {
-    const res = await api.post(`/api/schemas/${schemaId}/pipeline/build`)
+    const res = await api.post(`/schemas/${schemaId}/pipeline/build`)
     return res.data
   }
 
   async function executePipeline(schemaId: string) {
-    await api.post(`/api/schemas/${schemaId}/pipeline/execute`)
+    await api.post(`/schemas/${schemaId}/pipeline/execute`)
     pipelineStatus.value = { running: true, stageResults: {} }
   }
 
   async function cancelPipelineExecution(schemaId: string) {
-    await api.post(`/api/schemas/${schemaId}/pipeline/cancel`)
+    await api.post(`/schemas/${schemaId}/pipeline/cancel`)
     pipelineStatus.value.running = false
   }
 
   async function retryPipeline(schemaId: string) {
-    await api.post(`/api/schemas/${schemaId}/pipeline/retry`)
+    await api.post(`/schemas/${schemaId}/pipeline/retry`)
     pipelineStatus.value = { running: true, stageResults: {} }
   }
 
   async function refreshPipelineStatus(schemaId: string) {
-    const res = await api.get(`/api/schemas/${schemaId}/pipeline/status`)
+    const res = await api.get(`/schemas/${schemaId}/pipeline/status`)
     pipelineStatus.value = res.data
   }
 
   async function createDefaultPipeline(schemaId: string, appType?: string, description?: string, tddEnabled?: boolean) {
-    const res = await api.post(`/api/schemas/${schemaId}/pipeline/default`, {
+    await api.post(`/schemas/${schemaId}/pipeline/default`, {
       appType: appType || 'custom',
       description: description || '',
       tddEnabled: !!tddEnabled
     })
-    return res.data
+    // Re-fetch the schema to get the persisted pipeline and update currentSchema
+    const resp = await api.get(`/schemas/${schemaId}`)
+    if (resp.data && currentSchema.value) {
+      currentSchema.value = resp.data
+    }
   }
 
   function setPipeline(pipeline: Pipeline | undefined) {
