@@ -150,6 +150,15 @@ public class ExecutionRepository {
         withRetry(() -> runRepo.updateStatusAndResumeIndex(runId, null, resumeIndex));
     }
 
+    /**
+     * Updates ONLY the resumeIndex in Neo4j without touching the status field.
+     * Use this instead of updateRunResumeIndex when you need to preserve the
+     * existing status (e.g., 'paused' during persistResumeState).
+     */
+    public void updateRunResumeIndexOnly(String runId, int resumeIndex) {
+        withRetry(() -> runRepo.updateResumeIndexOnly(runId, resumeIndex));
+    }
+
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {

@@ -60,6 +60,18 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
                                      @Param("status") String status,
                                      @Param("resumeIndex") int resumeIndex);
 
+    /**
+     * Updates ONLY the resumeIndex without touching the status field.
+     * Used by persistResumeState() to avoid overwriting the 'paused' status.
+     */
+    @Query("""
+        MATCH (r:ExecutionRun {id: $runId})
+        SET r.resumeIndex = $resumeIndex
+        SET r.updatedAt = toString(datetime())
+        """)
+    void updateResumeIndexOnly(@Param("runId") String runId,
+                                @Param("resumeIndex") int resumeIndex);
+
     @Query("""
         MATCH (r:ExecutionRun {schemaId: $schemaId})
         WHERE r.status = 'paused'

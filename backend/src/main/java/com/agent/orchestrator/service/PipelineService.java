@@ -36,7 +36,7 @@ public class PipelineService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** Per-stage timeout — 5 minutes default. Stages exceeding this are failed. */
-    private static final Duration STAGE_TIMEOUT = Duration.ofMinutes(5);
+    private static final Duration STAGE_TIMEOUT = Duration.ofMinutes(20);
 
     enum StageRunResult { COMPLETED, PAUSED, FAILED }
 
@@ -740,7 +740,7 @@ public class PipelineService {
      */
     private void persistResumeState(String schemaId, String runId, int resumeIndex) {
         pipelineResumeState.put(schemaId, resumeIndex);
-        executionRepository.updateRunResumeIndex(runId, resumeIndex);
+        executionRepository.updateRunResumeIndexOnly(runId, resumeIndex);
     }
 
     /**
