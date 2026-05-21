@@ -7,9 +7,15 @@ Versioning: SemVer via git tags.
 
 ## [Unreleased]
 
+### Added
+
+- **TDD cross-stage input mappings**: TDD stages now wire `inputMapping` so upstream outputs flow downstream — verify-test-X receives test output, impl-X receives test output to satisfy, verify-X receives impl output. System prompts reference upstream results (`b5cdde65`).
+
 ### Fixed
 
 - **Trailing slash 403 on API endpoints**: Spring Boot 3.x disables trailing-slash matching, causing `MvcRequestMatcher` to reject endpoints like `/api/schemas/`. Added `TrailingSlashFilter` that normalizes request URIs before Spring Security processing — strips trailing slashes from `getRequestURI()`, `getRequestURL()`, `getServletPath()`, `getPathInfo()` (`fc67cd34`).
+- **ReviewBlock VueFlow fragment root**: ReviewBlock had two root elements, breaking VueFlow node position/drag inheritance. Wrapped in single `div` (`4a90e9cf`).
+- **README misleading provider key docs**: Listed Zen as the only required API key. Now lists all supported providers (OpenAI, Anthropic, DeepSeek, Zen) with note that Ollama and custom endpoints need no key (`b5cdde65`).
 
 ## [v0.3.0] - 2026-05-20
 
@@ -37,7 +43,7 @@ Versioning: SemVer via git tags.
 - **Tool-enabled agent nodes**: Agents can use `file_write`, `file_read`, `bash`, `grep`, `directory_read`, `web_search`, `web_fetch` tools (`33e132eb`, `80cbd09d`).
 - **Neo4j code graph**: Dirac-inspired features including AST analysis, hash-anchored class references, context curation with token budget, import tier planning (`dba6e167`, `cd7a87a2`).
 - **Observability**: OpenAPI/Swagger at `/swagger.html`, Prometheus metrics at `/actuator/prometheus`, structured logging (`e2a784f5`).
-- **TDD test-first mode design**: Schema-level `tddEnabled` toggle expands branches to 4 stages (test → verify-test → impl → verify). Test framework discovered from scaffold files (`18895431`).
+- **TDD pipeline expansion**: Agent→verifier stage pairs expand to 4 stages (test→verify-test→impl→verify) when `tddEnabled` is true. Backend `expandTddStages()` adds correct dependency wiring (impl depends on test only for parallel execution). Frontend TDD checkbox in PipelinePanel passes toggle to create-default-pipeline API (`928976ef`, `89c39934`).
 
 ### Changed
 
