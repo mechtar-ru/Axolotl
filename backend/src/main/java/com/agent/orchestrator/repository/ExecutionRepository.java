@@ -12,6 +12,8 @@ import com.agent.orchestrator.model.ExecutionCheckpoint;
 import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.NodeExecution;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -135,15 +137,23 @@ public class ExecutionRepository {
     // ────────── Stage-level persistence (atomic Cypher, no read-modify-write race) ──────────
 
     public void updateRunStageStatus(String runId, String stageId, String status) {
-        Map<String, String> update = new HashMap<>();
-        update.put(stageId, status);
-        withRetry(() -> runRepo.updateStageStatusAtomic(runId, update));
+        withRetry(() -> runRepo.findById(runId).ifPresent(g -> {
+            Map<String, String> map = jsonToMap(g.getStageStatusJson());
+            map.put(stageId, status);
+            g.setStageStatusJson(mapToJson(map));
+            g.setUpdatedAt(java.time.Instant.now().toString());
+            runRepo.save(g);
+        }));
     }
 
     public void updateRunStageOutput(String runId, String stageId, String output) {
-        Map<String, String> update = new HashMap<>();
-        update.put(stageId, output);
-        withRetry(() -> runRepo.updateStageOutputAtomic(runId, update));
+        withRetry(() -> runRepo.findById(runId).ifPresent(g -> {
+            Map<String, String> map = jsonToMap(g.getStageOutputsJson());
+            map.put(stageId, output);
+            g.setStageOutputsJson(mapToJson(map));
+            g.setUpdatedAt(java.time.Instant.now().toString());
+            runRepo.save(g);
+        }));
     }
 
     public void updateRunResumeIndex(String runId, int resumeIndex) {
@@ -293,6 +303,27 @@ public class ExecutionRepository {
 
     // ────────── Mapping: POJO ↔ Graph entity ──────────
 
+    private static final ObjectMapper jsonMapper = new ObjectMapper();
+
+    private static String mapToJson(Map<String, String> map) {
+        try {
+            return jsonMapper.writeValueAsString(map != null ? map : new HashMap<>());
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize map to JSON", e);
+            return "{}";
+        }
+    }
+
+    private static Map<String, String> jsonToMap(String json) {
+        try {
+            return jsonMapper.readValue(json != null ? json : "{}",
+                    jsonMapper.getTypeFactory().constructMapType(HashMap.class, String.class, String.class));
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize map from JSON: {}", json, e);
+            return new HashMap<>();
+        }
+    }
+
     private GraphExecutionRun toGraphRun(ExecutionRun r) {
         GraphExecutionRun g = new GraphExecutionRun(r.getId(), r.getSchemaId(), r.getStatus(), r.getMode());
         g.setTotalTokens(r.getTotalTokens());
@@ -302,8 +333,8 @@ public class ExecutionRepository {
         g.setStartedAt(r.getStartedAt());
         g.setUpdatedAt(r.getUpdatedAt());
         g.setCompletedAt(r.getCompletedAt());
-        g.setStageStatus(r.getStageStatus() != null ? r.getStageStatus() : new HashMap<>());
-        g.setStageOutputs(r.getStageOutputs() != null ? r.getStageOutputs() : new HashMap<>());
+        g.setStageStatusJson(mapToJson(r.getStageStatus()));
+        g.setStageOutputsJson(mapToJson(r.getStageOutputs()));
         g.setResumeIndex(r.getResumeIndex());
         return g;
     }
@@ -321,8 +352,8 @@ public class ExecutionRepository {
         r.setStartedAt(g.getStartedAt());
         r.setUpdatedAt(g.getUpdatedAt());
         r.setCompletedAt(g.getCompletedAt());
-        r.setStageStatus(g.getStageStatus() != null ? g.getStageStatus() : new HashMap<>());
-        r.setStageOutputs(g.getStageOutputs() != null ? g.getStageOutputs() : new HashMap<>());
+        r.setStageStatus(jsonToMap(g.getStageStatusJson()));
+        r.setStageOutputs(jsonToMap(g.getStageOutputsJson()));
         r.setResumeIndex(g.getResumeIndex());
         return r;
     }

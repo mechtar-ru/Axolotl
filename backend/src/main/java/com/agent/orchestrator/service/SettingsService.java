@@ -42,8 +42,8 @@ public class SettingsService {
         try {
             String global = getGlobalDefaultModel();
             if (global == null || global.isBlank()) {
-                setGlobalDefaultModel("deepseek-v4-flash");
-                log.info("Global default model not set — defaulting to deepseek-v4-flash");
+                setGlobalDefaultModel("deepseek-v4-flash-free");
+                log.info("Global default model not set — defaulting to deepseek-v4-flash-free");
             } else {
                 log.info("Global default model already set: {}", global);
             }

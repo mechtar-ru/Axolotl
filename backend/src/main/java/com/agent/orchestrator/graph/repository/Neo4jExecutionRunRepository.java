@@ -38,20 +38,6 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun {id: $runId})
-        SET r.stageStatus = coalesce(r.stageStatus, {}) + $update
-        SET r.updatedAt = toString(datetime())
-        """)
-    void updateStageStatusAtomic(@Param("runId") String runId, @Param("update") java.util.Map<String, String> update);
-
-    @Query("""
-        MATCH (r:ExecutionRun {id: $runId})
-        SET r.stageOutputs = coalesce(r.stageOutputs, {}) + $update
-        SET r.updatedAt = toString(datetime())
-        """)
-    void updateStageOutputAtomic(@Param("runId") String runId, @Param("update") java.util.Map<String, String> update);
-
-    @Query("""
-        MATCH (r:ExecutionRun {id: $runId})
         SET r.status = $status
         SET r.resumeIndex = $resumeIndex
         SET r.updatedAt = toString(datetime())
@@ -60,10 +46,6 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
                                      @Param("status") String status,
                                      @Param("resumeIndex") int resumeIndex);
 
-    /**
-     * Updates ONLY the resumeIndex without touching the status field.
-     * Used by persistResumeState() to avoid overwriting the 'paused' status.
-     */
     @Query("""
         MATCH (r:ExecutionRun {id: $runId})
         SET r.resumeIndex = $resumeIndex
