@@ -867,6 +867,7 @@ public class PipelineService {
         pipeline.setName("Default Pipeline");
         pipeline.setDescription("Default 5-stage pipeline for " + appType);
         pipeline.setParallelStrategy("sequential");
+        pipeline.setTddEnabled(false);
 
         List<Stage> stages = new ArrayList<>();
 

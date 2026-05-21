@@ -11,6 +11,8 @@ public class Pipeline {
     private Map<String, Object> config;
     private String parallelStrategy; // "sequential" | "parallel-stages" — how stages without deps run
     private int maxConcurrentStages;
+    /** When true, each branch expands to 4 stages: test → verify-test → impl → verify (TDD mode). */
+    private boolean tddEnabled;
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -32,4 +34,7 @@ public class Pipeline {
 
     public int getMaxConcurrentStages() { return maxConcurrentStages; }
     public void setMaxConcurrentStages(int maxConcurrentStages) { this.maxConcurrentStages = maxConcurrentStages; }
+
+    public boolean isTddEnabled() { return tddEnabled; }
+    public void setTddEnabled(boolean tddEnabled) { this.tddEnabled = tddEnabled; }
 }

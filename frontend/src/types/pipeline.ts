@@ -28,6 +28,8 @@ export interface Pipeline {
   config?: Record<string, any>
   parallelStrategy?: 'sequential' | 'parallel-stages'
   maxConcurrentStages?: number
+  /** When true, each branch expands to 4 stages: test → verify-test → impl → verify (TDD mode). */
+  tddEnabled?: boolean
 }
 
 export interface StageResult {
