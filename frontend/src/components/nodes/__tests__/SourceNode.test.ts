@@ -53,7 +53,7 @@ describe('SourceNode', () => {
     const wrapper = mount(SourceNode, {
       props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'running' } },
     })
-    expect(wrapper.text()).toContain('⏳')
+    expect(wrapper.find('.execution-icon svg').exists()).toBe(true)
   })
 
   it('collapses on toggle click', async () => {

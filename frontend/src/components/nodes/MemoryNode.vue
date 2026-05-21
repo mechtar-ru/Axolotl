@@ -1,19 +1,27 @@
 <template>
   <div class="node memory-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
-      <span class="node-icon">🧠</span>
+      <span class="node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 4a4 4 0 0 1 4 4c0 2-1.2 3.5-2 4.5V18h-4v-5.5C8.2 11.5 7 10 7 8a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg></span>
       <span v-if="!editingName" class="node-name" @dblclick="startEditName">{{ props.data.name }}</span>
       <input v-else ref="nameInput" v-model="localName" class="node-name-input" @blur="finishEditName" @keyup.enter="finishEditName" />
-      <span class="execution-icon">{{ executionIcon }}</span>
-      <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
+      <span class="execution-icon">
+        <svg v-if="props.data.executionStatus === 'running'" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+        <svg v-else-if="props.data.executionStatus === 'completed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg v-else-if="props.data.executionStatus === 'failed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </span>
+      <button class="node-expand" @click="expanded = !expanded">
+        <svg :class="['chevron', { expanded }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
     </div>
 
     <div v-if="expanded" class="node-content">
       <div class="search-row">
         <input v-model="searchQuery" placeholder="Search memory..." class="search-input" @keyup.enter="searchMemory" />
-        <button class="search-btn" @click="searchMemory" :disabled="searching">🔍</button>
+        <button class="search-btn" @click="searchMemory" :disabled="searching">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
       </div>
 
       <div class="filter-row">
@@ -33,14 +41,20 @@
       <div v-if="selectedMemory" class="selected-memory">
         <strong>Selected:</strong>
         <div class="memory-content">{{ selectedMemory.content }}</div>
-        <button class="pin-btn" @click="pinToOutput">📌 Output to result</button>
+        <button class="pin-btn" @click="pinToOutput">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+          Output to result
+        </button>
       </div>
 
       <div v-if="props.data.result" class="node-result">
         <strong>Result:</strong>
         <div>{{ props.data.result }}</div>
       </div>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        {{ props.data.nodeTimeMs }}ms
+      </div>
     </div>
 
     <Handle type="source" :position="Position.Bottom" />
@@ -89,14 +103,7 @@ const results = ref<MemoryResult[]>([]);
 const selectedMemory = ref<MemoryResult | null>(null);
 
 const isSelected = computed(() => props.selected === true);
-const executionIcon = computed(() => {
-  switch (props.data.executionStatus) {
-    case 'running': return '⏳';
-    case 'completed': return '✅';
-    case 'failed': return '❌';
-    default: return '';
-  }
-});
+const executionIcon = computed(() => '');
 
 function startEditName() {
   editingName.value = true;
@@ -231,4 +238,8 @@ function truncate(str: string, len: number): string {
   cursor: pointer;
   font-size: 11px;
 }
+.chevron { transition: transform 0.2s; vertical-align: middle; }
+.chevron:not(.expanded) { transform: rotate(-90deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
 </style>

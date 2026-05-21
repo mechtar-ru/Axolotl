@@ -5,7 +5,7 @@
         <span>Prompt Editor — {{ nodeName }}</span>
         <div class="prompt-modal-actions">
           <button class="template-btn" @click="showTemplates = !showTemplates">Templates</button>
-          <button class="close-btn" @click="close">✕</button>
+          <button class="close-btn" @click="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
       </div>
 
@@ -16,7 +16,7 @@
           class="template-item"
           @click="insertTemplate(tpl.text)"
         >
-          {{ tpl.emoji }} {{ tpl.name }}
+          <span v-html="tpl.emoji"></span> {{ tpl.name }}
         </button>
       </div>
 
@@ -60,14 +60,14 @@
 import { ref, watch } from 'vue';
 
 const templates = [
-  { name: 'Analysis', emoji: '🔍', text: 'Analyze the following data and extract key points:\n\n{{input}}' },
-  { name: 'Summarization', emoji: '📋', text: 'Make a brief summary of the following text:\n\n{{input}}' },
-  { name: 'Translation', emoji: '🌍', text: 'Translate the following text, preserving style and tone:\n\n{{input}}' },
-  { name: 'Extraction', emoji: '🎯', text: 'Extract all key entities (names, dates, amounts, organizations):\n\n{{input}}' },
-  { name: 'Generation', emoji: '✨', text: 'Generate a detailed response based on the following data:\n\n{{input}}' },
-  { name: 'Code Review', emoji: '💻', text: 'Review the following code for bugs, vulnerabilities, and improvements:\n\n{{input}}' },
-  { name: 'Comparison', emoji: '⚖️', text: 'Compare data from two sources and find similarities and differences:\n\nSource 1: {{input}}\nSource 2: {{prev_result}}' },
-  { name: 'FAQ', emoji: '❓', text: 'Answer the question based on the provided context. If the answer is not in the context, say so.\n\nContext: {{input}}\nQuestion: ' },
+  { name: 'Analysis', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>', text: 'Analyze the following data and extract key points:\n\n{{input}}' },
+  { name: 'Summarization', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>', text: 'Make a brief summary of the following text:\n\n{{input}}' },
+  { name: 'Translation', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>', text: 'Translate the following text, preserving style and tone:\n\n{{input}}' },
+  { name: 'Extraction', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>', text: 'Extract all key entities (names, dates, amounts, organizations):\n\n{{input}}' },
+  { name: 'Generation', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M18 15c-1.5 1-3 1.5-5 1.5s-3.5-.5-5-1.5"/></svg>', text: 'Generate a detailed response based on the following data:\n\n{{input}}' },
+  { name: 'Code Review', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>', text: 'Review the following code for bugs, vulnerabilities, and improvements:\n\n{{input}}' },
+  { name: 'Comparison', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="2" x2="12" y2="22"/><path d="M3 8c1.5 0 3-1 3-3"/><path d="M21 8c-1.5 0-3-1-3-3"/><line x1="3" y1="12" x2="21" y2="12"/></svg>', text: 'Compare data from two sources and find similarities and differences:\n\nSource 1: {{input}}\nSource 2: {{prev_result}}' },
+  { name: 'FAQ', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>', text: 'Answer the question based on the provided context. If the answer is not in the context, say so.\n\nContext: {{input}}\nQuestion: ' },
 ];
 
 const props = defineProps<{

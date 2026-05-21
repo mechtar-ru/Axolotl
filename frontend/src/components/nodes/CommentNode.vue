@@ -1,8 +1,8 @@
 <template>
   <div class="comment-node" :style="{ background: commentColor }">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     <div class="comment-header">
-      <span class="comment-icon">📝</span>
+      <span class="comment-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M16 3h5v5"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="14" y2="14"/></svg></span>
       <div class="comment-colors">
         <button v-for="c in colors" :key="c" class="color-dot" :style="{ background: c }" @click="changeColor(c)"></button>
       </div>

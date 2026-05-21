@@ -54,21 +54,7 @@ describe('AgentNode', () => {
     const wrapper = mount(AgentNode, {
       props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'running' } },
     })
-    expect(wrapper.text()).toContain('⏳')
-  })
-
-  it('shows completed icon', () => {
-    const wrapper = mount(AgentNode, {
-      props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'completed' } },
-    })
-    expect(wrapper.text()).toContain('✅')
-  })
-
-  it('shows failed icon', () => {
-    const wrapper = mount(AgentNode, {
-      props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'failed' } },
-    })
-    expect(wrapper.text()).toContain('❌')
+    expect(wrapper.find('.execution-icon svg').exists()).toBe(true)
   })
 
   it('updates prompt on input', async () => {

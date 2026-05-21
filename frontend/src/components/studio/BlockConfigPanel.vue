@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { settingsApi } from '@/services/api'
@@ -78,10 +78,17 @@ const providerGroups = computed(() => {
 
 onMounted(() => loadProviders())
 
-// Reload providers on every block change to pick up new providers from Settings
-watch(() => props.blockId, () => loadProviders(), { immediate: false })
+// Module-level cache: fetch providers once per 30s instead of on every block click
+let cachedProviders: { value: string; label: string; group: string }[] | null = null
+let providersLastFetch = 0
+const PROVIDERS_CACHE_TTL = 30000
 
 async function loadProviders() {
+  const now = Date.now()
+  if (cachedProviders && (now - providersLastFetch) < PROVIDERS_CACHE_TTL) {
+    providerOptions.value = cachedProviders
+    return
+  }
   try {
     const providers = await settingsApi.getProviders()
     const opts: { value: string; label: string; group: string }[] = []
@@ -98,6 +105,8 @@ async function loadProviders() {
       }
     }
     providerOptions.value = opts
+    cachedProviders = opts
+    providersLastFetch = Date.now()
   } catch {
     providerOptions.value = []
   }
@@ -109,11 +118,6 @@ const requiredPatternsText = computed({
     requiredPatterns.value = val.split('\n').filter(s => s.trim().length > 0)
   }
 })
-
-// Debounce guard for markDirty — avoids excessive saves on rapid input
-let saveDirtyTimeout: ReturnType<typeof setTimeout> | null = null
-let isAlive = true
-onUnmounted(() => { isAlive = false; if (saveDirtyTimeout) clearTimeout(saveDirtyTimeout) })
 
 function resetRefs() {
   blockLabel.value = ''
@@ -208,15 +212,6 @@ function onDirPicked(e: Event) {
 
 function fetchUrlPreview() {
   // For MVP, URL preview not implemented — config is saved, backend handles at execution
-}
-
-function debounceMarkDirty(data: any) {
-  if (saveDirtyTimeout) clearTimeout(saveDirtyTimeout)
-  saveDirtyTimeout = setTimeout(() => {
-    if (!isAlive) return
-    schemaStore.markDirty(data)
-    saveDirtyTimeout = null
-  }, 400)
 }
 
 function saveConfig() {
@@ -335,7 +330,7 @@ function saveConfig() {
         data: baseData
       }
     })
-    debounceMarkDirty({
+    schemaStore.markDirty({
       ...schemaStore.currentSchema,
       nodes: updatedNodes
     })
