@@ -53,11 +53,18 @@ test.describe('Pipeline Review Dialog', () => {
     await dialog.locator('.btn-approve').click();
     console.log('Accepted');
 
-    // Wait for completion
-    await page.waitForTimeout(20000);
-    const runs = await (await page.request.get(`${API}/schemas/${schemaId}/runs`)).json();
-    const last = Array.isArray(runs) ? runs[0] : runs;
-    expect(last?.status).toBe('completed');
+    // Poll for completion instead of hard wait
+    let runStatus = 'running';
+    const pollStart = Date.now();
+    const pollTimeout = 120_000;
+    while (runStatus === 'running' && Date.now() - pollStart < pollTimeout) {
+      await new Promise(r => setTimeout(r, 2000));
+      const runs = await (await page.request.get(`${API}/schemas/${schemaId}/runs`)).json();
+      const last = Array.isArray(runs) ? runs[0] : runs;
+      runStatus = last?.status || 'running';
+      console.log(`  ...run status: ${runStatus}`);
+    }
+    expect(runStatus).toBe('completed');
     console.log('Completed');
   });
 });

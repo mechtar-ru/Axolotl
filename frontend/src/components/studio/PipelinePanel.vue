@@ -166,7 +166,7 @@ async function handleBuildNodes() {
     building.value = false
   }
   if (buildTimeout) clearTimeout(buildTimeout)
-  buildTimeout = setTimeout(() => { buildResult.value = null }, 3000)
+  buildTimeout = setTimeout(() => { buildResult.value = null }, 2000)
 }
 
 async function handleCreateDefault() {
