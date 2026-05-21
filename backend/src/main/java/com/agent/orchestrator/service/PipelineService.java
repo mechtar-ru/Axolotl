@@ -969,7 +969,7 @@ public class PipelineService {
                 test.setPositionX(s.getPositionX());
                 test.setPositionY(s.getPositionY());
 
-                // verify-test-X — depends on test-X
+                // verify-test-X — depends on test-X, receives test output as context
                 Stage verifyTest = new Stage();
                 verifyTest.setId("verify-test-" + x);
                 verifyTest.setName("Verify Tests");
@@ -977,31 +977,49 @@ public class PipelineService {
                 verifyTest.setDependencies(List.of(test.getId()));
                 verifyTest.setSystemPrompt("Verify that the tests are correctly written, "
                         + "are executable, and cover the planned functionality. "
-                        + "Run them to confirm the test harness works.");
+                        + "Run them to confirm the test harness works.\n"
+                        + "Tests written by upstream stage: {{upstreamOutput}}");
                 verifyTest.setModel(s.getModel());
+                verifyTest.setInputMapping(new HashMap<>(Map.of(
+                        test.getId(), "upstreamOutput"
+                )));
                 verifyTest.setPositionX(s.getPositionX() + 200);
                 verifyTest.setPositionY(s.getPositionY());
 
                 // impl-X — replaces original agent, depends on test-X only (not verify-test-X)
+                // Receives test output so implementation satisfies the written tests
                 Stage impl = new Stage();
                 impl.setId("impl-" + x);
                 impl.setName("Implement");
                 impl.setNodeType("agent");
                 impl.setDependencies(List.of(test.getId()));
-                impl.setSystemPrompt(s.getSystemPrompt());
+                impl.setSystemPrompt("Implement the planned functionality. "
+                        + "Write code that passes the tests written in the previous stage.\n"
+                        + (s.getSystemPrompt() != null ? s.getSystemPrompt() : "")
+                        + "\nTests to satisfy: {{upstreamOutput}}");
                 impl.setModel(s.getModel());
                 impl.setConfig(s.getConfig() != null ? new HashMap<>(s.getConfig()) : null);
+                impl.setInputMapping(new HashMap<>(Map.of(
+                        test.getId(), "upstreamOutput"
+                )));
                 impl.setPositionX(s.getPositionX() + 400);
                 impl.setPositionY(s.getPositionY());
 
                 // verify-X — replaces original verifier, depends on impl-X
+                // Receives impl output so it knows what implementation was written
                 Stage verify = new Stage();
                 verify.setId("verify-" + x);
                 verify.setName("Verify Implementation");
                 verify.setNodeType("verifier");
                 verify.setDependencies(List.of(impl.getId()));
-                verify.setSystemPrompt(verifier.getSystemPrompt());
+                verify.setSystemPrompt("Verify the implementation against the requirements. "
+                        + "Run the tests to confirm everything passes.\n"
+                        + (verifier.getSystemPrompt() != null ? verifier.getSystemPrompt() : "")
+                        + "\nImplementation to verify: {{upstreamOutput}}");
                 verify.setModel(verifier.getModel());
+                verify.setInputMapping(new HashMap<>(Map.of(
+                        impl.getId(), "upstreamOutput"
+                )));
                 verify.setPositionX(s.getPositionX() + 600);
                 verify.setPositionY(s.getPositionY());
 
