@@ -233,7 +233,7 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function cancelPipelineExecution(schemaId: string) {
     await api.post(`/schemas/${schemaId}/pipeline/cancel`)
-    pipelineStatus.value.running = false
+    pipelineStatus.value = { running: false, stageResults: {} }
   }
 
   async function retryPipeline(schemaId: string) {
@@ -257,6 +257,8 @@ export const useSchemaStore = defineStore('schema', () => {
     if (resp.data && currentSchema.value) {
       currentSchema.value = resp.data
     }
+    // Reset execution state — no run in progress after creation
+    pipelineStatus.value = { running: false, stageResults: {} }
   }
 
   function setPipeline(pipeline: Pipeline | undefined) {

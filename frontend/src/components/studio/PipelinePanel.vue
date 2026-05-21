@@ -106,7 +106,11 @@ async function handleCreateDefault() {
   if (store.currentSchema.pipeline) {
     if (!window.confirm('A pipeline already exists. Replace it with the default pipeline?')) return
   }
-  await store.createDefaultPipeline(store.currentSchema.id, undefined, undefined, tddEnabled.value)
+  try {
+    await store.createDefaultPipeline(store.currentSchema.id, undefined, undefined, tddEnabled.value)
+  } catch (e: any) {
+    executeError.value = 'Pipeline creation failed: ' + (e.message || e)
+  }
 }
 </script>
 
@@ -229,7 +233,7 @@ async function handleCreateDefault() {
                 <div v-if="getStageTag(stage.id)" class="stage-tag" :class="'tag-' + getStageTag(stage.id)!.toLowerCase().replace(' ', '-')">{{ getStageTag(stage.id) }}</div>
                 <div class="stage-model" v-if="stage.model">Model: {{ stage.model }}</div>
               </div>
-              <div class="stage-status completed" v-if="store.pipelineStatus.stageResults[stage.id]">
+              <div class="stage-status completed" v-if="stage.id in store.pipelineStatus.stageResults">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>

@@ -178,7 +178,9 @@ public class PipelineService {
         future.whenComplete((result, ex) -> {
             runningPipelines.remove(schemaId);
             cancelFlags.remove(schemaId);
-            stageResults.remove(schemaId);
+            // Note: stageResults NOT removed here to avoid race with
+            // retryPipeline/resumePipeline which share the schemaId key.
+            // stageResults is overwritten on next execute/retry/resume.
             if (ex != null) {
                 if (ex instanceof CancellationException || ex.getCause() instanceof CancellationException) {
                     log.info("Pipeline cancelled for schema {}", schemaId);
@@ -515,7 +517,7 @@ public class PipelineService {
 
         Map<String, Node> nodeMap = new HashMap<>();
         if (schema.getNodes() != null) {
-            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), n);
+            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), cloneNode(n));
         }
 
         List<List<Stage>> remainingLevels = topologicalSortStages(remainingStages);
@@ -714,7 +716,10 @@ public class PipelineService {
             }
 
             String sourceResult = results.get(sourceStageId);
-            if (sourceResult == null || sourceResult.isEmpty()) continue;
+            if (sourceResult == null || sourceResult.isEmpty()) {
+                log.warn("Input mapping: source '{}' for stage '{}' has no result (stage may not have run)", sourceStageId, stage.getId());
+                continue;
+            }
 
             try {
                 if (fieldName == null) {
@@ -921,7 +926,6 @@ public class PipelineService {
         stages.add(output);
 
         pipeline.setStages(stages);
-        expandTddStages(pipeline);
         return pipeline;
     }
 
