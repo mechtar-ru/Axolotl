@@ -445,6 +445,10 @@ public class PipelineService {
     }
 
     public void resumePipeline(String schemaId) {
+        resumePipeline(schemaId, null);
+    }
+
+    public void resumePipeline(String schemaId, String runId) {
         WorkflowSchema schema = schemaRepository.findById(schemaId);
         if (schema == null) {
             throw new RuntimeException("Schema not found: " + schemaId);
@@ -453,7 +457,21 @@ public class PipelineService {
         Integer resumeIndex = pipelineResumeState.remove(schemaId);
         ExecutionRun run = null;
 
-        if (resumeIndex == null) {
+        if (runId != null) {
+            run = executionRepository.getRunById(runId);
+            if (run == null) {
+                log.warn("No pipeline run found by id {} for schema {}", runId, schemaId);
+                return;
+            }
+            // Derive resumeIndex from persist DB field (always prefer this over in-memory)
+            int dbIndex = run.getResumeIndex();
+            if (dbIndex >= 0) {
+                resumeIndex = dbIndex;
+            } else if (resumeIndex == null) {
+                log.warn("No resume index for run {} in schema {}", runId, schemaId);
+                return;
+            }
+        } else if (resumeIndex == null) {
             // Try the DB — the index may have been persisted before a restart
             ExecutionRun pausedRun = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
             if (pausedRun == null) {

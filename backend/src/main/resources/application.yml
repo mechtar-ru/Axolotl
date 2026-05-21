@@ -43,7 +43,7 @@ axolotl:
     zen:
       base-url: https://opencode.ai/zen/v1
       api-key: ${ZEN_API_KEY:}
-      default-model: big-pickle
+      default-model: deepseek-v4-flash-free
       timeout: 3600
   mcp:
     enabled: true

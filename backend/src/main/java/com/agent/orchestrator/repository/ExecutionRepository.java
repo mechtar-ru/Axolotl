@@ -134,6 +134,15 @@ public class ExecutionRepository {
         }
     }
 
+    public ExecutionRun getRunById(String runId) {
+        try {
+            return runRepo.findById(runId).map(this::toPocoRun).orElse(null);
+        } catch (Exception e) {
+            log.error("Error fetching run {}: {}", runId, e.getMessage(), e);
+            return null;
+        }
+    }
+
     // ────────── Stage-level persistence (atomic Cypher, no read-modify-write race) ──────────
 
     public void updateRunStageStatus(String runId, String stageId, String status) {

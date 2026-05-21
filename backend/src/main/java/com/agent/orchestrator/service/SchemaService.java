@@ -382,7 +382,13 @@ public class SchemaService {
         cancelFlags.put(schemaId, cancelFlag);
         nodeExecutor.setCurrentRunId(schemaId, childRunId);
         CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> executeWorkflow(schema, cancelFlag, childRunId), executionExecutor);
+                () -> executeWorkflow(schema, cancelFlag, childRunId), executionExecutor)
+            .whenComplete((result, ex) -> {
+                if (ex != null) {
+                    log.error("Resume execution failed for schema {}: {}", schemaId, ex.getMessage(), ex);
+                    executionRepository.releasePausedRun(schemaId);
+                }
+            });
         runningExecutions.put(schemaId, future);
     }
 
@@ -468,7 +474,7 @@ public class SchemaService {
                 .findFirst().orElse(null);
         if (pipelineRun != null) {
             log.info("Pipeline review approved for schema {}, run {} node {}", executionId, pipelineRun.getId(), nodeId);
-            pipelineService.resumePipeline(executionId);
+            pipelineService.resumePipeline(executionId, pipelineRun.getId());
             if (webSocketHandler != null) {
                 webSocketHandler.sendLog(executionId, "info",
                         "Plan approved, resuming pipeline execution", nodeId);
