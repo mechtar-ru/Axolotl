@@ -6,7 +6,7 @@ const store = useSchemaStore()
 const buildResult = ref<string | null>(null)
 let buildTimeout: ReturnType<typeof setTimeout> | null = null
 const executeError = ref<string | null>(null)
-const tddEnabled = ref(false)
+const tddEnabled = ref(store.currentSchema?.pipeline?.tddEnabled ?? false)
 
 onUnmounted(() => {
   if (buildTimeout) clearTimeout(buildTimeout)

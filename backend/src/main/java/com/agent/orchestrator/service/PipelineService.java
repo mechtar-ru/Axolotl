@@ -353,6 +353,17 @@ public class PipelineService {
             for (Node n : schema.getNodes()) nodeMap.put(n.getId(), cloneNode(n));
         }
 
+        // Track stages that were paused before the failure — these need approval during retry
+        Set<String> pausedBeforeFailure = new HashSet<>();
+        for (int i = 0; i < stages.size(); i++) {
+            if (i >= firstFailedIndex) break;
+            String sid = stages.get(i).getId();
+            String st = persistedStatus != null ? persistedStatus.get(sid) : null;
+            if ("paused".equals(st)) {
+                pausedBeforeFailure.add(sid);
+            }
+        }
+
         // Only run stages at or after firstFailedIndex
         List<Stage> retryStages = new ArrayList<>();
         Set<String> completedBefore = new HashSet<>();
@@ -398,8 +409,9 @@ public class PipelineService {
             for (Stage stage : level) {
                 if (cancelFlag.get()) break;
 
+                boolean retrySkipApproval = !pausedBeforeFailure.contains(stage.getId());
                 StageRunResult result = executeSingleStage(stage, schema, runId, nodeMap,
-                        cancelFlag, schemaId, retryStageIndex, true);
+                        cancelFlag, schemaId, retryStageIndex, retrySkipApproval);
                 retryStageIndex++;
                 if (result == StageRunResult.FAILED) {
                     executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
@@ -541,25 +553,35 @@ public class PipelineService {
 
         boolean resumedPaused = false;
         int resumeStageIndex = resumeIndex;
-        for (List<Stage> level : remainingLevels) {
-            if (cancelFlag.get()) break;
+        try {
+            for (List<Stage> level : remainingLevels) {
+                if (cancelFlag.get()) break;
 
-            for (Stage stage : level) {
-                if (cancelFlag.get() || resumedPaused) break;
+                for (Stage stage : level) {
+                    if (cancelFlag.get() || resumedPaused) break;
 
-                StageRunResult result = executeSingleStage(stage, schema, run.getId(), nodeMap,
-                        cancelFlag, schemaId, resumeStageIndex, false);
-                resumeStageIndex++;
-                if (result == StageRunResult.PAUSED) {
-                    resumedPaused = true;
-                    break;
-                } else if (result == StageRunResult.FAILED) {
-                    // Continue to next stage in level
+                    StageRunResult result = executeSingleStage(stage, schema, run.getId(), nodeMap,
+                            cancelFlag, schemaId, resumeStageIndex, false);
+                    resumeStageIndex++;
+                    if (result == StageRunResult.PAUSED) {
+                        resumedPaused = true;
+                        break;
+                    } else if (result == StageRunResult.FAILED) {
+                        // Continue to next stage in level
+                    }
                 }
-            }
 
-            if (resumedPaused) break;
-            completedRemaining += level.size();
+                if (resumedPaused) break;
+                completedRemaining += level.size();
+            }
+        } catch (Exception e) {
+            log.error("Pipeline resume failed for schema {}: {}", schemaId, e.getMessage(), e);
+            executionRepository.releasePausedRun(schemaId);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendError(schema.getId(), "system",
+                        "Pipeline resume failed: " + e.getMessage());
+            }
+            return;
         }
 
         if (resumedPaused) {

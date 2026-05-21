@@ -13,6 +13,10 @@ Versioning: SemVer via git tags.
 
 ### Fixed
 
+- **Pipeline resume crash releases paused run**: `resumePipeline` now wraps core execution in try-catch and calls `releasePausedRun()` on failure, preventing runs from being stuck permanently in 'resuming' status. Added Cypher query and `ExecutionRepository.releasePausedRun()` wrapper.
+- **Pipeline retry respects paused stages**: `retryPipeline` now tracks stages that were `paused` before the failure and sets `skipApprovalCheck=false` for them — previously all retried stages bypassed approval, silently force-completing previously-paused review nodes.
+- **Hardcoded model fallback removed**: `AgentController.createDefaultPipeline` replaced `"deepseek-v4-flash-free"` fallback with empty string `""`. When no default model is configured, stages are created without a model and execution fails with a clear log message instead of silently routing to an arbitrary model.
+- **TDD checkbox persists across navigation**: `PipelinePanel.vue` initializes `tddEnabled` ref from `store.currentSchema?.pipeline?.tddEnabled` instead of hardcoded `false`, so re-creating a pipeline after navigation remembers the user's TDD preference.
 - **Trailing slash 403 on API endpoints**: Spring Boot 3.x disables trailing-slash matching, causing `MvcRequestMatcher` to reject endpoints like `/api/schemas/`. Added `TrailingSlashFilter` that normalizes request URIs before Spring Security processing — strips trailing slashes from `getRequestURI()`, `getRequestURL()`, `getServletPath()`, `getPathInfo()` (`fc67cd34`).
 - **ReviewBlock VueFlow fragment root**: ReviewBlock had two root elements, breaking VueFlow node position/drag inheritance. Wrapped in single `div` (`4a90e9cf`).
 - **README misleading provider key docs**: Listed Zen as the only required API key. Now lists all supported providers (OpenAI, Anthropic, DeepSeek, Zen) with note that Ollama and custom endpoints need no key (`b5cdde65`).

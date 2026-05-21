@@ -25,18 +25,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // Skip JWT filter for public endpoints
+        // Skip JWT filter for public endpoints (schemas excluded — needs auth for model resolution)
         return path.startsWith("/api/health") ||
                path.startsWith("/api/memory") ||
                path.startsWith("/api/graph") ||
-               path.startsWith("/api/schemas") ||
-               path.startsWith("/api/execution") ||
-               path.startsWith("/api/settings") ||
-               path.startsWith("/api/agents") ||
-               path.startsWith("/api/templates") ||
-               path.startsWith("/api/history") ||
-               path.startsWith("/api/plan") ||
-               path.startsWith("/api/plugins") ||
                path.startsWith("/api/share") ||
                path.startsWith("/ws") ||
                path.equals("/mcp");
@@ -55,7 +47,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
-            // Invalid/expired token: silently skip — SecurityConfig.permitAll() or .authenticated() decides
         }
         filterChain.doFilter(request, response);
     }

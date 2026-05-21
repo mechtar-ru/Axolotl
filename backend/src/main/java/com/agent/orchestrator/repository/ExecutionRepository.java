@@ -169,6 +169,19 @@ public class ExecutionRepository {
         withRetry(() -> runRepo.updateResumeIndexOnly(runId, resumeIndex));
     }
 
+    /**
+     * Releases a claimed (resuming) paused run back to 'paused' status.
+     * Called when resumePipeline fails unexpectedly, preventing the run
+     * from being stuck permanently in 'resuming'.
+     */
+    public void releasePausedRun(String schemaId) {
+        try {
+            runRepo.releasePausedRun(schemaId);
+        } catch (Exception e) {
+            log.error("Error releasing paused run for schema {}: {}", schemaId, e.getMessage(), e);
+        }
+    }
+
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {
