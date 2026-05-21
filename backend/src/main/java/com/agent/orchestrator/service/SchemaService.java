@@ -758,8 +758,12 @@ public class SchemaService {
             } catch (Exception e) {
                 log.warn("Failed to persist schema after cancellation: {}", e.getMessage(), e);
             }
-            executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
-            recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
+            try {
+                executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
+                recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
+            } catch (Exception e) {
+                log.warn("Failed to persist cancellation record: {}", e.getMessage(), e);
+            }
         } else {
             if (webSocketHandler != null) {
                 webSocketHandler.sendComplete(schema.getId(), totalTime, nodesCompleted);
@@ -801,8 +805,12 @@ public class SchemaService {
                 }
             }
 
-                executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
-            recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
+            try {
+                    executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
+                recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
+            } catch (Exception e) {
+                log.warn("Failed to persist completion record: {}", e.getMessage(), e);
+            }
         }
     }
 
