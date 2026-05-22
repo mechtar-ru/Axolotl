@@ -29,6 +29,9 @@ public class GraphProviderSetting {
     @Property("models")
     private List<String> models;
 
+    @Property("projectsFolder")
+    private String projectsFolder;
+
     public GraphProviderSetting() {}
 
     public String getProviderName() { return providerName; }
@@ -51,4 +54,7 @@ public class GraphProviderSetting {
 
     public List<String> getModels() { return models; }
     public void setModels(List<String> models) { this.models = models; }
+
+    public String getProjectsFolder() { return projectsFolder; }
+    public void setProjectsFolder(String projectsFolder) { this.projectsFolder = projectsFolder; }
 }

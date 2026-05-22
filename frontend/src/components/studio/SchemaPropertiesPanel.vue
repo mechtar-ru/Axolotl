@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { storeToRefs } from 'pinia'
 import { settingsApi } from '@/services/api'
 
@@ -11,9 +12,11 @@ const emit = defineEmits<{
 }>()
 
 const schemaStore = useSchemaStore()
+const settingsStore = useSettingsStore()
 const { currentSchema } = storeToRefs(schemaStore)
 
 const isEditingPath = ref(false)
+const folderPickerRef = ref<HTMLInputElement | null>(null)
 
 // Debounced saves for rapid input (name, description)
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
@@ -109,6 +112,25 @@ function commitPath(value: string) {
 function cancelEditPath() {
   isEditingPath.value = false
 }
+
+function browseFolder() {
+  folderPickerRef.value?.click()
+}
+
+function onFolderPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  input.value = '' // reset so same folder can be picked again
+  if (!files || files.length === 0) return
+  const dirName = files[0].webkitRelativePath.split('/')[0]
+  if (!dirName) return
+  const base = settingsStore.projectsFolder
+  const path = base ? `${base}/${dirName}/` : `${dirName}/`
+  if (!currentSchema.value) return
+  if (path !== currentSchema.value.targetPath) {
+    schemaStore.markDirty({ ...currentSchema.value, targetPath: path })
+  }
+}
 </script>
 
 <template>
@@ -145,11 +167,11 @@ function cancelEditPath() {
       <!-- Target Path -->
       <div class="config-section">
         <label class="config-label">Target Path</label>
-        <div v-if="!isEditingPath" class="path-display clickable" @click="startEditPath">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="icon">
+        <div v-if="!isEditingPath" class="path-display">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="icon clickable-icon" @click.stop="browseFolder" title="Browse for folder">
             <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
           </svg>
-          <span class="path-text">{{ targetPath || '(not set)' }}</span>
+          <span class="path-text clickable" @click="startEditPath">{{ targetPath || '(not set)' }}</span>
         </div>
         <div v-else class="path-display">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" class="icon" style="cursor:pointer" @click="cancelEditPath">
@@ -165,6 +187,7 @@ function cancelEditPath() {
             placeholder="e.g. ~/git/Axolotl/my-app"
           />
         </div>
+        <input ref="folderPickerRef" type="file" webkitdirectory style="display:none" @change="onFolderPicked" />
       </div>
 
       <!-- Default Model -->
@@ -322,6 +345,15 @@ function cancelEditPath() {
 .icon {
   flex-shrink: 0;
   color: var(--text-muted);
+}
+
+.clickable-icon {
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.clickable-icon:hover {
+  color: var(--accent);
 }
 
 .quick-actions {

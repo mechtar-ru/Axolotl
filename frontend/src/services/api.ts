@@ -325,6 +325,15 @@ export const settingsApi = {
   async setDisabledModels(provider: string, models: string[]): Promise<void> {
     await api.put(`/settings/${provider}/models/disabled`, models);
   },
+
+  async getProjectsFolder(): Promise<string> {
+    const response = await api.get('/settings/projects-folder');
+    return response.data.projectsFolder || '';
+  },
+
+  async setProjectsFolder(folder: string): Promise<void> {
+    await api.put('/settings/projects-folder', { projectsFolder: folder });
+  },
 };
 
 export interface CustomLlmEndpoint {

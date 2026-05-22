@@ -7,6 +7,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const isLoaded = ref(false)
   const providers = ref<ProviderInfo[]>([])
   const providersLoaded = ref(false)
+  const projectsFolder = ref('')
+  const projectsFolderLoaded = ref(false)
 
   function applyTheme(val: string) {
     if (val === 'system') {
@@ -109,9 +111,33 @@ export const useSettingsStore = defineStore('settings', () => {
     p.disabledModels = newDisabled.length > 0 ? newDisabled : undefined
   }
 
+  // ──── Projects folder ────
+
+  async function loadProjectsFolder() {
+    if (projectsFolderLoaded.value) return
+    try {
+      const folder = await settingsApi.getProjectsFolder()
+      projectsFolder.value = folder
+    } catch {
+      // non-critical
+    }
+    projectsFolderLoaded.value = true
+  }
+
+  async function saveProjectsFolder(folder: string) {
+    try {
+      await settingsApi.setProjectsFolder(folder)
+      projectsFolder.value = folder
+    } catch {
+      // non-critical
+    }
+  }
+
   return {
     theme, isLoaded, providers, providersLoaded,
+    projectsFolder, projectsFolderLoaded,
     initTheme, setTheme, fetchProviders, refreshProviders,
     getModelsForProvider, getAllModelOptions, setModelDisabled,
+    loadProjectsFolder, saveProjectsFolder,
   }
 })

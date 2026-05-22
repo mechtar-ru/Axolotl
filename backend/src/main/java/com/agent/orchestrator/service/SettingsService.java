@@ -271,6 +271,34 @@ public class SettingsService {
         }
     }
 
+    // ──── Projects folder ────
+
+    public String getProjectsFolder() {
+        try {
+            Optional<GraphProviderSetting> opt = neo4jRepo.findByProviderName("__projects__");
+            if (opt.isPresent()) {
+                String folder = opt.get().getProjectsFolder();
+                return folder != null && !folder.isBlank() ? folder : null;
+            }
+        } catch (Exception e) {
+            log.error("Error reading projects folder: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    public void setProjectsFolder(String path) {
+        try {
+            GraphProviderSetting g = new GraphProviderSetting();
+            g.setProviderName("__projects__");
+            g.setProjectsFolder(path);
+            g.setUpdatedAt(java.time.Instant.now().toString());
+            neo4jRepo.save(g);
+            log.info("Projects folder set to: {}", path);
+        } catch (Exception e) {
+            log.error("Error saving projects folder: {}", e.getMessage());
+        }
+    }
+
     private boolean listsEqual(List<String> a, List<String> b) {
         if (a == b) return true;
         if (a == null || b == null) return false;

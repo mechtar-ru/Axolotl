@@ -2,16 +2,21 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import AppCard from '@/components/app/AppCard.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
+import ProjectsFolderPrompt from '@/components/settings/ProjectsFolderPrompt.vue'
 import { appApi, schemaApi } from '@/services/api'
 import { getTemplateById } from '@/templates'
 import type { WorkflowSchema } from '@/types'
 
 const router = useRouter()
 const schemaStore = useSchemaStore()
+const settingsStore = useSettingsStore()
+
+const showProjectsPrompt = ref(false)
 
 const templates = ref([
   {
@@ -180,8 +185,12 @@ function continueDevelopment(app: any) {
 }
 
 // Load apps on mount
-onMounted(() => {
+onMounted(async () => {
   schemaStore.loadSchemas()
+  await settingsStore.loadProjectsFolder()
+  if (!settingsStore.projectsFolder) {
+    showProjectsPrompt.value = true
+  }
 })
 
 /** After creating a schema from a template, push the template's nodes and edges into it.
@@ -550,6 +559,11 @@ async function createBlankApp() {
       app-id=""
       @add-to-canvas="onQuickStartCreated"
       @close="showQuickStart = false"
+    />
+
+    <ProjectsFolderPrompt
+      :visible="showProjectsPrompt"
+      @done="showProjectsPrompt = false"
     />
   </div>
 </template>

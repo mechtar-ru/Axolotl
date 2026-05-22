@@ -50,6 +50,35 @@
           </div>
         </div>
 
+        <!-- Projects Folder -->
+        <div class="provider-card">
+          <div class="provider-header">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            <h2>Projects Folder</h2>
+          </div>
+          <div class="provider-fields">
+            <div class="field">
+              <label>Where new projects are created</label>
+              <div class="path-row">
+                <input
+                  :value="projectsFolder"
+                  @input="onProjectsFolderInput(($event.target as HTMLInputElement).value)"
+                  type="text"
+                  class="field-input path-field"
+                  placeholder="e.g. /Users/name/git/Axolotl"
+                />
+                <input ref="folderPickerRef" type="file" webkitdirectory style="display:none" @change="onSettingsFolderPicked" />
+                <button class="browse-btn" @click="folderPickerRef?.click()" title="Browse">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                  </svg>
+                </button>
+                <button class="save-btn" :disabled="projectsFolder === settingsStore.projectsFolder" @click="saveProjectsFolder">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Built-in providers -->
         <div v-for="provider in builtInProviders" :key="provider.name" class="provider-card" :class="{ collapsed: isCollapsed(provider.name) }">
           <div class="provider-header" @click="toggleCollapse(provider.name)">
@@ -368,6 +397,35 @@ async function _saveUserDefaultModel() {
   }
 }
 const saveUserDefaultModel = debounce(_saveUserDefaultModel, 400);
+
+// ──── Projects folder ────
+const projectsFolder = ref('')
+const folderPickerRef = ref<HTMLInputElement | null>(null)
+
+function onProjectsFolderInput(val: string) {
+  projectsFolder.value = val
+}
+
+function onSettingsFolderPicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = input.files
+  input.value = ''
+  if (!files || files.length === 0) return
+  const dirName = files[0].webkitRelativePath.split('/')[0]
+  if (dirName) {
+    const base = projectsFolder.value ? projectsFolder.value.replace(/\/[^/]*\/?$/, '') : ''
+    projectsFolder.value = base ? `${base}/${dirName}/` : `~/Axolotl/${dirName}`
+  }
+}
+
+async function saveProjectsFolder() {
+  await settingsStore.saveProjectsFolder(projectsFolder.value)
+}
+
+onMounted(async () => {
+  await settingsStore.loadProjectsFolder()
+  projectsFolder.value = settingsStore.projectsFolder
+})
 
 const builtInProviders = computed(() => providers.value.filter(p => !p.custom));
 
@@ -1269,5 +1327,53 @@ onMounted(async () => {
 .theme-card {
   border-left: 3px solid var(--warning);
   margin-bottom: var(--space-5);
+}
+
+.path-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.path-field {
+  font-family: monospace;
+}
+
+.browse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.browse-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.save-btn {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: white;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.save-btn:not(:disabled):hover {
+  opacity: 0.9;
 }
 </style>

@@ -167,6 +167,26 @@ public class SettingsController {
         return ResponseEntity.ok(response);
     }
 
+    // ──── Projects folder ────
+
+    @GetMapping("/projects-folder")
+    public ResponseEntity<Map<String, Object>> getProjectsFolder() {
+        String folder = settingsService.getProjectsFolder();
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("projectsFolder", folder != null ? folder : "");
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/projects-folder")
+    public ResponseEntity<Map<String, Object>> setProjectsFolder(@RequestBody Map<String, String> body) {
+        String folder = body.get("projectsFolder");
+        settingsService.setProjectsFolder(folder);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("status", "ok");
+        response.put("projectsFolder", folder);
+        return ResponseEntity.ok(response);
+    }
+
     private String getCurrentUserId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
