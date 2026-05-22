@@ -7,9 +7,9 @@ hero:
   tagline: Build workflows with nodes, execute with confidence
   actions:
     - theme: brand
-      text: English
+      text: Installation
       link: /en/getting-started
     - theme: alt
-      text: Русский
-      link: /ru/getting-started
+      text: Architecture
+      link: /en/architecture
 ---
