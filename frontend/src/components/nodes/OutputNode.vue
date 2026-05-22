@@ -47,6 +47,16 @@
           <option value="memory">Memory (MemPalace)</option>
         </select>
       </div>
+      <div class="output-config">
+        <label class="config-label toggles-label">
+          <input type="checkbox" v-model="generateReadme" @change="updateConfig" />
+          README.md
+        </label>
+        <label class="config-label toggles-label">
+          <input type="checkbox" v-model="generateArchitecture" @change="updateConfig" />
+          architecture.md
+        </label>
+      </div>
       <template v-if="outputType === 'file'">
         <div class="output-config">
           <label class="config-label">Path:</label>
@@ -146,6 +156,8 @@ const filePath = ref(props.data.filePath || './output/result.md');
 const fileFormat = ref<'text' | 'json' | 'markdown'>(props.data.fileFormat || 'markdown');
 const memoryWing = ref((props.data.config?.memoryWing as string) || 'axolotl');
 const memoryRoom = ref((props.data.config?.memoryRoom as string) || 'agent-results');
+const generateReadme = ref(props.data.config?.generateReadme !== false);
+const generateArchitecture = ref(props.data.config?.generateArchitecture === true);
 
 const isSelected = computed(() => props.selected === true);
 const statusColor = computed(() => {
@@ -183,6 +195,8 @@ function updateConfig() {
   props.data.config!.fileFormat = fileFormat.value;
   props.data.config!.memoryWing = memoryWing.value;
   props.data.config!.memoryRoom = memoryRoom.value;
+  props.data.config!.generateReadme = generateReadme.value;
+  props.data.config!.generateArchitecture = generateArchitecture.value;
   props.data.outputType = outputType.value;
   props.data.filePath = filePath.value;
   props.data.fileFormat = fileFormat.value;
@@ -217,6 +231,23 @@ function handleDelete() {
   font-size: 11px;
   color: var(--text-secondary);
   min-width: 55px;
+}
+.toggles-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  min-width: 0;
+  padding: 2px 8px 2px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  user-select: none;
+}
+.toggles-label input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 .config-select, .config-input {
   flex: 1;

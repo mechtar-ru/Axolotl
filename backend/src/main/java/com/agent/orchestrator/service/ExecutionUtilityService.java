@@ -800,6 +800,10 @@ public class ExecutionUtilityService {
                 ? (Boolean) config.get("includeMetrics") : true;
         String reportPath = config.getOrDefault("reportPath", "pipeline-report.md") instanceof String
                 ? (String) config.get("reportPath") : "pipeline-report.md";
+        boolean generateReadme = config.getOrDefault("generateReadme", true) instanceof Boolean
+                ? (Boolean) config.get("generateReadme") : true;
+        boolean generateArchitecture = config.getOrDefault("generateArchitecture", false) instanceof Boolean
+                ? (Boolean) config.get("generateArchitecture") : false;
 
         Map<String, String> nodeResultsMap = stateManager.getNodeResults().getOrDefault(schemaId, new ConcurrentHashMap<>());
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
@@ -975,6 +979,36 @@ public class ExecutionUtilityService {
             if (webSocketHandler != null) {
                 webSocketHandler.sendLog(schemaId, "success",
                         "Summary report written to: " + reportFilePath, node.getId());
+            }
+
+            // Generate README.md if configured
+            if (generateReadme) {
+                try {
+                    Path readmePath = Path.of(targetDir, "README.md").normalize();
+                    String readme = buildReadmeDoc(targetDir, currentSchema);
+                    Files.writeString(readmePath, readme);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "success",
+                                "README.md written to: " + readmePath, node.getId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to generate README.md: {}", e.getMessage());
+                }
+            }
+
+            // Generate architecture.md if configured
+            if (generateArchitecture) {
+                try {
+                    Path archPath = Path.of(targetDir, "architecture.md").normalize();
+                    String arch = buildArchitectureDoc(targetDir, currentSchema);
+                    Files.writeString(archPath, arch);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "success",
+                                "architecture.md written to: " + archPath, node.getId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to generate architecture.md: {}", e.getMessage());
+                }
             }
 
             return "Summary report written to: " + reportFilePath + "\n\n" + reportContent;
@@ -1258,4 +1292,176 @@ public class ExecutionUtilityService {
     public String writeOutputPublic(String outputType, String filePath, String fileFormat, String content) { return writeOutput(outputType, filePath, fileFormat, content); }
     public boolean sleepWithCancelPublic(long millis, java.util.concurrent.atomic.AtomicBoolean cancelFlag) { return sleepWithCancel(millis, cancelFlag); }
     public String executeOutputNodePublic(Node node, String schemaId, ExecutionMode mode) { return executeOutputNode(node, schemaId, mode); }
+
+    // ────────────────────────── documentation generation ──────────────────────────
+
+    String buildReadmeDoc(String targetDir, WorkflowSchema schema) {
+        Path dir = Path.of(targetDir);
+        StringBuilder md = new StringBuilder();
+        String projectName = (schema != null && schema.getName() != null && !schema.getName().isBlank())
+                ? schema.getName() : "Project";
+
+        md.append("# ").append(projectName).append("\n\n");
+        String desc = schema != null ? schema.getDescription() : null;
+        if (desc != null && !desc.isBlank()) {
+            md.append(desc).append("\n\n");
+        }
+
+        // File tree
+        md.append("## Project Structure\n\n");
+        md.append("```\n");
+        if (Files.exists(dir)) {
+            try (var stream = Files.walk(dir)) {
+                stream
+                    .filter(p -> {
+                        String rel = dir.relativize(p).toString();
+                        return !rel.isEmpty()
+                            && !rel.startsWith(".git") && !rel.startsWith("node_modules")
+                            && !rel.equals("README.md") && !rel.equals("architecture.md")
+                            && !rel.equals("pipeline-report.md");
+                    })
+                    .sorted()
+                    .forEach(p -> {
+                        String rel = dir.relativize(p).toString();
+                        if (Files.isDirectory(p)) {
+                            md.append(rel).append("/\n");
+                        } else {
+                            md.append(rel).append("\n");
+                        }
+                    });
+            } catch (Exception e) {
+                md.append("(file tree unavailable)\n");
+            }
+        }
+        md.append("```\n\n");
+
+        // Build/run instructions from common config files
+        readBuildInstructions(dir, md);
+
+        md.append("---\n*Generated by Axolotl*\n");
+        return md.toString();
+    }
+
+    String buildArchitectureDoc(String targetDir, WorkflowSchema schema) {
+        Path dir = Path.of(targetDir);
+        StringBuilder md = new StringBuilder();
+        String projectName = (schema != null && schema.getName() != null && !schema.getName().isBlank())
+                ? schema.getName() : "Project";
+
+        md.append("# ").append(projectName).append(" Architecture\n\n");
+
+        // Entry points
+        md.append("## Entry Points\n\n");
+        if (Files.exists(dir)) {
+            try (var stream = Files.walk(dir)) {
+                List<Path> entryCandidates = stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String name = p.getFileName().toString().toLowerCase();
+                        return name.equals("main.java") || name.equals("main.kt")
+                            || name.equals("main.swift") || name.equals("app.vue")
+                            || name.equals("index.html") || name.equals("main.ts")
+                            || name.equals("main.py") || name.startsWith("entry");
+                    })
+                    .map(p -> dir.relativize(p))
+                    .sorted()
+                    .toList();
+                if (entryCandidates.isEmpty()) {
+                    md.append("No entry points detected.\n");
+                } else {
+                    for (Path ep : entryCandidates) {
+                        md.append("- `").append(ep).append("`\n");
+                    }
+                }
+            } catch (Exception e) {
+                md.append("(scan unavailable)\n");
+            }
+        }
+        md.append("\n");
+
+        // File tree by directory grouping
+        md.append("## Module Overview\n\n");
+        md.append("```\n");
+        if (Files.exists(dir)) {
+            try (var stream = Files.walk(dir)) {
+                stream
+                    .filter(p -> {
+                        String rel = dir.relativize(p).toString();
+                        return !rel.isEmpty()
+                            && !rel.startsWith(".git") && !rel.startsWith("node_modules")
+                            && !rel.equals("README.md") && !rel.equals("architecture.md")
+                            && !rel.equals("pipeline-report.md");
+                    })
+                    .sorted()
+                    .forEach(p -> {
+                        String rel = dir.relativize(p).toString();
+                        if (Files.isDirectory(p)) {
+                            md.append(rel).append("/\n");
+                        } else {
+                            md.append(rel).append("\n");
+                        }
+                    });
+            } catch (Exception e) {
+                md.append("(file tree unavailable)\n");
+            }
+        }
+        md.append("```\n\n");
+
+        md.append("---\n*Generated by Axolotl*\n");
+        return md.toString();
+    }
+
+    private void readBuildInstructions(Path dir, StringBuilder md) {
+        // package.json (Node.js projects)
+        Path pkg = dir.resolve("package.json");
+        if (Files.exists(pkg)) {
+            try {
+                String content = Files.readString(pkg);
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(content);
+                JsonNode scripts = root.get("scripts");
+                if (scripts != null) {
+                    md.append("## Setup & Run\n\n");
+                    md.append("```bash\n");
+                    md.append("# Install dependencies\nnpm install\n\n");
+                    md.append("# Run\n");
+                    if (scripts.has("dev")) md.append("npm run dev\n");
+                    else if (scripts.has("start")) md.append("npm start\n");
+                    else if (scripts.has("build")) md.append("npm run build\n");
+                    md.append("```\n\n");
+                }
+            } catch (Exception e) {
+                // skip silently — corrupt package.json is not our problem
+            }
+            return;
+        }
+
+        // build.gradle.kts or build.gradle (Gradle projects)
+        Path gradle = dir.resolve("build.gradle.kts");
+        if (!Files.exists(gradle)) gradle = dir.resolve("build.gradle");
+        if (Files.exists(gradle)) {
+            md.append("## Setup & Run\n\n");
+            md.append("```bash\n");
+            md.append("chmod +x gradlew\n");
+            md.append("./gradlew build\n");
+            md.append("```\n\n");
+            return;
+        }
+
+        // Package.swift (Swift projects)
+        if (Files.exists(dir.resolve("Package.swift"))) {
+            md.append("## Setup & Run\n\n");
+            md.append("```bash\n");
+            md.append("swift build\n");
+            md.append("swift run\n");
+            md.append("```\n\n");
+            return;
+        }
+
+        // Makefile
+        if (Files.exists(dir.resolve("Makefile"))) {
+            md.append("## Setup & Run\n\n");
+            md.append("```bash\nmake\n```\n\n");
+        }
+    }
 }
