@@ -78,6 +78,7 @@ management:
 logging:
   level:
     com.agent.orchestrator: DEBUG
-    org.springframework.web: INFO
+    org.springframework.web: DEBUG
+    org.springframework.security: TRACE
     org.springframework.data.neo4j.cypher.deprecation: ERROR
     org.springframework.data.neo4j.cypher.unrecognized: ERROR

@@ -10,11 +10,16 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.util.List;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthFilter.class);
 
     private final JwtUtil jwtUtil;
 
@@ -38,15 +43,19 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                        FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-            if (jwtUtil.isValid(token)) {
-                String username = jwtUtil.getUsername(token);
-                String role = jwtUtil.getRole(token);
-                var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
-                var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(auth);
+        try {
+            if (header != null && header.startsWith("Bearer ")) {
+                String token = header.substring(7);
+                if (jwtUtil.isValid(token)) {
+                    String username = jwtUtil.getUsername(token);
+                    String role = jwtUtil.getRole(token);
+                    var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
+                    var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
+                    SecurityContextHolder.getContext().setAuthentication(auth);
+                }
             }
+        } catch (Exception e) {
+            log.warn("JWT authentication failed for request: {}", request.getRequestURI());
         }
         filterChain.doFilter(request, response);
     }
