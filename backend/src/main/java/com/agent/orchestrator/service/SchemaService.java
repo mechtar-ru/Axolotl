@@ -791,8 +791,7 @@ public class SchemaService {
                     pausePayload.put("reason", "AWAITING_APPROVAL");
                     webSocketHandler.sendLiveUpdate(schema.getId(), "execution_paused", pausePayload);
                 }
-                executionRepository.updateRunResumeIndex(runId, waveNum);
-                executionRepository.updateRunStatus(runId, "paused", null);
+                executionRepository.updateRunPaused(runId, waveNum);
                 break;
             }
         }

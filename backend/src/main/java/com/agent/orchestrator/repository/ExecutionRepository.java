@@ -180,6 +180,15 @@ public class ExecutionRepository {
     }
 
     /**
+     * Atomically sets both status and resumeIndex in a single Cypher query.
+     * Use instead of calling updateRunResumeIndex + updateRunStatus separately
+     * to avoid inconsistent state if the process crashes between calls.
+     */
+    public void updateRunPaused(String runId, int resumeIndex) {
+        withRetry(() -> runRepo.updateStatusAndResumeIndex(runId, "paused", resumeIndex));
+    }
+
+    /**
      * Updates ONLY the resumeIndex in Neo4j without touching the status field.
      * Use this instead of updateRunResumeIndex when you need to preserve the
      * existing status (e.g., 'paused' during persistResumeState).
