@@ -47,7 +47,7 @@ LLM-узел с инструментами для генерации кода.
 |------|-----|----------|
 | `model` | `string` | Имя LLM-модели |
 | `systemPrompt` | `string` | Системный промпт |
-| `userPrompt` | `string` | Пользовательский промпт (поддерживает `{{sourceData}}`) |
+| `userPrompt` | `string` | Пользовательский промпт (поддерживает <code v-pre>{{sourceData}}</code>) |
 | `agentType` | `"coder" \| "reviewer" \| "architect"` | Роль агента |
 | `enabledTools` | `string[]` | Список включённых инструментов |
 | `maxTokens` | `number` | Максимум токенов в ответе |

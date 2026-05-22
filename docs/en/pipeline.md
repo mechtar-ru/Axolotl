@@ -124,7 +124,7 @@ Each stage produces outputs that can be consumed by downstream stages via `input
 | Verify | `verdict` | JSON with `status` (PASS/FAIL) and `checks` |
 | Output | `report` | Generated report content |
 
-Cross-stage references use dot notation: `{{agent.generatedFiles}}`.
+Cross-stage references use dot notation: <code v-pre>{{agent.generatedFiles}}</code>.
 
 ## Backend Implementation
 

@@ -124,7 +124,7 @@ POST /api/execution/{executionId}/reject?nodeId={nodeId}
 | Verify | `verdict` | JSON с `status` (PASS/FAIL) и `checks` |
 | Output | `report` | Сгенерированный отчёт |
 
-Межэтапные ссылки используют dot-нотацию: `{{agent.generatedFiles}}`.
+Межэтапные ссылки используют dot-нотацию: <code v-pre>{{agent.generatedFiles}}</code>.
 
 ## Реализация бэкенда
 

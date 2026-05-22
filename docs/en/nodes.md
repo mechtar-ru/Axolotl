@@ -47,7 +47,7 @@ Tool-enabled LLM node for code generation. Uses the configured LLM provider with
 |-------|------|-------------|
 | `model` | `string` | LLM model name |
 | `systemPrompt` | `string` | System prompt for the LLM |
-| `userPrompt` | `string` | User prompt (supports `{{sourceData}}` template) |
+| `userPrompt` | `string` | User prompt (supports <code v-pre>{{sourceData}}</code> template) |
 | `agentType` | `"coder" \| "reviewer" \| "architect"` | Agent role |
 | `enabledTools` | `string[]` | List of enabled tools |
 | `maxTokens` | `number` | Max response tokens |
