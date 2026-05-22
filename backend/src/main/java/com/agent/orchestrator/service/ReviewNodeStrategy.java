@@ -257,7 +257,8 @@ public class ReviewNodeStrategy {
         switch (mode) {
             case "manual": {
                 // Always show human approval dialog (PASS or REWRITE)
-                resultMap.put("rewrittenPlan", rewrittenPlan != null ? rewrittenPlan : planText);
+                String effectivePlan = (rewrittenPlan != null && !rewrittenPlan.isBlank()) ? rewrittenPlan : planText;
+                resultMap.put("rewrittenPlan", effectivePlan);
                 resultMap.put("requiresApproval", true);
 
                 // Emit review_awaiting_approval WS event
@@ -266,7 +267,7 @@ public class ReviewNodeStrategy {
                     approvalPayload.put("nodeId", node.getId());
                     approvalPayload.put("status", "AWAITING_APPROVAL");
                     approvalPayload.put("plan", planText);
-                    approvalPayload.put("rewrittenPlan", rewrittenPlan != null ? rewrittenPlan : planText);
+                    approvalPayload.put("rewrittenPlan", effectivePlan);
                     approvalPayload.put("findings", findingsNode);
                     approvalPayload.put("summary", summary);
                     approvalPayload.put("mode", "manual");
@@ -278,7 +279,7 @@ public class ReviewNodeStrategy {
                 node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
 
                 // Store result so downstream can pick up when approved
-                return buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, rewrittenPlan, null);
+                return buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, effectivePlan, null);
             }
 
             case "auto":
@@ -451,7 +452,7 @@ public class ReviewNodeStrategy {
             map.put("findings", findings);
             if (summary != null) map.put("summary", summary);
             if (plan != null) map.put("plan", plan);
-            if (rewrittenPlan != null) map.put("rewrittenPlan", rewrittenPlan);
+            if (rewrittenPlan != null && !rewrittenPlan.isBlank()) map.put("rewrittenPlan", rewrittenPlan);
             if (rewriteIterations != null) map.put("rewriteIterations", rewriteIterations);
             return JSON_MAPPER.writeValueAsString(map);
         } catch (Exception e) {
