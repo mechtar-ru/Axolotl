@@ -287,6 +287,7 @@ async function handleCreateDefault() {
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
       <p>No pipeline defined. Set stages in the schema or create a default pipeline.</p>
+      <button class="create-pipeline-btn" @click="handleCreateDefault">Create Default Pipeline</button>
     </div>
 
     <div v-else class="pipeline-content">
@@ -400,8 +401,7 @@ async function handleCreateDefault() {
 
 .btn-sm { padding: 3px 8px; font-size: var(--text-xs); }
 
-.btn-primary { background: var(--success); color: white; }
-.btn-danger { background: var(--error); color: white; }
+/* uses global .btn-primary/.btn-danger from App.vue with inline style overrides */
 .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
 .retry-btn { background: transparent; border: 1px solid var(--warning, #f59e0b); color: var(--warning, #f59e0b); }
 
@@ -481,6 +481,19 @@ async function handleCreateDefault() {
 .empty-icon {
   opacity: 0.3;
 }
+
+.create-pipeline-btn {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+.create-pipeline-btn:hover { opacity: 0.9; }
 
 .pipeline-info {
   display: flex;

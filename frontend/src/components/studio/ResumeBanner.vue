@@ -57,19 +57,20 @@ async function handleRestart() {
 </script>
 
 <template>
-  <div v-if="pausedRun && !loading" class="resume-banner">
+  <div v-if="pausedRun || loading" class="resume-banner">
     <div class="resume-banner__content">
-      <span class="resume-banner__icon">
+      <span v-if="loading" class="banner-spinner" />
+      <span v-else class="resume-banner__icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
         </svg>
       </span>
       <div class="resume-banner__text">
-        <strong>Выполнение приостановлено</strong>
-        <p v-if="pausedRun.error">{{ pausedRun.error }}</p>
+        <strong>{{ loading ? 'Checking for paused execution...' : 'Выполнение приостановлено' }}</strong>
+        <p v-if="!loading && pausedRun?.error">{{ pausedRun?.error }}</p>
       </div>
     </div>
-    <div class="resume-banner__actions">
+    <div v-if="!loading" class="resume-banner__actions">
       <button class="btn btn--primary" @click="handleResume">Продолжить</button>
       <button class="btn btn--secondary" @click="handleRestart">Запустить заново</button>
       <button class="btn btn--ghost" @click="emit('dismiss')">×</button>
@@ -129,4 +130,15 @@ async function handleRestart() {
   font-size: var(--text-lg);
   padding: var(--space-1) var(--space-2);
 }
+
+.banner-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--warning);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>

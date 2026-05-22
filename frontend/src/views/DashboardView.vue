@@ -400,6 +400,7 @@ async function createBlankApp() {
       </div>
       <div v-if="schemaStore.schemas.length === 0" class="empty-state">
         <p>No apps yet. Create your first app!</p>
+        <button class="empty-cta-btn" @click="showQuickStart = true">Quick Start</button>
       </div>
       <div v-else-if="filteredApps.length === 0" class="empty-state">
         <p>No apps matching "{{ searchQuery }}"</p>
@@ -612,66 +613,10 @@ async function createBlankApp() {
   font-size: var(--text-sm);
 }
 
-.btn-primary {
+.header-btn {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-5);
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition), transform 0.1s;
-}
-
-.btn-primary:hover {
-  background: var(--accent-hover);
-  transform: translateY(-1px);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.btn-secondary {
-  padding: var(--space-3) var(--space-5);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: background var(--transition);
-}
-
-.btn-secondary:hover {
-  background: var(--bg-hover);
-}
-
-.btn-danger {
-  padding: var(--space-3) var(--space-5);
-  background: var(--error);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--transition);
-}
-
-.btn-danger:hover {
-  background: var(--error-hover);
-}
-
-.icon {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
 }
 
 h2 {
@@ -793,6 +738,19 @@ h2 {
   border-radius: var(--radius-md);
   border: 2px dashed var(--border-color);
 }
+
+.empty-cta-btn {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+.empty-cta-btn:hover { opacity: 0.9; }
 
 .search-bar {
   display: flex;

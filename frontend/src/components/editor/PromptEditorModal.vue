@@ -253,7 +253,7 @@ function insertVar(variable: string) {
   border-radius: 4px;
   cursor: pointer;
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .var-btn:hover {
   background: rgba(108, 99, 255, 0.25);

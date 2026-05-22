@@ -122,7 +122,7 @@ function onFolderPicked(event: Event) {
   const files = input.files
   input.value = '' // reset so same folder can be picked again
   if (!files || files.length === 0) return
-  const dirName = files[0].webkitRelativePath.split('/')[0]
+  const dirName = files[0]!.webkitRelativePath.split('/')[0]
   if (!dirName) return
   const base = settingsStore.projectsFolder
   const path = base ? `${base}/${dirName}/` : `${dirName}/`
@@ -232,7 +232,7 @@ function onFolderPicked(event: Event) {
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   box-shadow: var(--shadow-lg);
-  z-index: 20;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -329,7 +329,7 @@ function onFolderPicked(event: Event) {
 
 .path-text {
   word-break: break-all;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .path-input {
@@ -337,7 +337,7 @@ function onFolderPicked(event: Event) {
   border: none;
   background: transparent;
   font-size: var(--text-sm);
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary);
   outline: none;
 }

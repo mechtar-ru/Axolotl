@@ -654,7 +654,7 @@ function handleKeydown(e: KeyboardEvent) {
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   box-shadow: var(--shadow-lg);
-  z-index: 20;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
   animation: slideIn 0.2s ease-out;

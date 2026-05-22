@@ -431,40 +431,7 @@ onMounted(loadApp)
   font-weight: 600;
 }
 
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  background: var(--accent);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--transition), transform 0.1s;
-}
-
-.btn-primary:hover {
-  background: var(--accent-light);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  padding: var(--space-2) var(--space-4);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.btn-secondary:hover {
-  background: var(--bg-hover);
-}
+/* No shared button styles — use global .btn-primary/.btn-secondary from App.vue */
 
 /* Content Grid */
 .content-grid {
@@ -525,7 +492,7 @@ onMounted(loadApp)
 }
 
 .mono {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
 
@@ -578,7 +545,7 @@ onMounted(loadApp)
 .file-path {
   display: block;
   font-size: var(--text-sm);
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary);
   word-break: break-all;
 }

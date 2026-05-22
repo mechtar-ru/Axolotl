@@ -74,7 +74,7 @@ const executionResult = computed(() => {
 
 .app-ui-container {
   position: relative;
-  z-index: 1;
+  z-index: var(--z-canvas);
   width: 100%;
   max-width: 800px;
   height: 100%;

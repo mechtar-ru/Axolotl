@@ -10,6 +10,12 @@
   --space-7: 48px;
   --space-8: 64px;
 
+  /* Shared button styles (use .btn-primary,.btn-secondary,.btn-danger) */
+  --btn-padding: 8px 20px;
+  --btn-font-size: var(--text-sm);
+  --btn-font-weight: 600;
+  --btn-radius: var(--radius-sm);
+
   /* Type scale (1.25 ratio) */
   --text-xs: 12px;
   --text-sm: 14px;
@@ -38,6 +44,8 @@
   /* Backgrounds */
   --bg-primary: #1a1a2e;
   --bg-secondary: #0b0f2a;
+  --bg-canvas: #0b0f2a;
+  --bg-surface: #1a1a2e;
   --bg-card: #2d2d44;
   --bg-card-hover: #3d3d5c;
   --bg-hover: rgba(255, 255, 255, 0.06);
@@ -63,6 +71,7 @@
   --accent-hover: #6a4de6;
   --accent-light: rgba(123, 92, 255, 0.15);
   --accent-bg: rgba(123, 92, 255, 0.1);
+  --accent-secondary: #00bcd4;
   --accent-gradient: linear-gradient(135deg, #7b5cff, #4facfe);
 
   /* Semantic */
@@ -156,6 +165,7 @@
   --accent-hover: #5a52e0;
   --accent-light: #8b83ff;
   --accent-bg: #edebff;
+  --accent-secondary: #0097a7;
   --accent-gradient: linear-gradient(135deg, #6c63ff, #4facfe);
 
   --success: #28a745;

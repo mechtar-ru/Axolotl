@@ -166,13 +166,16 @@ async function generate() {
         name: 'Output',
         position: { x: 1100, y: 200 },
         data: {
-          mode: 'summary_report',
-          reportPath: 'pipeline-report.md',
-          includeReview: true,
-          includeFiles: true,
-          includeVerification: true,
-          includeMetrics: true,
-          config: {},
+          config: {
+            mode: 'summary_report',
+            reportPath: 'pipeline-report.md',
+            includeReview: true,
+            includeFiles: true,
+            includeVerification: true,
+            includeMetrics: true,
+            generateReadme: true,
+            generateArchitecture: false,
+          },
         } as Record<string, any>,
       },
     ]) as any

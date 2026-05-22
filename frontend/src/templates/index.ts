@@ -241,12 +241,16 @@ export const templates: AppTemplate[] = [
         name: 'Pipeline Report',
         position: { x: 850, y: 200 },
         data: {
-          mode: 'summary_report',
-          reportPath: 'pipeline-report.md',
-          includeReview: true,
-          includeFiles: true,
-          includeVerification: true,
-          includeMetrics: true
+          config: {
+            mode: 'summary_report',
+            reportPath: 'pipeline-report.md',
+            includeReview: true,
+            includeFiles: true,
+            includeVerification: true,
+            includeMetrics: true,
+            generateReadme: true,
+            generateArchitecture: false,
+          }
         }
       }
     ],
@@ -315,12 +319,16 @@ export const templates: AppTemplate[] = [
         name: 'Pipeline Report',
         position: { x: 850, y: 200 },
         data: {
-          mode: 'summary_report',
-          reportPath: 'pipeline-report.md',
-          includeReview: true,
-          includeFiles: true,
-          includeVerification: true,
-          includeMetrics: true
+          config: {
+            mode: 'summary_report',
+            reportPath: 'pipeline-report.md',
+            includeReview: true,
+            includeFiles: true,
+            includeVerification: true,
+            includeMetrics: true,
+            generateReadme: true,
+            generateArchitecture: false,
+          }
         }
       }
     ],
@@ -389,12 +397,16 @@ export const templates: AppTemplate[] = [
         name: 'Pipeline Report',
         position: { x: 850, y: 200 },
         data: {
-          mode: 'summary_report',
-          reportPath: 'pipeline-report.md',
-          includeReview: true,
-          includeFiles: true,
-          includeVerification: true,
-          includeMetrics: true
+          config: {
+            mode: 'summary_report',
+            reportPath: 'pipeline-report.md',
+            includeReview: true,
+            includeFiles: true,
+            includeVerification: true,
+            includeMetrics: true,
+            generateReadme: true,
+            generateArchitecture: false,
+          }
         }
       }
     ],

@@ -4,6 +4,9 @@ import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
 import type { Pipeline, Stage, PipelineStatus } from '../types/pipeline';
 import { schemaApi, settingsApi } from '../services/api';
 import { api } from '../services/api';
+import { useToast } from '../composables/useToast';
+
+const { error: toastError } = useToast();
 
 export interface ReviewFinding {
   source: string;
@@ -69,10 +72,10 @@ export const useSchemaStore = defineStore('schema', () => {
       }
       currentSchema.value = updated
       isDirty.value = false
-    } catch (error) {
-      console.error('Flush save failed:', error)
-      isDirty.value = true // Keep dirty so next markDirty retries
-      throw error
+    } catch (err) {
+      toastError('Failed to save schema: ' + ((err as Error).message || err))
+      isDirty.value = true
+      throw err
     } finally {
       isFlushing = false
     }
@@ -88,8 +91,8 @@ export const useSchemaStore = defineStore('schema', () => {
       if (schemas.value.length > 0 && !currentSchema.value) {
         currentSchema.value = schemas.value[0]!;
       }
-    } catch (error) {
-      console.error('Ошибка загрузки схем:', error);
+    } catch (err) {
+      toastError('Failed to load schemas: ' + ((err as Error).message || err))
     } finally {
       loading.value = false;
     }
@@ -119,9 +122,9 @@ export const useSchemaStore = defineStore('schema', () => {
       schemas.value.push(created);
       currentSchema.value = created;
       return created;
-    } catch (error) {
-      console.error('Ошибка создания схемы:', error);
-      throw error;
+    } catch (err) {
+      toastError('Failed to create schema: ' + ((err as Error).message || err))
+      throw err;
     }
   }
   
@@ -137,9 +140,9 @@ export const useSchemaStore = defineStore('schema', () => {
       }
       isDirty.value = false
       return updated;
-    } catch (error) {
-      console.error('Ошибка обновления схемы:', error);
-      throw error;
+    } catch (err) {
+      toastError('Failed to update schema: ' + ((err as Error).message || err))
+      throw err;
     }
   }
   
@@ -150,15 +153,14 @@ export const useSchemaStore = defineStore('schema', () => {
       if (currentSchema.value?.id === id) {
         currentSchema.value = schemas.value[0] || null;
       }
-      // If deleted schema was dirty, clean up
       isDirty.value = false
       if (saveTimer) {
         clearTimeout(saveTimer)
         saveTimer = null
       }
-    } catch (error) {
-      console.error('Ошибка удаления схемы:', error);
-      throw error;
+    } catch (err) {
+      toastError('Failed to delete schema: ' + ((err as Error).message || err))
+      throw err;
     }
   }
   
@@ -166,17 +168,17 @@ export const useSchemaStore = defineStore('schema', () => {
     if (!id) return;
     try {
       await schemaApi.executeSchema(id, 'EXECUTE');
-    } catch (error) {
-      console.error('Ошибка выполнения схемы:', error);
-      throw error;
+    } catch (err) {
+      toastError('Failed to execute schema: ' + ((err as Error).message || err))
+      throw err;
     }
   }
 
   async function cancelExecution(id: string) {
     try {
       await schemaApi.stopSchema(id);
-    } catch (error) {
-      console.error('Ошибка остановки схемы:', error);
+    } catch (err) {
+      toastError('Failed to stop execution: ' + ((err as Error).message || err))
     }
   }
 
@@ -200,9 +202,9 @@ export const useSchemaStore = defineStore('schema', () => {
       await api.post(`/execution/${executionId}/approve-review?nodeId=${nodeId}`);
       pendingReview.value = false;
       reviewData.value = null;
-    } catch (error) {
-      console.error('Ошибка при approve review:', error);
-      throw error;
+    } catch (err) {
+      toastError('Failed to approve review: ' + ((err as Error).message || err))
+      throw err;
     }
   }
 
@@ -211,9 +213,9 @@ export const useSchemaStore = defineStore('schema', () => {
       await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}`);
       pendingReview.value = false;
       reviewData.value = null;
-    } catch (error) {
-      console.error('Ошибка при reject review:', error);
-      throw error;
+    } catch (err) {
+      toastError('Failed to reject review: ' + ((err as Error).message || err))
+      throw err;
     }
   }
 

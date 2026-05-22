@@ -323,7 +323,7 @@ onConnect((connection) => {
   position: absolute;
   top: 1rem;
   left: 1rem;
-  z-index: 10;
+  z-index: var(--z-canvas);
 }
 
 .canvas-wrapper {
@@ -339,7 +339,7 @@ onConnect((connection) => {
 :deep(.vue-flow__controls) {
   box-shadow: var(--shadow-md);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
@@ -357,7 +357,7 @@ onConnect((connection) => {
 
 :deep(.vue-flow__minimap) {
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   box-shadow: var(--shadow-md);
 }
@@ -374,7 +374,7 @@ onConnect((connection) => {
 .execution-overlay {
   position: absolute;
   inset: 0;
-  z-index: 20;
+  z-index: var(--z-panel);
   background: var(--bg-canvas);
   overflow: hidden;
 }

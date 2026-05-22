@@ -71,26 +71,26 @@ function handleDelete() { props.data.onDelete?.(); }
 </script>
 
 <style scoped>
-.fallback-node { border-color: #78909c; }
-.fallback-node.selected { border-color: #ff6b6b; box-shadow: 0 0 0 2px rgba(255,107,107,0.3); }
-.node { background: #2d2d44; border-radius: 8px; border: 2px solid #4a4a6a; min-width: 220px; max-width: 300px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); position: relative; }
-.delete-btn { position: absolute; top: -10px; right: -10px; width: 24px; height: 24px; background: #dc3545; color: white; border: none; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; z-index: 10; }
-.node-header { padding: 10px; background: #1e1e2e; border-radius: 6px 6px 0 0; display: flex; align-items: center; gap: 8px; }
-.node-icon { font-size: 20px; }
-.node-name { flex: 1; font-weight: bold; color: #eee; cursor: pointer; }
-.node-name-input { flex: 1; background: #1a1a2e; border: 1px solid #78909c; color: #eee; border-radius: 4px; padding: 2px 6px; font-size: 14px; font-weight: bold; }
-.execution-icon { font-size: 14px; margin-left: 4px; }
-.node-expand { background: none; border: none; color: #eee; cursor: pointer; font-size: 12px; }
-.node-content { padding: 10px; }
-.node-content textarea { width: 100%; background: #1a1a2e; border: 1px solid #4a4a6a; color: #eee; border-radius: 4px; padding: 8px; font-family: monospace; resize: vertical; }
-.fallback-hint { font-size: 11px; color: #78909c; margin-top: 6px; font-style: italic; }
-.node-result { margin-top: 10px; padding: 8px; background: #1a1a2e; border-radius: 4px; font-size: 12px; word-break: break-word; }
-.node-time { margin-top: 6px; font-size: 11px; color: #888; text-align: right; }
+.fallback-node { border-color: var(--node-fallback); }
+.fallback-node.selected { border-color: var(--accent-light); box-shadow: var(--shadow-glow-accent); }
+.node { background: var(--bg-card); border-radius: var(--radius-md); border: 2px solid var(--border-color); min-width: 220px; max-width: 300px; box-shadow: var(--shadow-sm); position: relative; }
+.delete-btn { position: absolute; top: -10px; right: -10px; width: 24px; height: 24px; background: var(--error); color: white; border: none; border-radius: 50%; cursor: pointer; font-size: var(--text-sm); display: flex; align-items: center; justify-content: center; z-index: var(--z-canvas); }
+.node-header { padding: var(--space-3); background: var(--bg-secondary); border-radius: var(--radius-sm) var(--radius-sm) 0 0; display: flex; align-items: center; gap: var(--space-2); }
+.node-icon { font-size: var(--text-lg); }
+.node-name { flex: 1; font-weight: bold; color: var(--text-primary); cursor: pointer; }
+.node-name-input { flex: 1; background: var(--bg-primary); border: 1px solid var(--node-fallback); color: var(--text-primary); border-radius: var(--radius-sm); padding: 2px 6px; font-size: var(--text-sm); font-weight: bold; }
+.execution-icon { font-size: var(--text-sm); margin-left: var(--space-1); }
+.node-expand { background: none; border: none; color: var(--text-primary); cursor: pointer; font-size: var(--text-xs); }
+.node-content { padding: var(--space-3); }
+.node-content textarea { width: 100%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--radius-sm); padding: var(--space-2); font-family: var(--font-mono); resize: vertical; }
+.fallback-hint { font-size: 11px; color: var(--node-fallback); margin-top: var(--space-1); font-style: italic; }
+.node-result { margin-top: var(--space-3); padding: var(--space-2); background: var(--bg-primary); border-radius: var(--radius-sm); font-size: var(--text-xs); word-break: break-word; }
+.node-time { margin-top: var(--space-1); font-size: 11px; color: var(--text-muted); text-align: right; }
 .node-running { animation: pulse-running 1.5s ease-in-out infinite; }
-.node-completed { box-shadow: 0 0 12px rgba(76, 175, 80, 0.5); }
-.node-failed { box-shadow: 0 0 12px rgba(255, 0, 0, 0.5); }
-@keyframes pulse-running { 0%, 100% { box-shadow: 0 0 4px rgba(255, 165, 0, 0.3); } 50% { box-shadow: 0 0 16px rgba(255, 165, 0, 0.7); } }
-.chevron { transition: transform 0.2s; vertical-align: middle; }
+.node-completed { box-shadow: var(--shadow-glow-success); }
+.node-failed { box-shadow: var(--shadow-glow-error); }
+@keyframes pulse-running { 0%, 100% { box-shadow: var(--shadow-glow-warning); } 50% { box-shadow: 0 0 16px rgba(255, 165, 0, 0.7); } }
+.chevron { transition: transform var(--transition); vertical-align: middle; }
 .chevron:not(.expanded) { transform: rotate(-90deg); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
