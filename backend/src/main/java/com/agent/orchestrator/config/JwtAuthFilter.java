@@ -30,13 +30,27 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // Skip JWT filter for public endpoints (schemas excluded — needs auth for model resolution)
-        return path.startsWith("/api/health") ||
+        // Skip JWT filter for public endpoints (mirror SecurityConfig.permitAll list).
+        // Important: if an endpoint is intended to be public, we must not attempt to parse
+        // Authorization headers here and accidentally turn a malformed token into a 403.
+        return path.startsWith("/api/auth") ||
+               path.equals("/api/schemas") || path.startsWith("/api/schemas/") ||
+               path.startsWith("/api/health") ||
                path.startsWith("/api/memory") ||
                path.startsWith("/api/graph") ||
+               path.startsWith("/api/settings") ||
+               path.startsWith("/api/agents") ||
+               path.startsWith("/api/templates") ||
+               path.startsWith("/api/history") ||
+               path.startsWith("/api/fetch-url") ||
                path.startsWith("/api/share") ||
+               path.startsWith("/api/plan") ||
+               path.startsWith("/api/plugins") ||
                path.startsWith("/ws") ||
-               path.equals("/mcp");
+               path.equals("/mcp") ||
+               path.startsWith("/actuator") ||
+               path.startsWith("/swagger-ui") ||
+               path.startsWith("/v3/api-docs");
     }
 
     @Override
@@ -52,10 +66,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     var authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()));
                     var auth = new UsernamePasswordAuthenticationToken(username, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(auth);
+                } else {
+                    // invalid token — do not short-circuit the request for permitAll endpoints;
+                    // leave security context empty so authorization can proceed normally
+                    log.debug("JWT token invalid for request {}", request.getRequestURI());
                 }
             }
         } catch (Exception e) {
-            log.warn("JWT authentication failed for request: {}", request.getRequestURI());
+            // Token parsing can throw (malformed/expired). Log at debug level and do not
+            // block public endpoints by throwing here. SecurityConfig controls final decision.
+            log.debug("JWT authentication parsing failed for request {}: {}", request.getRequestURI(), e.toString());
         }
         filterChain.doFilter(request, response);
     }

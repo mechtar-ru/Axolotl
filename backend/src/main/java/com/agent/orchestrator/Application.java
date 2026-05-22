@@ -17,7 +17,28 @@ public class Application {
 
     public static void main(String[] args) {
         loadEnvFromParents();
-        
+        // Register a global uncaught exception handler so background thread crashes are logged
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            log.error("Uncaught exception in thread {} (id={})", thread.getName(), thread.getId(), throwable);
+        });
+
+        // JVM shutdown hook to capture thread dump on abrupt shutdowns
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                log.warn("JVM shutdown hook triggered — dumping all thread stacks");
+                Thread.getAllStackTraces().forEach((t, stack) -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append(String.format("Thread %s (id=%d) state=%s\n", t.getName(), t.getId(), t.getState()));
+                    for (StackTraceElement ste : stack) {
+                        sb.append("    at ").append(ste.toString()).append('\n');
+                    }
+                    log.warn(sb.toString());
+                });
+            } catch (Throwable ex) {
+                log.error("Failed to dump threads in shutdown hook", ex);
+            }
+        }, "axolotl-shutdown-dumper"));
+
         SpringApplication.run(Application.class, args);
         log.info("\n" +
             "╔══════════════════════════════════════╗\n" +

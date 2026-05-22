@@ -132,7 +132,21 @@ public class AgentController {
     @PostMapping("/schemas/{id}/execute")
     public Map<String, String> executeSchema(
             @PathVariable String id,
-            @RequestParam(defaultValue = "EXECUTE") ExecutionMode mode) {
+            @RequestParam(defaultValue = "EXECUTE") ExecutionMode mode,
+            jakarta.servlet.http.HttpServletRequest request) {
+        String principal = SecurityContextHolder.getContext().getAuthentication() != null
+                ? SecurityContextHolder.getContext().getAuthentication().getName()
+                : "anonymous";
+        log.info("executeSchema called for schema={} mode={} principal={} remoteAddr={}", id, mode, principal,
+                request.getRemoteAddr());
+
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader != null) {
+            log.debug("Authorization header present (len={})", authHeader.length());
+        } else {
+            log.debug("No Authorization header present");
+        }
+
         schemaService.executeSchema(id);
         return Map.of("status", "started", "schemaId", id, "mode", mode.name());
     }
