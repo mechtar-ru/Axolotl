@@ -57,7 +57,7 @@ function onFolderPicked(event: Event) {
   const files = input.files
   input.value = ''
   if (!files || files.length === 0) return
-  const dirName = files[0].webkitRelativePath.split('/')[0]
+  const dirName = files[0]!.webkitRelativePath.split('/')[0]
   if (!dirName) return
   // Browser can't give full path, so show detected name for reference
   folderPath.value = `~/Axolotl/${dirName}`

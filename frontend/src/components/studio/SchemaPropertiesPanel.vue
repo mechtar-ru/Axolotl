@@ -122,7 +122,7 @@ function onFolderPicked(event: Event) {
   const files = input.files
   input.value = '' // reset so same folder can be picked again
   if (!files || files.length === 0) return
-  const dirName = files[0].webkitRelativePath.split('/')[0]
+  const dirName = files[0]!.webkitRelativePath.split('/')[0]
   if (!dirName) return
   const base = settingsStore.projectsFolder
   const path = base ? `${base}/${dirName}/` : `${dirName}/`

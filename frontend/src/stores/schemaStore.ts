@@ -181,61 +181,6 @@ export const useSchemaStore = defineStore('schema', () => {
       toastError('Failed to stop execution: ' + ((err as Error).message || err))
     }
   }
-  
-  async function updateSchema(schema: WorkflowSchema) {
-    try {
-      const updated = await schemaApi.updateSchema(schema.id, schema);
-      const index = schemas.value.findIndex(s => s.id === schema.id);
-      if (index !== -1) {
-        schemas.value[index] = updated;
-      }
-      if (currentSchema.value?.id === schema.id) {
-        currentSchema.value = updated;
-      }
-      isDirty.value = false
-      return updated;
-    } catch (error) {
-      console.error('Ошибка обновления схемы:', error);
-      throw error;
-    }
-  }
-  
-  async function deleteSchema(id: string) {
-    try {
-      await schemaApi.deleteSchema(id);
-      schemas.value = schemas.value.filter(s => s.id !== id);
-      if (currentSchema.value?.id === id) {
-        currentSchema.value = schemas.value[0] || null;
-      }
-      // If deleted schema was dirty, clean up
-      isDirty.value = false
-      if (saveTimer) {
-        clearTimeout(saveTimer)
-        saveTimer = null
-      }
-    } catch (error) {
-      console.error('Ошибка удаления схемы:', error);
-      throw error;
-    }
-  }
-  
-  async function executeSchema(id: string) {
-    if (!id) return;
-    try {
-      await schemaApi.executeSchema(id, 'EXECUTE');
-    } catch (error) {
-      console.error('Ошибка выполнения схемы:', error);
-      throw error;
-    }
-  }
-
-  async function cancelExecution(id: string) {
-    try {
-      await schemaApi.stopSchema(id);
-    } catch (error) {
-      console.error('Ошибка остановки схемы:', error);
-    }
-  }
 
   function updateCurrentSchema(schema: WorkflowSchema) {
     currentSchema.value = schema;

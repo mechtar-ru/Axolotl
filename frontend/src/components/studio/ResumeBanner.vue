@@ -67,7 +67,7 @@ async function handleRestart() {
       </span>
       <div class="resume-banner__text">
         <strong>{{ loading ? 'Checking for paused execution...' : 'Выполнение приостановлено' }}</strong>
-        <p v-if="!loading && pausedRun.error">{{ pausedRun.error }}</p>
+        <p v-if="!loading && pausedRun?.error">{{ pausedRun?.error }}</p>
       </div>
     </div>
     <div v-if="!loading" class="resume-banner__actions">

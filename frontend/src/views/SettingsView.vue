@@ -137,6 +137,8 @@ const customErrors = reactive<Record<string, string>>({});
 const customEditedKeys = reactive<Record<string, string>>({});
 const customShowKeys = reactive<Record<string, boolean>>({});
 const customCollapsed = reactive<Record<string, boolean>>({});
+const showKeys = reactive<Record<string, boolean>>({});
+const editedKeys = reactive<Record<string, string>>({});
 const confirmDelete = reactive<Record<string, boolean>>({});
 
 // User default model
