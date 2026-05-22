@@ -391,6 +391,11 @@ public class SchemaService {
         log.info("Resuming schema {}: parentRun={}, childRun={}, {} nodes",
                 schemaId, parentRunId, childRunId, schemaNodes.size());
 
+        // Reset in-memory node statuses to IDLE — parent run may have left AWAITING_APPROVAL
+        for (Node node : schemaNodes) {
+            node.setStatus(Node.NodeStatus.IDLE);
+        }
+
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(schemaId, cancelFlag);
         nodeExecutor.setCurrentRunId(schemaId, childRunId);
@@ -794,6 +799,14 @@ public class SchemaService {
                 executionRepository.updateRunPaused(runId, waveNum);
                 break;
             }
+        }
+
+        // If execution was paused for human approval, return early without overwriting status
+        boolean wasPaused = schema.getNodes().stream()
+                .anyMatch(n -> n.getStatus() == Node.NodeStatus.AWAITING_APPROVAL);
+        if (wasPaused) {
+            log.info("Execution paused — returning early, status remains 'paused'");
+            return;
         }
 
         int nodesCompleted = (int) schema.getNodes().stream()
