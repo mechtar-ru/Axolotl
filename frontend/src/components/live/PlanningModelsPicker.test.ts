@@ -65,10 +65,10 @@ describe('PlanningModelsPicker', () => {
     // Scope to the first select (fast-model) to avoid double-counting
     const optgroups = wrapper.find('#fast-model').findAll('optgroup')
     expect(optgroups.length).toBe(4)
-    expect(optgroups[0].attributes('label')).toBe('Openai')
-    expect(optgroups[1].attributes('label')).toBe('Anthropic')
-    expect(optgroups[2].attributes('label')).toBe('Deepseek')
-    expect(optgroups[3].attributes('label')).toBe('Google')
+    expect(optgroups[0]!.attributes('label')).toBe('Openai')
+    expect(optgroups[1]!.attributes('label')).toBe('Anthropic')
+    expect(optgroups[2]!.attributes('label')).toBe('Deepseek')
+    expect(optgroups[3]!.attributes('label')).toBe('Google')
   })
 
   it('preselects values from modelValue', async () => {
@@ -76,8 +76,8 @@ describe('PlanningModelsPicker', () => {
       modelValue: { fast: 'gpt-4o-mini', medium: 'deepseek-chat' },
     })
     const selects = wrapper.findAll('select')
-    expect((selects[0].element as HTMLSelectElement).value).toBe('gpt-4o-mini')
-    expect((selects[1].element as HTMLSelectElement).value).toBe('deepseek-chat')
+    expect((selects[0]!.element as HTMLSelectElement).value).toBe('gpt-4o-mini')
+    expect((selects[1]!.element as HTMLSelectElement).value).toBe('deepseek-chat')
   })
 
   it('uses defaultModel when modelValue is null', async () => {
@@ -86,18 +86,18 @@ describe('PlanningModelsPicker', () => {
       defaultModel: 'gpt-4o',
     })
     const selects = wrapper.findAll('select')
-    expect((selects[0].element as HTMLSelectElement).value).toBe('gpt-4o')
-    expect((selects[1].element as HTMLSelectElement).value).toBe('gpt-4o')
+    expect((selects[0]!.element as HTMLSelectElement).value).toBe('gpt-4o')
+    expect((selects[1]!.element as HTMLSelectElement).value).toBe('gpt-4o')
   })
 
   it('emits update:modelValue on fast model change', async () => {
     const wrapper = await mountPicker()
     const selects = wrapper.findAll('select')
-    await selects[0].setValue('claude-haiku')
+    await selects[0]!.setValue('claude-haiku')
     expect(wrapper.emitted('update:modelValue')).toBeTruthy()
     // First emit is from ensureValidSelections on mount; last emit is from user change
     const emits = wrapper.emitted('update:modelValue')!
-    expect(emits[emits.length - 1][0]).toEqual({
+    expect((emits[emits.length - 1] as unknown[])[0]).toEqual({
       fast: 'claude-haiku',
       medium: 'gpt-4o',
     })
@@ -106,10 +106,10 @@ describe('PlanningModelsPicker', () => {
   it('emits update:modelValue on medium model change', async () => {
     const wrapper = await mountPicker()
     const selects = wrapper.findAll('select')
-    await selects[1].setValue('claude-sonnet')
+    await selects[1]!.setValue('claude-sonnet')
     expect(wrapper.emitted('update:modelValue')).toBeTruthy()
     const emits = wrapper.emitted('update:modelValue')!
-    expect(emits[emits.length - 1][0]).toEqual({
+    expect((emits[emits.length - 1] as unknown[])[0]).toEqual({
       fast: 'gpt-4o',
       medium: 'claude-sonnet',
     })
@@ -121,7 +121,7 @@ describe('PlanningModelsPicker', () => {
     const selects = wrapper.findAll('select')
     // Should still have working selects with fallback values
     expect(selects.length).toBe(2)
-    expect((selects[0].element as HTMLSelectElement).value).toBe('gpt-4o')
+    expect((selects[0]!.element as HTMLSelectElement).value).toBe('gpt-4o')
   })
 
   it('skips unavailable providers', async () => {

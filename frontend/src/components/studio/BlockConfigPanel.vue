@@ -71,7 +71,7 @@ const providerGroups = computed(() => {
   const groups: Record<string, { value: string; label: string }[]> = {}
   for (const opt of providerOptions.value) {
     if (!groups[opt.group]) groups[opt.group] = []
-    groups[opt.group].push({ value: opt.value, label: opt.label })
+    groups[opt.group]!.push({ value: opt.value, label: opt.label })
   }
   return groups
 })
@@ -191,7 +191,7 @@ function browseFilePath() {
 function onFilePicked(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
-  const name = input.files[0].name
+  const name = input.files[0]!.name
   filePath.value = name
   saveConfig()
   input.value = ''
@@ -204,7 +204,7 @@ function browseProjectDir() {
 function onDirPicked(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
-  const file = input.files[0]
+  const file = input.files[0]!
   projectPath.value = file.webkitRelativePath?.split('/')[0] || file.name
   saveConfig()
   input.value = ''
@@ -244,7 +244,7 @@ function saveConfig() {
   }
 
   // Verifier-specific config
-  if (typeSections.verifier.value) {
+  if (typeSections.value.verifier) {
     const checks = {
       syntaxCheck: syntaxCheck.value,
       requiredPatterns: requiredPatterns.value,
@@ -257,7 +257,7 @@ function saveConfig() {
   }
 
   // Review-specific config
-  if (typeSections.review.value) {
+  if (typeSections.value.review) {
     const checks = {
       premortem: reviewPremortem.value,
       prism: reviewPrism.value,
@@ -298,7 +298,7 @@ function saveConfig() {
           maxFiles: maxFiles.value,
         })
       }
-      if (typeSections.verifier.value) {
+      if (typeSections.value.verifier) {
         baseData.config = {
           ...baseData.config,
           checks: {
@@ -309,7 +309,7 @@ function saveConfig() {
           },
         }
       }
-      if (typeSections.review.value) {
+      if (typeSections.value.review) {
         baseData.config = {
           ...baseData.config,
           checks: {
