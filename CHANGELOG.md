@@ -9,7 +9,14 @@ Versioning: SemVer via git tags.
 
 ### Added
 
+- **Harness directory**: OpenCode integration harness with Playwright MCP server (JSON-RPC 2.0 stdio protocol), tool specs, sub-agent/skill/memory/middleware configs, and component manifest. READMEs for all 4 harness subsystems (`ee9765d9`).
 - **TDD cross-stage input mappings**: TDD stages now wire `inputMapping` so upstream outputs flow downstream — verify-test-X receives test output, impl-X receives test output to satisfy, verify-X receives impl output. System prompts reference upstream results (`b5cdde65`).
+
+### Fixed
+
+- **LiveView ChatAppUI missing executionResult**: The `:execution-result` prop was never passed to ChatAppUI, so agent messages never appeared in the chat view (`1384f4db`).
+- **handleReviewApprove TOCTOU**: Two concurrent approve requests could both find the same paused run. Fixed via atomic `claimPausedRun` Cypher (WHERE status='paused' SET status='resuming' RETURN) (`0bfaf10b`).
+- **Emoji→SVG migration**: All emoji icons across node components (AgentNode, ReceiveBlock, ReviewBlock, etc.) replaced with inline SVGs for consistent rendering (`d3eab44e`).
 
 ### Known Issues (from 2026-05-21 audit)
 

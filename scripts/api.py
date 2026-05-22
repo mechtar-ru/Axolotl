@@ -21,6 +21,14 @@ Usage:
     python3 scripts/api.py nodes <schema-id>                # Show node statuses with models
     python3 scripts/api.py add-task "Title" "Description"   # Quick add plan task
 
+    # Pipeline helpers
+    python3 scripts/api.py pipeline-build <schema-id>       # Build pipeline nodes from stages
+    python3 scripts/api.py pipeline-execute <schema-id>     # Execute pipeline
+    python3 scripts/api.py pipeline-status <schema-id>      # Get pipeline status
+    python3 scripts/api.py pipeline-retry <schema-id>       # Retry from last failure
+    python3 scripts/api.py pipeline-cancel <schema-id>      # Cancel running pipeline
+    python3 scripts/api.py pipeline-default <schema-id>     # Create default 5-stage pipeline
+
     # JSON body supports @file.json syntax (read from file)
     # Example: python3 scripts/api.py POST /api/schemas @schema.json
 
@@ -434,6 +442,58 @@ def main() -> None:
         title = sys.argv[2]
         description = sys.argv[3] if len(sys.argv) > 3 else ""
         result = mcp_call("add_task", {"title": title, "description": description})
+        print_json(result)
+        return
+
+    if command == "pipeline-build":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py pipeline-build <schema-id>")
+        schema_id = sys.argv[2]
+        result = rest_call("POST", f"/api/schemas/{schema_id}/pipeline/build")
+        print_json(result)
+        return
+
+    if command == "pipeline-execute":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py pipeline-execute <schema-id>")
+        schema_id = sys.argv[2]
+        result = rest_call("POST", f"/api/schemas/{schema_id}/pipeline/execute")
+        print_json(result)
+        return
+
+    if command == "pipeline-status":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py pipeline-status <schema-id>")
+        schema_id = sys.argv[2]
+        result = rest_call("GET", f"/api/schemas/{schema_id}/pipeline/status")
+        print_json(result)
+        return
+
+    if command == "pipeline-retry":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py pipeline-retry <schema-id>")
+        schema_id = sys.argv[2]
+        result = rest_call("POST", f"/api/schemas/{schema_id}/pipeline/retry")
+        print_json(result)
+        return
+
+    if command == "pipeline-cancel":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py pipeline-cancel <schema-id>")
+        schema_id = sys.argv[2]
+        result = rest_call("POST", f"/api/schemas/{schema_id}/pipeline/cancel")
+        print_json(result)
+        return
+
+    if command == "pipeline-default":
+        if len(sys.argv) < 3:
+            _die("Usage: api.py pipeline-default <schema-id> [appType] [description] [tddEnabled]")
+        schema_id = sys.argv[2]
+        app_type = sys.argv[3] if len(sys.argv) > 3 else "application"
+        description = sys.argv[4] if len(sys.argv) > 4 else ""
+        tdd = sys.argv[5].lower() == "true" if len(sys.argv) > 5 else False
+        result = rest_call("POST", f"/api/schemas/{schema_id}/pipeline/default",
+                           {"appType": app_type, "description": description, "tddEnabled": tdd})
         print_json(result)
         return
 

@@ -44,6 +44,7 @@ electron/         # Desktop wrapper
 scripts/          # Dev lifecycle and graph management utilities
 docs/             # VitePress documentation
 templates/        # Pre-configured workflow blueprints
+harness/          # OpenCode integration harness (MCP servers, test tools, skills)
 ```
 
 ## 🛠️ Getting Started
