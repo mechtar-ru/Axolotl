@@ -401,8 +401,7 @@ async function handleCreateDefault() {
 
 .btn-sm { padding: 3px 8px; font-size: var(--text-xs); }
 
-.btn-primary { background: var(--success); color: white; }
-.btn-danger { background: var(--error); color: white; }
+/* uses global .btn-primary/.btn-danger from App.vue with inline style overrides */
 .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
 .retry-btn { background: transparent; border: 1px solid var(--warning, #f59e0b); color: var(--warning, #f59e0b); }
 
