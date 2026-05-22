@@ -191,9 +191,17 @@ function browseFilePath() {
 function onFilePicked(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
-  const name = input.files[0]!.name
-  filePath.value = name
-  saveConfig()
+  const file = input.files[0]!
+  filePath.value = file.name
+  const reader = new FileReader()
+  reader.onload = () => {
+    sourceContent.value = reader.result as string
+    saveConfig()
+  }
+  reader.onerror = () => {
+    console.error('Failed to read file:', file.name)
+  }
+  reader.readAsText(file)
   input.value = ''
 }
 
@@ -297,6 +305,7 @@ function saveConfig() {
           maxDepth: maxDepth.value,
           maxFiles: maxFiles.value,
         })
+        baseData.sourceData = sourceContent.value
       }
       if (typeSections.value.verifier) {
         baseData.config = {

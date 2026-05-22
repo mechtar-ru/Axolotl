@@ -1197,6 +1197,16 @@ public class ExecutionUtilityService {
             return readProjectContext(projectPath,
                     node.getData() != null ? node.getData().getConfig() : null);
         } else if ("file".equals(sourceType)) {
+            // Use embedded content first (uploaded via frontend FileReader)
+            String sourceData = node.getData() != null ? node.getData().getSourceData() : null;
+            if (sourceData == null || sourceData.isEmpty()) {
+                // Fallback to config.sourceData for backward compatibility
+                sourceData = node.getData() != null && node.getData().getConfig() != null
+                        ? (String) node.getData().getConfig().get("sourceData") : null;
+            }
+            if (sourceData != null && !sourceData.isEmpty()) {
+                return sourceData;
+            }
             String filePath = node.getData() != null && node.getData().getConfig() != null
                     ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
             if (filePath == null || filePath.isEmpty()) {
