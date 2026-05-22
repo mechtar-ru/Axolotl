@@ -16,6 +16,7 @@ import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
 import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
 import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/schemaStore'
+import { useToast } from '@/composables/useToast'
 
 type StudioMode = 'blueprint' | 'timeline'
 
@@ -23,6 +24,7 @@ const route = useRoute()
 const router = useRouter()
 const schemaStore = useSchemaStore()
 const authStore = useAuthStore()
+const toast = useToast()
 
 const activeMode = ref<StudioMode>('blueprint')
 const appId = ref('')
@@ -165,7 +167,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
     try {
       await schemaStore.flushSave()
     } catch (e) {
-      console.error('Failed to flush pending saves:', e)
+      toast.error('Failed to save: ' + ((e as Error).message || e))
     }
   }
 
@@ -173,6 +175,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
     await schemaApi.executeSchema(appId.value, 'EXECUTE')
   } catch (err) {
     executionError.value = (err as Error).message
+    toast.error('Execution failed to start: ' + ((err as Error).message || err))
     isRunning.value = false
     disconnect()
   }
@@ -238,7 +241,7 @@ async function handleReviewApprove() {
   try {
     await schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
   } catch (e) {
-    console.error('Failed to approve review:', e)
+    toast.error('Failed to approve review: ' + ((e as Error).message || e))
     executionError.value = 'Failed to approve review — execution may still be paused'
   }
 }
@@ -248,7 +251,7 @@ async function handleReviewReject() {
   try {
     await schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
   } catch (e) {
-    console.error('Failed to reject review:', e)
+    toast.error('Failed to reject review: ' + ((e as Error).message || e))
     executionError.value = 'Failed to reject review'
   }
 }
@@ -258,7 +261,7 @@ async function handleResume() {
     await schemaApi.resumeSchema(appId.value)
     await startExecution(true)
   } catch (e) {
-    console.error('Failed to resume:', e)
+    toast.error('Failed to resume: ' + ((e as Error).message || e))
   }
 }
 
@@ -274,7 +277,7 @@ async function handleRestart() {
     nodeStartTimes.clear()
     stepCounter = 0
   } catch (e) {
-    console.error('Failed to restart:', e)
+    toast.error('Failed to restart: ' + ((e as Error).message || e))
   }
 }
 
@@ -306,7 +309,7 @@ watch(() => route.params.id, (newId) => {
     try {
       schemaStore.flushSave()
     } catch (e) {
-      console.error('Failed to flush saves before switching schemas:', e)
+      toast.error('Failed to save: ' + ((e as Error).message || e))
     }
     appId.value = newId as string
     const found = schemaStore.schemas.find(s => s.id === appId.value)
@@ -328,7 +331,7 @@ function toggleRun() {
     disconnect()
     schemaApi.stopSchema(appId.value)
       .catch((err: Error) => {
-        console.error('Failed to stop execution:', err)
+        toast.error('Failed to stop execution: ' + (err.message || err))
         executionError.value = 'Failed to stop execution'
       })
     isRunning.value = false
@@ -348,7 +351,7 @@ onDeactivated(() => {
   try {
     schemaStore.flushSave()  // ensure dirty edits reach backend
   } catch (e) {
-    console.error('Failed to flush saves on deactivate:', e)
+    toast.error('Failed to save: ' + ((e as Error).message || e))
   }
   if (isRunning.value) {
     disconnect()

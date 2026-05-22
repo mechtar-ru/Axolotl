@@ -400,6 +400,7 @@ async function createBlankApp() {
       </div>
       <div v-if="schemaStore.schemas.length === 0" class="empty-state">
         <p>No apps yet. Create your first app!</p>
+        <button class="empty-cta-btn" @click="showQuickStart = true">Quick Start</button>
       </div>
       <div v-else-if="filteredApps.length === 0" class="empty-state">
         <p>No apps matching "{{ searchQuery }}"</p>
@@ -793,6 +794,19 @@ h2 {
   border-radius: var(--radius-md);
   border: 2px dashed var(--border-color);
 }
+
+.empty-cta-btn {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+.empty-cta-btn:hover { opacity: 0.9; }
 
 .search-bar {
   display: flex;

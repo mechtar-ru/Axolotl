@@ -75,7 +75,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: var(--z-modal, 1000);
+  z-index: var(--z-modal-backdrop);
   backdrop-filter: blur(4px);
 }
 

@@ -18,8 +18,9 @@
           <label>Password</label>
           <input v-model="password" type="password" placeholder="Enter password" @keyup.enter="login" />
         </div>
-        <button class="login-btn" @click="login" :disabled="loading">
-          {{ loading ? 'Signing in...' : 'Sign in' }}
+        <button class="login-btn" @click="login" :disabled="loading || !username.trim() || !password.trim()">
+          <span v-if="loading" class="spinner" />
+          <span>{{ loading ? 'Signing in...' : 'Sign in' }}</span>
         </button>
       </div>
 
@@ -132,6 +133,19 @@ async function login() {
 }
 .login-btn:hover { opacity: 0.9; }
 .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.login-btn:disabled .spinner { display: inline-block; }
+.spinner {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .login-hint {
   text-align: center;
   margin-top: var(--space-5);

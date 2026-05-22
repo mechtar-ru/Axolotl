@@ -52,6 +52,7 @@ function formatTime(ts: number): string {
         </svg>
       </div>
       <p>Run your app to see what happened</p>
+      <button class="run-cta-btn" @click="$emit('select-block', '')">Execute Pipeline</button>
     </div>
     
     <div v-else class="timeline-list">
@@ -123,8 +124,21 @@ function formatTime(ts: number): string {
 
 .timeline-empty p {
   font-size: var(--text-sm);
-  margin: 0;
+  margin: 0 0 var(--space-4) 0;
 }
+
+.run-cta-btn {
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.run-cta-btn:hover { opacity: 0.9; }
 
 .timeline-list {
   flex: 1;

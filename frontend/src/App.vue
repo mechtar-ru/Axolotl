@@ -54,6 +54,15 @@ body {
   box-shadow: none !important;
 }
 
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
 /* Route transitions */
 .fade-enter-active,
 .fade-leave-active {
