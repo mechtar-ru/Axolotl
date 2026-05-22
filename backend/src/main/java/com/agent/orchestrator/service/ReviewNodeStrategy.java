@@ -139,6 +139,13 @@ public class ReviewNodeStrategy {
             planText = inputContent;
         }
 
+        if (planText == null || planText.isBlank()) {
+            planText = "No content available for review planning.";
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "warn", "Empty plan input, using placeholder", node.getId());
+            }
+        }
+
         // ── Phase 2: Analysis (premortem/prism/postmortem checks) ──
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50,
