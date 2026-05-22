@@ -286,7 +286,7 @@
                 <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 {{ customTestResults[ep.id!]?.success ? 'OK' : customTestResults[ep.id!]?.message }}
               </span>
-              <button v-if="!confirmDelete[ep.id!]" class="delete-btn" @click="confirmDelete[ep.id!] = true; setTimeout(() => confirmDelete[ep.id!] = false, 4000)" title="Delete">
+              <button v-if="!confirmDelete[ep.id!]" class="delete-btn" @click="confirmDelete[ep.id!] = true; scheduleClearConfirm(ep.id!)" title="Delete">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
               <button v-else class="delete-btn confirm-delete" @click="deleteCustomEndpoint(ep.id!)">
@@ -434,7 +434,7 @@ function groupedModels(provider: ProviderInfo): { group: string; models: string[
     else if (m.startsWith('llama') || m.startsWith('mistral') || m.startsWith('gemma')) group = 'Open Source';
 
     if (!groups[group]) groups[group] = [];
-    groups[group].push(m);
+    groups[group]!.push(m);
   }
   return Object.entries(groups).map(([g, ms]) => ({ group: g, models: ms }));
 }
@@ -685,6 +685,10 @@ function toggleCustomCollapse(id: string) {
 
 function isCustomCollapsed(id: string): boolean {
   return customCollapsed[id] ?? true;
+}
+
+function scheduleClearConfirm(id: string) {
+  setTimeout(() => { confirmDelete[id] = false }, 4000)
 }
 
 function goBack() {
