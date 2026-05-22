@@ -6,26 +6,12 @@ The pipeline system is Axolotl's core execution engine. It orchestrates multi-st
 
 A pipeline is a sequence of stages with explicit dependency ordering. Stages are executed via topological sort: stages at the same dependency level run in parallel; a stage starts only after all its dependencies complete.
 
-```
-        ┌──────────┐
-        │ Receive  │
-        └────┬─────┘
-             │
-        ┌────▼─────┐
-        │  Review   │◄──── Human approval gate
-        └────┬─────┘
-             │
-        ┌────▼─────┐
-        │  Agent    │
-        └────┬─────┘
-             │
-        ┌────▼─────┐
-        │  Verify   │
-        └────┬─────┘
-             │
-        ┌────▼─────┐
-        │  Output   │
-        └──────────┘
+```mermaid
+flowchart TD
+    Receive[Receive] --> Review[Review]
+    Review -->|Human approval gate| Agent[Agent]
+    Agent --> Verify[Verify]
+    Verify --> Output[Output]
 ```
 
 ## Default Pipeline
