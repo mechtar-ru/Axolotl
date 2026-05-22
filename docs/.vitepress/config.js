@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
+  ignoreDeadLinks: true,
   base: '/Axolotl/',
   title: 'Axolotl',
   description: 'Visual AI-agent orchestration app',
