@@ -36,7 +36,7 @@ const providerGroups = computed(() => {
   const groups: Record<string, { value: string; label: string }[]> = {}
   for (const opt of providerOptions.value) {
     if (!groups[opt.group]) groups[opt.group] = []
-    groups[opt.group].push({ value: opt.value, label: opt.label })
+    groups[opt.group]!.push({ value: opt.value, label: opt.label })
   }
   return groups
 })

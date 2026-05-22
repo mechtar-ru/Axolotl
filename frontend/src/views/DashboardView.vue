@@ -167,7 +167,7 @@ const filteredApps = computed(() => {
 const recentApps = computed(() => {
   const ids = recentAppIds.value
   const map = new Map(visibleApps.value.map(a => [a.id, a]))
-  return ids.map(id => map.get(id)).filter(Boolean).slice(0, 5)
+  return ids.map(id => map.get(id)).filter((x): x is NonNullable<typeof x> => x != null).slice(0, 5)
 })
 
 const otherApps = computed(() => {

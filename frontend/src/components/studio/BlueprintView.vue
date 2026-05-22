@@ -150,7 +150,7 @@ function onDropHandler(event: DragEvent) {
       })
       
       const newId = `${parsed.blockType}-${Date.now()}`
-      const newNode: Node = {
+      const newNode: Node & { dimensions: { width: number; height: number } } = {
         id: newId,
         type: parsed.blockType,
         position,

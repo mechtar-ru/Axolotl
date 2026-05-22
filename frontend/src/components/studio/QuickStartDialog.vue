@@ -108,7 +108,7 @@ async function generate() {
     // Apply fixed 5-node pipeline: Receive → Review → Agent → Verify → Output
     const description = prompt.value.trim()
 
-    schema.nodes = [
+    schema.nodes = ([
       {
         id: 'receive-1',
         type: 'source' as any,
@@ -118,7 +118,7 @@ async function generate() {
           sourceData: description,
           sourceType: 'text',
           config: { sourceType: 'text' },
-        },
+        } as Record<string, any>,
       },
       {
         id: 'review-1',
@@ -131,7 +131,7 @@ async function generate() {
           maxAutoIterations: 3,
           generatePlan: true,
           config: { premortem: true },
-        },
+        } as Record<string, any>,
       },
       {
         id: 'think-1',
@@ -145,7 +145,7 @@ async function generate() {
           agentType: 'coder',
           enabledTools: ['file_write', 'directory_read', 'file_read', 'bash'],
           config: {},
-        },
+        } as Record<string, any>,
       },
       {
         id: 'verify-1',
@@ -158,7 +158,7 @@ async function generate() {
           maxRewriteRetries: 3,
           config: {},
           validationCriteria: description,
-        },
+        } as Record<string, any>,
       },
       {
         id: 'act-1',
@@ -173,9 +173,9 @@ async function generate() {
           includeVerification: true,
           includeMetrics: true,
           config: {},
-        },
+        } as Record<string, any>,
       },
-    ]
+    ]) as any
 
     schema.edges = [
       { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
