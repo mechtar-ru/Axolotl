@@ -28,13 +28,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: metadata
+      - name: Extract metadata (backend)
+        id: meta-backend
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}/backend
           tags: |
-            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
             type=raw,value=${{ github.ref_name }}
 
@@ -43,18 +44,29 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: ghcr.io/${{ github.repository }}/backend:${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Extract metadata (frontend)
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/frontend
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+            type=raw,value=${{ github.ref_name }}
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -82,20 +94,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull backend
-        run: docker pull ghcr.io/${{ github.repository }}/backend:main
-
-      - name: Tag and push latest (backend)
+      - name: Pull and retag backend
         run: |
-          docker tag ghcr.io/${{ github.repository }}/backend:main \
+          docker pull ghcr.io/${{ github.repository }}/backend:${{ github.sha }}
+          docker tag ghcr.io/${{ github.repository }}/backend:${{ github.sha }} \
             ghcr.io/${{ github.repository }}/backend:latest
           docker push ghcr.io/${{ github.repository }}/backend:latest
 
-      - name: Pull frontend
-        run: docker pull ghcr.io/${{ github.repository }}/frontend:main
-
-      - name: Tag and push latest (frontend)
+      - name: Pull and retag frontend
         run: |
-          docker tag ghcr.io/${{ github.repository }}/frontend:main \
+          docker pull ghcr.io/${{ github.repository }}/frontend:${{ github.sha }}
+          docker tag ghcr.io/${{ github.repository }}/frontend:${{ github.sha }} \
             ghcr.io/${{ github.repository }}/frontend:latest
           docker push ghcr.io/${{ github.repository }}/frontend:latest
