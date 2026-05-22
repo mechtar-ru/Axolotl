@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   ignoreDeadLinks: true,
   base: '/Axolotl/',
   title: 'Axolotl',
@@ -25,6 +26,17 @@ export default defineConfig({
             { text: 'Pipeline System', link: '/en/pipeline' },
             { text: 'Node Types', link: '/en/nodes' }
           ]
+        },
+        {
+          text: 'C4 Diagrams',
+          items: [
+            { text: 'System Context', link: '/architecture/c4-context' },
+            { text: 'Containers', link: '/architecture/c4-containers' },
+            { text: 'Frontend Components', link: '/architecture/c4-components-frontend' },
+            { text: 'Backend Components', link: '/architecture/c4-components-backend' },
+            { text: 'Pipeline Execution', link: '/architecture/c4-dynamic-execution' },
+            { text: 'Deployment', link: '/architecture/c4-deployment' }
+          ]
         }
       ],
       '/ru/': [
@@ -41,8 +53,19 @@ export default defineConfig({
             { text: 'Pipeline System', link: '/ru/pipeline' },
             { text: 'Типы узлов', link: '/ru/nodes' }
           ]
+        },
+        {
+          text: 'C4 Диаграммы',
+          items: [
+            { text: 'System Context', link: '/architecture/c4-context' },
+            { text: 'Containers', link: '/architecture/c4-containers' },
+            { text: 'Frontend Components', link: '/architecture/c4-components-frontend' },
+            { text: 'Backend Components', link: '/architecture/c4-components-backend' },
+            { text: 'Pipeline Execution', link: '/architecture/c4-dynamic-execution' },
+            { text: 'Deployment', link: '/architecture/c4-deployment' }
+          ]
         }
       ]
     }
   }
-})
+}))

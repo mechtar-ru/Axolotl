@@ -4,20 +4,21 @@
 
 Axolotl — это платформа визуальной оркестрации AI-агентов. Пользователи строят рабочие процессы в виде графа узлов на визуальном холсте (Vue Flow) и выполняют их через многозвенный пайплайн.
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Frontend   │────▶│    Backend   │────▶│   Neo4j     │
-│  (Vue 3 +   │     │  (Spring Boot│     │  (Storage)  │
-│   Vite)     │     │   Java 21)   │     │             │
-└─────────────┘     └──────┬───────┘     └─────────────┘
-                           │
-                    ┌──────▼───────┐
-                    │  LLM Providers│
-                    │  (OpenAI,    │
-                    │  Anthropic,  │
-                    │  DeepSeek,   │
-                    │  Zen API)    │
-                    └──────────────┘
+<!-- System Context Diagram -->
+См. [C4 Context diagram](/architecture/c4-context) для полного контекста системы.
+
+```mermaid
+C4Context
+  title System Context — Axolotl
+
+  Person(developer, "Developer", "Создаёт и запускает AI-воркфлоу")
+  System(axolotl, "Axolotl", "Визуальная оркестрация AI-агентов")
+  System_Ext(providers, "LLM Provider APIs", "OpenAI / Anthropic / DeepSeek / Zen API")
+  System_Ext(neo4j, "Neo4j", "Графовая БД (self-hosted)")
+
+  Rel(developer, axolotl, "Использует", "HTTP / WebSocket")
+  Rel(axolotl, providers, "Вызывает LLM", "HTTPS")
+  Rel(axolotl, neo4j, "Читает/пишет", "Bolt protocol")
 ```
 
 ## Бэкенд
@@ -112,3 +113,16 @@ Receive ──▶ Review ──▶ Agent ──▶ Verify ──▶ Output
 ```
 
 Каждый этап имеет упорядочение зависимостей через топологическую сортировку. Этапы одного уровня зависимостей выполняются параллельно. Review-узлы приостанавливают пайплайн для утверждения человеком.
+
+## Детальные C4 диаграммы
+
+Полные C4 диаграммы в `docs/architecture/`:
+
+| Диаграмма | Файл | Показывает |
+|-----------|------|------------|
+| System Context | [c4-context.md](/architecture/c4-context) | Система + внешние акторы |
+| Containers | [c4-containers.md](/architecture/c4-containers) | SPA, API, Neo4j, провайдеры |
+| Frontend Components | [c4-components-frontend.md](/architecture/c4-components-frontend) | View, store, панели |
+| Backend Components | [c4-components-backend.md](/architecture/c4-components-backend) | Сервисы, стратегии, репозитории |
+| Pipeline Execution | [c4-dynamic-execution.md](/architecture/c4-dynamic-execution) | Полный поток выполнения |
+| Deployment | [c4-deployment.md](/architecture/c4-deployment) | Топология разработки |

@@ -4,20 +4,21 @@
 
 Axolotl is a visual AI-agent orchestration platform. Users build workflows as node graphs in a visual canvas (Vue Flow), then execute them through a multi-stage pipeline system.
 
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Frontend   │────▶│    Backend   │────▶│   Neo4j     │
-│  (Vue 3 +   │     │  (Spring Boot│     │  (Storage)  │
-│   Vite)     │     │   Java 21)   │     │             │
-└─────────────┘     └──────┬───────┘     └─────────────┘
-                           │
-                    ┌──────▼───────┐
-                    │  LLM Providers│
-                    │  (OpenAI,    │
-                    │  Anthropic,  │
-                    │  DeepSeek,   │
-                    │  Zen API)    │
-                    └──────────────┘
+<!-- System Context Diagram -->
+See [C4 Context diagram](/architecture/c4-context) for the full system context.
+
+```mermaid
+C4Context
+  title System Context — Axolotl
+
+  Person(developer, "Developer", "Builds and runs AI-agent workflows")
+  System(axolotl, "Axolotl", "Visual AI-agent orchestration platform")
+  System_Ext(providers, "LLM Provider APIs", "OpenAI / Anthropic / DeepSeek / Zen API")
+  System_Ext(neo4j, "Neo4j", "Graph database (self-hosted)")
+
+  Rel(developer, axolotl, "Uses", "HTTP / WebSocket")
+  Rel(axolotl, providers, "Calls LLM", "HTTPS")
+  Rel(axolotl, neo4j, "Reads/writes", "Bolt protocol")
 ```
 
 ## Backend
@@ -112,3 +113,16 @@ Receive ──▶ Review ──▶ Agent ──▶ Verify ──▶ Output
 ```
 
 Each stage has dependency ordering via topological sort. Stages at the same dependency level execute in parallel. Review nodes pause the pipeline for human approval.
+
+## Detailed C4 Diagrams
+
+Full C4 model diagrams in `docs/architecture/`:
+
+| Diagram | File | Shows |
+|---------|------|-------|
+| System Context | [c4-context.md](/architecture/c4-context) | System + external actors |
+| Containers | [c4-containers.md](/architecture/c4-containers) | SPA, API, Neo4j, providers |
+| Frontend Components | [c4-components-frontend.md](/architecture/c4-components-frontend) | Views, stores, panels |
+| Backend Components | [c4-components-backend.md](/architecture/c4-components-backend) | Services, strategies, repositories |
+| Pipeline Execution | [c4-dynamic-execution.md](/architecture/c4-dynamic-execution) | End-to-end execution flow |
+| Deployment | [c4-deployment.md](/architecture/c4-deployment) | Dev deployment topology |
