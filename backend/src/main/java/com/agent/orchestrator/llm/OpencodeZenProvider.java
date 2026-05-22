@@ -275,30 +275,50 @@ public class OpencodeZenProvider implements LlmProvider {
 
             log.info("OpenCode Zen streaming запрос: model={}", effectiveModel);
 
-            HttpResponse<String> response;
-            try {
-                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            } catch (Exception e) {
-                log.error("OpenCode Zen streaming первая попытка неудачна: тип={} msg={}", e.getClass().getName(), e.getMessage(), e);
-                // Retry once with a fresh HttpClient
+            int maxRetries = 3;
+            HttpResponse<String> response = null;
+            for (int attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
+                    HttpClient client = attempt == 0 ? httpClient : HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(10)).build();
+                    HttpRequest req = attempt == 0 ? request : HttpRequest.newBuilder()
+                            .uri(URI.create(baseUrl + "/chat/completions"))
+                            .header("Content-Type", "application/json")
+                            .header("Authorization", "Bearer " + getEffectiveApiKey())
+                            .POST(HttpRequest.BodyPublishers.ofString(json))
+                            .timeout(Duration.ofSeconds(timeoutSeconds))
+                            .build();
+                    if (attempt > 0) {
+                        log.info("OpenCode Zen streaming попытка {}/{}: model={}", attempt + 1, maxRetries + 1, effectiveModel);
+                    }
+                    response = client.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (response.statusCode() == 429) {
+                        long backoffMs = (long) Math.pow(2, attempt) * 2000;
+                        log.warn("OpenCode Zen streaming 429 (попытка {}), жду {}ms", attempt + 1, backoffMs);
+                        Thread.sleep(backoffMs);
+                        continue;
+                    }
+                    break;
+                } catch (Exception e) {
+                    if (attempt < maxRetries) {
+                        log.error("OpenCode Zen streaming ошибка (попытка {}): {} - {}", attempt + 1, e.getClass().getName(), e.getMessage());
+                        long backoffMs = (long) Math.pow(2, attempt) * 1000;
+                        try { Thread.sleep(backoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    } else {
+                        log.error("OpenCode Zen streaming все попытки неудачны", e);
+                        String error = "OpenCode Zen streaming недоступен: " + e.getMessage();
+                        onToken.accept(error);
+                        return error;
+                    }
                 }
-                HttpClient retryClient = HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(10))
-                        .build();
-                HttpRequest retryRequest = HttpRequest.newBuilder()
-                        .uri(URI.create(baseUrl + "/chat/completions"))
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + getEffectiveApiKey())
-                        .POST(HttpRequest.BodyPublishers.ofString(json))
-                        .timeout(Duration.ofSeconds(timeoutSeconds))
-                        .build();
-                log.info("OpenCode Zen streaming повторная попытка: model={}", effectiveModel);
-                response = retryClient.send(retryRequest, HttpResponse.BodyHandlers.ofString());
             }
+
+            if (response == null) {
+                String error = "OpenCode Zen streaming: не удалось получить ответ";
+                onToken.accept(error);
+                return error;
+            }
+
             StringBuilder fullResponse = new StringBuilder();
 
             // Track streaming tool calls: index → {id, name, arguments-builder}
@@ -347,6 +367,29 @@ public class OpencodeZenProvider implements LlmProvider {
                         }
                     }
                 } catch (Exception ignored) {}
+            }
+
+            // If response is empty despite body having content, check for non-SSE JSON error
+            if (fullResponse.isEmpty() && !response.body().isBlank()) {
+                String body = response.body().trim();
+                if (body.startsWith("{")) {
+                    try {
+                        JsonNode errNode = objectMapper.readTree(body);
+                        JsonNode err = errNode.path("error");
+                        if (!err.isMissingNode()) {
+                            String errMsg = err.path("message").asText("");
+                            String errType = err.path("type").asText("");
+                            String text = "[" + errType + "] " + errMsg;
+                            fullResponse.append(text);
+                            onToken.accept(text);
+                            log.warn("OpenCode Zen streaming error: {}", text);
+                        }
+                    } catch (Exception ignored) {}
+                }
+                if (fullResponse.isEmpty()) {
+                    String snippet = body.length() > 300 ? body.substring(0, 300) + "..." : body;
+                    log.warn("OpenCode Zen streaming вернул пустой ответ. Тело: {}", snippet);
+                }
             }
 
             // After stream ends, append any accumulated tool calls to the response text
