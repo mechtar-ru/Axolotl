@@ -317,9 +317,18 @@ public class SchemaService {
                     org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
         }
 
-        // Get parent node executions
+        // Get parent node executions and resume index
         List<NodeExecution> parentNodeExecs =
                 executionRepository.getNodeExecutionsByRun(parentRunId);
+        int parentResumeIndex = -1;
+        try {
+            ExecutionRun parentRun = executionRepository.getRunById(parentRunId);
+            if (parentRun != null) {
+                parentResumeIndex = parentRun.getResumeIndex();
+            }
+        } catch (Exception e) {
+            log.debug("Could not read parent run resume index: {}", e.getMessage());
+        }
 
         // Create child run
         String childRunId = UUID.randomUUID().toString();
@@ -329,6 +338,7 @@ public class SchemaService {
         childRun.setStatus("running");
         childRun.setMode("EXECUTE");
         childRun.setResumesFrom(parentRunId);
+        childRun.setResumeIndex(parentResumeIndex);
         childRun.setStartedAt(Instant.now().toString());
         childRun.setUpdatedAt(Instant.now().toString());
         executionRepository.createRun(childRun);
@@ -667,7 +677,23 @@ public class SchemaService {
         int completedCount = 0;
         int waveNum = 0;
 
+        // Check if resuming from a paused wave — skip already-completed levels
+        int startWave = 0;
+        try {
+            ExecutionRun run = executionRepository.getRunById(runId);
+            if (run != null && run.getResumeIndex() > 0) {
+                startWave = run.getResumeIndex();
+                log.info("Resuming executeWorkflow from wave {}", startWave);
+            }
+        } catch (Exception e) {
+            log.debug("Could not read resume index: {}", e.getMessage());
+        }
+
         for (List<Node> level : levels) {
+            if (waveNum < startWave) {
+                waveNum++;
+                continue;
+            }
             if (webSocketHandler != null) {
                 List<String> nodeIds = level.stream().map(Node::getId).toList();
                 webSocketHandler.sendWaveUpdate(schema.getId(), waveNum++, nodeIds, "pending");
@@ -750,6 +776,24 @@ public class SchemaService {
                     webSocketHandler.sendLog(schema.getId(), "success",
                             "Узел завершен: " + node.getName(), node.getId());
                 }
+            }
+
+            // Check if any node needs approval — pause execution
+            boolean hasPendingApproval = executable.stream()
+                    .anyMatch(n -> n.getStatus() == Node.NodeStatus.AWAITING_APPROVAL);
+            if (hasPendingApproval) {
+                log.info("Execution paused at wave {} — node awaiting approval", waveNum - 1);
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schema.getId(), "info",
+                            "Execution paused — awaiting plan approval", "");
+                    Map<String, Object> pausePayload = new HashMap<>();
+                    pausePayload.put("status", "paused");
+                    pausePayload.put("reason", "AWAITING_APPROVAL");
+                    webSocketHandler.sendLiveUpdate(schema.getId(), "execution_paused", pausePayload);
+                }
+                executionRepository.updateRunResumeIndex(runId, waveNum);
+                executionRepository.updateRunStatus(runId, "paused", null);
+                break;
             }
         }
 
