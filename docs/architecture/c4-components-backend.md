@@ -1,5 +1,7 @@
 # C4 Component — Backend
 
+<div style="overflow-x: auto; max-width: 100%;">
+
 ```mermaid
 C4Component
   title Component Diagram — Axolotl Backend
@@ -77,3 +79,5 @@ C4Component
   Rel(llmSvc, deepseek, "Routes to")
   Rel(llmSvc, zendapi, "Routes to")
 ```
+
+</div>

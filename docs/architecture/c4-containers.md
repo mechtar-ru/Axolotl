@@ -1,5 +1,7 @@
 # C4 Container — Axolotl
 
+<div style="overflow-x: auto; max-width: 100%;">
+
 ```mermaid
 C4Container
   title Container Diagram — Axolotl
@@ -27,3 +29,5 @@ C4Container
   UpdateRelStyle(api, neo4j, $textColor="green", $offsetY="-10")
   UpdateRelStyle(api, llmApis, $textColor="orange", $offsetY="-20")
 ```
+
+</div>

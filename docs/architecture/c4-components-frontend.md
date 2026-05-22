@@ -1,5 +1,7 @@
 # C4 Component — Frontend
 
+<div style="overflow-x: auto; max-width: 100%;">
+
 ```mermaid
 C4Component
   title Component Diagram — Axolotl Frontend
@@ -51,3 +53,5 @@ C4Component
   Rel(ws, studio, "Delivers real-time updates to")
   Rel(ws, live, "Delivers real-time updates to")
 ```
+
+</div>

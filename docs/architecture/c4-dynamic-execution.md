@@ -1,5 +1,7 @@
 # C4 Dynamic — Pipeline Execution
 
+<div style="overflow-x: auto; max-width: 100%;">
+
 ```mermaid
 C4Dynamic
   title Dynamic Diagram — Pipeline Execution Flow
@@ -62,3 +64,5 @@ C4Dynamic
   UpdateRelStyle(pipelineSvc, ws, $textColor="green", $offsetY="-10")
   UpdateRelStyle(ws, spa, $textColor="green", $offsetY="10")
 ```
+
+</div>

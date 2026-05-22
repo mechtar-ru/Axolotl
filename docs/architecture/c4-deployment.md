@@ -1,5 +1,7 @@
 # C4 Deployment — Axolotl Development
 
+<div style="overflow-x: auto; max-width: 100%;">
+
 ```mermaid
 C4Deployment
   title Deployment Diagram — Axolotl (Development)
@@ -22,3 +24,5 @@ C4Deployment
   Rel(api, neo4j, "Bolt protocol", "localhost:7687")
   Rel(api, llmApis, "HTTPS", "External")
 ```
+
+</div>

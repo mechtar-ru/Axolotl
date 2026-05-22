@@ -1,5 +1,7 @@
 # C4 Context — Axolotl
 
+<div style="overflow-x: auto; max-width: 100%;">
+
 ```mermaid
 C4Context
   title System Context — Axolotl
@@ -18,3 +20,5 @@ C4Context
   Rel(browser, axolotl, "Serves frontend to")
   Rel(developer, neo4j, "Administers", "HTTP (Browser UI)")
 ```
+
+</div>

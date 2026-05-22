@@ -8,17 +8,21 @@ Axolotl is a visual AI-agent orchestration platform. Users build workflows as no
 See [C4 Context diagram](/architecture/c4-context) for the full system context.
 
 ```mermaid
-C4Context
-  title System Context — Axolotl
+%%{init: {"flowchart": {"useMaxWidth": false}, "themeVariables": {"fontSize": "20px"}}}%%
+flowchart LR
+    Developer["Developer"]
+    Axolotl["Axolotl<br/>Visual AI-agent orchestration"]
+    LLM["LLM Provider APIs<br/>OpenAI / Anthropic / DeepSeek / Zen API"]
+    Neo4j["Neo4j<br/>Graph database"]
 
-  Person(developer, "Developer", "Builds and runs AI-agent workflows")
-  System(axolotl, "Axolotl", "Visual AI-agent orchestration platform")
-  System_Ext(providers, "LLM Provider APIs", "OpenAI / Anthropic / DeepSeek / Zen API")
-  System_Ext(neo4j, "Neo4j", "Graph database (self-hosted)")
+    Developer -- "Uses (HTTP / WebSocket)" --> Axolotl
+    Axolotl -- "Calls LLM (HTTPS)" --> LLM
+    Axolotl -- "Reads/writes (Bolt)" --> Neo4j
 
-  Rel(developer, axolotl, "Uses", "HTTP / WebSocket")
-  Rel(axolotl, providers, "Calls LLM", "HTTPS")
-  Rel(axolotl, neo4j, "Reads/writes", "Bolt protocol")
+    style Axolotl fill:#1e88e5,color:#fff
+    style Developer fill:#43a047,color:#fff
+    style LLM fill:#e53935,color:#fff
+    style Neo4j fill:#fb8c00,color:#fff
 ```
 
 ## Backend
