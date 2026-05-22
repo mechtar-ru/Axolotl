@@ -302,21 +302,24 @@ public class SchemaService {
     }
 
     public void resumeExecution(String schemaId, WorkflowSchema schema) {
-        if (schema == null) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
-        }
-
-        // Atomically claim the paused run — prevents concurrent resume races
+        if (schema == null) return;
         ExecutionRun parentRun = executionRepository.claimPausedRun(schemaId);
         if (parentRun == null) {
             log.warn("No paused run found for schema: {}", schemaId);
             return;
         }
+        resumeExecution(schemaId, schema, parentRun.getId());
+    }
+
+    public void resumeExecution(String schemaId, WorkflowSchema schema, String parentRunId) {
+        if (schema == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
+        }
 
         // Get parent node executions
         List<NodeExecution> parentNodeExecs =
-                executionRepository.getNodeExecutionsByRun(parentRun.getId());
+                executionRepository.getNodeExecutionsByRun(parentRunId);
 
         // Create child run
         String childRunId = UUID.randomUUID().toString();
@@ -325,7 +328,7 @@ public class SchemaService {
         childRun.setSchemaId(schemaId);
         childRun.setStatus("running");
         childRun.setMode("EXECUTE");
-        childRun.setResumesFrom(parentRun.getId());
+        childRun.setResumesFrom(parentRunId);
         childRun.setStartedAt(Instant.now().toString());
         childRun.setUpdatedAt(Instant.now().toString());
         executionRepository.createRun(childRun);
@@ -376,7 +379,7 @@ public class SchemaService {
         }
 
         log.info("Resuming schema {}: parentRun={}, childRun={}, {} nodes",
-                schemaId, parentRun.getId(), childRunId, schemaNodes.size());
+                schemaId, parentRunId, childRunId, schemaNodes.size());
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(schemaId, cancelFlag);
@@ -466,31 +469,39 @@ public class SchemaService {
         nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
                 .put(approvedKey, "true");
 
-        // Check if this is a pipeline execution — delegate to PipelineService
-        // The executionId from frontend is the schemaId for pipeline runs
-        List<ExecutionRun> runs = executionRepository.getRunsBySchema(executionId);
-        ExecutionRun pipelineRun = runs.stream()
-                .filter(r -> "PIPELINE".equals(r.getMode()) && "paused".equals(r.getStatus()))
-                .findFirst().orElse(null);
-        if (pipelineRun != null) {
-            log.info("Pipeline review approved for schema {}, run {} node {}", executionId, pipelineRun.getId(), nodeId);
-            pipelineService.resumePipeline(executionId, pipelineRun.getId());
-            if (webSocketHandler != null) {
-                webSocketHandler.sendLog(executionId, "info",
-                        "Plan approved, resuming pipeline execution", nodeId);
-                webSocketHandler.sendLiveUpdate(executionId, "review_approved",
-                        Map.of("nodeId", nodeId, "status", "RUNNING"));
+        // Atomically claim the paused run — prevents TOCTOU on concurrent approve
+        ExecutionRun claimed = executionRepository.claimPausedRun(executionId);
+        if (claimed == null) {
+            log.warn("No paused run found for schema {} (may have been claimed by another request)", executionId);
+            return;
+        }
+
+        if ("PIPELINE".equals(claimed.getMode())) {
+            log.info("Pipeline review approved for schema {}, run {} node {}", executionId, claimed.getId(), nodeId);
+            try {
+                pipelineService.resumePipeline(executionId, claimed.getId());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(executionId, "info",
+                            "Plan approved, resuming pipeline execution", nodeId);
+                    webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                            Map.of("nodeId", nodeId, "status", "RUNNING"));
+                }
+            } catch (Exception e) {
+                log.error("Failed to resume pipeline for schema {}: {}", executionId, e.getMessage(), e);
+                executionRepository.updateRunStatus(claimed.getId(), "paused",
+                        "Resume failed: " + e.getMessage());
             }
             return;
         }
 
+        // Non-pipeline (EXECUTE mode) — handle through NodeRouter resume
         WorkflowSchema schema = schemaRepository.findById(executionId);
         if (schema == null) {
             log.warn("Approval requested for non-existent schema: {}", executionId);
+            // Revert the claim so the run is not stuck in 'resuming'
+            executionRepository.updateRunStatus(claimed.getId(), "paused", null);
             return;
         }
-        // Note: node status is tracked via NodeExecution records + getNodeResults approvedKey.
-        // No need to mutate the schema entity — AWAITING_APPROVAL is a runtime-only state.
         log.info("Review node {} approved, resuming execution", nodeId);
         if (webSocketHandler != null) {
             webSocketHandler.sendLog(executionId, "info",
@@ -498,7 +509,8 @@ public class SchemaService {
             webSocketHandler.sendLiveUpdate(executionId, "review_approved",
                     Map.of("nodeId", nodeId, "status", "RUNNING"));
         }
-        resumeExecution(executionId, schema);
+        // pass the already-claimed run so resumeExecution skips claimPausedRun
+        resumeExecution(executionId, schema, claimed.getId());
     }
 
     /**
