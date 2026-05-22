@@ -1,7 +1,7 @@
 <template>
   <div class="subagent-node" :class="{ completed: status === 'completed', running: status === 'running', failed: status === 'failed' }">
     <div class="node-header">
-      <span class="node-icon">🤖</span>
+      <span class="node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg></span>
       <span class="node-title">{{ data.name || 'Subagent' }}</span>
       <span class="node-badge">SUB</span>
     </div>
@@ -11,7 +11,8 @@
         <span class="value">{{ targetSchemaName }}</span>
       </div>
       <div v-else class="no-target">
-        ⚠️ No schema selected
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        No schema selected
       </div>
       <div v-if="data.inputMapping && Object.keys(data.inputMapping).length > 0" class="mapping-info">
         <span class="label">Inputs:</span>

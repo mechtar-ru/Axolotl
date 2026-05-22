@@ -6,12 +6,15 @@ import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.WorkflowSchema;
+import com.agent.orchestrator.model.Pipeline;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
+import com.agent.orchestrator.service.PipelineService;
 import com.agent.orchestrator.service.PlanningService;
 import com.agent.orchestrator.service.SchemaService;
 import com.agent.orchestrator.service.SettingsService;
+import com.agent.orchestrator.repository.ExecutionRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.http.ResponseEntity;
@@ -31,20 +34,26 @@ public class AgentController {
 
     private final AgentService agentService;
     private final SchemaService schemaService;
+    private final PipelineService pipelineService;
     private final LlmService llmService;
     private final MemPalaceClient memPalaceClient;
     private final PlanningService planningService;
     private final SettingsService settingsService;
+    private final ExecutionRepository executionRepository;
 
     public AgentController(AgentService agentService, SchemaService schemaService,
+                           PipelineService pipelineService,
                            LlmService llmService, MemPalaceClient memPalaceClient,
-                           PlanningService planningService, SettingsService settingsService) {
+                           PlanningService planningService, SettingsService settingsService,
+                           ExecutionRepository executionRepository) {
         this.agentService = agentService;
         this.schemaService = schemaService;
+        this.pipelineService = pipelineService;
         this.llmService = llmService;
         this.memPalaceClient = memPalaceClient;
         this.planningService = planningService;
         this.settingsService = settingsService;
+        this.executionRepository = executionRepository;
     }
 
     @GetMapping("/agents")
@@ -369,6 +378,83 @@ public class AgentController {
         return Map.of("content", content);
     }
 
-    // NOTE: generateSchemaFromPrompt endpoint removed — Quick Start now uses fixed pipeline
+    // ── Multi-Stage Pipeline ────────────────────────────────────
+
+    @PostMapping("/schemas/{id}/pipeline/build")
+    public Map<String, Object> buildPipelineNodes(@PathVariable String id) {
+        try {
+            WorkflowSchema schema = pipelineService.buildPipelineNodes(id);
+            return Map.of("status", "ok", "nodes", schema.getNodes() != null ? schema.getNodes().size() : 0,
+                    "edges", schema.getEdges() != null ? schema.getEdges().size() : 0);
+        } catch (Exception e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/execute")
+    public Map<String, String> executePipeline(@PathVariable String id) {
+        pipelineService.executePipeline(id);
+        return Map.of("status", "ok", "message", "Pipeline execution started");
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/retry")
+    public Map<String, String> retryPipeline(@PathVariable String id) {
+        try {
+            pipelineService.retryPipeline(id);
+            return Map.of("status", "ok", "message", "Pipeline retry started from first failed stage");
+        } catch (Exception e) {
+            return Map.of("status", "error", "error", e.getMessage());
+        }
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/cancel")
+    public Map<String, String> cancelPipeline(@PathVariable String id) {
+        pipelineService.cancelPipeline(id);
+        return Map.of("status", "ok", "message", "Pipeline cancelled");
+    }
+
+    @GetMapping("/schemas/{id}/pipeline/status")
+    public Map<String, Object> pipelineStatus(@PathVariable String id) {
+        boolean running = pipelineService.isPipelineRunning(id);
+        Map<String, String> results = pipelineService.getStageResults(id);
+        ExecutionRun lastRun = executionRepository.getLatestRunBySchema(id);
+        String lastRunStatus = lastRun != null ? lastRun.getStatus() : null;
+        String lastRunError = lastRun != null ? lastRun.getError() : null;
+        return Map.of("running", running, "stageResults", results,
+                "lastRunStatus", lastRunStatus, "lastRunError", lastRunError);
+    }
+
+    @PostMapping("/schemas/{id}/pipeline/default")
+    public Map<String, Object> createDefaultPipeline(@PathVariable String id,
+                                                      @RequestBody Map<String, Object> body) {
+        WorkflowSchema schema = schemaService.getSchema(id);
+        if (schema == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found");
+        }
+        String appType = (String) body.getOrDefault("appType", "custom");
+        String description = (String) body.getOrDefault("description", schema.getDescription());
+        boolean tddEnabled = Boolean.TRUE.equals(body.getOrDefault("tddEnabled", false));
+        Pipeline pipeline = PipelineService.createDefaultPipeline(appType, description);
+        pipeline.setTddEnabled(tddEnabled);
+        PipelineService.expandTddStages(pipeline);
+        schema.setPipeline(pipeline);
+
+        // Use user's default model — execution engine handles routing/availability
+        String globalModel = settingsService.getGlobalDefaultModel();
+        schema.setDefaultModel(globalModel != null && !globalModel.isBlank()
+                ? globalModel : "deepseek-v4-flash-free");
+        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null) {
+            for (var stage : schema.getPipeline().getStages()) {
+                if (stage.getModel() == null || stage.getModel().isBlank()) {
+                    stage.setModel(schema.getDefaultModel());
+                }
+            }
+        }
+
+        schemaService.updateSchema(id, schema);
+        return Map.of("status", "ok", "pipeline", tddEnabled ? "TDD pipeline created" : "Default pipeline created");
+    }
 
 }

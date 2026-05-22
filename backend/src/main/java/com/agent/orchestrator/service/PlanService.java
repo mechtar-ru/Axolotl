@@ -40,6 +40,9 @@ public class PlanService {
         Plan plan = planRepository.findFirstByWorkspaceId(workspaceId);
         if (plan == null) {
             plan = createDefaultPlan(workspaceId);
+        } else {
+            log.debug("getPlan: loaded plan id={} ws={} tasks={} name={} hash={}", 
+                plan.getId(), plan.getWorkspaceId(), plan.getTasks().size(), plan.getName(), System.identityHashCode(plan));
         }
         return plan;
     }
@@ -102,6 +105,8 @@ public class PlanService {
     public Task addTask(String workspaceId, String title, String description,
                         Priority priority, List<String> dependencies, PositionRequest position, String schemaId) {
         Plan plan = getPlan(workspaceId);
+        log.debug("addTask START: plan id={} ws={} tasks={} name={} hash={}", 
+            plan.getId(), plan.getWorkspaceId(), plan.getTasks().size(), plan.getName(), System.identityHashCode(plan));
 
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("Task title cannot be empty");
@@ -151,7 +156,11 @@ public class PlanService {
         }
 
         plan.touch();
+        log.debug("addTask BEFORE SAVE: plan id={} ws={} tasks={} name={} hash={}", 
+            plan.getId(), plan.getWorkspaceId(), plan.getTasks().size(), plan.getName(), System.identityHashCode(plan));
         planRepository.save(plan);
+        log.debug("addTask AFTER SAVE: plan id={} ws={} tasks={}", 
+            plan.getId(), plan.getWorkspaceId(), plan.getTasks().size());
         notifyPlanUpdated(plan);
 
         log.info("Добавлена задача: {} (ID: {})", title, task.getId());
@@ -501,7 +510,7 @@ public class PlanService {
                         DEFAULT_WORKSPACE, existing.getTasks().size());
             }
         } catch (Exception e) {
-            log.error("Ошибка инициализации плана: {}", e.getMessage());
+            log.error("Ошибка инициализации плана: {}", e.getMessage(), e);
         }
     }
 

@@ -228,8 +228,9 @@ class ReviewNodeStrategyTest {
         String result = strategy.executeReviewNode(node, "schema-1", "test-model");
 
         assertNotNull(result);
-        assertTrue(result.contains("PASS"));
-        verify(webSocketHandler, never()).sendLiveUpdate(anyString(), eq("review_awaiting_approval"), anyMap());
+        // Manual mode always shows approval dialog even when LLM returns PASS
+        assertTrue(result.contains("AWAITING_APPROVAL"));
+        verify(webSocketHandler).sendLiveUpdate(anyString(), eq("review_awaiting_approval"), anyMap());
     }
 
     @Test

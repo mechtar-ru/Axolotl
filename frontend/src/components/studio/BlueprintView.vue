@@ -38,7 +38,8 @@ const nodeTypes = {
   output: markRaw(ActBlock),
 }
 
-const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView } = useVueFlow({ id: 'blueprint-flow' })
+const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView, setNodes, setEdges } = useVueFlow({ id: 'blueprint-flow' })
+const flowReady = ref(false)
 
 const emit = defineEmits<{
   'show-quick-start': []
@@ -58,6 +59,7 @@ function buildVueFlowNodes(schema: any): Node[] {
     id: n.id,
     type: n.type || 'agent',
     position: n.position || { x: 100, y: 200 },
+    dimensions: { width: 200, height: 100 },
     data: {
       label: n.name,
       type: n.type,
@@ -73,8 +75,9 @@ function buildVueFlowNodes(schema: any): Node[] {
 
 function buildVueFlowEdges(schema: any): Edge[] {
   if (!schema.edges) return []
+  const nodeIds = new Set((schema.nodes || []).map((n: any) => n.id))
   return schema.edges
-    .filter((e: FlowEdge) => e?.source && e?.target)
+    .filter((e: FlowEdge) => e?.source && e?.target && nodeIds.has(e.source) && nodeIds.has(e.target))
     .map((e: FlowEdge) => ({
       id: e.id || `${e.source}->${e.target}`,
       source: e.source,
@@ -84,13 +87,18 @@ function buildVueFlowEdges(schema: any): Edge[] {
     }))
 }
 
+let syncing = false
+
 // Load full schema (with nodes + edges) from API detail endpoint
+// Only loads if flow hasn't been initialized yet
 async function loadFullSchema() {
+  if (flowReady.value) return
   try {
     const fullSchema = await schemaApi.getSchema(props.appId)
     if (fullSchema?.nodes?.length) {
-      addNodes(buildVueFlowNodes(fullSchema))
-      addEdges(buildVueFlowEdges(fullSchema))
+      setNodes(buildVueFlowNodes(fullSchema))
+      setEdges(buildVueFlowEdges(fullSchema))
+      flowReady.value = true
       nextTick(() => fitView({ padding: 0.2 }))
     }
   } catch (err) {
@@ -100,15 +108,21 @@ async function loadFullSchema() {
 
 onMounted(loadFullSchema)
 
-// Watch for schema updates (e.g. after save)
+// Watch for schema updates (e.g. after save) — prevent re-entrant sync loops
 watch(() => schemaStore.currentSchema, (schema) => {
+  if (syncing) return
   if (!schema || schema.id !== props.appId) return
   if (!schema.nodes?.length) return
 
-  addNodes(buildVueFlowNodes(schema))
-  addEdges(buildVueFlowEdges(schema))
-  nextTick(() => fitView({ padding: 0.2 }))
-}, { deep: true })
+  syncing = true
+  setNodes(buildVueFlowNodes(schema))
+  setEdges(buildVueFlowEdges(schema))
+  flowReady.value = true
+  nextTick(() => {
+    fitView({ padding: 0.2 })
+    syncing = false
+  })
+}, { deep: true, immediate: true })
 
 // Handle drag and drop from BlockPalette
 const dropPosition = ref({ x: 0, y: 0 })
@@ -136,10 +150,11 @@ function onDropHandler(event: DragEvent) {
       })
       
       const newId = `${parsed.blockType}-${Date.now()}`
-      const newNode: Node = {
+      const newNode: Node & { dimensions: { width: number; height: number } } = {
         id: newId,
         type: parsed.blockType,
         position,
+        dimensions: { width: 200, height: 100 },
         data: {
           label: parsed.blockLabel || parsed.blockType,
           type: parsed.blockType,
@@ -193,6 +208,8 @@ function onQuickStart() {
 function syncFlowToStore() {
   if (!schemaStore.currentSchema) return
 
+  syncing = true
+
   const updatedNodes: FlowNode[] = nodes.value.map(n => {
     const vueFlowConfig = (n.data?.config as Record<string, any>) || {};
     const { model: m, systemPrompt: sp, ...restConfig } = vueFlowConfig;
@@ -221,6 +238,7 @@ function syncFlowToStore() {
     nodes: updatedNodes,
     edges: updatedEdges
   })
+  syncing = false
 }
 
 // Handle new connections — persist immediately
@@ -251,6 +269,7 @@ onConnect((connection) => {
     <!-- Canvas -->
     <div class="canvas-wrapper">
       <VueFlow
+        v-if="flowReady"
         id="blueprint-flow"
         :node-types="nodeTypes as any"
         :default-viewport="{ x: 0, y: 0, zoom: 1 }"
@@ -273,14 +292,14 @@ onConnect((connection) => {
     
     <!-- Config Panel -->
     <BlockConfigPanel
-      v-show="!showExecutionOverlay && configPanelOpen && selectedBlockId"
+      v-if="!showExecutionOverlay && configPanelOpen && selectedBlockId"
       :block-id="selectedBlockId || ''"
       @close="configPanelOpen = false"
     />
 
     <!-- Schema Properties Panel (shown when nothing is selected) -->
     <SchemaPropertiesPanel
-      v-show="!showExecutionOverlay && !configPanelOpen && !selectedBlockId"
+      v-if="!showExecutionOverlay && !configPanelOpen && !selectedBlockId"
       @add-node="console.log('Add node')"
       @run="startExecution(props.appId)"
       @quick-start="emit('show-quick-start')"

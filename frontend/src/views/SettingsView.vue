@@ -286,7 +286,7 @@
                 <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 {{ customTestResults[ep.id!]?.success ? 'OK' : customTestResults[ep.id!]?.message }}
               </span>
-              <button v-if="!confirmDelete[ep.id!]" class="delete-btn" @click="confirmDelete[ep.id!] = true; setTimeout(() => confirmDelete[ep.id!] = false, 4000)" title="Delete">
+              <button v-if="!confirmDelete[ep.id!]" class="delete-btn" @click="confirmDelete[ep.id!] = true; scheduleClearConfirm(ep.id!)" title="Delete">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               </button>
               <button v-else class="delete-btn confirm-delete" @click="deleteCustomEndpoint(ep.id!)">
@@ -434,7 +434,7 @@ function groupedModels(provider: ProviderInfo): { group: string; models: string[
     else if (m.startsWith('llama') || m.startsWith('mistral') || m.startsWith('gemma')) group = 'Open Source';
 
     if (!groups[group]) groups[group] = [];
-    groups[group].push(m);
+    groups[group]!.push(m);
   }
   return Object.entries(groups).map(([g, ms]) => ({ group: g, models: ms }));
 }
@@ -523,6 +523,7 @@ async function saveProvider(name: string) {
     await settingsApi.updateProvider(name, data);
     await refreshProviders();
     editedKeys[name] = '';
+    collapsed[name] = true; // auto-collapse after save
   } catch (e: any) {
     error.value = 'Save error: ' + (e.message || e);
   } finally {
@@ -550,6 +551,7 @@ async function testProvider(name: string) {
       if (p && result.models?.length) {
         p.models = result.models;
       }
+      collapsed[name] = true; // auto-collapse after successful test
     } else {
       testResults[name] = {
         ok: false,
@@ -611,6 +613,12 @@ function updateCustomField(id: string, field: string, value: any) {
 async function saveCustomEndpoint(ep: CustomLlmEndpoint) {
   if (!ep.name || !ep.name.trim()) {
     customErrors[ep.id!] = 'Name is required';
+    return;
+  }
+  // Client-side duplicate check
+  const duplicate = customEndpoints.value.find(e => e.id !== ep.id && e.name === ep.name.trim())
+  if (duplicate) {
+    customErrors[ep.id!] = `Name "${ep.name}" already exists`;
     return;
   }
   customSaving[ep.id!] = true;
@@ -677,6 +685,10 @@ function toggleCustomCollapse(id: string) {
 
 function isCustomCollapsed(id: string): boolean {
   return customCollapsed[id] ?? true;
+}
+
+function scheduleClearConfirm(id: string) {
+  setTimeout(() => { confirmDelete[id] = false }, 4000)
 }
 
 function goBack() {

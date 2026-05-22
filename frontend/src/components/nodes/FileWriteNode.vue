@@ -3,10 +3,14 @@
     <Handle type="target" :position="Position.Top" />
     
     <div class="node-header" @click="expanded = !expanded">
-      <span class="node-icon">📝</span>
+      <span class="node-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M16 3h5v5"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="14" y2="14"/></svg></span>
       <span v-if="!editingName" class="node-title">{{ props.data.name || 'FileWrite' }}</span>
       <input v-else ref="nameInput" v-model="localName" class="name-input" @keydown.enter="finishEditName" @blur="finishEditName" />
-      <span class="node-status">{{ executionIcon }}</span>
+      <span class="node-status">
+        <svg v-if="props.data.executionStatus === 'running'" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+        <svg v-else-if="props.data.executionStatus === 'completed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg v-else-if="props.data.executionStatus === 'failed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </span>
     </div>
 
     <template v-if="expanded">
@@ -42,7 +46,8 @@
 
     <template v-if="props.data.result && resultExpanded">
       <button class="result-toggle" @click="resultExpanded = !resultExpanded">
-        {{ resultExpanded ? '▼' : '▶' }} {{ props.data.result.substring(0, 30) }}...
+        <svg :class="['chevron', { expanded: resultExpanded }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+        {{ props.data.result.substring(0, 30) }}...
       </button>
       <div v-if="resultExpanded" class="node-result">
         <div>{{ props.data.result }}</div>
@@ -54,7 +59,10 @@
       <span class="typing-dot"></span>
       <span class="typing-dot"></span>
     </div>
-    <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
+    <div v-if="props.data.nodeTimeMs" class="node-time">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      {{ props.data.nodeTimeMs }}ms
+    </div>
     
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -107,14 +115,7 @@ const statusColor = computed(() => {
     default: return '#888';
   }
 });
-const executionIcon = computed(() => {
-  switch (props.data.executionStatus) {
-    case 'running': return '⏳';
-    case 'completed': return '✅';
-    case 'failed': return '❌';
-    default: return '';
-  }
-});
+const executionIcon = computed(() => '');
 
 function startEditName() {
   editingName.value = true;
@@ -201,4 +202,8 @@ function handleDelete() {
   font-size: 11px;
   word-break: break-all;
 }
+.chevron { transition: transform 0.2s; vertical-align: middle; }
+.chevron:not(.expanded) { transform: rotate(-90deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
 </style>

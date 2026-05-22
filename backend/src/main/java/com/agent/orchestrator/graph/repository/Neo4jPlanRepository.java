@@ -42,7 +42,7 @@ public class Neo4jPlanRepository {
         try (Session session = driver.session()) {
             Result rs = session.run("""
                 MATCH (p:Plan {workspaceId: $workspaceId})
-                RETURN p.data, p.tasksJson
+                RETURN p.id, p.data, p.tasksJson
                 ORDER BY 
                     CASE WHEN p.tasksJson IS NOT NULL THEN 2 
                          WHEN p.data IS NOT NULL AND size(p.data) > 500 THEN 1 
@@ -52,19 +52,26 @@ public class Neo4jPlanRepository {
                 org.neo4j.driver.Values.parameters("workspaceId", workspaceId));
             if (rs.hasNext()) {
                 var record = rs.next();
+                String recordId = record.get("p.id").asString();
                 String json = record.get("p.tasksJson").isNull() 
                     ? record.get("p.data").asString() 
                     : "{\"tasks\":" + record.get("p.tasksJson").asString() + "}";
+                log.debug("Found plan id={} for ws={}, dataLength={}", recordId, workspaceId, json != null ? json.length() : 0);
                 if (json != null && !json.isBlank()) {
                     json = json.trim();
                     if (json.startsWith("[")) {
+                        log.warn("Plan data starts with [ for ws={}, returning null", workspaceId);
                         return null;
                     }
-                    return mapper.readValue(json, Plan.class);
+                    Plan plan = mapper.readValue(json, Plan.class);
+                    log.debug("Loaded plan id={} tasks={}", recordId, plan.getTasks().size());
+                    return plan;
                 }
+            } else {
+                log.debug("No plan found for ws={}", workspaceId);
             }
         } catch (Exception e) {
-            log.error("Error loading plan: {}", e.getMessage());
+            log.error("Error loading plan: {}", e.getMessage(), e);
         }
         return null;
     }
@@ -87,6 +94,7 @@ public class Neo4jPlanRepository {
             String json = mapper.writeValueAsString(plan);
             String createdAt = plan.getCreatedAt() != null ? plan.getCreatedAt().toString() : "";
             String updatedAt = plan.getUpdatedAt() != null ? plan.getUpdatedAt().toString() : "";
+            log.debug("Saving plan id={} ws={} tasks={} name={}", plan.getId(), plan.getWorkspaceId(), plan.getTasks().size(), plan.getName());
             session.run("""
                 MERGE (p:Plan {id: $id})
                 SET p.workspaceId = $workspaceId, p.name = $name, p.data = $data, p.createdAt = $createdAt, p.updatedAt = $updatedAt
@@ -99,8 +107,9 @@ public class Neo4jPlanRepository {
                     "createdAt", createdAt,
                     "updatedAt", updatedAt
                 ));
+            log.debug("Save completed for plan id={}", plan.getId());
         } catch (Exception e) {
-            log.error("Error saving plan: {}", e.getMessage());
+            log.error("Error saving plan: {}", e.getMessage(), e);
         }
     }
 

@@ -14,6 +14,7 @@ import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import ResumeBanner from '@/components/studio/ResumeBanner.vue'
 import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
 import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
+import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/schemaStore'
 
 type StudioMode = 'blueprint' | 'timeline'
@@ -54,6 +55,8 @@ const reviewFindings = ref<ReviewFinding[]>([])
 const reviewIteration = ref(1)
 const reviewMode = ref('manual')
 
+const showPipelinePanel = ref(false)
+
 // Provide state for child components
 provide('appState', {
   app,
@@ -76,6 +79,10 @@ provide('executionProgress', executionProgress)
  * @param skipSave — if true, skip schemaStore.updateSchema (caller already saved)
  */
 const startExecution = async (skipSave: boolean = false): Promise<void> => {
+  if (isRunning.value) {
+    console.warn('Execution already running, ignoring duplicate start')
+    return
+  }
   isRunning.value = true
   executionError.value = null
   nodeResults.value = {}
@@ -93,6 +100,11 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   }
 
   connect(appId.value, {
+    onDisconnect: () => {
+      if (isActive) {
+        isRunning.value = false
+      }
+    },
     onProgress: (data) => {
       if (!isActive) return
       nodeStatuses.value[data.nodeId] = data.status
@@ -135,8 +147,13 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       if (payload?.status === 'AWAITING_APPROVAL') {
         currentExecutionId.value = data.schemaId
         reviewNodeId.value = payload.nodeId || ''
-        reviewPlan.value = payload.rewrittenPlan || payload.plan || ''
-        reviewFindings.value = parseFindings(payload.findings)
+
+        // Plan may be at payload.plan, payload.rewrittenPlan, or nested inside payload.findings.plan
+        const findingsObj = payload.findings as Record<string, any> | undefined
+        reviewPlan.value = payload.rewrittenPlan || payload.plan || findingsObj?.plan || ''
+
+        // Findings items may be at payload.findings (array/string) or payload.findings.findings
+        reviewFindings.value = parseFindings(findingsObj?.findings ?? payload.findings)
         reviewIteration.value = 1
         reviewMode.value = payload.mode || 'manual'
         showReviewDialog.value = true
@@ -145,7 +162,11 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   })
 
   if (!skipSave) {
-    await schemaStore.flushSave()
+    try {
+      await schemaStore.flushSave()
+    } catch (e) {
+      console.error('Failed to flush pending saves:', e)
+    }
   }
 
   try {
@@ -212,21 +233,30 @@ function parseFindings(findings: any): ReviewFinding[] {
   return []
 }
 
-function handleReviewApprove() {
+async function handleReviewApprove() {
   showReviewDialog.value = false
-  schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
+  try {
+    await schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
+  } catch (e) {
+    console.error('Failed to approve review:', e)
+    executionError.value = 'Failed to approve review — execution may still be paused'
+  }
 }
 
-function handleReviewReject() {
+async function handleReviewReject() {
   showReviewDialog.value = false
-  schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
+  try {
+    await schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
+  } catch (e) {
+    console.error('Failed to reject review:', e)
+    executionError.value = 'Failed to reject review'
+  }
 }
 
 async function handleResume() {
   try {
     await schemaApi.resumeSchema(appId.value)
-    // Start execution without saving first (schema already saved)
-    startExecution(true)
+    await startExecution(true)
   } catch (e) {
     console.error('Failed to resume:', e)
   }
@@ -273,7 +303,11 @@ onMounted(async () => {
 // while the component stays alive (same route, different :id)
 watch(() => route.params.id, (newId) => {
   if (newId && newId !== appId.value) {
-    schemaStore.flushSave()  // flush pending changes before switching schemas
+    try {
+      schemaStore.flushSave()
+    } catch (e) {
+      console.error('Failed to flush saves before switching schemas:', e)
+    }
     appId.value = newId as string
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
@@ -290,11 +324,12 @@ function setMode(mode: StudioMode) {
 
 function toggleRun() {
   if (isRunning.value) {
-    // Stop execution
+    executionError.value = null
     disconnect()
     schemaApi.stopSchema(appId.value)
       .catch((err: Error) => {
         console.error('Failed to stop execution:', err)
+        executionError.value = 'Failed to stop execution'
       })
     isRunning.value = false
   } else {
@@ -310,7 +345,11 @@ onUnmounted(() => {
 
 // Flush pending saves + disconnect WebSocket when navigating away
 onDeactivated(() => {
-  schemaStore.flushSave()  // ensure dirty edits reach backend
+  try {
+    schemaStore.flushSave()  // ensure dirty edits reach backend
+  } catch (e) {
+    console.error('Failed to flush saves on deactivate:', e)
+  }
   if (isRunning.value) {
     disconnect()
   }
@@ -414,18 +453,37 @@ function goToDashboard() {
       @dismiss="handleDismiss"
     />
     
-    <div class="studio-content">
-      <BlueprintView
-        v-show="activeMode === 'blueprint'"
-        :app-id="appId"
-      />
-      <TimelineView
-        v-show="activeMode === 'timeline'"
-        @select-block="(blockId) => {
-          if (blockId === '__execution__') return
-          activeMode = 'blueprint'
-        }"
-      />
+    <div class="studio-toolbar">
+      <button
+        class="toolbar-btn"
+        :class="{ active: showPipelinePanel }"
+        title="Pipeline"
+        @click="showPipelinePanel = !showPipelinePanel"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        Pipeline
+      </button>
+    </div>
+
+    <div class="studio-content" :class="{ 'with-pipeline': showPipelinePanel }">
+      <div class="pipeline-sidebar" v-if="showPipelinePanel && activeMode === 'blueprint'">
+        <PipelinePanel />
+      </div>
+      <div class="main-content">
+        <BlueprintView
+          v-show="activeMode === 'blueprint'"
+          :app-id="appId"
+        />
+        <TimelineView
+          v-show="activeMode === 'timeline'"
+          @select-block="(blockId) => {
+            if (blockId === '__execution__') return
+            activeMode = 'blueprint'
+          }"
+        />
+      </div>
     </div>
 
     <QuickStartDialog
@@ -466,12 +524,6 @@ function goToDashboard() {
   background: var(--bg-canvas);
 }
 
-.studio-content {
-  flex: 1;
-  overflow: hidden;
-  position: relative;
-}
-
 .placeholder-view {
   display: flex;
   flex-direction: column;
@@ -496,5 +548,60 @@ function goToDashboard() {
 .placeholder-view p {
   margin: 0;
   font-size: var(--text-sm);
+}
+
+.studio-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toolbar-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toolbar-btn.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.studio-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+}
+
+.studio-content.with-pipeline {
+  display: flex;
+}
+
+.pipeline-sidebar {
+  width: 320px;
+  min-width: 320px;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  background: var(--bg-surface);
+}
+
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
 }
 </style>

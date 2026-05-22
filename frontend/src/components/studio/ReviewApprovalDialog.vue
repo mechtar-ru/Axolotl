@@ -3,7 +3,9 @@
     <div class="review-modal">
       <div class="review-header">
         <span class="review-title">▲ Plan Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
-        <button class="close-btn" title="Close">✕</button>
+        <button class="close-btn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
       </div>
 
       <div class="review-body">
@@ -54,8 +56,12 @@
             >
               <span class="feedback-index">#{{ idx + 1 }}</span>
               <span class="feedback-text">"{{ item.text }}"</span>
-              <span v-if="item.applied" class="feedback-applied">✓ applied</span>
-              <span v-else class="feedback-not-applied">✗ not applied</span>
+              <span v-if="item.applied" class="feedback-applied">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg> applied
+              </span>
+              <span v-else class="feedback-not-applied">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> not applied
+              </span>
             </div>
           </div>
         </div>
@@ -84,17 +90,22 @@
 
       <div class="review-footer">
         <div class="footer-actions">
-          <button class="btn-reject" @click="emit('reject')">
-            ✕ Reject
+          <button v-if="!showRejectConfirm" class="btn-reject" @click="showRejectConfirm = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Reject
           </button>
+          <span v-else class="confirm-reject-inline">
+            <span class="confirm-text">Sure?</span>
+            <button class="btn-confirm-yes" @click="handleReject">Yes, reject</button>
+            <button class="btn-confirm-cancel" @click="showRejectConfirm = false">Cancel</button>
+          </span>
           <button class="btn-edit" @click="startEdit">
-            ✏️ Edit Plan
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> Edit Plan
           </button>
           <button class="btn-suggest" @click="emitSuggest">
-            ↻ Suggest &amp; Regenerate
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Suggest &amp; Regenerate
           </button>
           <button class="btn-approve" @click="emitApprove">
-            ✓ Accept
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Accept
           </button>
         </div>
       </div>
@@ -154,9 +165,11 @@ const editing = ref(false);
 const editedPlan = ref(props.rewrittenPlan);
 const feedbackText = ref('');
 const feedbackItems = ref<string[]>([]);
+const showRejectConfirm = ref(false);
 
 const plan = computed(() => {
-  return editing.value ? editedPlan.value : props.rewrittenPlan;
+  if (editing.value) return editedPlan.value
+  return props.rewrittenPlan || props.originalPlan || ''
 });
 
 const modeLabel = computed(() => {
@@ -192,14 +205,8 @@ function severityClass(severity: string): string {
   }
 }
 
-function severityIcon(severity: string): string {
-  switch (severity.toUpperCase()) {
-    case 'HIGH': return '🔴';
-    case 'MEDIUM': return '🟡';
-    case 'LOW': return '🟢';
-    case 'INFO': return '🔵';
-    default: return '⚪';
-  }
+function severityIcon(_severity: string): string {
+  return '';
 }
 
 function startEdit() {
@@ -226,6 +233,11 @@ function emitSuggest() {
     feedback: feedbackItems.value,
     history: props.feedbackHistory,
   });
+}
+
+function handleReject() {
+  showRejectConfirm.value = false;
+  emit('reject');
 }
 </script>
 
@@ -368,9 +380,16 @@ function emitSuggest() {
 }
 
 .finding-icon {
-  font-size: var(--text-xs);
-  line-height: 1;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
+.finding-icon.severity-high { background: var(--error); }
+.finding-icon.severity-medium { background: var(--warning); }
+.finding-icon.severity-low { background: var(--text-muted); }
+.finding-icon.severity-info { background: var(--info); }
 
 .finding-source {
   font-size: var(--text-xs);
@@ -605,5 +624,46 @@ function emitSuggest() {
 
 .btn-approve:hover {
   background: var(--success-hover);
+}
+
+.inline-vbuttons { display: flex; gap: var(--space-1); }
+
+.btn-reject,
+.confirm-reject-inline {
+  margin-right: auto;
+}
+
+.confirm-reject-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.confirm-text {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.btn-confirm-yes {
+  background: var(--error);
+  border: none;
+  color: white;
+  padding: var(--space-1) 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.btn-confirm-cancel {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: var(--space-1) 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-xs);
 }
 </style>

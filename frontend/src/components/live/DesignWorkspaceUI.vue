@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, inject, type Ref } from 'vue'
+import { ref, computed, watch, inject, onUnmounted, type Ref } from 'vue'
 import type { DesignWorkspaceFile, WorkflowSchema, PlanningModels, PlanQuestion, PlanResponse } from '@/types'
 import { schemaApi } from '@/services/api'
 import PlanningModelsPicker from './PlanningModelsPicker.vue'
@@ -75,6 +75,11 @@ async function savePlanningModels(models: PlanningModels) {
 // ── Context Persistence ────────────────────────────────────
 
 let saveContextTimer: ReturnType<typeof setTimeout> | null = null
+
+onUnmounted(() => {
+  if (saveContextTimer) clearTimeout(saveContextTimer)
+  saveContextTimer = null
+})
 
 function scheduleSaveContext() {
   if (saveContextTimer) clearTimeout(saveContextTimer)

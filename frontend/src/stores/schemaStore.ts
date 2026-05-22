@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
+import type { Pipeline, Stage, PipelineStatus } from '../types/pipeline';
 import { schemaApi, settingsApi } from '../services/api';
 import { api } from '../services/api';
 
@@ -196,7 +197,7 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function approveReview(executionId: string, nodeId: string) {
     try {
-      await api.post(`/api/execution/${executionId}/approve-review?nodeId=${nodeId}`);
+      await api.post(`/execution/${executionId}/approve-review?nodeId=${nodeId}`);
       pendingReview.value = false;
       reviewData.value = null;
     } catch (error) {
@@ -207,13 +208,76 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function rejectReview(executionId: string, nodeId: string) {
     try {
-      await api.post(`/api/execution/${executionId}/reject?nodeId=${nodeId}`);
+      await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}`);
       pendingReview.value = false;
       reviewData.value = null;
     } catch (error) {
       console.error('Ошибка при reject review:', error);
       throw error;
     }
+  }
+
+  // ─── Pipeline state ────────────────────────────────────────────
+  const pipelineStatus = ref<PipelineStatus>({ running: false, stageResults: {} })
+  const pipelineExpanded = ref(false)
+
+  async function buildPipelineNodes(schemaId: string) {
+    const res = await api.post(`/schemas/${schemaId}/pipeline/build`)
+    return res.data
+  }
+
+  async function executePipeline(schemaId: string) {
+    await api.post(`/schemas/${schemaId}/pipeline/execute`)
+    pipelineStatus.value = { running: true, stageResults: {} }
+  }
+
+  async function cancelPipelineExecution(schemaId: string) {
+    await api.post(`/schemas/${schemaId}/pipeline/cancel`)
+    pipelineStatus.value = { running: false, stageResults: {} }
+  }
+
+  async function retryPipeline(schemaId: string) {
+    await api.post(`/schemas/${schemaId}/pipeline/retry`)
+    pipelineStatus.value = { running: true, stageResults: {} }
+  }
+
+  async function refreshPipelineStatus(schemaId: string) {
+    const res = await api.get(`/schemas/${schemaId}/pipeline/status`)
+    pipelineStatus.value = res.data
+  }
+
+  async function createDefaultPipeline(schemaId: string, appType?: string, description?: string, tddEnabled?: boolean) {
+    await api.post(`/schemas/${schemaId}/pipeline/default`, {
+      appType: appType || 'custom',
+      description: description || '',
+      tddEnabled: !!tddEnabled
+    })
+    // Re-fetch the schema to get the persisted pipeline and update currentSchema
+    const resp = await api.get(`/schemas/${schemaId}`)
+    if (resp.data && currentSchema.value) {
+      currentSchema.value = resp.data
+    }
+    // Reset execution state — no run in progress after creation
+    pipelineStatus.value = { running: false, stageResults: {} }
+  }
+
+  function setPipeline(pipeline: Pipeline | undefined) {
+    if (currentSchema.value) {
+      currentSchema.value.pipeline = pipeline
+    }
+  }
+
+  async function refreshCurrentSchema(schemaId: string) {
+    try {
+      const resp = await api.get(`/schemas/${schemaId}`)
+      if (resp.data) {
+        currentSchema.value = resp.data
+        const idx = schemas.value.findIndex(s => s.id === schemaId)
+        if (idx !== -1) {
+          schemas.value[idx] = resp.data
+        }
+      }
+    } catch {}
   }
 
   return {
@@ -239,5 +303,16 @@ export const useSchemaStore = defineStore('schema', () => {
     clearReview,
     approveReview,
     rejectReview,
+    // Pipeline
+    pipelineStatus,
+    pipelineExpanded,
+    buildPipelineNodes,
+    executePipeline,
+    cancelPipelineExecution,
+    retryPipeline,
+    refreshPipelineStatus,
+    createDefaultPipeline,
+    setPipeline,
+    refreshCurrentSchema,
   };
 });

@@ -91,7 +91,7 @@ public class VerifierNodeStrategy {
         }
 
         String model = resolvedModel;
-        if (model == null) {
+        if (model == null || model.isBlank()) {
             model = utilityService.resolveModel(node.getData() != null ? node.getData().getModel() : null,
                     null, null, null);
         }

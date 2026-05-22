@@ -1,13 +1,21 @@
 <template>
   <div class="node source-node" :class="{ selected: isSelected, 'node-running': props.data.executionStatus === 'running', 'node-completed': props.data.executionStatus === 'completed', 'node-failed': props.data.executionStatus === 'failed' }" style="position: relative">
-    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete node">✕</button>
+    <button v-if="isSelected" class="delete-btn" @click.stop="handleDelete" title="Delete node">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
     <Handle type="target" :position="Position.Top" />
     <div class="node-header">
-      <span class="node-icon">{{ typeIcon }}</span>
+      <span class="node-icon" v-html="typeIcon" />
       <span v-if="!editingName" class="node-name" @dblclick="startEditName">{{ props.data.name }}</span>
       <input v-else ref="nameInput" v-model="localName" class="node-name-input" @blur="finishEditName" @keyup.enter="finishEditName" />
-      <span class="execution-icon">{{ executionIcon }}</span>
-      <button class="node-expand" @click="expanded = !expanded">{{ expanded ? '▼' : '▶' }}</button>
+      <span class="execution-icon">
+        <svg v-if="props.data.executionStatus === 'running'" class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10" stroke-dasharray="31.4 31.4" stroke-linecap="round"/></svg>
+        <svg v-else-if="props.data.executionStatus === 'completed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+        <svg v-else-if="props.data.executionStatus === 'failed'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </span>
+      <button class="node-expand" @click="expanded = !expanded">
+        <svg :class="['chevron', { expanded }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
     </div>
 
     <div v-if="expanded" class="node-content"
@@ -21,7 +29,7 @@
           :class="['type-btn', { active: sourceType === t.value }]"
           @click="setSourceType(t.value)"
           :title="t.label">
-          {{ t.icon }}
+          <span v-html="t.icon" />
         </button>
       </div>
 
@@ -34,7 +42,9 @@
       <template v-if="sourceType === 'memory'">
         <div class="search-row">
           <input v-model="searchQuery" placeholder="Search memory..." class="search-input" @keyup.enter="searchMemory" />
-          <button class="search-btn" @click="searchMemory" :disabled="searching">🔍</button>
+          <button class="search-btn" @click="searchMemory" :disabled="searching">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
         </div>
         <div class="filter-row">
           <input v-model="filterWing" placeholder="Wing" class="filter-input" />
@@ -50,15 +60,21 @@
         <div v-if="selectedMemory" class="selected-memory">
           <strong>Selected:</strong>
           <div class="memory-content">{{ selectedMemory.content }}</div>
-          <button class="pin-btn" @click="pinMemory">📌 Use</button>
+          <button class="pin-btn" @click="pinMemory">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg> Use
+          </button>
         </div>
       </template>
 
       <!-- FILE mode -->
       <template v-if="sourceType === 'file'">
         <div class="file-zone" @click="triggerFileInput">
-          <span v-if="!fileName">📁 Click or drop a file</span>
-          <span v-else class="file-loaded">📄 {{ fileName }}</span>
+          <span v-if="!fileName">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Click or drop a file
+          </span>
+          <span v-else class="file-loaded">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> {{ fileName }}
+          </span>
         </div>
         <input ref="fileInput" type="file" class="hidden-input" @change="handleFileSelect" />
       </template>
@@ -67,12 +83,14 @@
       <template v-if="sourceType === 'url'">
         <div class="url-row">
           <input v-model="urlInput" placeholder="https://example.com/data" class="url-input" @keyup.enter="fetchUrl" />
-          <button class="fetch-btn" @click="fetchUrl" :disabled="fetching">🌐</button>
+          <button class="fetch-btn" @click="fetchUrl" :disabled="fetching">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          </button>
         </div>
         <div v-if="fetching" class="search-status">Loading...</div>
         <div v-if="urlPreview" class="url-preview">
           <button class="result-toggle" @click="urlPreviewExpanded = !urlPreviewExpanded">
-            {{ urlPreviewExpanded ? '▼ Preview' : '▶ Preview' }}
+            <svg :class="['chevron', { expanded: urlPreviewExpanded }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg> Preview
           </button>
           <div v-if="urlPreviewExpanded" class="preview-content">{{ truncate(urlPreview, 500) }}</div>
         </div>
@@ -85,7 +103,9 @@
             <label class="config-label">Project path:</label>
             <div class="path-row">
               <input v-model="projectPath" placeholder="/path/to/project" class="path-input" />
-              <button class="browse-btn" @click="browseProject" title="Browse">📂</button>
+              <button class="browse-btn" @click="browseProject" title="Browse">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+              </button>
             </div>
           </div>
           <div class="config-row inline">
@@ -108,13 +128,15 @@
       </div>
       <template v-if="props.data.result">
         <button class="result-toggle" @click="resultExpanded = !resultExpanded">
-          {{ resultExpanded ? '▼ Result' : '▶ Result' }}
+          <svg :class="['chevron', { expanded: resultExpanded }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 12 15 18 9"/></svg> Result
         </button>
         <div v-if="resultExpanded" class="node-result">
           <div>{{ props.data.result }}</div>
         </div>
       </template>
-      <div v-if="props.data.nodeTimeMs" class="node-time">⏱ {{ props.data.nodeTimeMs }}ms</div>
+      <div v-if="props.data.nodeTimeMs" class="node-time">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> {{ props.data.nodeTimeMs }}ms
+      </div>
     </div>
     <Handle type="source" :position="Position.Bottom" />
   </div>
@@ -133,11 +155,11 @@ interface MemoryResult {
 }
 
 const sourceTypes = [
-  { value: 'text', icon: '📝', label: 'Text' },
-  { value: 'memory', icon: '🧠', label: 'Memory' },
-  { value: 'file', icon: '📁', label: 'File' },
-  { value: 'url', icon: '🌐', label: 'URL' },
-  { value: 'project', icon: '📂', label: 'Project' },
+  { value: 'text', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M16 3h5v5"/><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="14" y2="14"/></svg>', label: 'Text' },
+  { value: 'memory', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 4a4 4 0 0 1 4 4c0 2-1.2 3.5-2 4.5V18h-4v-5.5C8.2 11.5 7 10 7 8a4 4 0 0 1 4-4z"/><path d="M9 20h6"/></svg>', label: 'Memory' },
+  { value: 'file', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>', label: 'File' },
+  { value: 'url', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>', label: 'URL' },
+  { value: 'project', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>', label: 'Project' },
 ];
 
 const props = defineProps<{
@@ -196,18 +218,11 @@ const maxFiles = ref((props.data.config?.maxFiles as number) || 50);
 
 const typeIcon = computed(() => {
   const t = sourceTypes.find(s => s.value === sourceType.value);
-  return t ? t.icon : '📥';
+  return t ? t.icon : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
 });
 
 const isSelected = computed(() => props.selected === true);
-const executionIcon = computed(() => {
-  switch (props.data.executionStatus) {
-    case 'running': return '⏳';
-    case 'completed': return '✅';
-    case 'failed': return '❌';
-    default: return '';
-  }
-});
+const executionIcon = computed(() => '');
 
 function setSourceType(type: string) {
   sourceType.value = type;
@@ -461,4 +476,9 @@ function handleDelete() {
   color: var(--text-primary); border-radius: 4px; padding: 3px 6px; font-size: 12px; text-align: center;
 }
 .project-hint { font-size: 11px; color: var(--text-secondary); font-style: italic; }
+
+.chevron { transition: transform 0.2s; vertical-align: middle; }
+.chevron:not(.expanded) { transform: rotate(-90deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 1s linear infinite; }
 </style>

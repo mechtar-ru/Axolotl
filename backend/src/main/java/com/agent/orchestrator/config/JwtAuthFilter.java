@@ -25,7 +25,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        // Skip JWT filter for public endpoints (except schemas — needs auth for model resolution)
+        // Skip JWT filter for public endpoints (schemas excluded — needs auth for model resolution)
         return path.startsWith("/api/health") ||
                path.startsWith("/api/memory") ||
                path.startsWith("/api/graph") ||
@@ -36,7 +36,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                      FilterChain filterChain) throws ServletException, IOException {
+                                       FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
@@ -48,7 +48,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
         }
-        // If still unauthenticated after filter, SecurityConfig's authorizeHttpRequests will handle 403
         filterChain.doFilter(request, response);
     }
 }

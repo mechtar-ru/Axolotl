@@ -103,7 +103,7 @@ describe('QuickStartDialog', () => {
 
     // Should emit the updated schema
     expect(wrapper.emitted('add-to-canvas')).toBeTruthy()
-    const emitted = wrapper.emitted('add-to-canvas')![0][0] as any
+    const emitted = (wrapper.emitted('add-to-canvas')![0] as any[])[0] as any
     expect(emitted.nodes).toHaveLength(5)
     expect(emitted.edges).toHaveLength(4)
 
@@ -127,7 +127,7 @@ describe('QuickStartDialog', () => {
     wrapper.vm.generate()
     await flushPromises()
 
-    const emitted = wrapper.emitted('add-to-canvas')![0][0] as any
+    const emitted = (wrapper.emitted('add-to-canvas')![0] as any[])[0] as any
     const receiveNode = emitted.nodes.find((n: any) => n.id === 'receive-1')
     expect(receiveNode.data.sourceData).toBe('Build a Sokoban game in Python')
     expect(receiveNode.data.sourceType).toBe('text')
@@ -142,7 +142,7 @@ describe('QuickStartDialog', () => {
     wrapper.vm.generate()
     await flushPromises()
 
-    const emitted = wrapper.emitted('add-to-canvas')![0][0] as any
+    const emitted = (wrapper.emitted('add-to-canvas')![0] as any[])[0] as any
     const verifyNode = emitted.nodes.find((n: any) => n.id === 'verify-1')
     expect(verifyNode.data.validationCriteria).toBe('Build a Sokoban game in Python')
   })
@@ -166,7 +166,7 @@ describe('QuickStartDialog', () => {
   })
 
   it('shows error when createApp returns no id', async () => {
-    vi.mocked(appApi.createApp).mockResolvedValueOnce(null)
+    vi.mocked(appApi.createApp).mockResolvedValueOnce({} as any)
 
     const wrapper = mount(QuickStartDialog, { props: { visible: true, appId: '' } })
     await flushPromises()

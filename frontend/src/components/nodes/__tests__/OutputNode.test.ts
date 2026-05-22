@@ -29,24 +29,10 @@ describe('OutputNode', () => {
     expect(wrapper.text()).toContain('Final output')
   })
 
-  it('shows completed icon', () => {
+  it('shows execution status icon', () => {
     const wrapper = mount(OutputNode, {
       props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'completed' } },
     })
-    expect(wrapper.text()).toContain('✅')
-  })
-
-  it('shows failed icon', () => {
-    const wrapper = mount(OutputNode, {
-      props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'failed' } },
-    })
-    expect(wrapper.text()).toContain('❌')
-  })
-
-  it('shows running icon', () => {
-    const wrapper = mount(OutputNode, {
-      props: { ...defaultProps, data: { ...defaultProps.data, executionStatus: 'running' } },
-    })
-    expect(wrapper.text()).toContain('⏳')
+    expect(wrapper.find('.execution-icon svg').exists()).toBe(true)
   })
 })

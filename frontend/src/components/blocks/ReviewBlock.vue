@@ -20,14 +20,22 @@ const blockIcon = 'M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 01
 </script>
 
 <template>
-  <BlockBase
-    :id="id"
-    :label="data?.label || label || 'Review'"
-    type="review"
-    :color="blockColor"
-    :icon="blockIcon"
-    :status="data?.status"
-    :selected="selected"
-  />
-  <span v-if="iteration" class="iteration-badge">{{ iteration }}</span>
+  <div class="review-block-root">
+    <BlockBase
+      :id="id"
+      :label="data?.label || label || 'Review'"
+      type="review"
+      :color="blockColor"
+      :icon="blockIcon"
+      :status="data?.status"
+      :selected="selected"
+    />
+    <span v-if="iteration" class="iteration-badge">{{ iteration }}</span>
+  </div>
 </template>
+
+<style scoped>
+.review-block-root {
+  position: relative;
+}
+</style>

@@ -43,7 +43,22 @@ Thumbs.db
 backend-next/
 frontend-next/
 
+# Agent skill artifacts
+.claude/
+
 # Auto-generated agent session artifacts
 .opencode/magic-context/
 .opencode/mnemonica/
 .opencode/mnemoria/
+
+# Playwright CLI session data
+.playwright-cli/
+
+# Hermes session artifacts
+.hermes/
+
+# Session memory & design docs
+thoughts/
+
+# Python cache
+scripts/__pycache__/

@@ -78,6 +78,17 @@ async function generate() {
 
     // Create mode: create a blank schema first
     if (createMode.value) {
+      // Check for path conflict before creating
+      try {
+        const pathCheck = await appApi.checkTargetPath(appName.value.trim(), 'CUSTOM')
+        if (pathCheck.exists) {
+          error.value = `Directory "${pathCheck.targetPath}" already exists. Create the app from the Dashboard to choose a conflict resolution strategy.`
+          loading.value = false
+          return
+        }
+      } catch {
+        // Path check failed — proceed anyway, createApp will handle it
+      }
       const created = await appApi.createApp({
         name: appName.value.trim(),
         appType: 'CUSTOM',
@@ -97,7 +108,7 @@ async function generate() {
     // Apply fixed 5-node pipeline: Receive → Review → Agent → Verify → Output
     const description = prompt.value.trim()
 
-    schema.nodes = [
+    schema.nodes = ([
       {
         id: 'receive-1',
         type: 'source' as any,
@@ -107,7 +118,7 @@ async function generate() {
           sourceData: description,
           sourceType: 'text',
           config: { sourceType: 'text' },
-        },
+        } as Record<string, any>,
       },
       {
         id: 'review-1',
@@ -120,7 +131,7 @@ async function generate() {
           maxAutoIterations: 3,
           generatePlan: true,
           config: { premortem: true },
-        },
+        } as Record<string, any>,
       },
       {
         id: 'think-1',
@@ -134,7 +145,7 @@ async function generate() {
           agentType: 'coder',
           enabledTools: ['file_write', 'directory_read', 'file_read', 'bash'],
           config: {},
-        },
+        } as Record<string, any>,
       },
       {
         id: 'verify-1',
@@ -147,7 +158,7 @@ async function generate() {
           maxRewriteRetries: 3,
           config: {},
           validationCriteria: description,
-        },
+        } as Record<string, any>,
       },
       {
         id: 'act-1',
@@ -162,9 +173,9 @@ async function generate() {
           includeVerification: true,
           includeMetrics: true,
           config: {},
-        },
+        } as Record<string, any>,
       },
-    ]
+    ]) as any
 
     schema.edges = [
       { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },

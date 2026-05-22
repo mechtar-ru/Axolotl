@@ -40,8 +40,8 @@ const executionResult = computed(() => {
     
     <!-- App-specific UI -->
     <div class="app-ui-container">
-      <ChatAppUI v-if="appType === 'CHAT'" />
-      <DocAnalyzerAppUI v-else-if="appType === 'ANALYZER'" />
+      <ChatAppUI v-if="appType === 'CHAT'" :execution-result="executionResult" />
+      <DocAnalyzerAppUI v-else-if="appType === 'ANALYZER'" :execution-result="executionResult" />
       <DesignWorkspaceUI v-else-if="appType === 'GAME' || appType === 'GENERATOR'" :app-id="props.appId" :app-type="appType" :execution-result="executionResult" />
       <GenericAppUI v-else :app-type="appType" :execution-result="executionResult" />
     </div>

@@ -48,6 +48,7 @@ public class SchemaService {
     private final LlmService llmService;
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
+    private final PipelineService pipelineService;
 
     private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
     private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
@@ -70,7 +71,8 @@ public class SchemaService {
             SchemaExporter schemaExporter,
             LlmService llmService,
             PlanService planService,
-            ExecutionRepository executionRepository) {
+            ExecutionRepository executionRepository,
+            PipelineService pipelineService) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -81,6 +83,7 @@ public class SchemaService {
         this.llmService = llmService;
         this.planService = planService;
         this.executionRepository = executionRepository;
+        this.pipelineService = pipelineService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -299,32 +302,24 @@ public class SchemaService {
     }
 
     public void resumeExecution(String schemaId, WorkflowSchema schema) {
+        if (schema == null) return;
+        ExecutionRun parentRun = executionRepository.claimPausedRun(schemaId);
+        if (parentRun == null) {
+            log.warn("No paused run found for schema: {}", schemaId);
+            return;
+        }
+        resumeExecution(schemaId, schema, parentRun.getId());
+    }
+
+    public void resumeExecution(String schemaId, WorkflowSchema schema, String parentRunId) {
         if (schema == null) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
         }
 
-        ExecutionRun parentRun =
-                executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
-        if (parentRun == null) {
-            log.warn("No paused run found for schema: {}", schemaId);
-            return;
-        }
-
-        if (executionRepository.hasActiveRun(schemaId)) {
-            // If there is an active run, allow resume only when there is no *running* run
-            // and the only active run is the paused parent we just fetched. This permits
-            // resuming a paused run while still protecting against concurrent running runs.
-            ExecutionRun running = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "running");
-            if (running != null) {
-                log.warn("Schema {} already has an active running run ({}), cannot resume", schemaId, running.getId());
-                return;
-            }
-        }
-
         // Get parent node executions
         List<NodeExecution> parentNodeExecs =
-                executionRepository.getNodeExecutionsByRun(parentRun.getId());
+                executionRepository.getNodeExecutionsByRun(parentRunId);
 
         // Create child run
         String childRunId = UUID.randomUUID().toString();
@@ -333,7 +328,7 @@ public class SchemaService {
         childRun.setSchemaId(schemaId);
         childRun.setStatus("running");
         childRun.setMode("EXECUTE");
-        childRun.setResumesFrom(parentRun.getId());
+        childRun.setResumesFrom(parentRunId);
         childRun.setStartedAt(Instant.now().toString());
         childRun.setUpdatedAt(Instant.now().toString());
         executionRepository.createRun(childRun);
@@ -347,7 +342,7 @@ public class SchemaService {
             currentConfigHashes.put(node.getId(), computeConfigHash(node, schema));
         }
 
-        // Reset node statuses and create NodeExecution records
+        // Reset node statuses and create NodeExecution records (use runtime state, not schema entity mutations)
         for (Node node : schemaNodes) {
             String currentHash = currentConfigHashes.get(node.getId());
             NodeExecution matched = parentNodeExecs.stream()
@@ -369,11 +364,9 @@ public class SchemaService {
                 newNodeExec.setOutputSummary(matched.getOutputSummary());
                 newNodeExec.setConfigHash(currentHash);
                 newNodeExec.setCompletedAt(Instant.now().toString());
-                node.setStatus(Node.NodeStatus.COMPLETED);
             } else {
                 newNodeExec.setStatus("pending");
                 newNodeExec.setConfigHash(currentHash);
-                node.setStatus(Node.NodeStatus.IDLE);
             }
             executionRepository.createNodeExecution(newNodeExec);
 
@@ -386,13 +379,19 @@ public class SchemaService {
         }
 
         log.info("Resuming schema {}: parentRun={}, childRun={}, {} nodes",
-                schemaId, parentRun.getId(), childRunId, schemaNodes.size());
+                schemaId, parentRunId, childRunId, schemaNodes.size());
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(schemaId, cancelFlag);
         nodeExecutor.setCurrentRunId(schemaId, childRunId);
         CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> executeWorkflow(schema, cancelFlag, childRunId), executionExecutor);
+                () -> executeWorkflow(schema, cancelFlag, childRunId), executionExecutor)
+            .whenComplete((result, ex) -> {
+                if (ex != null) {
+                    log.error("Resume execution failed for schema {}: {}", schemaId, ex.getMessage(), ex);
+                    executionRepository.releasePausedRun(schemaId);
+                }
+            });
         runningExecutions.put(schemaId, future);
     }
 
@@ -470,33 +469,73 @@ public class SchemaService {
         nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
                 .put(approvedKey, "true");
 
+        // Atomically claim the paused run — prevents TOCTOU on concurrent approve
+        ExecutionRun claimed = executionRepository.claimPausedRun(executionId);
+        if (claimed == null) {
+            log.warn("No paused run found for schema {} (may have been claimed by another request)", executionId);
+            return;
+        }
+
+        if ("PIPELINE".equals(claimed.getMode())) {
+            log.info("Pipeline review approved for schema {}, run {} node {}", executionId, claimed.getId(), nodeId);
+            try {
+                pipelineService.resumePipeline(executionId, claimed.getId());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(executionId, "info",
+                            "Plan approved, resuming pipeline execution", nodeId);
+                    webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                            Map.of("nodeId", nodeId, "status", "RUNNING"));
+                }
+            } catch (Exception e) {
+                log.error("Failed to resume pipeline for schema {}: {}", executionId, e.getMessage(), e);
+                executionRepository.updateRunStatus(claimed.getId(), "paused",
+                        "Resume failed: " + e.getMessage());
+            }
+            return;
+        }
+
+        // Non-pipeline (EXECUTE mode) — handle through NodeRouter resume
         WorkflowSchema schema = schemaRepository.findById(executionId);
         if (schema == null) {
             log.warn("Approval requested for non-existent schema: {}", executionId);
+            // Revert the claim so the run is not stuck in 'resuming'
+            executionRepository.updateRunStatus(claimed.getId(), "paused", null);
             return;
         }
-        if (schema.getNodes() != null) {
-            for (Node node : schema.getNodes()) {
-                if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
-                    node.setStatus(Node.NodeStatus.IDLE);
-                    log.info("Review node {} approved, resuming execution", nodeId);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(executionId, "info",
-                                "Plan approved, resuming execution", nodeId);
-                        webSocketHandler.sendLiveUpdate(executionId, "review_approved",
-                                Map.of("nodeId", nodeId, "status", "RUNNING"));
-                    }
-                    break;
-                }
-            }
+        log.info("Review node {} approved, resuming execution", nodeId);
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(executionId, "info",
+                    "Plan approved, resuming execution", nodeId);
+            webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                    Map.of("nodeId", nodeId, "status", "RUNNING"));
         }
-        resumeExecution(executionId, schema);
+        // pass the already-claimed run so resumeExecution skips claimPausedRun
+        resumeExecution(executionId, schema, claimed.getId());
     }
 
     /**
      * Handle review rejection — fail the node.
      */
     public void handleReviewReject(String executionId, String nodeId) {
+        List<ExecutionRun> runs = executionRepository.getRunsBySchema(executionId);
+        ExecutionRun pipelineRun = runs.stream()
+                .filter(r -> "PIPELINE".equals(r.getMode()) && "paused".equals(r.getStatus()))
+                .findFirst().orElse(null);
+        if (pipelineRun != null) {
+            log.info("Pipeline review rejected for schema {}, run {} node {}", executionId, pipelineRun.getId(), nodeId);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(executionId, "error",
+                        "Plan rejected by user, pipeline failed: " + nodeId, nodeId);
+                Map<String, Object> payload = new HashMap<>();
+                payload.put("nodeId", nodeId);
+                payload.put("status", "FAILED");
+                payload.put("error", "Plan rejected by user");
+                webSocketHandler.sendLiveUpdate(executionId, "review_rejected", payload);
+            }
+            executionRepository.updateRunStatus(pipelineRun.getId(), "failed", "User rejected review at " + nodeId);
+            return;
+        }
+
         WorkflowSchema schema = schemaRepository.findById(executionId);
         if (schema != null && schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
@@ -731,8 +770,12 @@ public class SchemaService {
             } catch (Exception e) {
                 log.warn("Failed to persist schema after cancellation: {}", e.getMessage(), e);
             }
-            executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
-            recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
+            try {
+                executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
+                recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
+            } catch (Exception e) {
+                log.warn("Failed to persist cancellation record: {}", e.getMessage(), e);
+            }
         } else {
             if (webSocketHandler != null) {
                 webSocketHandler.sendComplete(schema.getId(), totalTime, nodesCompleted);
@@ -774,8 +817,12 @@ public class SchemaService {
                 }
             }
 
-                executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
-            recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
+            try {
+                    executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
+                recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
+            } catch (Exception e) {
+                log.warn("Failed to persist completion record: {}", e.getMessage(), e);
+            }
         }
     }
 
@@ -1049,8 +1096,8 @@ public class SchemaService {
         String global = settingsService.getGlobalDefaultModel();
         log.debug("resolveModel: global='{}'", global);
         if (global != null && !global.isBlank()) return global;
-        log.warn("resolveModel: all fallbacks exhausted, returning null");
-        return null;
+        log.warn("resolveModel: all fallbacks exhausted, using hardcoded default");
+        return "deepseek-v4-flash-free";
     }
 
     // ────────────────────────── Prompt-to-Schema Generation ──────────────────────────

@@ -28,7 +28,7 @@ spring:
     uri: ${NEO4J_URI:bolt://localhost:7687}
     authentication:
       username: ${NEO4J_USERNAME:neo4j}
-      password: ${NEO4J_PASSWORD:neo4j}
+      password: ${NEO4J_PASSWORD:axolotl2026}
 
 axolotl:
   apps:
@@ -43,7 +43,7 @@ axolotl:
     zen:
       base-url: https://opencode.ai/zen/v1
       api-key: ${ZEN_API_KEY:}
-      default-model: big-pickle
+      default-model: deepseek-v4-flash-free
       timeout: 3600
   mcp:
     enabled: true
@@ -80,3 +80,4 @@ logging:
     com.agent.orchestrator: DEBUG
     org.springframework.web: INFO
     org.springframework.data.neo4j.cypher.deprecation: ERROR
+    org.springframework.data.neo4j.cypher.unrecognized: ERROR

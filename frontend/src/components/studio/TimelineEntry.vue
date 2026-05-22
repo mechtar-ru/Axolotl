@@ -24,11 +24,15 @@ defineEmits<{
 const parsedChecks = computed(() => {
   try {
     const details = props.event.details
-    if (!details) return []
+    if (!details) return [] as any[]
     const parsed = JSON.parse(details)
-    return parsed.checks || []
+    const checks = parsed.checks || []
+    if (checks.length > 0) return checks
+    // If JSON parsed but has no 'checks' key, use the full object as fallback
+    return [{ name: parsed.summary || 'Unknown', passed: parsed.status === 'PASS' }]
   } catch {
-    return []
+    // Not valid JSON — show raw details as a single unpased check
+    return [{ name: props.event.details.slice(0, 100), passed: undefined }]
   }
 })
 </script>
@@ -44,9 +48,9 @@ const parsedChecks = computed(() => {
         <span class="timeline-time">{{ timestamp }}</span>
       </div>
       <div v-if="event.blockType === 'verifier' && event.details" class="verifier-details">
-        <div class="verifier-detail-row" v-for="check in parsedChecks" :key="check.name">
-          <span :class="['check-status', check.passed ? 'pass' : 'fail']">
-            {{ check.passed ? '✓' : '✗' }}
+        <div class="verifier-detail-row" v-for="check in parsedChecks" :key="check.name || Math.random()">
+          <span :class="['check-status', check.passed === true ? 'pass' : check.passed === false ? 'fail' : 'unknown']">
+            {{ check.passed === true ? '✓' : check.passed === false ? '✗' : '?' }}
           </span>
           <span class="check-name">{{ check.name }}</span>
         </div>
@@ -136,6 +140,7 @@ const parsedChecks = computed(() => {
 
 .check-status.pass { color: var(--success); }
 .check-status.fail { color: var(--error); }
+.check-status.unknown { color: var(--text-muted); }
 
 .review-details {
   margin-top: var(--space-2);

@@ -1,14 +1,26 @@
-# Evolve Manifest
-# Records each component edit with prediction
+# OpenCode Harness Manifest
+# Components for autonomous testing and automation
 
-edits:
-  - id: "evolve-1777890144425"
-    type: "improvement"
-    description: "Add retry for bash timeout"
-    files: [[harness/middleware/retry.py]]
-    prediction:
-      fixes: []
-      regresses: []
-    rationale: "Terminal-Bench logs show 3 bash timeouts"
-    status: "pending"
+version: "1.0"
+description: "Opencode integration harness for Axolotl end-to-end testing"
 
+components:
+  middleware:
+    - id: playwright_mcp
+      type: mcp_server
+      language: python
+      entry: harness/middleware/playwright_mcp/server.py
+      port: 3001
+      description: "Browser automation via Playwright"
+
+  tool_specs:
+    - id: tools.yaml
+      description: "AI agent tool specifications"
+
+  sub_agents:
+    - id: agent-specs
+      description: "Sub-agent configuration templates"
+
+  skills:
+    - id: test-writer
+      description: "Playwright test generation and execution"

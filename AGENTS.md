@@ -6,17 +6,19 @@ Quick reference for AI agents working in this repository.
 
 ### Backend Dev (prefer this over manual)
 ```bash
-scripts/dev.sh start        # Compile + start backend (kills old)
-scripts/dev.sh stop         # Kill backend
-scripts/dev.sh logs [N]     # Tail last N lines
-scripts/dev.sh execute ID   # Execute schema
+scripts/dev.sh start          # Compile + start backend in background
+scripts/dev.sh start-fg       # Compile + start backend in foreground
+scripts/dev.sh stop           # Kill backend
+scripts/dev.sh logs [N]       # Tail last N lines from /tmp/axolotl-backend.log
+scripts/dev.sh execute ID     # Execute schema (POST /api/schemas/{id}/execute)
+scripts/dev.sh frontend       # Start Vite frontend in background
 scripts/update-graph.sh [path]  # Load/update codebase in Neo4j graph
 scripts/setup-graph-hook.sh   # Install git hook to auto-update graph on commit
 ```
 
 ### Manual Backend
 ```bash
-cd backend && mvn spring-boot:run  # Port :8080 (or 8082)
+cd backend && mvn spring-boot:run -Dserver.port=8082  # Port :8082 only
 cd backend && mvn compile
 ```
 
@@ -28,13 +30,20 @@ cd frontend && npm run type-check   # vue-tsc
 
 ### Python Scripts (always use venv)
 ```bash
-source .venv/bin/activate
-python3 scripts/api.py GET /api/plan          # Generic REST call
-python3 scripts/api.py execute <schema-id>    # Execute a schema
-python3 scripts/api.py wait <schema-id>       # Poll until execution completes
-python3 scripts/api.py results <schema-id>    # Show node execution results (outputSummary)
-python3 scripts/api.py nodes <schema-id>      # Show node configs (type, model, tools)
-python3 scripts/api.py add-task "Title" "Desc"  # Quick add plan task via MCP
+# First time setup:
+python3 -m venv .venv               # Create virtual environment (one-time)
+source .venv/bin/activate            # Activate it
+
+# Available commands:
+python3 scripts/api.py login                              # Auth + cache token
+python3 scripts/api.py GET /api/plan                      # Generic REST call
+python3 scripts/api.py POST /api/schemas @body.json       # @file syntax for JSON bodies
+python3 scripts/api.py execute <schema-id>                # Execute a schema
+python3 scripts/api.py wait <schema-id>                   # Poll until execution completes
+python3 scripts/api.py results <schema-id>                # Show node execution results (outputSummary)
+python3 scripts/api.py nodes <schema-id>                  # Show node configs (type, model, tools)
+python3 scripts/api.py add-task "Title" "Desc"            # Quick add plan task via MCP
+python3 scripts/api.py mcp <tool> '{"arg": "value"}'     # Direct MCP tool call
 ```
 
 ## Critical Patterns
@@ -53,10 +62,10 @@ python3 scripts/api.py add-task "Title" "Desc"  # Quick add plan task via MCP
   source .venv/bin/activate
   python3 scripts/api.py GET /api/schemas
   ```
-- Default `AXOLOTL_URL` is now `http://localhost:8082` (was 8080)
 
-### Database Architecture
-- **Neo4j** — primary storage for schemas, plans, execution history, code graph, auth
+### WebSocket
+- Connect to `ws://localhost:8082/ws/execution?schemaId={id}`
+- Events: `progress`, `log`, `result`, `error`, `complete`, `metrics`, `paused`
 
 ### Task Management
 - **NEVER edit plan.json directly** - use Plan API or MCP
@@ -81,29 +90,60 @@ curl -s -X POST http://localhost:8082/mcp -H "Content-Type: application/json" \
 source .venv/bin/activate && python3 scripts/api.py add-task "Title" "description"
 ```
 
-### WebSocket
-- Connect to `ws://localhost:8080/ws/execution?schemaId={id}`
-- Events: `progress`, `log`, `result`, `error`, `complete`, `metrics`
+### Quick Start — Fixed Pipeline
+
+Quick Start creates schemas with a **fixed pipeline template**: Receive → Review → Agent (think with tools) → Verify → Output.
+
+- Presets describe **only the application** (features, UX, behavior), not pipeline instructions
+- Quick Start input resolves to the Receive node as source content (`sourceType: "text"`)
+- When the input describes an application, that description is also passed to the Verify node as verification criteria
+- **`POST /api/schemas/{id}/generate-nodes` is deprecated** — returns an error. Quick Start no longer uses LLM-driven node generation
+- The pipeline template is applied at schema creation time; stages can be configured via the PipelinePanel in Studio
+
+### Database Architecture
+- **Neo4j** — primary storage for schemas, plans, execution history, code graph, auth
 
 ## Architecture
 
 ### Backend (Spring Boot, Java 21)
 - Entry: `backend/src/main/java/com/agent/orchestrator/Application.java`
-- Core: `SchemaService.java` - topological sort, async execution
+- Core services: `SchemaService` (execution orchestration), `PipelineService` (multi-stage pipeline), `NodeRouter` (node type dispatch), `LlmService` (provider routing)
 - WebSocket: `ExecutionWebSocketHandler.java`
 
+### Pipeline System
+
+Multi-stage pipeline execution for complex app generation:
+- **Pipeline** contains named stages with dependencies (topological sort)
+- **Stage types**: agent (code generation), review (plan review), verifier (checks), output (report)
+- **TDD mode**: when `pipeline.tddEnabled=true`, each branch expands to 4 stages: test → verify-test → impl → verify
+- Stage status and outputs persist to Neo4j (`ExecutionRun.stageStatus`, `ExecutionRun.stageOutputs`)
+- **Cross-stage artifact passing**: `Stage.inputMapping` with dot-notation field extraction from upstream stage outputs
+- **Retry from failure**: `POST /api/schemas/{id}/pipeline/retry` creates a child `ExecutionRun` with `resumesFrom`, resets failed+dependent stages, re-executes only those
+- PipelinePanel in Studio sidebar shows per-stage status with Build/Execute/Cancel/Retry buttons
+
+### Node Types
+
+| Type | Label | What It Does |
+|------|-------|--------------|
+| `source` | Receive | Input: text pasted directly, file reference (relative to targetPath), URL fetch, or project dir listing |
+| `agent` | Agent | Tool-enabled LLM with system prompt, model selection, write/read/bash/grep/web tools |
+| `review` | Review | Two-phase plan generation + analysis. Three checks: premortem, prism, postmortem. Three iteration modes: Manual (human gates every iteration), Auto (configurable max N, fails on exceed), Hybrid (auto N, then manual). Uses `ReviewApprovalDialog` with Accept/Edit/Suggest & Regenerate/Reject |
+| `verifier` | Verifier | Runs checks against generated code. Structured JSON verdict `{"status":"PASS"|"FAIL","checks":[...],"summary":"..."}`. Optional auto-rewrite loop up to `maxRewriteRetries` (default 3) |
+| `output` | Output | Collects execution results. Modes: stdout, log, summary_report (writes `pipeline-report.md` to targetPath) |
+
 ### Frontend (Vue 3 + TypeScript)
-- Canvas: `WorkflowCanvas.vue` (Vue Flow)
-- Nodes: `AgentNode.vue`, `SourceNode.vue`, `OutputNode.vue`
-- State: Pinia store `schemaStore.ts`
+- Canvas: `BlueprintView.vue` (Vue Flow), `SchemaPropertiesPanel.vue`
+- Nodes: custom render components per type (ReceiveBlock, ThinkBlock, ReviewBlock, VerifyBlock, OutputBlock)
+- State: Pinia stores `schemaStore.ts`, `settingsStore.ts`
+- Studio: keeps-alive with `onActivated`/`onDeactivated` WebSocket lifecycle; dirty-flag auto-save on blueprint edits
 
 ## Conventions
 
-- Code in English, commits in Russian with emoji prefix
+- Code in English, commits in English with conventional-commits prefixes (`feat:`, `fix:`, `chore:`, `docs:`, etc.)
 - Java: camelCase, SLF4J logging with `LoggerFactory.getLogger(...)`
 - Vue: Composition API with `<script setup lang="ts">`
 - DB: Neo4j
-- `.env` needs: `VITE_API_URL`, `VITE_WS_URL`, `JWT_SECRET`
+- `.env` needs: `VITE_API_URL=http://localhost:8082/api`, `VITE_WS_URL=ws://localhost:8082/ws/execution`, `JWT_SECRET`
 
 ## Execution Result Persistence
 
@@ -119,15 +159,16 @@ Execution results (node outputs, review findings, errors) are persisted to Neo4j
 
 | Model | Neo4j Label | DB Fields | Description |
 |-------|-------------|-----------|-------------|
-| `ExecutionRun` | `ExecutionRun` | id, schemaId, status, mode, totalTokens, estimatedCost, error, timestamps | One per schema execution |
+| `ExecutionRun` | `ExecutionRun` | id, schemaId, status, mode, totalTokens, estimatedCost, error, timestamps, stageStatus, stageOutputs, resumesFrom | One per schema execution |
 | `NodeExecution` | `NodeExecution` | id, runId, nodeId, nodeType, status, tokensUsed, durationMs, toolCalls, error, **outputSummary**, inputSummary, filesWritten, configHash, timestamps | One per node per run |
 
 ### For AI Agents
 
 - **Reading persisted results**: `GET /api/schemas/{id}/runs/{runId}/nodes` returns all `NodeExecution` records for a run, each with `outputSummary` containing the node result JSON
+- **Latest run**: `GET /api/schemas/{id}/runs/latest` returns the most recent `ExecutionRun` (use its `id` to fetch nodes)
 - **Review node results**: The full review output (status, findings, summary, plan, mode, finalResult) is stored in `outputSummary` as JSON — survives page reloads
 - **Error state**: Failed nodes have status `"failed"` and their error message in the `error` field
-- **Frontend**: Currently reads node results from in-memory `schemaStore`; to show persisted results after reload, fetch from `/api/schemas/{id}/runs/latest/nodes`
+- **Pipeline stage status**: `ExecutionRun.stageStatus` is a `Map<String,String>` with stage-level status (`pending`/`running`/`completed`/`failed`/`paused`)
 
 ## Neo4j Graph Storage
 
@@ -198,10 +239,10 @@ axolotl:
 Результаты всех сессий для одного приложения пишутся в:
 
 ```
-/Users/evgenijtihomirov/git/Axolotl/{schema-name}/
+{project-root}/{schema-name}/
 ```
 
-Где `{schema-name}` — имя схемы (WorkflowSchema.name), указанное при создании.
+Где `{project-root}` — корень проекта (Axolotl), а `{schema-name}` — имя схемы (WorkflowSchema.name). Путь доступен как `targetPath` в свойствах схемы.
 
 ### Правила для агентов
 
@@ -255,9 +296,6 @@ Plan-задачи создаются автоматически при запу�
 - **CONTINUE** — дописывать в существующую директорию (используй для новой сессии)
 - **OVERWRITE** — очистить директорию и начать заново (используй для перезапуска)
 - **CHANGE_PATH** — указать другой путь
-
-WebSocket (ws://localhost:8080/ws/execution?schemaId={id})
-- Events: `progress`, `log`, `result`, `error`, `complete`, `metrics`
 
 ### Agent Workflow: Test Dirs for Implementing Changes
 

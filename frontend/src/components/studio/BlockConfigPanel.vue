@@ -38,14 +38,19 @@ const fileInputRef = ref<HTMLInputElement>()
 const dirInputRef = ref<HTMLInputElement>()
 
 // Determine config sections based on block type
-const showModelSelector = computed(() => ['agent', 'review', 'verifier'].includes(blockType.value))
-const showPrompt = computed(() => blockType.value === 'agent')
-const showMemoryType = computed(() => blockType.value === 'memory')
-const showActionType = computed(() => blockType.value === 'output')
-const showInputType = computed(() => blockType.value === 'source')
-const showVerifierConfig = computed(() => blockType.value === 'verifier')
-const showReviewConfig = computed(() => blockType.value === 'review')
-const showAutoConfig = computed(() => blockType.value === 'review' && (reviewMode.value === 'auto' || reviewMode.value === 'hybrid'))
+const typeSections = computed(() => {
+  const t = blockType.value
+  return {
+    model: ['agent', 'review', 'verifier'].includes(t),
+    prompt: t === 'agent',
+    memory: t === 'memory',
+    action: t === 'output',
+    input: t === 'source',
+    verifier: t === 'verifier',
+    review: t === 'review',
+    auto: t === 'review' && (reviewMode.value === 'auto' || reviewMode.value === 'hybrid'),
+  }
+})
 
 const syntaxCheck = ref(true)
 const requiredPatterns = ref<string[]>([])
@@ -66,12 +71,24 @@ const providerGroups = computed(() => {
   const groups: Record<string, { value: string; label: string }[]> = {}
   for (const opt of providerOptions.value) {
     if (!groups[opt.group]) groups[opt.group] = []
-    groups[opt.group].push({ value: opt.value, label: opt.label })
+    groups[opt.group]!.push({ value: opt.value, label: opt.label })
   }
   return groups
 })
 
-onMounted(async () => {
+onMounted(() => loadProviders())
+
+// Module-level cache: fetch providers once per 30s instead of on every block click
+let cachedProviders: { value: string; label: string; group: string }[] | null = null
+let providersLastFetch = 0
+const PROVIDERS_CACHE_TTL = 30000
+
+async function loadProviders() {
+  const now = Date.now()
+  if (cachedProviders && (now - providersLastFetch) < PROVIDERS_CACHE_TTL) {
+    providerOptions.value = cachedProviders
+    return
+  }
   try {
     const providers = await settingsApi.getProviders()
     const opts: { value: string; label: string; group: string }[] = []
@@ -88,10 +105,12 @@ onMounted(async () => {
       }
     }
     providerOptions.value = opts
+    cachedProviders = opts
+    providersLastFetch = Date.now()
   } catch {
     providerOptions.value = []
   }
-})
+}
 
 const requiredPatternsText = computed({
   get: () => requiredPatterns.value.join('\n'),
@@ -100,10 +119,39 @@ const requiredPatternsText = computed({
   }
 })
 
+function resetRefs() {
+  blockLabel.value = ''
+  blockDescription.value = ''
+  model.value = ''
+  prompt.value = ''
+  blockType.value = 'agent'
+  sourceType.value = 'text'
+  sourceContent.value = ''
+  filePath.value = ''
+  url.value = ''
+  projectPath.value = ''
+  maxDepth.value = 4
+  maxFiles.value = 50
+  syntaxCheck.value = true
+  requiredPatterns.value = []
+  testCommand.value = ''
+  maxFileSizeKb.value = 500
+  reviewPremortem.value = true
+  reviewPrism.value = false
+  reviewPostmortem.value = false
+  reviewMode.value = 'manual'
+  reviewMaxIterations.value = 3
+  reviewMaxAutoIterations.value = 3
+  reviewGeneratePlan.value = true
+}
+
 // Populate form fields when the panel opens for a different block
 // NOTE: must be after all ref() declarations to avoid TDZ errors
 watch(() => props.blockId, () => {
-  if (!node.value) return
+  if (!node.value) {
+    resetRefs()
+    return
+  }
   blockLabel.value = (node.value.data?.label as string) || ''
   blockType.value = (node.value.type as string) || (node.value.data?.type as string) || 'agent'
   const config = (node.value.data?.config as Record<string, any>) || {}
@@ -143,7 +191,7 @@ function browseFilePath() {
 function onFilePicked(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
-  const name = input.files[0].name
+  const name = input.files[0]!.name
   filePath.value = name
   saveConfig()
   input.value = ''
@@ -156,7 +204,7 @@ function browseProjectDir() {
 function onDirPicked(e: Event) {
   const input = e.target as HTMLInputElement
   if (!input.files?.length) return
-  const file = input.files[0]
+  const file = input.files[0]!
   projectPath.value = file.webkitRelativePath?.split('/')[0] || file.name
   saveConfig()
   input.value = ''
@@ -196,7 +244,7 @@ function saveConfig() {
   }
 
   // Verifier-specific config
-  if (showVerifierConfig.value) {
+  if (typeSections.value.verifier) {
     const checks = {
       syntaxCheck: syntaxCheck.value,
       requiredPatterns: requiredPatterns.value,
@@ -209,7 +257,7 @@ function saveConfig() {
   }
 
   // Review-specific config
-  if (showReviewConfig.value) {
+  if (typeSections.value.review) {
     const checks = {
       premortem: reviewPremortem.value,
       prism: reviewPrism.value,
@@ -250,7 +298,7 @@ function saveConfig() {
           maxFiles: maxFiles.value,
         })
       }
-      if (showVerifierConfig.value) {
+      if (typeSections.value.verifier) {
         baseData.config = {
           ...baseData.config,
           checks: {
@@ -261,7 +309,7 @@ function saveConfig() {
           },
         }
       }
-      if (showReviewConfig.value) {
+      if (typeSections.value.review) {
         baseData.config = {
           ...baseData.config,
           checks: {
@@ -333,7 +381,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Input Type / Source Type (Receive blocks) -->
-      <div v-if="showInputType" class="config-section">
+      <div v-if="typeSections.input" class="config-section">
         <label class="config-label">Input Type</label>
         <select v-model="sourceType" class="config-select" @change="saveConfig">
           <option value="text">Chat / Text</option>
@@ -344,7 +392,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Text mode -->
-      <div v-if="showInputType && sourceType === 'text'" class="config-section">
+      <div v-if="typeSections.input && sourceType === 'text'" class="config-section">
         <label class="config-label">Source Content</label>
         <textarea
           v-model="sourceContent"
@@ -356,7 +404,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- File Reference mode -->
-      <div v-if="showInputType && sourceType === 'file'" class="config-section">
+      <div v-if="typeSections.input && sourceType === 'file'" class="config-section">
         <label class="config-label">File Path</label>
         <div class="path-row">
           <input
@@ -379,7 +427,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- URL Fetch mode -->
-      <div v-if="showInputType && sourceType === 'url'" class="config-section">
+      <div v-if="typeSections.input && sourceType === 'url'" class="config-section">
         <label class="config-label">URL</label>
         <div class="url-row">
           <input
@@ -400,7 +448,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Project Directory mode -->
-      <div v-if="showInputType && sourceType === 'project'" class="config-section">
+      <div v-if="typeSections.input && sourceType === 'project'" class="config-section">
         <label class="config-label">Project Path</label>
         <div class="path-row">
           <input
@@ -430,7 +478,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Model Selector (Think blocks) -->
-      <div v-if="showModelSelector" class="config-section">
+      <div v-if="typeSections.model" class="config-section">
         <label class="config-label">Model</label>
         <select v-model="model" class="config-select">
           <option value="">Auto (user default)</option>
@@ -443,7 +491,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Prompt (Think blocks) -->
-      <div v-if="showPrompt" class="config-section">
+      <div v-if="typeSections.prompt" class="config-section">
         <label class="config-label">System Prompt</label>
         <textarea
           v-model="prompt"
@@ -455,7 +503,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Memory Type (Remember blocks) -->
-      <div v-if="showMemoryType" class="config-section">
+      <div v-if="typeSections.memory" class="config-section">
         <label class="config-label">Memory Type</label>
         <select v-model="blockType" class="config-select">
           <option value="memory">Chat History</option>
@@ -465,7 +513,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Verification Checks (Verify blocks) -->
-      <div v-if="showVerifierConfig" class="config-section">
+      <div v-if="typeSections.verifier" class="config-section">
         <label class="config-label">Verification Checks</label>
 
         <label class="config-checkbox">
@@ -513,7 +561,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Review Checks (Review blocks) -->
-      <div v-if="showReviewConfig" class="config-section">
+      <div v-if="typeSections.review" class="config-section">
         <label class="config-label">Review Checks</label>
 
         <label class="config-checkbox">
@@ -553,7 +601,7 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <!-- Auto-iteration config: only shown for auto/hybrid -->
-        <template v-if="showAutoConfig">
+        <template v-if="typeSections.auto">
           <div class="config-field">
             <label class="config-label">Max Auto Iterations</label>
             <input
@@ -574,7 +622,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Action Type (Act blocks) -->
-      <div v-if="showActionType" class="config-section">
+      <div v-if="typeSections.action" class="config-section">
         <label class="config-label">Action Type</label>
         <select v-model="blockType" class="config-select">
           <option value="output">Reply / Output</option>

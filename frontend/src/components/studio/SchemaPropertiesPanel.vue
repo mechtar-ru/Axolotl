@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { storeToRefs } from 'pinia'
 import { settingsApi } from '@/services/api'
@@ -15,6 +15,20 @@ const { currentSchema } = storeToRefs(schemaStore)
 
 const isEditingPath = ref(false)
 
+// Debounced saves for rapid input (name, description)
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+let isAlive = true
+onUnmounted(() => { isAlive = false; if (saveTimeout) clearTimeout(saveTimeout) })
+
+function debounceMarkDirty(data: any) {
+  if (saveTimeout) clearTimeout(saveTimeout)
+  saveTimeout = setTimeout(() => {
+    if (!isAlive) return
+    schemaStore.markDirty(data)
+    saveTimeout = null
+  }, 400)
+}
+
 // ─── Model dropdown ──────────────────────────────────────────────
 const providerOptions = ref<{ value: string; label: string; group: string }[]>([])
 
@@ -22,7 +36,7 @@ const providerGroups = computed(() => {
   const groups: Record<string, { value: string; label: string }[]> = {}
   for (const opt of providerOptions.value) {
     if (!groups[opt.group]) groups[opt.group] = []
-    groups[opt.group].push({ value: opt.value, label: opt.label })
+    groups[opt.group]!.push({ value: opt.value, label: opt.label })
   }
   return groups
 })
@@ -54,12 +68,12 @@ const defaultModel = computed(() => currentSchema.value?.defaultModel || '')
 // ─── Actions ─────────────────────────────────────────────────────
 function updateName(value: string) {
   if (!currentSchema.value) return
-  schemaStore.markDirty({ ...currentSchema.value, name: value })
+  debounceMarkDirty({ ...currentSchema.value, name: value })
 }
 
 function updateDescription(value: string) {
   if (!currentSchema.value) return
-  schemaStore.markDirty({ ...currentSchema.value, description: value })
+  debounceMarkDirty({ ...currentSchema.value, description: value })
 }
 
 function updateDefaultModel(value: string) {

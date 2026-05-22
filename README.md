@@ -10,6 +10,7 @@ Axolotl is a high-performance, graph-based execution engine designed for complex
 
 - **Graph-Based Execution**: Directed Acyclic Graph (DAG) execution with topological sorting and parallel wave processing.
 - **Multi-Agent Orchestration**: Specialized node types for Agents, Verifiers, Reviewers, and Schema Builders.
+- **Multi-Stage Pipelines**: Declarative pipelines with stage-level execution, persistence, retry from failure, and cross-stage artifact passing.
 - **Real-Time Observability**: Token-by-token streaming, live tool-call monitoring, and per-node execution metrics via WebSocket.
 - **Extensible Tooling**: Built-in support for filesystem operations, git, bash, web search, and custom MCP (Model Context Protocol) tools.
 - **Persistence**: Neo4j for all operational data, codebase analysis, and execution history.
@@ -17,17 +18,19 @@ Axolotl is a high-performance, graph-based execution engine designed for complex
 
 ## 🏗️ Architecture
 
-### Backend (Java 21 / Spring Boot 3.2)
-- **Execution Engine**: Strategy-based routing (`NodeRouter`) that delegates execution to specialized handlers (`AgentNodeStrategy`, `VerifierNodeStrategy`, etc.).
-- **LLM Abstraction**: Unified interface for OpenAI, Anthropic, DeepSeek, Ollama, and custom OpenAI-compatible providers.
+### Backend (Java 21 / Spring Boot 3.3)
+- **Pipelines**: `PipelineService` orchestrates multi-stage execution with topological sort, pause/resume, and retry from failure. Stages run linearly; branches within a stage run in parallel.
+- **Execution Engine**: `NodeRouter` delegates execution to specialized strategy handlers (`AgentNodeStrategy`, `VerifierNodeStrategy`, `ReviewNodeStrategy`, etc.).
+- **LLM Abstraction**: Unified interface (`LlmService`) routing to OpenAI, Anthropic, DeepSeek, Zen, Ollama, and custom OpenAI-compatible providers. Model lists fetched dynamically from each provider API.
 - **Code Graph**: Neo4j-backed AST analysis for context curation and hash-anchored code edits.
-- **Persistence**: 
-  - **Neo4j**: All operational data, codebase graph, execution runs, and long-term history.
+- **Persistence**: Neo4j for schema definitions, execution runs, node results, provider settings, auth, and codebase graph.
 
-### Frontend (Vue 3 / TypeScript)
-- **Studio**: Infinite canvas powered by `VueFlow` for visual programming.
-- **Live View**: Real-time execution dashboard with streaming logs and timeline visualization.
-- **Block Palette**: Modular components for rapid pipeline construction.
+### Frontend (Vue 3 + TypeScript)
+- **Studio**: Infinite canvas (`VueFlow`) for visual pipeline design with Schema Properties panel.
+- **Block Palette**: Modular node components for pipeline construction (Receive, Agent, Review, Verify, Output).
+- **Live Overlay**: Execution status, logs, and results shown as overlay on the blueprint view.
+- **Pipeline Panel**: Sidebar with Build/Execute/Cancel/Retry controls and per-stage status.
+- **Dashboard**: App management with recently opened tracking, collapsible sections, search.
 
 ### Desktop (Electron)
 - Cross-platform desktop application bundling the Spring Boot backend for local-first development.
@@ -41,6 +44,7 @@ electron/         # Desktop wrapper
 scripts/          # Dev lifecycle and graph management utilities
 docs/             # VitePress documentation
 templates/        # Pre-configured workflow blueprints
+harness/          # OpenCode integration harness (MCP servers, test tools, skills)
 ```
 
 ## 🛠️ Getting Started
@@ -116,16 +120,24 @@ node --version
 
 ### Quick Start (Dev Mode)
 
-**1. Start the backend:**
+**1. Start Neo4j:**
+
+```bash
+# Using Docker (recommended)
+docker run --name axolotl-neo4j -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/password -d neo4j:5
+```
+
+**2. Start the backend:**
 
 ```bash
 cd backend
-mvn spring-boot:run
+mvn spring-boot:run -Dserver.port=8082
 ```
 
 The backend starts on `http://localhost:8082` by default.
 
-**2. In another terminal, start the frontend:**
+**3. In another terminal, start the frontend:**
 
 ```bash
 cd frontend
@@ -135,23 +147,15 @@ npm run dev
 
 The frontend starts on `http://localhost:5173` by default.
 
-**3. Open your browser** at `http://localhost:5173` to see the Axolotl Studio.
+**4. Open your browser** at `http://localhost:5173` to see the Axolotl Studio.
 
 ### Default Credentials
 
 When running for the first time, the backend auto-creates a default user:
-- **Email:** `tech@tech.com`
+- **Username:** `tech`
 - **Password:** `tech`
 
-### Running with Docker
-
-For a full production-like environment (backend + frontend + Neo4j):
-
-```bash
-docker-compose up -d
-```
-
-### Environment Variables
+### Configuration
 
 Copy `.env.example` to `.env` in the project root and configure:
 
@@ -159,16 +163,92 @@ Copy `.env.example` to `.env` in the project root and configure:
 |----------|---------|-------------|
 | `VITE_API_URL` | `http://localhost:8082` | Backend API URL |
 | `VITE_WS_URL` | `ws://localhost:8082` | WebSocket URL |
-| `JWT_SECRET` | *(random)* | JWT signing secret |
+| `JWT_SECRET` | *(random)* | JWT signing secret (set a fixed value to persist tokens across restarts) |
 
-### Troubleshooting
+**Provider API keys (set at least one for LLM features):**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZEN_API_KEY` | — | API key for Zen provider |
+| `OPENAI_API_KEY` | — | API key for OpenAI provider |
+| `ANTHROPIC_API_KEY` | — | API key for Anthropic provider |
+| `DEEPSEEK_API_KEY` | — | API key for DeepSeek provider |
+
+**No key required for:** Ollama (local), Custom OpenAI-compatible endpoints (configured via Settings UI).
+
+## 📡 API
+
+### Pipeline API
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/schemas/{id}/pipeline/build` | POST | Build canvas nodes/edges from pipeline template |
+| `/api/schemas/{id}/pipeline/execute` | POST | Execute pipeline (topological order) |
+| `/api/schemas/{id}/pipeline/retry` | POST | Retry pipeline from first failed stage |
+| `/api/schemas/{id}/pipeline/cancel` | POST | Cancel a running pipeline |
+| `/api/schemas/{id}/pipeline/status` | GET | Get run and per-stage status |
+
+Prefer these endpoints over manipulating nodes/edges directly — they enforce execution invariants and persistence.
+
+### Python API Client
+
+```bash
+source .venv/bin/activate          # if using venv
+python3 scripts/api.py login        # authenticate
+python3 scripts/api.py GET /api/schemas
+python3 scripts/api.py POST /api/schemas @schema.json
+python3 scripts/api.py execute <schema-id>
+python3 scripts/api.py wait <schema-id>
+python3 scripts/api.py results <schema-id>
+python3 scripts/api.py mcp add_task '{"title":"...","description":"..."}'
+```
+
+See `scripts/api.py` with no arguments for full usage.
+
+## 🧪 Testing
+
+### E2E Tests (Playwright)
+
+Requires backend running on `:8082` and frontend on `:5173`:
+
+```bash
+cd frontend
+npm run test:e2e
+```
+
+Key test files:
+- `frontend/e2e/pipeline-review.spec.ts` — review → approve → completion via Pipeline Panel
+- `frontend/e2e/studio-persist.spec.ts` — full persistence round-trip for all 5 node types
+
+### Backend Tests
+
+```bash
+cd backend && mvn test
+```
+
+### Frontend Unit Tests
+
+```bash
+cd frontend && npm run test:unit
+```
+
+## 📜 Changelog
+
+Read the root `CHANGELOG.md` for release notes. Maintainers and PR authors should add a one-line entry under `[Unreleased]` for any user-visible change.
+
+## 📖 Additional Documentation
+
+- **`AGENTS.md`** — Quick reference for AI agents and automation patterns (MCP commands, harness scripts, code conventions)
+- **`docs/NEO4J_MIGRATION.md`** — Neo4j integration specification
+- **`CHANGELOG.md`** — Full release history
+
+## 🔧 Troubleshooting
 
 **Port already in use:**
 ```bash
-# Kill any existing backend process
-pkill -f "spring-boot:run"
-# Or change the port
-cd backend && mvn spring-boot:run -Dserver.port=8083
+pkill -f "spring-boot:run"           # Kill backend
+pkill -f "vite"                    # Kill frontend
+cd backend && mvn spring-boot:run -Dserver.port=8083   # Or change port
 ```
 
 **Maven build fails:**
@@ -186,5 +266,13 @@ cd frontend && rm -rf node_modules && npm install --ignore-scripts
 cd frontend && npm install --ignore-scripts
 ```
 
+**Backend won't connect to Neo4j:**
+```bash
+# Verify Neo4j is running
+curl http://localhost:7474
+# Check credentials in backend/src/main/resources/application.yml
+```
+
 ## 📜 License
+
 MIT © 2026 Axolotl Contributors

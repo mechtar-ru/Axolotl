@@ -28,20 +28,50 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function handleResume() {
+  // Re-verify the run is still paused before emitting
+  try {
+    const run = await schemaApi.getPausedRun(props.schemaId)
+    if (!run) {
+      pausedRun.value = null
+      return
+    }
+    pausedRun.value = run
+    emit('resume')
+  } catch {
+    pausedRun.value = null
+  }
+}
+
+async function handleRestart() {
+  // Re-verify before restart too
+  try {
+    const run = await schemaApi.getPausedRun(props.schemaId)
+    pausedRun.value = run
+    emit('restart')
+  } catch {
+    pausedRun.value = null
+  }
+}
 </script>
 
 <template>
   <div v-if="pausedRun && !loading" class="resume-banner">
     <div class="resume-banner__content">
-      <span class="resume-banner__icon">⏸</span>
+      <span class="resume-banner__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+        </svg>
+      </span>
       <div class="resume-banner__text">
         <strong>Выполнение приостановлено</strong>
         <p v-if="pausedRun.error">{{ pausedRun.error }}</p>
       </div>
     </div>
     <div class="resume-banner__actions">
-      <button class="btn btn--primary" @click="emit('resume')">Продолжить</button>
-      <button class="btn btn--secondary" @click="emit('restart')">Запустить заново</button>
+      <button class="btn btn--primary" @click="handleResume">Продолжить</button>
+      <button class="btn btn--secondary" @click="handleRestart">Запустить заново</button>
       <button class="btn btn--ghost" @click="emit('dismiss')">×</button>
     </div>
   </div>

@@ -49,7 +49,7 @@ describe('DashboardView', () => {
       { id: '3', name: 'Game Project', appType: 'GAME', targetPath: '/Users/evgenijtihomirov/git/Axolotl/Game/', nodes: [], edges: [], description: '', version: '1.0' },
     ] as any)
 
-    vi.mocked(appApi.checkTargetPath).mockResolvedValue({ exists: false })
+    vi.mocked(appApi.checkTargetPath).mockResolvedValue({ exists: false, targetPath: '' })
   })
 
   it('renders the header and title', async () => {

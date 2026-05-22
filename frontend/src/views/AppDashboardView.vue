@@ -2,11 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { appApi, historyApi } from '@/services/api'
+import { useSchemaStore } from '@/stores/schemaStore'
 import type { AppInfo } from '@/services/api'
 import type { ExecutionRecord } from '@/services/api'
 
 const route = useRoute()
 const router = useRouter()
+const schemaStore = useSchemaStore()
 const appId = route.params.id as string
 
 const app = ref<AppInfo | null>(null)
@@ -63,6 +65,9 @@ async function handleRename() {
     const updated = await appApi.updateApp(appId, { name: newName.value.trim() })
     app.value = updated
     renameMode.value = false
+    // Sync with schemaStore so dashboard shows new name without reload
+    const schema = schemaStore.schemas.find(s => s.id === appId)
+    if (schema) schema.name = newName.value.trim()
   } catch (e: any) {
     console.error('Failed to rename:', e)
   }
@@ -148,7 +153,7 @@ onMounted(loadApp)
               </div>
               <div v-else key="display" class="rename-wrapper">
                 <h1>{{ app.name }}</h1>
-                <button class="rename-btn" @click="newName = app.name; renameMode = true">✏️ Rename</button>
+                <button class="rename-btn" @click="newName = app.name; renameMode = true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle;margin-right:4px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Rename</button>
               </div>
             </Transition>
           </div>

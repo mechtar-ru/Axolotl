@@ -196,11 +196,15 @@ public class NodeRouter {
             if (node.getData() != null) {
                 node.getData().setResult(result);
             }
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "COMPLETED", 100, "Завершено");
-                webSocketHandler.sendLog(schemaId, "success", "Узел успешно выполнен", node.getId());
+            // Don't override review nodes waiting for human approval
+            boolean isAwaitingApproval = node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL;
+            if (!isAwaitingApproval) {
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendProgress(schemaId, node.getId(), "COMPLETED", 100, "Завершено");
+                    webSocketHandler.sendLog(schemaId, "success", "Узел успешно выполнен", node.getId());
+                }
+                node.setStatus(Node.NodeStatus.COMPLETED);
             }
-            node.setStatus(Node.NodeStatus.COMPLETED);
 
             // Persist result to Neo4j
             if (nodeExecutionId != null) {
@@ -313,6 +317,9 @@ public class NodeRouter {
         int maxIter = node.getData() != null ? node.getData().getMaxIterations() : 10;
         if (maxIter <= 0) maxIter = 10;
 
+        // Fetch schema once before loop instead of per iteration
+        var schema = schemaRepository.findById(schemaId);
+
         int iterations = 0;
         boolean shouldContinue = true;
 
@@ -321,8 +328,7 @@ public class NodeRouter {
             Map<String, Object> ctx = new HashMap<>();
             ctx.put("iterations", iterations);
             ctx.put("maxIterations", maxIter);
-            ctx.putAll(utilityService.collectPredecessorResults(
-                    schemaRepository.findById(schemaId), node.getId()));
+            ctx.putAll(utilityService.collectPredecessorResults(schema, node.getId()));
 
             if (webSocketHandler != null) {
                 int pct = (int) ((iterations / (double) maxIter) * 90);

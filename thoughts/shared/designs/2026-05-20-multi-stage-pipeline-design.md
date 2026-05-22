@@ -124,6 +124,64 @@ A branch is a mini-pipeline within a stage:
 └──────────────────────────────────────────────────────────────┘
 ```
 
+### TDD Test-First Mode
+
+A new schema-level pipeline toggle (`pipeline.tddEnabled`, default: **on** for new pipeline schemas) that changes how the Review node decomposes each branch and how the pipeline expands those branches into stages.
+
+**When `tddEnabled = true`**, each branch expands from 2 stages to 4:
+
+```
+Without TDD:   impl-X → verify-X
+With TDD:      test-X → verify-test-X → impl-X → verify-X
+```
+
+Stage roles:
+
+| Stage | Type | What it does |
+|---|---|---|
+| `test-X` | Agent | Reads scaffold files (`package.json`, `build.gradle.kts`, `Package.swift` etc.) to discover the project's test framework (Jest/pytest/JUnit/XCTest). Writes tests for feature X based on the branch spec. No implementation code. |
+| `verify-test-X` | Verifier | Runs the tests. **Expected: FAIL** (no implementation exists yet). Confirms the test harness is real and captures failure output as context for the implementer. Baseline run is mandatory — not skippable. |
+| `impl-X` | Agent | Receives test files + failure output as context. Writes implementation code to pass the tests. |
+| `verify-X` | Verifier | Runs tests again. **Expected: PASS**. Blocked if impl stage failed. |
+
+**Dependency wiring (TDD mode):**
+
+```
+test-X              → depends on: branch's upstream deps (e.g., finished scaffolds or prior branches)
+verify-test-X       → depends on: test-X
+impl-X              → depends on: test-X         (not on verify-test — parallel with baseline run)
+verify-X            → depends on: impl-X
+```
+
+`impl-X` does not depend on `verify-test-X` because it only needs the test files themselves (written by `test-X`), not the baseline run result. The baseline verification runs in parallel alongside impl setup.
+
+**Test framework discovery** (not explicit config):
+
+The `test-X` agent stage receives the branch spec and the scaffold directory path. It uses `directory_read` / `file_read` tools to inspect project files:
+
+| Scaffold file | Implied test framework |
+|---|---|
+| `package.json` with `jest`/`vitest`/`mocha` dep | Jest / Vitest / Mocha |
+| `build.gradle.kts` with `junit` | JUnit 5 |
+| `Package.swift` | XCTest |
+| `pom.xml` with `junit` | JUnit 5 |
+| `Cargo.toml` | cargo test |
+| No scaffold detected | Falls back to inline `assert` statements in the source language |
+
+No explicit framework declaration needed anywhere — the LLM discovers it from the project.
+
+**Review node receives TDD context**:
+
+The `pipeline.tddEnabled` flag is injected into the Review node's system prompt as part of the stage context. The Review node's branch output format does not change — the same `description` field serves as the spec for both test-writing and implementation prompts. The pipeline expansion code handles the 4-way split automatically.
+
+**Schema-level toggle, not per-branch**:
+
+For v1, `tddEnabled` is a single toggle on the schema/pipeline. All branches in all stages either use TDD or don't. No per-branch opt-out. (Post-v1: individual branches could disable TDD for trivial features where tests add no value.)
+
+**Pipeline expansion code location**:
+
+The expansion from branch definition → stages happens in `createDecompositionPipeline()` inside `PipelineService`. When `tddEnabled = true`, the method generates 4 stages per branch instead of 2. The Review node's JSON branch output is the same format regardless — the expansion logic is purely an internal pipeline construction concern.
+
 ## Components
 
 ### 1. Stage-Aware Review Node (backend)

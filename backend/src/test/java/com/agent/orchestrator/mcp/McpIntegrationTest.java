@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.neo4j.driver.Driver;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -20,6 +21,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Integration tests for the MCP server.
  * Tests the full JSON-RPC 2.0 flow over HTTP.
+ * Cleans all Plan nodes in @BeforeEach to prevent stale/corrupted
+ * data from affecting test isolation (e.g., plan records where
+ * p.id != p.data.id due to workspaceId mismatch in stored JSON).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public class McpIntegrationTest {
@@ -30,12 +34,24 @@ public class McpIntegrationTest {
     @Autowired
     private TestRestTemplate restTemplate;
 
+    @Autowired
+    private Driver neo4jDriver;
+
     private final ObjectMapper mapper = new ObjectMapper();
     private String mcpUrl;
 
     @BeforeEach
     void setUp() {
         mcpUrl = "http://localhost:" + port + "/mcp";
+        // Remove all stale Plan records from Neo4j to ensure test isolation.
+        // Root cause: Plan nodes accumulate when Plan.workspaceId is null in JSON
+        // but "default" in the Neo4j property — every save() using MERGE on p.id
+        // creates a new node instead of updating the original. Deleting all plans
+        // in @BeforeEach forces PlanService.getPlan("default") to auto-create
+        // a fresh, correct plan on first access.
+        try (var session = neo4jDriver.session()) {
+            session.run("MATCH (p:Plan) DETACH DELETE p");
+        }
     }
 
     @Test

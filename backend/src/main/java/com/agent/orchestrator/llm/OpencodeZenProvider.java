@@ -35,7 +35,7 @@ public class OpencodeZenProvider implements LlmProvider {
     @Value("${axolotl.llm.zen.api-key:}")
     private String apiKey;
 
-    @Value("${axolotl.llm.zen.default-model:big-pickle}")
+    @Value("${axolotl.llm.zen.default-model:deepseek-v4-flash-free}")
     private String defaultModel;
 
     @Value("${axolotl.llm.zen.timeout:3600}")

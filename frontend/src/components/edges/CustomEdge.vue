@@ -30,14 +30,11 @@
         stroke="white"
         stroke-width="2"
       />
-      <text
-        text-anchor="middle"
-        dominant-baseline="central"
-        fill="white"
-        font-size="14"
-        font-weight="bold"
-        pointer-events="none"
-      >✕</text>
+      <g transform="translate(-7,-7)">
+        <circle cx="7" cy="7" r="7" fill="rgba(0,0,0,0.5)"/>
+        <line x1="4" y1="4" x2="10" y2="10" stroke="white" stroke-width="2"/>
+        <line x1="10" y1="4" x2="4" y2="10" stroke="white" stroke-width="2"/>
+      </g>
     </g>
   </g>
 </template>
