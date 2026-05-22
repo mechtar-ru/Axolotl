@@ -1,5 +1,5 @@
-# Axolotl Tool Specifications
-# Each tool has: id, name, description, parameters (JSON Schema)
+# Axolotl Tool Specifications (JSON Schema for LLM tool calling)
+
 tools:
   - id: file_read
     name: Read File
@@ -9,23 +9,40 @@ tools:
       properties:
         path:
           type: string
-          description: Path to file
-      required: [path]
+          description: Absolute or relative path to file
+
   - id: file_write
     name: Write File
-    description: Write content to a file
+    description: Write content to a file, creating directories if needed
+    parameters:
+      type: object
+      properties:
+        path: { type: string }
+        content: { type: string }
+        append: { type: boolean, description: "Append instead of overwrite" }
+
   - id: bash
     name: Bash
-    description: Execute a bash command
-  - id: memory_read
-    name: Memory Read
-    description: Query from memory store
-  - id: memory_write
-    name: Memory Write
-    description: Write to memory store
+    description: Execute a bash command with optional working directory
+    parameters:
+      type: object
+      properties:
+        command: { type: string }
+        workdir: { type: string, description: "Working directory" }
+        timeout: { type: number, description: "Timeout in ms" }
+
   - id: web_search
     name: Web Search
-    description: Search the web
+    description: Search the web and return results
+    parameters:
+      type: object
+      properties:
+        query: { type: string }
+
   - id: web_fetch
     name: Web Fetch
-    description: Fetch a URL
+    description: Fetch content from a HTTP URL
+    parameters:
+      type: object
+      properties:
+        url: { type: string }
