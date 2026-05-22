@@ -12,7 +12,7 @@
     </div>
 
     <div class="settings-content">
-      <div v-if="loading" class="loading">Loading...</div>
+      <div v-if="loading" class="loading-state"><span class="settings-spinner" /> Loading providers...</div>
 
       <div v-else-if="error" class="error">{{ error }}</div>
 
@@ -1221,7 +1221,28 @@ onMounted(async () => {
   font-style: italic;
 }
 
-.loading, .error, .empty {
+.loading-state {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.settings-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--text-muted);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error, .empty {
   text-align: center;
   padding: var(--space-8);
   color: var(--text-secondary);
@@ -1336,7 +1357,7 @@ onMounted(async () => {
 }
 
 .path-field {
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .browse-btn {

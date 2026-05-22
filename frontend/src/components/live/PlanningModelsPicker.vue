@@ -210,7 +210,7 @@ function emitValue() {
   font-size: 0.8rem;
   background: var(--bg-primary, #1e1e2e);
   color: var(--text-primary, #eee);
-  font-family: monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   min-width: 160px;
 }

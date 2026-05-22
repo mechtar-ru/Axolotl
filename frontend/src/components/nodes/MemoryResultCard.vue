@@ -71,11 +71,11 @@ function onDragEnd() {
   position: fixed;
   width: 320px;
   max-height: 400px;
-  background: rgba(22, 33, 62, 0.95);
-  border: 1px solid rgba(0, 188, 212, 0.4);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 188, 212, 0.2);
-  z-index: 500;
+  background: var(--bg-card);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);

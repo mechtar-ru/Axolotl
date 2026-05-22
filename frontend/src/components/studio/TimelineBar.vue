@@ -62,7 +62,7 @@ function getStatusColor(status: string): string {
   box-shadow: var(--shadow-lg);
   cursor: pointer;
   transition: border-color var(--transition-fast), transform var(--transition-fast);
-  z-index: 50;
+  z-index: var(--z-panel);
   min-width: 280px;
 }
 

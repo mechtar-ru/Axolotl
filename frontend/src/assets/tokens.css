@@ -10,6 +10,12 @@
   --space-7: 48px;
   --space-8: 64px;
 
+  /* Shared button styles (use .btn-primary,.btn-secondary,.btn-danger) */
+  --btn-padding: 8px 20px;
+  --btn-font-size: var(--text-sm);
+  --btn-font-weight: 600;
+  --btn-radius: var(--radius-sm);
+
   /* Type scale (1.25 ratio) */
   --text-xs: 12px;
   --text-sm: 14px;

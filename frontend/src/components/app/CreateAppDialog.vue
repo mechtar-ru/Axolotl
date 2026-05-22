@@ -300,7 +300,7 @@ const bgColors: Record<string, string> = {
   border: 1px solid var(--border-color);
   border-radius: 6px;
   font-size: 0.85rem;
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .path-text {

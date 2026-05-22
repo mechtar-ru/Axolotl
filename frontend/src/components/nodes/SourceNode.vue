@@ -466,7 +466,7 @@ function handleDelete() {
 .path-input {
   flex: 1; background: var(--bg-primary); border: 1px solid var(--border);
   color: var(--text-primary); border-radius: 4px; padding: 6px 8px; font-size: 13px; outline: none;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 .browse-btn {
   background: var(--accent); border: none; color: white; border-radius: 4px; width: 32px; cursor: pointer;

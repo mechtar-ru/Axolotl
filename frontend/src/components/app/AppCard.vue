@@ -244,7 +244,7 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
 }
 
 .path-text {
-  font-family: monospace;
+  font-family: var(--font-mono);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

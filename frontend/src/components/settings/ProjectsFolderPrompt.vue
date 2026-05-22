@@ -116,7 +116,7 @@ async function save() {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  font-family: monospace;
+  font-family: var(--font-mono);
   background: var(--bg-primary);
   color: var(--text-primary);
   outline: none;

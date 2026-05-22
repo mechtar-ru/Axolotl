@@ -525,7 +525,7 @@ onMounted(loadApp)
 }
 
 .mono {
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
 
@@ -578,7 +578,7 @@ onMounted(loadApp)
 .file-path {
   display: block;
   font-size: var(--text-sm);
-  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary);
   word-break: break-all;
 }

@@ -232,7 +232,7 @@ function onFolderPicked(event: Event) {
   background: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   box-shadow: var(--shadow-lg);
-  z-index: 20;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -329,7 +329,7 @@ function onFolderPicked(event: Event) {
 
 .path-text {
   word-break: break-all;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 .path-input {
@@ -337,7 +337,7 @@ function onFolderPicked(event: Event) {
   border: none;
   background: transparent;
   font-size: var(--text-sm);
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--text-primary);
   outline: none;
 }
