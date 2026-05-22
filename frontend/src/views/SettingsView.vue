@@ -176,7 +176,9 @@ function onSettingsFolderPicked(event: Event) {
   const files = input.files
   input.value = ''
   if (!files || files.length === 0) return
-  const dirName = files[0].webkitRelativePath.split('/')[0]
+  const file = files[0]
+  if (!file) return
+  const dirName = file.webkitRelativePath.split('/')[0]
   if (dirName) {
     const base = projectsFolder.value ? projectsFolder.value.replace(/\/[^/]*\/?$/, '') : ''
     projectsFolder.value = base ? `${base}/${dirName}/` : `~/Axolotl/${dirName}`
