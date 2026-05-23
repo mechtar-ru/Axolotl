@@ -545,6 +545,29 @@ public class SchemaService {
     }
 
     /**
+     * Resume execution for a specific paused run by runId.
+     * Unlike resumeExecution(schemaId) which claims the latest paused run,
+     * this method targets the exact run specified.
+     */
+    public void resumeExecution(String schemaId, String runId) {
+        if (runId == null || runId.isBlank()) {
+            resumeExecution(schemaId);
+            return;
+        }
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        if (schema == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
+        }
+        ExecutionRun run = executionRepository.claimSpecificRun(runId);
+        if (run == null) {
+            log.warn("No paused run found for id: {}", runId);
+            return;
+        }
+        resumeExecution(schemaId, schema, run.getId());
+    }
+
+    /**
      * Resolve schema ID from an executionId that may be either a run ID or a schema ID.
      */
     private String resolveSchemaIdFromExecution(String executionId) {

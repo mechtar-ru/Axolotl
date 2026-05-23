@@ -40,8 +40,13 @@ const app = computed(() => {
   return schemaStore.schemas.find(s => s.id === appId.value) || schemaStore.currentSchema
 })
 
-const isRunning = ref(false)
-const executionError = ref<string | null>(null)
+  const isRunning = ref(false)
+  const executionError = ref<string | null>(null)
+  // Sync execState.isExecuting alongside isRunning so TimelineView can auto-refresh
+  function setIsExecuting(val: boolean) {
+    isRunning.value = val
+    if (execState) execState.isExecuting.value = val
+  }
 
 // Execution state from WebSocket events
 const nodeResults = ref<Record<string, any>>({})      // nodeId → result content
@@ -76,13 +81,13 @@ provide('executionProgress', executionProgress)
  * Start execution with WebSocket connection.
  * @param skipSave — if true, skip schemaStore.updateSchema (caller already saved)
  */
-const startExecution = async (skipSave: boolean = false): Promise<void> => {
-  if (isRunning.value) {
-    console.warn('Execution already running, ignoring duplicate start')
-    return
-  }
-  isRunning.value = true
-  executionError.value = null
+  const startExecution = async (skipSave: boolean = false): Promise<void> => {
+    if (isRunning.value) {
+      console.warn('Execution already in progress')
+      return
+    }
+    setIsExecuting(true)
+    executionError.value = null
   nodeResults.value = {}
   nodeStatuses.value = {}
   executionProgress.value = null
@@ -93,14 +98,14 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   const currentApp = app.value
   if (!currentApp) {
     executionError.value = 'No app selected'
-    isRunning.value = false
+    setIsExecuting(false)
     return
   }
 
   connect(appId.value, {
     onDisconnect: () => {
       if (isActive) {
-        isRunning.value = false
+        setIsExecuting(false)
       }
     },
     onProgress: (data) => {
@@ -126,7 +131,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
     },
     onComplete: () => {
       if (!isActive) return
-      isRunning.value = false
+      setIsExecuting(false)
       addStepEvent('__execution__', 'completed', 'Execution finished')
       if (activeMode.value === 'timeline') {
         activeMode.value = 'blueprint'
@@ -136,7 +141,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
       if (!isActive) return
       nodeStatuses.value[data.nodeId] = 'failed'
       executionError.value = data.error
-      isRunning.value = false
+      setIsExecuting(false)
       addStepEvent(data.nodeId, 'failed', data.error)
     },
     onLiveUpdate: (data) => {
@@ -172,7 +177,7 @@ const startExecution = async (skipSave: boolean = false): Promise<void> => {
   } catch (err) {
     executionError.value = (err as Error).message
     toast.error('Execution failed to start: ' + ((err as Error).message || err))
-    isRunning.value = false
+    setIsExecuting(false)
     disconnect()
   }
 }
@@ -264,7 +269,7 @@ async function handleResume() {
 async function handleRestart() {
   try {
     await schemaApi.executeSchema(appId.value, 'EXECUTE')
-    isRunning.value = true
+    setIsExecuting(true)
     executionError.value = null
     nodeResults.value = {}
     nodeStatuses.value = {}
@@ -330,7 +335,7 @@ function toggleRun() {
         toast.error('Failed to stop execution: ' + (err.message || err))
         executionError.value = 'Failed to stop execution'
       })
-    isRunning.value = false
+    setIsExecuting(false)
   } else {
     startExecution(false)
   }

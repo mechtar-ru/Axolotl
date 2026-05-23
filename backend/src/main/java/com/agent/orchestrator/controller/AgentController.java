@@ -171,8 +171,10 @@ public class AgentController {
     }
 
     @PostMapping("/schemas/{id}/resume")
-    public Map<String, String> resumeExecution(@PathVariable String id) {
-        schemaService.resumeExecution(id);
+    public Map<String, String> resumeExecution(
+            @PathVariable String id,
+            @RequestParam(required = false) String runId) {
+        schemaService.resumeExecution(id, runId);
         return Map.of("status", "resumed");
     }
 
@@ -182,10 +184,15 @@ public class AgentController {
     }
 
     @PostMapping("/schemas/{id}/cleanup-runs")
-    public Map<String, Object> cleanupStaleRuns(@PathVariable String id) {
-        int count = executionRepository.releaseAllResumingRuns(id);
-        log.info("Released {} resuming run(s) for schema {}", count, id);
-        return Map.of("status", "ok", "released", count);
+    public Map<String, Object> cleanupRuns(@PathVariable String id) {
+        int released = executionRepository.releaseStaleRuns(id);
+        return Map.of("status", "ok", "released", released);
+    }
+
+    @DeleteMapping("/schemas/{id}/runs/{runId}")
+    public Map<String, String> deleteRun(@PathVariable String id, @PathVariable String runId) {
+        executionRepository.deleteRun(runId);
+        return Map.of("status", "ok", "message", "Run deleted");
     }
 
     @PostMapping("/execution/{executionId}/feedback")
