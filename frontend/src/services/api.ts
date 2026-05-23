@@ -178,6 +178,11 @@ export const schemaApi = {
   async resumeSchema(schemaId: string): Promise<void> {
     await api.post(`/schemas/${schemaId}/resume`);
   },
+
+  async cleanupStaleRuns(schemaId: string): Promise<{ status: string; released: number }> {
+    const response = await api.post(`/schemas/${schemaId}/cleanup-runs`);
+    return response.data;
+  },
 };
 
 export interface AppInfo {

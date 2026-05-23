@@ -181,6 +181,13 @@ public class AgentController {
         return schemaService.getExecutionNodes(runId);
     }
 
+    @PostMapping("/schemas/{id}/cleanup-runs")
+    public Map<String, Object> cleanupStaleRuns(@PathVariable String id) {
+        int count = executionRepository.releaseAllResumingRuns(id);
+        log.info("Released {} resuming run(s) for schema {}", count, id);
+        return Map.of("status", "ok", "released", count);
+    }
+
     @PostMapping("/execution/{executionId}/feedback")
     public Map<String, String> submitReviewFeedback(
             @PathVariable String executionId,

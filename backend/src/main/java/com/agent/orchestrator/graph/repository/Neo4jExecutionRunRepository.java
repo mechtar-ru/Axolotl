@@ -71,4 +71,13 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         SET r.updatedAt = toString(datetime())
         """)
     void releasePausedRun(@Param("schemaId") String schemaId);
+
+    @Query("""
+        MATCH (r:ExecutionRun {schemaId: $schemaId})
+        WHERE r.status = 'resuming'
+        SET r.status = 'paused'
+        SET r.updatedAt = toString(datetime())
+        RETURN r
+        """)
+    List<GraphExecutionRun> releaseAllResumingRuns(@Param("schemaId") String schemaId);
 }

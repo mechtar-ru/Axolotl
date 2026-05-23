@@ -210,6 +210,20 @@ public class ExecutionRepository {
         }
     }
 
+    /**
+     * Releases ALL resuming runs for a schema back to paused.
+     * Returns the number of runs affected.
+     */
+    public int releaseAllResumingRuns(String schemaId) {
+        try {
+            List<GraphExecutionRun> released = runRepo.releaseAllResumingRuns(schemaId);
+            return released.size();
+        } catch (Exception e) {
+            log.error("Error releasing all resuming runs for schema {}: {}", schemaId, e.getMessage(), e);
+            return 0;
+        }
+    }
+
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {
