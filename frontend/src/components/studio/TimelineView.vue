@@ -131,6 +131,13 @@ async function fetchRuns() {
     const all = await schemaApi.getRuns(props.schemaId)
     staleRunCount.value = all.filter(r => r.status === 'resuming').length
     runs.value = all.filter(r => r.status !== 'resuming')
+    // Auto-expand latest running/completed run on initial load
+    if (!expandedRunId.value) {
+      const latest = runs.value[0]
+      if (latest && (latest.status === 'running' || latest.status === 'completed')) {
+        expandRun(latest.id)
+      }
+    }
     // Fetch node statuses for flow dots on visible runs
     fetchNodeStatuses()
   } catch (e) {
