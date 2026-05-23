@@ -67,10 +67,6 @@ provide('appState', {
   appId
 })
 
-const showExecutionOverlay = computed(() => isRunning.value && activeMode.value === 'blueprint')
-provide('showExecutionOverlay', showExecutionOverlay)
-
-// LiveView injects isRunning directly — provide it separately too
 provide('isRunning', isRunning)
 provide('nodeResults', nodeResults)
 provide('nodeStatuses', nodeStatuses)

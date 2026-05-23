@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, markRaw, onMounted, watch, nextTick, inject, onUnmounted } from 'vue'
+import { ref, markRaw, onMounted, watch, nextTick, inject } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -10,7 +10,6 @@ import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
 import BlockConfigPanel from '@/components/studio/BlockConfigPanel.vue'
 import SchemaPropertiesPanel from '@/components/studio/SchemaPropertiesPanel.vue'
-import LiveView from '@/components/studio/LiveView.vue'
 
 // Import block components for VueFlow nodeTypes
 import ReceiveBlock from '@/components/blocks/ReceiveBlock.vue'
@@ -49,7 +48,6 @@ const emit = defineEmits<{
 const selectedBlockId = ref<string | null>(null)
 const configPanelOpen = ref(false)
 const schemaPanelOpen = ref(true)
-const showExecutionOverlay = inject('showExecutionOverlay', ref(false))
 const startExecution = inject<(schemaId: string) => Promise<void>>('startExecution', async () => {})
 
 // Build VueFlow nodes from schema data
@@ -262,7 +260,7 @@ onConnect((connection) => {
 <template>
   <div class="blueprint-view">
     <!-- Block Palette -->
-    <div v-show="!showExecutionOverlay" class="palette-wrapper">
+    <div class="palette-wrapper">
       <BlockPalette />
     </div>
     
@@ -292,23 +290,18 @@ onConnect((connection) => {
     
     <!-- Config Panel -->
     <BlockConfigPanel
-      v-if="!showExecutionOverlay && configPanelOpen && selectedBlockId"
+      v-if="configPanelOpen && selectedBlockId"
       :block-id="selectedBlockId || ''"
       @close="configPanelOpen = false"
     />
 
     <!-- Schema Properties Panel (shown when nothing is selected) -->
     <SchemaPropertiesPanel
-      v-if="!showExecutionOverlay && !configPanelOpen && !selectedBlockId"
+      v-if="!configPanelOpen && !selectedBlockId"
       @add-node="console.log('Add node')"
       @run="startExecution(props.appId)"
       @quick-start="emit('show-quick-start')"
     />
-
-    <!-- Execution Overlay -->
-    <div v-show="showExecutionOverlay" class="execution-overlay">
-      <LiveView :app-id="appId" />
-    </div>
   </div>
 </template>
 
@@ -369,13 +362,5 @@ onConnect((connection) => {
 
 :deep(.vue-flow__edge.selected .vue-flow__edge-path) {
   stroke: var(--accent);
-}
-
-.execution-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: var(--z-panel);
-  background: var(--bg-canvas);
-  overflow: hidden;
 }
 </style>
