@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Repository for execution persistence backed by Neo4j.
@@ -211,6 +212,24 @@ public class ExecutionRepository {
     }
 
     // ────────── Stale Run Cleanup & Deletion ──────────
+
+    /**
+     * Claims a specific paused run by ID (sets it to 'resuming').
+     * Returns the claimed run, or null if not found or not in paused state.
+     */
+    public ExecutionRun claimSpecificRun(String runId) {
+        try {
+            Optional<GraphExecutionRun> result = runRepo.claimSpecificRun(runId);
+            if (result.isPresent()) {
+                return toPocoRun(result.get());
+            }
+            log.warn("No paused run found with id: {}", runId);
+            return null;
+        } catch (Exception e) {
+            log.error("Error claiming specific run {}: {}", runId, e.getMessage(), e);
+            return null;
+        }
+    }
 
     /**
      * Marks all runs with status='resuming' for a schema back to 'paused'.
