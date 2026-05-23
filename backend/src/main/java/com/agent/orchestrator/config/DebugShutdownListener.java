@@ -21,11 +21,13 @@ public class DebugShutdownListener implements ApplicationListener<ApplicationFai
         dumpAllThreads("ApplicationFailedEvent");
     }
 
-    // Also register a separate listener via bean method to catch ContextClosedEvent
+    // Catch graceful shutdown — log at INFO, dump threads at DEBUG only
     @org.springframework.context.event.EventListener
     public void onContextClosed(ContextClosedEvent e) {
-        log.warn("[DebugShutdown] ContextClosedEvent: closing context");
-        dumpAllThreads("ContextClosedEvent");
+        log.info("[DebugShutdown] ContextClosedEvent: closing context");
+        if (log.isDebugEnabled()) {
+            dumpAllThreads("ContextClosedEvent");
+        }
     }
 
     private void dumpAllThreads(String reason) {
@@ -43,7 +45,7 @@ public class DebugShutdownListener implements ApplicationListener<ApplicationFai
                 pw.println();
             }
             pw.flush();
-            log.warn(sw.toString());
+            log.debug(sw.toString());
         } catch (Throwable ex) {
             log.error("Failed to dump threads", ex);
         }
