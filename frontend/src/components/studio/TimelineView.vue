@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, inject, onDeactivated, onActivated } from 'vue'
 import { schemaApi } from '@/services/api'
 import type { ExecutionRun, NodeExecution } from '@/services/api'
 import { useExecutionState } from '@/composables/useExecutionState'
+import type { Ref } from 'vue'
 import TimelineEntry from '@/components/studio/TimelineEntry.vue'
 
 const props = defineProps<{
@@ -15,7 +16,10 @@ const emit = defineEmits<{
 
 const execState = useExecutionState()
 const liveEvents = computed(() => execState?.stepEvents.value || [])
+const isRunning = inject<Ref<boolean>>('isRunning', ref(false))
+const startExecution = inject<() => Promise<void>>('startExecution', async () => {})
 
+// ── Run state ──
 const runs = ref<ExecutionRun[]>([])
 const loading = ref(false)
 const expandedRunId = ref<string | null>(null)
@@ -23,10 +27,16 @@ const expandedRunNodes = ref<NodeExecution[]>([])
 const loadingNodes = ref(false)
 const displayLimit = ref(10)
 const confirmDeleteRunId = ref<string | null>(null)
+const releasingStale = ref(false)
+const reRunning = ref(false)
+const errorMessage = ref<string | null>(null)
+const runNodeStatuses = ref<Record<string, Array<{nodeId: string; status: string}>>>({})
+const staleRunCount = ref(0) // resuming runs detected during fetch
 
 const visibleRuns = computed(() => runs.value.slice(0, displayLimit.value))
 const hasMore = computed(() => runs.value.length > displayLimit.value)
-const hasStaleRuns = computed(() => runs.value.some(r => r.status === 'resuming'))
+const hasStaleRuns = computed(() => staleRunCount.value > 0)
+const latestPausedRunId = computed(() => runs.value.find(r => r.status === 'paused')?.id ?? null)
 
 const liveEventsCapped = computed(() => {
   const ev = liveEvents.value
@@ -60,7 +70,11 @@ function nodeStatusColor(status: string): string {
 function formatDuration(run: ExecutionRun): string {
   if (!run.startedAt) return '--'
   const start = new Date(run.startedAt).getTime()
-  const end = run.completedAt ? new Date(run.completedAt).getTime() : Date.now()
+  // Use completedAt if available; for running runs use current time; 
+  // for completed runs without completedAt fall back to startedAt (shows 0s)
+  const end = run.completedAt 
+    ? new Date(run.completedAt).getTime() 
+    : (run.status === 'running' ? Date.now() : start)
   const ms = end - start
   if (ms < 1000) return '<1s'
   const s = Math.floor(ms / 1000)
@@ -103,18 +117,49 @@ function truncate(text: string | null | undefined, max: number): string {
   return text.length > max ? text.slice(0, max) + '...' : text
 }
 
+function clearError() {
+  errorMessage.value = null
+}
+
+// ── Data fetching ──
+
 async function fetchRuns() {
   if (!props.schemaId) return
   loading.value = true
+  clearError()
   try {
     const all = await schemaApi.getRuns(props.schemaId)
+    staleRunCount.value = all.filter(r => r.status === 'resuming').length
     runs.value = all.filter(r => r.status !== 'resuming')
+    // Fetch node statuses for flow dots on visible runs
+    fetchNodeStatuses()
   } catch (e) {
     console.error('Failed to fetch runs:', e)
+    errorMessage.value = 'Failed to load run history'
   } finally {
     loading.value = false
   }
 }
+
+async function fetchNodeStatuses() {
+  const targets = visibleRuns.value.filter(r => !runNodeStatuses.value[r.id])
+  if (targets.length === 0) return
+  const results = await Promise.allSettled(
+    targets.map(r => schemaApi.getRunNodes(props.schemaId, r.id))
+  )
+  for (let i = 0; i < targets.length; i++) {
+    const run = targets[i]
+    const result = results[i]
+    if (result.status === 'fulfilled') {
+      runNodeStatuses.value[run.id] = result.value.map(n => ({
+        nodeId: n.nodeId,
+        status: n.status
+      }))
+    }
+  }
+}
+
+// ── Run expansion ──
 
 async function expandRun(runId: string) {
   if (expandedRunId.value === runId) {
@@ -124,53 +169,84 @@ async function expandRun(runId: string) {
   }
   expandedRunId.value = runId
   loadingNodes.value = true
+  clearError()
   try {
     expandedRunNodes.value = await schemaApi.getRunNodes(props.schemaId, runId)
   } catch (e) {
     console.error('Failed to fetch run nodes:', e)
+    errorMessage.value = 'Failed to load node details'
     expandedRunNodes.value = []
   } finally {
     loadingNodes.value = false
   }
 }
 
+// ── Actions ──
+
 async function releaseStale() {
+  if (releasingStale.value) return
+  releasingStale.value = true
+  clearError()
   try {
     await schemaApi.cleanupRuns(props.schemaId)
     await fetchRuns()
   } catch (e) {
     console.error('Failed to release stale runs:', e)
+    errorMessage.value = 'Failed to release stale runs'
+  } finally {
+    releasingStale.value = false
   }
 }
 
 async function deleteRun(runId: string) {
+  clearError()
   try {
     await schemaApi.deleteRun(props.schemaId, runId)
     runs.value = runs.value.filter(r => r.id !== runId)
+    delete runNodeStatuses.value[runId]
     if (expandedRunId.value === runId) {
       expandedRunId.value = null
       expandedRunNodes.value = []
     }
   } catch (e) {
     console.error('Failed to delete run:', e)
+    errorMessage.value = 'Failed to delete run'
   }
   confirmDeleteRunId.value = null
 }
 
+function requestDeleteRun(runId: string) {
+  confirmDeleteRunId.value = runId
+  // Auto-cancel after 3 seconds
+  setTimeout(() => {
+    if (confirmDeleteRunId.value === runId) {
+      confirmDeleteRunId.value = null
+    }
+  }, 3000)
+}
+
 async function reRun() {
+  if (reRunning.value) return
+  reRunning.value = true
+  clearError()
   try {
-    await schemaApi.executeSchema(props.schemaId, 'EXECUTE')
+    await startExecution()
   } catch (e) {
     console.error('Failed to execute:', e)
+    errorMessage.value = 'Failed to start execution'
+  } finally {
+    reRunning.value = false
   }
 }
 
-async function resumeRun() {
+async function resumeRun(runId?: string) {
+  clearError()
   try {
-    await schemaApi.resumeSchema(props.schemaId)
+    await schemaApi.resumeSchema(props.schemaId, runId)
     await fetchRuns()
   } catch (e) {
     console.error('Failed to resume:', e)
+    errorMessage.value = 'Failed to resume run'
   }
 }
 
@@ -178,14 +254,27 @@ function showMore() {
   displayLimit.value += 10
 }
 
+// ── Auto-refresh after execution completes ──
+watch(isRunning, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    // Execution just finished — refresh run list
+    fetchRuns()
+  }
+})
+
+// ── Schema ID changes ──
 watch(() => props.schemaId, () => {
   displayLimit.value = 10
   expandedRunId.value = null
   expandedRunNodes.value = []
+  runNodeStatuses.value = {}
   fetchRuns()
 })
 
 onMounted(fetchRuns)
+onActivated(() => {
+  fetchRuns()
+})
 </script>
 
 <template>
@@ -201,9 +290,26 @@ onMounted(fetchRuns)
         <h2>Run History</h2>
         <span class="tl-count">{{ runs.length }}</span>
       </div>
-      <button v-if="hasStaleRuns" class="tl-btn tl-btn-stale" @click="releaseStale">
-        Release Stale Runs
+      <button
+        v-if="hasStaleRuns"
+        class="tl-btn tl-btn-stale"
+        :disabled="releasingStale"
+        @click="releaseStale"
+      >
+        {{ releasingStale ? 'Releasing...' : 'Release Stale Runs' }}
       </button>
+    </div>
+
+    <!-- Error message -->
+    <div v-if="errorMessage" class="tl-error">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           width="14" height="14">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="15" y1="9" x2="9" y2="15"/>
+        <line x1="9" y1="9" x2="15" y2="15"/>
+      </svg>
+      <span>{{ errorMessage }}</span>
+      <button class="tl-error-dismiss" @click="clearError">x</button>
     </div>
 
     <!-- Loading -->
@@ -220,7 +326,13 @@ onMounted(fetchRuns)
         <polyline points="12 6 12 12 16 14"/>
       </svg>
       <p>No runs yet</p>
-      <button class="tl-cta" @click="reRun">Execute Pipeline</button>
+      <button
+        class="tl-cta"
+        :disabled="reRunning"
+        @click="reRun"
+      >
+        {{ reRunning ? 'Starting...' : 'Execute Pipeline' }}
+      </button>
     </div>
 
     <!-- Run list -->
@@ -234,11 +346,31 @@ onMounted(fetchRuns)
         <!-- Collapsed header -->
         <div class="tl-card-header" @click="expandRun(run.id)">
           <span class="tl-dot" :style="{ background: getStatusColor(run.status) }" />
+
+          <!-- Node flow dots -->
+          <div class="tl-flowdots" v-if="runNodeStatuses[run.id]?.length">
+            <span
+              v-for="(ns, i) in runNodeStatuses[run.id]"
+              :key="i"
+              class="tl-flowdot"
+              :style="{ background: nodeStatusColor(ns.status) }"
+              :title="`${ns.nodeId}: ${ns.status}`"
+            />
+          </div>
+
           <span class="tl-mode">{{ run.mode }}</span>
           <span class="tl-date">{{ formatDate(run.startedAt) }}</span>
           <span class="tl-time">{{ formatTime(run.startedAt) }}</span>
           <span class="tl-duration">{{ formatDuration(run) }}</span>
-          <span class="tl-tokens">{{ formatTokens(run.totalTokens) }}</span>
+          <span
+            class="tl-tokens"
+            :title="run.totalTokens === 0 && run.estimatedCost === 0 ? 'Local models don\'t report token usage' : ''"
+          >{{ formatTokens(run.totalTokens) }}</span>
+          <span
+            v-if="run.error"
+            class="tl-error-badge"
+            :title="run.error"
+          >error</span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                width="16" height="16"
                class="tl-chevron"
@@ -259,15 +391,20 @@ onMounted(fetchRuns)
             />
 
             <div class="tl-card-actions">
+              <!-- Only show Resume on the latest paused run -->
               <button
-                v-if="run.status === 'paused'"
+                v-if="run.status === 'paused' && run.id === latestPausedRunId"
                 class="tl-act tl-act-resume"
-                @click.stop="resumeRun()"
+                @click.stop="resumeRun(run.id)"
               >
                 Resume
               </button>
-              <button class="tl-act tl-act-rerun" @click.stop="reRun()">
-                Re-run
+              <button
+                class="tl-act tl-act-rerun"
+                :disabled="reRunning"
+                @click.stop="reRun"
+              >
+                {{ reRunning ? 'Running...' : 'Re-run' }}
               </button>
               <button
                 v-if="confirmDeleteRunId === run.id"
@@ -279,10 +416,16 @@ onMounted(fetchRuns)
               <button
                 v-else
                 class="tl-act tl-act-delete"
-                @click.stop="confirmDeleteRunId = run.id"
+                @click.stop="requestDeleteRun(run.id)"
               >
                 Delete
               </button>
+            </div>
+
+            <!-- Superseded label for older paused runs -->
+            <div v-if="run.status === 'paused' && run.id !== latestPausedRunId" class="tl-superseded">
+              Superseded by run
+              <span class="tl-superseded-id">{{ shortId(latestPausedRunId ?? '') }}</span>
             </div>
 
             <div v-if="run.resumesFrom" class="tl-resumes">
@@ -296,7 +439,7 @@ onMounted(fetchRuns)
       </div>
 
       <button v-if="hasMore" class="tl-more" @click="showMore">
-        Show more ({{ runs.length - displayLimit }} remaining)
+        Show more ({{ Math.max(0, runs.length - displayLimit) }} remaining)
       </button>
     </div>
 
@@ -328,6 +471,10 @@ onMounted(fetchRuns)
   flex-direction: column;
   height: 100%;
   background: var(--bg-primary);
+  --tl-color-stale: #f59e0b;
+  --tl-color-error: #ef4444;
+  --tl-color-completed: #4caf50;
+  --tl-color-running: #2196f3;
 }
 
 /* ── Header ── */
@@ -377,8 +524,30 @@ onMounted(fetchRuns)
   color: var(--text-secondary);
   transition: all var(--transition-fast);
 }
-.tl-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tl-btn-stale { color: #f59e0b; border-color: #f59e0b; }
+.tl-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.tl-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.tl-btn-stale { color: var(--tl-color-stale); border-color: var(--tl-color-stale); }
+
+/* ── Error ── */
+.tl-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-6);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--tl-color-error);
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+.tl-error-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--tl-color-error);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  padding: 0 var(--space-1);
+}
 
 /* ── Loading ── */
 .tl-loading {
@@ -423,7 +592,8 @@ onMounted(fetchRuns)
   font-size: var(--text-sm);
   cursor: pointer;
 }
-.tl-cta:hover { opacity: 0.9; }
+.tl-cta:hover:not(:disabled) { opacity: 0.9; }
+.tl-cta:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── Run list ── */
 .tl-list {
@@ -464,6 +634,18 @@ onMounted(fetchRuns)
   flex-shrink: 0;
 }
 
+/* Node flow dots */
+.tl-flowdots {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.tl-flowdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
 .tl-mode {
   font-weight: 600;
   font-size: var(--text-xs);
@@ -475,6 +657,17 @@ onMounted(fetchRuns)
 .tl-time { color: var(--text-secondary); min-width: 44px; }
 .tl-duration { color: var(--text-muted); min-width: 52px; }
 .tl-tokens { color: var(--text-muted); flex: 1; text-align: right; }
+
+.tl-error-badge {
+  font-size: 9px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--tl-color-error);
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1px var(--space-2);
+  border-radius: 8px;
+}
+
 .tl-chevron {
   flex-shrink: 0;
   transition: transform var(--transition-fast);
@@ -518,11 +711,24 @@ onMounted(fetchRuns)
   color: var(--text-secondary);
   transition: all var(--transition-fast);
 }
-.tl-act:hover { background: var(--bg-hover); color: var(--text-primary); }
-.tl-act-resume { color: #2196f3; border-color: #2196f3; }
-.tl-act-rerun { color: #4caf50; border-color: #4caf50; }
-.tl-act-confirm { color: #ef4444; border-color: #ef4444; }
+.tl-act:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.tl-act:disabled { opacity: 0.5; cursor: not-allowed; }
+.tl-act-resume { color: var(--tl-color-running); border-color: var(--tl-color-running); }
+.tl-act-rerun { color: var(--tl-color-completed); border-color: var(--tl-color-completed); }
+.tl-act-confirm { color: var(--tl-color-error); border-color: var(--tl-color-error); }
 .tl-act-delete { color: var(--text-muted); }
+
+/* ── Superseded label ── */
+.tl-superseded {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  padding: var(--space-1) 0;
+  font-style: italic;
+}
+.tl-superseded-id {
+  font-family: monospace;
+  color: var(--text-secondary);
+}
 
 /* ── resumesFrom label ── */
 .tl-resumes {
@@ -575,7 +781,7 @@ onMounted(fetchRuns)
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #4caf50;
+  background: var(--tl-color-completed);
   animation: tl-pulse 1.5s ease-in-out infinite;
 }
 @keyframes tl-pulse {
@@ -622,5 +828,16 @@ onMounted(fetchRuns)
   color: var(--text-muted);
   text-transform: uppercase;
   font-size: 10px;
+}
+
+/* ── Scrollbar ── */
+.tl-list::-webkit-scrollbar,
+.tl-live-list::-webkit-scrollbar {
+  width: 6px;
+}
+.tl-list::-webkit-scrollbar-thumb,
+.tl-live-list::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
 }
 </style>

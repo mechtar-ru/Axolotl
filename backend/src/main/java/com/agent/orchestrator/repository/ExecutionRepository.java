@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -250,6 +251,7 @@ public class ExecutionRepository {
      * Deletes an ExecutionRun and all its NodeExecution records.
      * Does not throw on failure — logs and wraps as RuntimeException.
      */
+    @Transactional
     public void deleteRun(String runId) {
         try {
             // Delete child node executions first, then the run itself

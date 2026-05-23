@@ -86,4 +86,13 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         DETACH DELETE n
         """)
     void deleteNodeExecutionsByRunId(@Param("runId") String runId);
+
+    @Query("""
+        MATCH (r:ExecutionRun {id: $runId})
+        WHERE r.status = 'paused'
+        SET r.status = 'resuming'
+        SET r.updatedAt = toString(datetime())
+        RETURN r
+        """)
+    Optional<GraphExecutionRun> claimSpecificRun(@Param("runId") String runId);
 }

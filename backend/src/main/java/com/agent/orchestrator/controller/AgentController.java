@@ -171,8 +171,10 @@ public class AgentController {
     }
 
     @PostMapping("/schemas/{id}/resume")
-    public Map<String, String> resumeExecution(@PathVariable String id) {
-        schemaService.resumeExecution(id);
+    public Map<String, String> resumeExecution(
+            @PathVariable String id,
+            @RequestParam(required = false) String runId) {
+        schemaService.resumeExecution(id, runId);
         return Map.of("status", "resumed");
     }
 
