@@ -236,6 +236,11 @@ public class LlmService {
 
             info.put("baseUrl", provider.getBaseUrl());
             info.put("custom", false);
+            // Attach persisted defaultModel from settings
+            String storedDefault = settingsService.getDefaultModel(provider.getName());
+            if (storedDefault != null) {
+                info.put("defaultModel", storedDefault);
+            }
             result.add(info);
         }
         for (CustomLlmEndpoint ep : customEndpointRepository.findAll()) {
