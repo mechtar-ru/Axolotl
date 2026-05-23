@@ -135,34 +135,56 @@ public class SchemaService {
         return schema;
     }
 
-    public WorkflowSchema updateSchema(String id, WorkflowSchema schema) {
-        schema.setId(id);
-        schema.setUpdatedAt(Instant.now().toString());
-        if (schema.getNodes() != null) {
-            schema.setNodes(schema.getNodes().stream().filter(n -> n != null && n.getId() != null).toList());
+    public WorkflowSchema updateSchema(String id, WorkflowSchema incoming) {
+        WorkflowSchema existing = schemaRepository.findById(id);
+        if (existing == null) existing = new WorkflowSchema();
+        existing.setId(id);
+        existing.setUpdatedAt(Instant.now().toString());
+
+        // Partial merge: only overwrite non-null fields from incoming
+        if (incoming.getName() != null) existing.setName(incoming.getName());
+        if (incoming.getDescription() != null) existing.setDescription(incoming.getDescription());
+        if (incoming.getDefaultModel() != null) existing.setDefaultModel(incoming.getDefaultModel());
+        if (incoming.getDefaultTools() != null) existing.setDefaultTools(incoming.getDefaultTools());
+        if (incoming.getDefaultToolPermissions() != null) existing.setDefaultToolPermissions(incoming.getDefaultToolPermissions());
+        if (incoming.getMetadata() != null) existing.setMetadata(incoming.getMetadata());
+        if (incoming.getAppType() != null) existing.setAppType(incoming.getAppType());
+        if (incoming.getTargetPath() != null) existing.setTargetPath(incoming.getTargetPath());
+        if (incoming.getTargetPathConflictAction() != null) existing.setTargetPathConflictAction(incoming.getTargetPathConflictAction());
+        if (incoming.getVersion() != null) existing.setVersion(incoming.getVersion());
+        if (incoming.getPipeline() != null) existing.setPipeline(incoming.getPipeline());
+        if (incoming.getNodes() != null) {
+            existing.setNodes(incoming.getNodes().stream().filter(n -> n != null && n.getId() != null).toList());
         }
-        if (schema.getEdges() != null) {
-            schema.setEdges(schema.getEdges().stream().filter(e -> e != null && e.getId() != null).toList());
+        if (incoming.getEdges() != null) {
+            existing.setEdges(incoming.getEdges().stream().filter(e -> e != null && e.getId() != null).toList());
         }
-        schemaRepository.save(schema);
+        if (incoming.getUserId() != null) existing.setUserId(incoming.getUserId());
+        if (incoming.getWorkspaceId() != null) existing.setWorkspaceId(incoming.getWorkspaceId());
+        if (incoming.getPlanningModels() != null) existing.setPlanningModels(incoming.getPlanningModels());
+        if (incoming.getPlanningOutline() != null) existing.setPlanningOutline(incoming.getPlanningOutline());
+        if (incoming.getPlanningRefinedPlan() != null) existing.setPlanningRefinedPlan(incoming.getPlanningRefinedPlan());
+        if (incoming.getPlanningContext() != null) existing.setPlanningContext(incoming.getPlanningContext());
+
+        schemaRepository.save(existing);
 
         if (memPalaceClient.isEnabled()) {
-            int nodeCount = schema.getNodes() != null ? schema.getNodes().size() : 0;
-            int edgeCount = schema.getEdges() != null ? schema.getEdges().size() : 0;
-            String nodeTypes = schema.getNodes() != null && !schema.getNodes().isEmpty()
-                    ? schema.getNodes().stream()
+            int nodeCount = existing.getNodes() != null ? existing.getNodes().size() : 0;
+            int edgeCount = existing.getEdges() != null ? existing.getEdges().size() : 0;
+            String nodeTypes = existing.getNodes() != null && !existing.getNodes().isEmpty()
+                    ? existing.getNodes().stream()
                         .map(n -> n.getType() + "(" + n.getName() + ")")
                         .reduce((a, b) -> a + ", " + b).orElse("")
                     : "";
             String versionInfo = String.format(
                     "Версия схемы '%s' (обновлено: %s)\nУзлов: %d, Связей: %d\nУзлы: [%s]",
-                    schema.getName(), schema.getUpdatedAt(), nodeCount, edgeCount, nodeTypes);
+                    existing.getName(), existing.getUpdatedAt(), nodeCount, edgeCount, nodeTypes);
             memPalaceClient.addDrawer("axolotl", "schema-versions",
                     versionInfo, "schema:" + id);
         }
 
-        log.info("Обновлена схема: {} (ID: {})", schema.getName(), id);
-        return schema;
+        log.info("Обновлена схема: {} (ID: {})", existing.getName(), id);
+        return existing;
     }
 
     public void deleteSchema(String id) {
