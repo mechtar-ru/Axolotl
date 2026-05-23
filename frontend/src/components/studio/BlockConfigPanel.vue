@@ -56,6 +56,8 @@ const syntaxCheck = ref(true)
 const requiredPatterns = ref<string[]>([])
 const testCommand = ref('')
 const maxFileSizeKb = ref(500)
+const rewriteOnFail = ref(true)
+const maxRewriteRetries = ref(3)
 
 const reviewPremortem = ref(true)
 const reviewPrism = ref(false)
@@ -136,6 +138,8 @@ function resetRefs() {
   requiredPatterns.value = []
   testCommand.value = ''
   maxFileSizeKb.value = 500
+  rewriteOnFail.value = true
+  maxRewriteRetries.value = 3
   reviewPremortem.value = true
   reviewPrism.value = false
   reviewPostmortem.value = false
@@ -164,6 +168,9 @@ watch(() => props.blockId, () => {
   requiredPatterns.value = (checks?.requiredPatterns as string[]) ?? []
   testCommand.value = checks?.testCommand ?? ''
   maxFileSizeKb.value = checks?.maxFileSizeKb ?? 500
+  // rewriteOnFail/maxRewriteRetries live at config top level (not inside checks)
+  rewriteOnFail.value = (config.rewriteOnFail as boolean) ?? true
+  maxRewriteRetries.value = (config.maxRewriteRetries as number) ?? 3
   // Review fields
   reviewPremortem.value = checks?.premortem ?? true
   reviewPrism.value = checks?.prism ?? false
@@ -262,6 +269,9 @@ function saveConfig() {
     // Merge checks into config
     if (!node.value.data.config) node.value.data.config = {}
     ;(node.value.data.config as Record<string, any>).checks = checks
+    // rewriteOnFail/maxRewriteRetries live at config top level (not in checks)
+    ;(node.value.data.config as Record<string, any>).rewriteOnFail = rewriteOnFail.value
+    ;(node.value.data.config as Record<string, any>).maxRewriteRetries = maxRewriteRetries.value
   }
 
   // Review-specific config
@@ -316,6 +326,8 @@ function saveConfig() {
             testCommand: testCommand.value,
             maxFileSizeKb: maxFileSizeKb.value,
           },
+          rewriteOnFail: rewriteOnFail.value,
+          maxRewriteRetries: maxRewriteRetries.value,
         }
       }
       if (typeSections.value.review) {
@@ -560,6 +572,23 @@ function handleKeydown(e: KeyboardEvent) {
             class="config-input"
             min="1"
             max="10000"
+            @input="saveConfig"
+          />
+        </div>
+
+        <label class="config-checkbox">
+          <input type="checkbox" v-model="rewriteOnFail" @change="saveConfig" />
+          Auto-rewrite on failure
+        </label>
+
+        <div class="config-field">
+          <label class="config-label">Max Rewrite Retries</label>
+          <input
+            v-model="maxRewriteRetries"
+            type="number"
+            class="config-input"
+            min="0"
+            max="10"
             @input="saveConfig"
           />
         </div>
