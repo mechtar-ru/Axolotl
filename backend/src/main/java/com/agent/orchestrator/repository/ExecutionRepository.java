@@ -210,6 +210,39 @@ public class ExecutionRepository {
         }
     }
 
+    // ────────── Stale Run Cleanup & Deletion ──────────
+
+    /**
+     * Marks all runs with status='resuming' for a schema back to 'paused'.
+     * Returns the number of released runs.
+     */
+    public int releaseStaleRuns(String schemaId) {
+        try {
+            long count = runRepo.releaseStaleRuns(schemaId);
+            log.info("Released {} stale runs for schema {}", count, schemaId);
+            return (int) count;
+        } catch (Exception e) {
+            log.error("Error releasing stale runs for schema {}: {}", schemaId, e.getMessage(), e);
+            return 0;
+        }
+    }
+
+    /**
+     * Deletes an ExecutionRun and all its NodeExecution records.
+     * Does not throw on failure — logs and wraps as RuntimeException.
+     */
+    public void deleteRun(String runId) {
+        try {
+            // Delete child node executions first, then the run itself
+            runRepo.deleteNodeExecutionsByRunId(runId);
+            runRepo.deleteById(runId);
+            log.info("Deleted run {} and its node executions", runId);
+        } catch (Exception e) {
+            log.error("Error deleting run {}: {}", runId, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete run " + runId, e);
+        }
+    }
+
     // ────────── NodeExecution CRUD ──────────
 
     public void createNodeExecution(NodeExecution ne) {

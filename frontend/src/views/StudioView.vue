@@ -477,6 +477,7 @@ function goToDashboard() {
         />
         <TimelineView
           v-show="activeMode === 'timeline'"
+          :schema-id="appId"
           @select-block="(blockId) => {
             if (blockId === '__execution__') return
             activeMode = 'blueprint'

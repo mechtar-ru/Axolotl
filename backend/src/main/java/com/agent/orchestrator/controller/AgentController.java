@@ -181,6 +181,18 @@ public class AgentController {
         return schemaService.getExecutionNodes(runId);
     }
 
+    @PostMapping("/schemas/{id}/cleanup-runs")
+    public Map<String, Object> cleanupRuns(@PathVariable String id) {
+        int released = executionRepository.releaseStaleRuns(id);
+        return Map.of("status", "ok", "released", released);
+    }
+
+    @DeleteMapping("/schemas/{id}/runs/{runId}")
+    public Map<String, String> deleteRun(@PathVariable String id, @PathVariable String runId) {
+        executionRepository.deleteRun(runId);
+        return Map.of("status", "ok", "message", "Run deleted");
+    }
+
     @PostMapping("/execution/{executionId}/feedback")
     public Map<String, String> submitReviewFeedback(
             @PathVariable String executionId,
