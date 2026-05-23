@@ -272,18 +272,6 @@ async function testProvider(name: string, apiKey?: string, baseUrl?: string) {
   }
 }
 
-async function toggleShowKey(providerName: string) {
-  showKeys[providerName] = !showKeys[providerName];
-  if (showKeys[providerName] && !editedKeys[providerName]) {
-    try {
-      const key = await settingsApi.getProviderApiKey(providerName);
-      if (key) editedKeys[providerName] = key;
-    } catch (e) {
-      console.error('Failed to fetch API key:', e);
-    }
-  }
-}
-
 async function toggleModel(providerName: string, model: string, enabled: boolean) {
   await settingsStore.setModelDisabled(providerName, model, !enabled);
   // Refresh provider list to sync disabledModels state
