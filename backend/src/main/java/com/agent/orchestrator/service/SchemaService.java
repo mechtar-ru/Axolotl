@@ -443,18 +443,24 @@ public class SchemaService {
      * Stores feedback and history in execution state, then triggers re-generation.
      */
     public void handleReviewFeedback(String executionId, String nodeId, String feedback, List<Map<String, Object>> history) {
+        String schemaId = resolveSchemaIdFromExecution(executionId);
+        if (schemaId == null) {
+            log.warn("Could not resolve schemaId from executionId: {}", executionId);
+            return;
+        }
+
         // Store feedback in the node result map for the review node to pick up
-        String feedbackKey = executionId + ":" + nodeId + ":feedback";
-        nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
+        String feedbackKey = schemaId + ":" + nodeId + ":feedback";
+        nodeExecutor.getNodeResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                 .put(feedbackKey, feedback);
 
         // Store feedback history
-        String historyKey = executionId + ":" + nodeId + ":feedbackHistory";
-        nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
+        String historyKey = schemaId + ":" + nodeId + ":feedbackHistory";
+        nodeExecutor.getNodeResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                 .put(historyKey, history != null ? history.toString() : "[]");
 
         // Find the paused node and resume it from AWAITING_APPROVAL → RUNNING
-        WorkflowSchema schema = schemaRepository.findById(executionId);
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
         if (schema != null && schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
                 if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
@@ -480,29 +486,39 @@ public class SchemaService {
      * so the review node can skip re-review on next run.
      */
     public void handleReviewApprove(String executionId, String nodeId) {
-        String approvedKey = executionId + ":" + nodeId + ":approved";
-        nodeExecutor.getNodeResults().computeIfAbsent(executionId, k -> new ConcurrentHashMap<>())
-                .put(approvedKey, "true");
-
-        // Atomically claim the paused run — prevents TOCTOU on concurrent approve
-        ExecutionRun claimed = executionRepository.claimPausedRun(executionId);
-        if (claimed == null) {
-            log.warn("No paused run found for schema {} (may have been claimed by another request)", executionId);
+        // Resolve schemaId — executionId can be either a run ID or a schema ID
+        String schemaId = resolveSchemaIdFromExecution(executionId);
+        if (schemaId == null) {
+            log.warn("Could not resolve schemaId from executionId: {}", executionId);
             return;
         }
 
+        // Release any stuck 'resuming' runs so claimPausedRun can find the right one
+        executionRepository.releasePausedRun(schemaId);
+
+        // Atomically claim the paused run — prevents TOCTOU on concurrent approve
+        ExecutionRun claimed = executionRepository.claimPausedRun(schemaId);
+        if (claimed == null) {
+            log.warn("No paused run found for schema {} (may have been claimed by another request)", schemaId);
+            return;
+        }
+
+        String approvedKey = schemaId + ":" + nodeId + ":approved";
+        nodeExecutor.getNodeResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                .put(approvedKey, "true");
+
         if ("PIPELINE".equals(claimed.getMode())) {
-            log.info("Pipeline review approved for schema {}, run {} node {}", executionId, claimed.getId(), nodeId);
+            log.info("Pipeline review approved for schema {}, run {} node {}", schemaId, claimed.getId(), nodeId);
             try {
-                pipelineService.resumePipeline(executionId, claimed.getId());
+                pipelineService.resumePipeline(schemaId, claimed.getId());
                 if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(executionId, "info",
+                    webSocketHandler.sendLog(schemaId, "info",
                             "Plan approved, resuming pipeline execution", nodeId);
-                    webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+                    webSocketHandler.sendLiveUpdate(schemaId, "review_approved",
                             Map.of("nodeId", nodeId, "status", "RUNNING"));
                 }
             } catch (Exception e) {
-                log.error("Failed to resume pipeline for schema {}: {}", executionId, e.getMessage(), e);
+                log.error("Failed to resume pipeline for schema {}: {}", schemaId, e.getMessage(), e);
                 executionRepository.updateRunStatus(claimed.getId(), "paused",
                         "Resume failed: " + e.getMessage());
             }
@@ -510,61 +526,84 @@ public class SchemaService {
         }
 
         // Non-pipeline (EXECUTE mode) — handle through NodeRouter resume
-        WorkflowSchema schema = schemaRepository.findById(executionId);
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
         if (schema == null) {
-            log.warn("Approval requested for non-existent schema: {}", executionId);
+            log.warn("Approval requested for non-existent schema: {}", schemaId);
             // Revert the claim so the run is not stuck in 'resuming'
             executionRepository.updateRunStatus(claimed.getId(), "paused", null);
             return;
         }
         log.info("Review node {} approved, resuming execution", nodeId);
         if (webSocketHandler != null) {
-            webSocketHandler.sendLog(executionId, "info",
+            webSocketHandler.sendLog(schemaId, "info",
                     "Plan approved, resuming execution", nodeId);
-            webSocketHandler.sendLiveUpdate(executionId, "review_approved",
+            webSocketHandler.sendLiveUpdate(schemaId, "review_approved",
                     Map.of("nodeId", nodeId, "status", "RUNNING"));
         }
         // pass the already-claimed run so resumeExecution skips claimPausedRun
-        resumeExecution(executionId, schema, claimed.getId());
+        resumeExecution(schemaId, schema, claimed.getId());
+    }
+
+    /**
+     * Resolve schema ID from an executionId that may be either a run ID or a schema ID.
+     */
+    private String resolveSchemaIdFromExecution(String executionId) {
+        // Try as run ID first
+        try {
+            ExecutionRun run = executionRepository.getRunById(executionId);
+            if (run != null && run.getSchemaId() != null) {
+                return run.getSchemaId();
+            }
+        } catch (Exception e) {
+            log.debug("executionId {} is not a run ID: {}", executionId, e.getMessage());
+        }
+        // Fall back — assume it's a schema ID
+        return executionId;
     }
 
     /**
      * Handle review rejection — fail the node.
      */
     public void handleReviewReject(String executionId, String nodeId) {
-        List<ExecutionRun> runs = executionRepository.getRunsBySchema(executionId);
+        String schemaId = resolveSchemaIdFromExecution(executionId);
+        if (schemaId == null) {
+            log.warn("Could not resolve schemaId from executionId: {}", executionId);
+            return;
+        }
+
+        List<ExecutionRun> runs = executionRepository.getRunsBySchema(schemaId);
         ExecutionRun pipelineRun = runs.stream()
                 .filter(r -> "PIPELINE".equals(r.getMode()) && "paused".equals(r.getStatus()))
                 .findFirst().orElse(null);
         if (pipelineRun != null) {
-            log.info("Pipeline review rejected for schema {}, run {} node {}", executionId, pipelineRun.getId(), nodeId);
+            log.info("Pipeline review rejected for schema {}, run {} node {}", schemaId, pipelineRun.getId(), nodeId);
             if (webSocketHandler != null) {
-                webSocketHandler.sendLog(executionId, "error",
+                webSocketHandler.sendLog(schemaId, "error",
                         "Plan rejected by user, pipeline failed: " + nodeId, nodeId);
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("nodeId", nodeId);
                 payload.put("status", "FAILED");
                 payload.put("error", "Plan rejected by user");
-                webSocketHandler.sendLiveUpdate(executionId, "review_rejected", payload);
+                webSocketHandler.sendLiveUpdate(schemaId, "review_rejected", payload);
             }
             executionRepository.updateRunStatus(pipelineRun.getId(), "failed", "User rejected review at " + nodeId);
             return;
         }
 
-        WorkflowSchema schema = schemaRepository.findById(executionId);
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
         if (schema != null && schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
                 if (node.getId().equals(nodeId) && node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL) {
                     node.setStatus(Node.NodeStatus.FAILED);
                     log.info("Review node {} rejected, marking FAILED", nodeId);
                     if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(executionId, "error",
+                        webSocketHandler.sendLog(schemaId, "error",
                                 "Plan rejected by user, node failed: " + nodeId, nodeId);
                         Map<String, Object> payload = new HashMap<>();
                         payload.put("nodeId", nodeId);
                         payload.put("status", "FAILED");
                         payload.put("error", "Plan rejected by user");
-                        webSocketHandler.sendLiveUpdate(executionId, "review_rejected", payload);
+                        webSocketHandler.sendLiveUpdate(schemaId, "review_rejected", payload);
                     }
                     break;
                 }

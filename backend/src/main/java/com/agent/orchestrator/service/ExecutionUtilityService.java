@@ -166,6 +166,12 @@ public class ExecutionUtilityService {
                 .reduce((first, second) -> second).map(Object::toString).orElse("");
         text = text.replace("{{prev_result}}", prevResult);
 
+        // {{sourceData}} — resolve from the first source-type node's sourceData field
+        if (text.contains("{{sourceData}}")) {
+            String sourceData = resolveSourceData(schema);
+            text = text.replace("{{sourceData}}", sourceData != null ? sourceData : "");
+        }
+
         if (text.contains("{{node:")) {
             if (schema.getNodes() != null) {
                 for (Node n : schema.getNodes()) {
@@ -179,6 +185,26 @@ public class ExecutionUtilityService {
         text = text.replace("{{schema_name}}", schema.getName() != null ? schema.getName() : "");
 
         return text;
+    }
+
+    private String resolveSourceData(WorkflowSchema schema) {
+        if (schema == null || schema.getNodes() == null) return "";
+        for (Node n : schema.getNodes()) {
+            if ("source".equals(n.getType()) && n.getData() != null) {
+                String sd = n.getData().getSourceData();
+                if (sd == null || sd.isEmpty()) {
+                    // fallback to config.sourceData
+                    Object cfgSd = n.getData().getConfig() != null
+                            ? n.getData().getConfig().get("sourceData") : null;
+                    if (cfgSd instanceof String) sd = (String) cfgSd;
+                }
+                if (sd != null && !sd.isEmpty()) return sd;
+                if (n.getData().getResult() != null && !n.getData().getResult().isEmpty()) {
+                    return n.getData().getResult();
+                }
+            }
+        }
+        return "";
     }
 
     // ────────────────────────── context building ──────────────────────────

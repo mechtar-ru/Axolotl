@@ -60,6 +60,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         SET r.status = 'resuming'
         SET r.updatedAt = toString(datetime())
         RETURN r
+        ORDER BY r.startedAt DESC LIMIT 1
         """)
     Optional<GraphExecutionRun> claimPausedRun(@Param("schemaId") String schemaId);
 
