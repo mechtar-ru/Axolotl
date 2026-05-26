@@ -19,13 +19,23 @@ The Бережно experiment proved the concept but exposed three gaps:
 - Re-runs overwrite/duplicate files
 - No easy way to roll back a bad session
 
+### Spike first (1 day)
+Before committing to WS1, prove the hypothesis:
+1. Hardcode `outputSummary` injection from last completed run into agent systemPrompt
+2. Run 2 sequential sessions on Бережно manually
+3. Compare output quality vs baseline (current one-shot stubs)
+
+If spike shows no improvement → **drop WS1**. Reallocate effort to WS4 + WS3.
+
 ### Breakdown
 
 #### 1a. Cross-session context injection
 **Mechanism**: Before each agent stage, inject into systemPrompt:
-- `directory_read` output of targetPath (current file tree)
-- Last 3 `outputSummary` JSON blobs from prior completed runs
-- Git log summary (`git log --oneline -5` in targetPath if `.git` exists)
+- `directory_read` output of targetPath (current file tree) — **single source of truth**
+- Last 3 `generatedFiles` arrays from prior completed runs (not raw outputSummary)
+- Git log summary (`git log --oneline -5` in targetPath if `.git` exists) — only branch/commit context, not file diff
+
+> **Design constraint**: file tree is the canonical state. `generatedFiles` explains *intent*, diff explains *what changed*. If they contradict, agent trusts file tree.
 
 **Effort**: ~2 days (PipelineService + ExecutionUtilityService)
 **Risk**: Prompt length growth — 5 runs × raw outputSummary can exceed 32K context.
@@ -39,8 +49,9 @@ Session plan writes commit messages with file list.
 
 **Effort**: ~1 day (ToolExecutor + schemaStore)
 **Risk**: User might have their own git. Check for existing git first, use `git stash` if dirty.
+**Mitigation**: Show `git status` preview and confirm with human before stash. Skip auto-init if `.git` exists.
 **Risk**: Branch explosion — `session-N` accumulates indefinitely.
-**Mitigation**: Auto-delete branches >30 days old after commit. Or use `git worktree` instead.
+**Mitigation**: Auto-delete branches >30 days old after commit (with config toggle, not silent). Or use `git worktree` instead.
 
 #### 1c. Diff-aware agent
 **Mechanism**: When agent starts a session, inject `git diff main..session-N-1`
@@ -52,7 +63,15 @@ agent know what exists and what was recently changed.
 **Mitigation**: Summarize diff per-file (summary, ±lines), cap at 30 files / 100 lines.
 **Dependency**: 1b must be done first
 
-### Total effort: ~4 days (×1.5 human factor: ~6 days)
+#### 1d. Session kill switch
+**Mechanism**: During session execution, if user cancels mid-run: `git checkout -- .` to revert all uncommitted changes, `git branch -D session-N` if empty.
+Wired to existing Cancel button in PipelinePanel + StudioTopBar.
+
+**Effort**: ~0.5 day (PipelineService + ToolExecutor)
+**Risk**: Reverts user's own working tree changes if any.
+**Mitigation**: Always show diff preview before revert. Only revert files written by agent (via `.gitignore`-like agent file manifest).
+
+### Total effort: ~6.5 days (×1.5 human factor: ~10 days)
 ### Success criteria: 3 sequential sessions building the same app — each session
 passes `dart analyze`, no file count regression across sessions, no manual edits needed.
 
@@ -120,7 +139,7 @@ project-level verification.
 runs `dart analyze` (or equivalent) on the entire project. Results feed into
 a new agent turn to fix all issues in one batch.
 
-**Effort**: ~2 days (new node type + ToolExecutor batch verify)
+**Effort**: ~4 days (new node type + ToolExecutor batch verify — review node precedent: 5d full-stack)
 **Risk**: Long-running analysis (~30s for medium Flutter projects).
 **Risk**: Parallel verify races with output stage file writes — output modifies files while batch_verify runs.
 **Mitigation**: Serialize: batch_verify → agent fix → batch_verify again. Do NOT run in parallel with output.
@@ -132,7 +151,7 @@ premortem checks all files importing it.
 
 **Effort**: ~3 days (Neo4j graph queries in premortem prompt)
 **Dependency**: Code graph must be up-to-date for targetPath files (currently only scans `backend/src/main/java/`).
-**Prerequisite**: Extend `update-graph.sh` to scan targetPath project dirs + config toggle. ~1 day unbudgeted.
+**Prerequisite**: Extend `update-graph.sh` to scan targetPath project dirs + config toggle. ~2-3 days unbudgeted.
 
 #### 3c. Regression test suite
 **Mechanism**: After each session, `git stash` (if dirty), run `dart test`,
@@ -165,8 +184,12 @@ The UI premortems identified ~40 risks. Most are minor but cumulative friction.
 data. Currently stale refs persist. Add `watch(blockId, { immediate: true })`
 that calls `resetRefs()` before loading new block config.
 
-**Effort**: ~0.5 day
-**Risk**: Already documented as "Critical" in premortem. Low complexity.
+**Effort**: ~0.5 day (or 1.5d if `reactive()`→`ref()` restructuring needed)
+**Risk**: Already documented as "Critical" in premortem. Root cause is deeply
+nested Vue reactive objects — `watch` may be insufficient if nested path
+reactivity doesn't trigger.
+**Mitigation**: If watch fails, restructure from `reactive()` to plain `ref()`
+with manual getter. Allocate +1d contingency.
 
 #### 4b. Pipeline progress in StudioTopBar
 **Mechanism**: Mini progress bar with stage names and status colors next to the
@@ -195,9 +218,12 @@ Default model: @cf/bonsai. Target: emotion tracker app.
 **Effort**: ~0.5 day
 **Risk**: None.
 
-### Total effort: ~2.5 days
+### Total effort: ~3 days
 ### Success criteria: A new user can create a Бережно app in 3 clicks, execute
 with Cmd+Enter, and follow progress in the top bar.
+
+**Not in scope**: full accessibility audit (ARIA labels, keyboard nav beyond shortcuts).
+Low priority — revisit after WS1.
 
 ---
 
@@ -216,7 +242,9 @@ Neo4j data grows unbounded. Test coverage is low.
 env to proactively test.
 
 **Effort**: ~0.5 day
-**Risk**: None. Drop-in replacements.
+**Risk**: `actions/cache@v5` changed cache key format — `save-always` required for branch cache.
+Not a silent drop-in: may invalidate all existing caches on first run.
+**Mitigation**: Add `save-always: true` explicitly. Expect first post-upgrade run to be uncached.
 
 #### 5b. Neo4j TTL indexes
 **Mechanism**: Set TTL on `NodeExecution` nodes (auto-delete after 90 days).
@@ -246,24 +274,42 @@ CI runs with Node.js 24.
 | Rank | Workstream | Effort | Impact | Risk |
 |------|-----------|--------|--------|------|
 | — | **5a (CI actions)** | 0.5d | Low (deadline) | Low |
-| 1 | 1. Multi-Session | 6d (×1.5 human) | High | Medium |
-| 2 | 4. UI/UX Polish | 3.5d (×1.5) | Medium | Low |
-| 3 | 3. Quality Gates | 10d (×1.5) | High | Medium |
+| — | **WS1 spike** | 1d | Validates WS1 | Low |
+| 1 | 1. Multi-Session (full) | 10d (×1.5 human) | High | Medium |
+| 2 | 4. UI/UX Polish | 3d | Medium | Low |
+| 3 | 3. Quality Gates | 13d (×1.5) | High | Medium |
 | 4 | 2. Observability | 8d (×1.5) | Medium | Low |
 | 5 | 5b-c (Infra rest) | 3.5d (×1.5) | Low | Low |
 
 ### Order of execution
 
 1. **#5a (DO FIRST)** — CI actions v5 before June 2 deadline
-2. **Reassess roadmap** — priorities may shift after CI fix lands
-3. **#1 Multi-Session** — core differentiator, highest user-facing impact
-4. **#4 UI/UX** — quick wins, low risk
-5. **#3 Quality Gates** — high impact but gated on #1 learnings
-6. **#2 Observability** — nice-to-have, defer if budget tight
-7. **#5b-c** — after major workstreams land
+2. **WS1 spike (1d)** — validate multi-session value
+   - If spike fails → drop WS1. Do WS4 next.
+   - If spike passes → proceed to full WS1.
+3. **#1 Multi-Session** (or #4 UI/UX if spike failed)
+4. **Reassess** — then next workstream
+5. Continue down the priority table
 
 Reassess roadmap after each workstream. If a workstream overruns by >50%, cut the
 lowest-ranked remaining item.
+
+---
+
+## What We Are NOT Doing (this cycle)
+
+| Excluded | Rationale | Revisit when |
+|----------|-----------|--------------|
+| Mobile app for Axolotl itself (React Native / Flutter) | Premature — desktop web is the primary UI | User requests it |
+| Multi-user / teams | No demand signal yet | Any team adopts Axolotl |
+| Plugin system (third-party nodes/types) | Requires stable node API first | After WS1 + WS3 land |
+| Windows native packaging | macOS + web covers current users | User requests it |
+| Full i18n (beyond EN/RU docs) | Low value per effort | After WS4 |
+
+**Tech debt that blocks nothing** (deferred indefinitely):
+- `BlockConfigPanel.vue` complete rewrite (40+ refs) — fixed with targeted watch
+- Dead code removal in `CustomLlmProvider.java` (commented fallback logic)
+- Frontend test coverage on non-critical components
 
 ---
 
