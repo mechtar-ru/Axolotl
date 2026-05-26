@@ -13,6 +13,7 @@ const emit = defineEmits<{
   'back': []
   'show-quick-start': []
   'show-generate-from-prompt': []
+  'export-schema': []
 }>()
 
 const modes: { id: StudioMode; label: string; icon: string }[] = [
@@ -56,6 +57,17 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
           <path d="M13 2L12 10H21L11 22L12 14H3L13 2Z" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         Quick Start
+      </button>
+
+      <button
+        class="export-btn"
+        @click="emit('export-schema')"
+        title="Export schema as JSON"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export
       </button>
 
       <button
@@ -243,6 +255,27 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
 
 .generate-prompt-btn:hover {
   background: var(--accent-light);
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.export-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 @keyframes pulse {

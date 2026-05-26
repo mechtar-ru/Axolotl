@@ -226,6 +226,22 @@ function onShowGenerateFromPrompt() {
   showGenerateFromPrompt.value = true
 }
 
+async function handleExportSchema() {
+  if (!app.value?.id) return
+  try {
+    const schema = await schemaApi.exportSchema(app.value.id)
+    const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${schema.name || 'schema'}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Export failed:', err)
+  }
+}
+
 function onAddToCanvas(schema: WorkflowSchema) {
   schemaStore.updateSchema(schema)
   showQuickStart.value = false
@@ -472,6 +488,7 @@ function goToDashboard() {
       @back="goToDashboard"
       @show-quick-start="onShowQuickStart"
       @show-generate-from-prompt="onShowGenerateFromPrompt"
+      @export-schema="handleExportSchema"
     />
     
     <ResumeBanner

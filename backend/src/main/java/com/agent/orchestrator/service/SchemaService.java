@@ -198,7 +198,44 @@ public class SchemaService {
         log.info("Удалена схема: {}", id);
     }
 
-    // ────────────────────────── Export (delegated) ──────────────────────────
+    // ────────────────────────── Export / Import ──────────────────────────
+
+    public WorkflowSchema exportSchema(String id) {
+        return schemaRepository.findById(id);
+    }
+
+    public WorkflowSchema importSchema(WorkflowSchema schema, String userId) {
+        String newId = UUID.randomUUID().toString();
+        schema.setId(newId);
+        schema.setUserId(userId);
+        schema.setCreatedAt(Instant.now().toString());
+        schema.setUpdatedAt(Instant.now().toString());
+
+        // Strip execution state from nodes
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                node.setStatus(null);
+                if (node.getData() != null) {
+                    node.getData().setMessages(null);
+                    node.getData().setResult(null);
+                }
+            }
+        }
+
+        // Auto-create target directory
+        if (schema.getTargetPath() != null && !schema.getTargetPath().isBlank()) {
+            try {
+                java.nio.file.Files.createDirectories(java.nio.file.Path.of(schema.getTargetPath()));
+                log.info("Created targetPath directory: {}", schema.getTargetPath());
+            } catch (java.io.IOException e) {
+                log.warn("Could not create targetPath {}: {}", schema.getTargetPath(), e.getMessage());
+            }
+        }
+
+        schemaRepository.save(schema);
+        log.info("Imported schema: {} (ID: {})", schema.getName(), newId);
+        return schema;
+    }
 
     public String exportToMermaid(String id) {
         return schemaExporter.exportToMermaid(id);

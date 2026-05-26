@@ -118,6 +118,17 @@ public class AgentController {
         schemaService.deleteSchema(id);
     }
 
+    @GetMapping("/schemas/{id}/export")
+    public WorkflowSchema exportSchema(@PathVariable String id) {
+        return schemaService.getSchema(id);
+    }
+
+    @PostMapping("/schemas/import")
+    public WorkflowSchema importSchema(@RequestBody WorkflowSchema schema) {
+        String userId = getCurrentUserId();
+        return schemaService.importSchema(schema, userId);
+    }
+
     @GetMapping("/schemas/{id}/export/mermaid")
     public Map<String, String> exportToMermaid(@PathVariable String id) {
         String mermaid = schemaService.exportToMermaid(id);

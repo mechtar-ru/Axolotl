@@ -355,6 +355,32 @@ async function createBlankApp() {
     console.error('Failed to create blank app:', error)
   }
 }
+
+const importInput = ref<HTMLInputElement | null>(null)
+
+function triggerImport() {
+  importInput.value?.click()
+}
+
+async function onImportFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const text = await file.text()
+    const schema = JSON.parse(text) as WorkflowSchema
+    const created = await schemaApi.importSchema(schema)
+    if (created) {
+      if (!schemaStore.schemas.find(s => s.id === created.id)) {
+        schemaStore.schemas.push(created)
+      }
+      router.push(`/app/${created.id}`)
+    }
+  } catch (err) {
+    console.error('Import failed:', err)
+  }
+  input.value = ''
+}
 </script>
 
 <template>
@@ -373,6 +399,17 @@ async function createBlankApp() {
           <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"/></svg>
           New App
         </button>
+        <button class="btn-secondary header-btn" @click="triggerImport">
+          <svg class="icon" viewBox="0 0 20 20" fill="currentColor"><path d="M10 3a1 1 0 011 1v5.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L9 9.586V4a1 1 0 011-1z"/><path d="M3 15a1 1 0 011 1v1a1 1 0 001 1h10a1 1 0 001-1v-1a1 1 0 112 0v1a3 3 0 01-3 3H5a3 3 0 01-3-3v-1a1 1 0 011-1z"/></svg>
+          Import
+        </button>
+        <input
+          ref="importInput"
+          type="file"
+          accept=".json"
+          style="display: none"
+          @change="onImportFile"
+        />
       </div>
     </header>
 
