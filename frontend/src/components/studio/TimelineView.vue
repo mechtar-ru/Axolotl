@@ -155,8 +155,8 @@ async function fetchNodeStatuses() {
     targets.map(r => schemaApi.getRunNodes(props.schemaId, r.id))
   )
    for (let i = 0; i < targets.length; i++) {
-     const run = targets[i]
-     const result = results[i]
+     const run = targets[i]!
+     const result = results[i]!
      if (result.status === 'fulfilled') {
        const nodeExecs = (result as PromiseFulfilledResult<NodeExecution[]>).value
        runNodeStatuses.value[run.id] = nodeExecs.map(n => ({
