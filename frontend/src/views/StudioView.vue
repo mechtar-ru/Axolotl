@@ -242,6 +242,18 @@ async function handleExportSchema() {
   }
 }
 
+const blueprintRef = ref<any>(null)
+const canUndo = computed(() => blueprintRef.value?.undoRedo.canUndo.value ?? false)
+const canRedo = computed(() => blueprintRef.value?.undoRedo.canRedo.value ?? false)
+
+function handleUndo() {
+  blueprintRef.value?.undoRedo.undo()
+}
+
+function handleRedo() {
+  blueprintRef.value?.undoRedo.redo()
+}
+
 function onAddToCanvas(schema: WorkflowSchema) {
   schemaStore.updateSchema(schema)
   showQuickStart.value = false
@@ -483,12 +495,16 @@ function goToDashboard() {
       :app-name="app?.name || 'Untitled'"
       :active-mode="activeMode"
       :is-running="isRunning"
+      :can-undo="canUndo"
+      :can-redo="canRedo"
       @set-mode="setMode"
       @toggle-run="toggleRun"
       @back="goToDashboard"
       @show-quick-start="onShowQuickStart"
       @show-generate-from-prompt="onShowGenerateFromPrompt"
       @export-schema="handleExportSchema"
+      @undo="handleUndo"
+      @redo="handleRedo"
     />
     
     <ResumeBanner
@@ -518,6 +534,7 @@ function goToDashboard() {
       </div>
       <div class="main-content">
         <BlueprintView
+          ref="blueprintRef"
           v-show="activeMode === 'blueprint'"
           :app-id="appId"
         />

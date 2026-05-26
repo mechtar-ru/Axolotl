@@ -10,6 +10,7 @@ import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
 import BlockConfigPanel from '@/components/studio/BlockConfigPanel.vue'
 import SchemaPropertiesPanel from '@/components/studio/SchemaPropertiesPanel.vue'
+import { useUndoRedo } from '@/composables/useUndoRedo'
 
 // Import block components for VueFlow nodeTypes
 import ReceiveBlock from '@/components/blocks/ReceiveBlock.vue'
@@ -39,6 +40,9 @@ const nodeTypes = {
 
 const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView, setNodes, setEdges } = useVueFlow({ id: 'blueprint-flow' })
 const flowReady = ref(false)
+
+const undoRedo = useUndoRedo(setNodes, setEdges, nodes, edges)
+defineExpose({ undoRedo, canUndo: undoRedo.canUndo, canRedo: undoRedo.canRedo })
 
 const emit = defineEmits<{
   'show-quick-start': []
@@ -106,6 +110,18 @@ async function loadFullSchema() {
 
 onMounted(loadFullSchema)
 
+// Keyboard shortcut: Ctrl+Z undo, Ctrl+Shift+Z redo
+function onKeyDownHandler(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+    event.preventDefault()
+    if (event.shiftKey) {
+      undoRedo.redo()
+    } else {
+      undoRedo.undo()
+    }
+  }
+}
+
 // Watch for schema updates (e.g. after save) — prevent re-entrant sync loops
 watch(() => schemaStore.currentSchema, (schema) => {
   if (syncing) return
@@ -116,11 +132,33 @@ watch(() => schemaStore.currentSchema, (schema) => {
   setNodes(buildVueFlowNodes(schema))
   setEdges(buildVueFlowEdges(schema))
   flowReady.value = true
+  undoRedo.reset()
   nextTick(() => {
     fitView({ padding: 0.2 })
     syncing = false
   })
 }, { deep: true, immediate: true })
+
+// Debounced watch on nodes/edges for undo capture (drag moves, deletions)
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+let lastCaptureKey = ''
+watch([nodes, edges], ([newNodes, newEdges], [oldNodes, oldEdges]) => {
+  if (!flowReady.value) return
+
+  // Capture old state (pre-change) once, debounced
+  if (oldNodes && oldEdges) {
+    const key = `${oldNodes.length}:${oldEdges.length}`
+    if (key !== lastCaptureKey || oldNodes.length === 0) {
+      undoRedo.capture()
+      lastCaptureKey = key
+    }
+  }
+
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    syncFlowToStore()
+  }, 500)
+}, { deep: true })
 
 // Handle drag and drop from BlockPalette
 const dropPosition = ref({ x: 0, y: 0 })
@@ -160,6 +198,7 @@ function onDropHandler(event: DragEvent) {
         }
       }
       
+      undoRedo.capture()
       addNodes([newNode])
       syncFlowToStore()
     }
@@ -245,6 +284,7 @@ onConnect((connection) => {
     console.warn('Skipping incomplete connection', connection)
     return
   }
+  undoRedo.capture()
   const newEdge: Edge = {
     id: `edge-${Date.now()}`,
     source: connection.source,
@@ -265,7 +305,7 @@ onConnect((connection) => {
     </div>
     
     <!-- Canvas -->
-    <div class="canvas-wrapper">
+    <div class="canvas-wrapper" tabindex="0" @keydown="onKeyDownHandler">
       <VueFlow
         v-if="flowReady"
         id="blueprint-flow"
