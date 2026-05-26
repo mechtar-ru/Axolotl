@@ -353,12 +353,12 @@ class ExecutionUtilityServiceTest {
         node.setData(data);
 
         ToolResult toolResult = new ToolResult(true, "output", null);
-        when(toolExecutor.execute(eq("bash"), anyMap(), any(), eq("s1"), any())).thenReturn(toolResult);
+        when(toolExecutor.execute(eq("bash"), anyMap(), any(), eq("s1"), any(), any())).thenReturn(toolResult);
 
         String result = utilityService.executeToolCall("bash", Map.of("command", "ls"), node, "s1");
 
         assertEquals("output", result);
-        verify(toolExecutor).execute(eq("bash"), anyMap(), any(), eq("s1"), any());
+        verify(toolExecutor).execute(eq("bash"), anyMap(), any(), eq("s1"), any(), any());
     }
 
     @Test
@@ -369,7 +369,7 @@ class ExecutionUtilityServiceTest {
         node.setData(data);
 
         ToolResult toolResult = new ToolResult(false, null, "command not found");
-        when(toolExecutor.execute(eq("bash"), anyMap(), any(), eq("s1"), any())).thenReturn(toolResult);
+        when(toolExecutor.execute(eq("bash"), anyMap(), any(), eq("s1"), any(), any())).thenReturn(toolResult);
 
         String result = utilityService.executeToolCall("bash", Map.of("command", "unknown"), node, "s1");
 
