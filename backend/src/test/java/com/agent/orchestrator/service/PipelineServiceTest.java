@@ -31,6 +31,7 @@ class PipelineServiceTest {
     @Mock NodeExecutor nodeExecutor;
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock ExecutionRepository executionRepository;
+    @Mock ExecutionStateManager stateManager;
     @Captor ArgumentCaptor<WorkflowSchema> schemaCaptor;
 
     PipelineService pipelineService;
@@ -38,7 +39,7 @@ class PipelineServiceTest {
     @BeforeEach
     void setUp() {
         pipelineService = new PipelineService(schemaRepository, nodeExecutor,
-                webSocketHandler, executionRepository);
+                webSocketHandler, executionRepository, stateManager);
     }
 
     // ────────── createDefaultPipeline ──────────

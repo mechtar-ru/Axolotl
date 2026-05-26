@@ -14,6 +14,8 @@ import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import ResumeBanner from '@/components/studio/ResumeBanner.vue'
 import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
 import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
+import DepsInstallDialog from '@/components/studio/DepsInstallDialog.vue'
+import DiffReviewDialog from '@/components/studio/DiffReviewDialog.vue'
 import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/schemaStore'
 import { useToast } from '@/composables/useToast'
@@ -61,6 +63,16 @@ const reviewNodeId = ref('')
 const reviewFindings = ref<ReviewFinding[]>([])
 const reviewIteration = ref(1)
 const reviewMode = ref('manual')
+
+// Deps install state
+const showDepsDialog = ref(false)
+const depsMissing = ref<string[]>([])
+const depsProjectPath = ref('')
+
+// Diff review state
+const showDiffDialog = ref(false)
+const diffDiffs = ref<Array<{filePath: string; diff: string; originalLength: number; newLength: number}>>([])
+const diffNodeId = ref('')
 
 const showPipelinePanel = ref(false)
 
@@ -161,6 +173,18 @@ provide('executionProgress', executionProgress)
         reviewMode.value = payload.mode || 'manual'
         showReviewDialog.value = true
       }
+    },
+    onDepsNeeded: (data) => {
+      if (!isActive) return
+      depsMissing.value = data.missing
+      depsProjectPath.value = data.projectPath
+      showDepsDialog.value = true
+    },
+    onDiffsNeeded: (data) => {
+      if (!isActive) return
+      diffDiffs.value = data.diffs || []
+      diffNodeId.value = data.nodeId
+      showDiffDialog.value = true
     },
   })
 
@@ -517,6 +541,25 @@ function goToDashboard() {
       :feedback-history="[]"
       @approve="handleReviewApprove"
       @reject="handleReviewReject"
+    />
+
+    <DepsInstallDialog
+      :visible="showDepsDialog"
+      :schema-id="appId"
+      :execution-id="currentExecutionId"
+      :node-id="reviewNodeId"
+      :deps="depsMissing"
+      :project-path="depsProjectPath"
+      @close="showDepsDialog = false"
+    />
+
+    <DiffReviewDialog
+      :visible="showDiffDialog"
+      :schema-id="appId"
+      :execution-id="currentExecutionId"
+      :node-id="diffNodeId"
+      :diffs="diffDiffs"
+      @close="showDiffDialog = false"
     />
   </div>
 </template>

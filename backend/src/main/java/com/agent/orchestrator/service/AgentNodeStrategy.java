@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -237,7 +238,8 @@ public class AgentNodeStrategy {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> args = (Map<String, Object>) toolCall.get("arguments");
 
-                String toolResult = utilityService.executeToolCall(toolId, args, node, schemaId);
+                String targetPath = currentSchema != null ? currentSchema.getTargetPath() : null;
+                String toolResult = utilityService.executeToolCall(toolId, args, node, schemaId, targetPath);
                 messages.add(new Node.Message("tool", toolResult));
                 messages.add(new Node.Message("tool_call_id", (String) toolCall.get("id")));
 
@@ -280,6 +282,73 @@ public class AgentNodeStrategy {
             Map<String, Object> extracted = utilityService.extractGeneratedFiles(finalResponse);
             if (extracted != null) {
                 stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), extracted);
+            }
+        }
+
+        // Append file changes summary
+        Map<String, String> changes = stateManager.getFileChanges(schemaId, node.getId());
+        if (!changes.isEmpty()) {
+            StringBuilder changeSummary = new StringBuilder("\n\n[FILE CHANGES]\n");
+            for (var entry : changes.entrySet()) {
+                String status = "created".equals(entry.getValue()) ? "✅ Created" : "📝 Modified";
+                changeSummary.append("  ").append(status).append(": ").append(entry.getKey()).append("\n");
+            }
+            finalResponse += changeSummary.toString();
+            stateManager.clearFileChanges(schemaId, node.getId());
+        }
+
+        // Auto build check — if enabled in stage config, run build_app after agent completes
+        Map<String, Object> config = node.getData() != null ? node.getData().getConfig() : null;
+        boolean autoBuild = config != null && Boolean.TRUE.equals(config.get("autoBuildCheck"));
+        if (autoBuild && currentSchema != null && currentSchema.getTargetPath() != null
+                && !currentSchema.getTargetPath().isBlank()) {
+            try {
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Auto build check enabled — verifying build...", node.getId());
+                }
+                String targetPath = currentSchema.getTargetPath();
+                var proc = new ProcessBuilder("which", "flutter")
+                        .redirectErrorStream(true).start();
+                proc.waitFor(5, TimeUnit.SECONDS);
+                if (proc.exitValue() != 0) {
+                    String buildMsg = "\n\n[BUILD CHECK] Flutter SDK not found. Install via: brew install flutter";
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "warning", buildMsg, node.getId());
+                    }
+                    return finalResponse + buildMsg;
+                }
+
+                // Run flutter build apk --debug
+                ProcessBuilder buildPb = new ProcessBuilder("flutter", "build", "apk", "--debug");
+                buildPb.directory(new java.io.File(targetPath));
+                buildPb.redirectErrorStream(true);
+                Process buildProc = buildPb.start();
+                boolean finished = buildProc.waitFor(300, TimeUnit.SECONDS);
+                String buildOutput = new String(buildProc.getInputStream().readAllBytes());
+                java.nio.file.Path apkPath = java.nio.file.Path.of(targetPath,
+                        "build/app/outputs/flutter-apk/app-debug.apk");
+                if (finished && java.nio.file.Files.exists(apkPath)) {
+                    long size = java.nio.file.Files.size(apkPath);
+                    String successMsg = "\n\n[BUILD CHECK] ✅ APK built: " + apkPath
+                            + " (" + (size / 1024) + " KB)";
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "success", successMsg, node.getId());
+                    }
+                    return finalResponse + successMsg;
+                } else {
+                    String failMsg = "\n\n[BUILD CHECK] ❌ Build failed:\n" + buildOutput;
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "error", failMsg, node.getId());
+                    }
+                    return finalResponse + failMsg;
+                }
+            } catch (Exception e) {
+                String errorMsg = "\n\n[BUILD CHECK] Error: " + e.getMessage();
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "error", errorMsg, node.getId());
+                }
+                return finalResponse + errorMsg;
             }
         }
 

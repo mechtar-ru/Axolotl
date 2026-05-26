@@ -66,7 +66,7 @@ public class SchemaBuilderNodeStrategy {
                     "systemPrompt": "...",
                     "model": "minimax-max",
                     "agentType": "coder|assistant|researcher|reviewer",
-                    "enabledTools": ["file_read", "file_write", "directory_read", "grep", "bash"],
+                    "enabledTools": ["file_read", "file_write", "directory_read", "grep", "bash", "build_app"],
                     "maxToolCalls": 50,
                     "toolPermissions": [
                       {"toolId": "file_read", "allowedPaths": ["/full/path/**"], "enabled": true}

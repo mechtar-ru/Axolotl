@@ -156,7 +156,9 @@ public class LlmService {
             throw new RuntimeException(error);
         }
 
-        return provider.chat(model, systemPrompt, userPrompt, config);
+        // Strip provider prefix (e.g. "bonsai:") before passing to the provider
+        String strippedModel = stripProviderPrefix(model);
+        return provider.chat(strippedModel, systemPrompt, userPrompt, config);
     }
 
     public String streamingChat(String model, String systemPrompt, String userPrompt,
@@ -170,7 +172,22 @@ public class LlmService {
             throw new RuntimeException(error);
         }
 
-        return provider.streamingChat(model, systemPrompt, userPrompt, config, onToken);
+        String strippedModel = stripProviderPrefix(model);
+        return provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken);
+    }
+
+    private String stripProviderPrefix(String model) {
+        if (model == null || model.isBlank()) return model;
+        // Only strip if there's a colon that creates provider:actualModel format
+        int colon = model.indexOf(':');
+        if (colon > 0 && colon < model.length() - 1) {
+            String prefix = model.substring(0, colon).toLowerCase();
+            // Only strip if the prefix matches a known provider
+            if (providers.containsKey(prefix)) {
+                return model.substring(colon + 1);
+            }
+        }
+        return model;
     }
 
     private String resolveProvider(String model) {
@@ -178,6 +195,15 @@ public class LlmService {
         String lower = model.toLowerCase();
         if (providers.containsKey(lower)) return lower;
         if (lower.startsWith("@cf/")) return "custom";
+        // Check if model has provider:model format and the prefix is a registered provider or custom endpoint
+        int colonIdx = lower.indexOf(':');
+        if (colonIdx > 0) {
+            String prefix = lower.substring(0, colonIdx);
+            if (providers.containsKey(prefix)) return prefix;
+            // Custom endpoints use fixed provider name "custom" but have their own endpoint name as prefix
+            if (customEndpointRepository.findEnabled().stream()
+                    .anyMatch(e -> e.getName().equalsIgnoreCase(prefix))) return "custom";
+        }
         String stripped = stripEndpointPrefix(lower);
         return switch (stripped) {
             case "local" -> "ollama";

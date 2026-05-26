@@ -39,7 +39,7 @@ axolotl:
     ollama:
       base-url: http://localhost:11434
       default-model: qwen2.5:0.5b
-      timeout: 120
+      timeout: 3600
     zen:
       base-url: https://opencode.ai/zen/v1
       api-key: ${ZEN_API_KEY:}

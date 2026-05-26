@@ -191,19 +191,39 @@ public class ExecutionUtilityService {
         if (schema == null || schema.getNodes() == null) return "";
         for (Node n : schema.getNodes()) {
             if ("source".equals(n.getType()) && n.getData() != null) {
+                log.info("resolveSourceData: source node id={}, name={}, hasSourceData={}, hasConfig={}, hasResult={}",
+                        n.getId(), n.getName(),
+                        n.getData().getSourceData() != null && !n.getData().getSourceData().isEmpty(),
+                        n.getData().getConfig() != null,
+                        n.getData().getResult() != null && !n.getData().getResult().isEmpty());
+
                 String sd = n.getData().getSourceData();
                 if (sd == null || sd.isEmpty()) {
-                    // fallback to config.sourceData
                     Object cfgSd = n.getData().getConfig() != null
                             ? n.getData().getConfig().get("sourceData") : null;
                     if (cfgSd instanceof String) sd = (String) cfgSd;
                 }
                 if (sd != null && !sd.isEmpty()) return sd;
+
+                // Check stateManager (populated by NodeRouter during pipeline execution)
+                if (stateManager != null && schema.getId() != null) {
+                    Map<String, String> nodeResults = stateManager.getNodeResults().get(schema.getId());
+                    if (nodeResults != null) {
+                        String cachedResult = nodeResults.get(n.getId());
+                        log.info("resolveSourceData: stateManager keys={}, cachedResult for '{}' present={}",
+                                nodeResults.keySet(), n.getId(), cachedResult != null && !cachedResult.isEmpty());
+                        if (cachedResult != null && !cachedResult.isEmpty()) return cachedResult;
+                    } else {
+                        log.info("resolveSourceData: no nodeResults for schema {}", schema.getId());
+                    }
+                }
+
                 if (n.getData().getResult() != null && !n.getData().getResult().isEmpty()) {
                     return n.getData().getResult();
                 }
             }
         }
+        log.info("resolveSourceData: no source node found or all sources empty");
         return "";
     }
 
@@ -307,6 +327,15 @@ public class ExecutionUtilityService {
             if (tool != null) {
                 sb.append("- ").append(toolId).append(": ").append(tool.getDescription()).append("\n");
             }
+        }
+        if (toolIds.contains("file_write")) {
+            sb.append("\nNote: After each file_write, a syntax validator runs automatically. ");
+            sb.append("If errors are found, they appear after the write confirmation. ");
+            sb.append("Read them carefully and fix the issues in your next iteration.\n");
+        }
+        if (toolIds.contains("build_app")) {
+            sb.append("\nNote: Use build_app after all files are written to check build dependencies ");
+            sb.append("and compile the app. It detects missing SDKs and runs the build.\n");
         }
         sb.append("\nTo call a tool, include tool_calls in your response:\n");
         sb.append("```json\n");
@@ -535,6 +564,10 @@ public class ExecutionUtilityService {
     // ────────────────────────── tool call execution ──────────────────────────
 
     public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId) {
+        return executeToolCall(toolId, args, node, schemaId, null);
+    }
+
+    public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId, String schemaTargetPath) {
         ToolPermission permission = null;
         if (node.getData().getToolPermissions() != null) {
             for (ToolPermission tp : node.getData().getToolPermissions()) {
@@ -553,7 +586,13 @@ public class ExecutionUtilityService {
             }
         }
 
-        ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId());
+        // Inject diff-review flag for file_write when stage config requires it
+        if ("file_write".equals(toolId) && node.getData().getConfig() != null
+                && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
+            args.put("_diffReview", true);
+        }
+
+        ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId(), schemaTargetPath);
         return result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
     }
 

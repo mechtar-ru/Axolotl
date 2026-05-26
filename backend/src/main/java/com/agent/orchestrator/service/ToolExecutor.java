@@ -29,6 +29,7 @@ public class ToolExecutor {
     private Driver neo4jDriver;
 
     private ExecutionWebSocketHandler webSocketHandler;
+    private ExecutionStateManager stateManager;
 
     private static final String DELETION_MARKER_FILE = "/Users/Shared/Axolotl/deleted_files.json";
 
@@ -115,6 +116,10 @@ public class ToolExecutor {
             {"type":"object","properties":{"server":{"type":"string","description":"MCP server name"},"tool":{"type":"string","description":"Tool name"},"args":{"type":"object","description":"Tool arguments"}},"required":["server","tool"]}
             """, ToolCategory.MCP));
 
+        registerTool(new Tool("build_app", "Build App", "Build a mobile app project and report missing dependencies", """
+            {"type":"object","properties":{"projectPath":{"type":"string","description":"Project directory path (default: schema target path)"}},"required":[]}
+            """, ToolCategory.EXECUTION));
+
         handlers.put("file_read", this::handleFileRead);
         handlers.put("file_write", this::handleFileWrite);
         handlers.put("directory_read", this::handleDirectoryRead);
@@ -130,6 +135,7 @@ public class ToolExecutor {
         handlers.put("web_api", this::handleWebApi);
         handlers.put("graph_query", this::handleGraphQuery);
         handlers.put("mcp_execute", this::handleMcpExecute);
+        // build_app handled directly in 6-param execute() to access schemaId/nodeId
     }
 
     public void registerTool(Tool tool) {
@@ -191,6 +197,10 @@ public class ToolExecutor {
 
     public void setWebSocketHandler(ExecutionWebSocketHandler handler) {
         this.webSocketHandler = handler;
+    }
+
+    public void setStateManager(ExecutionStateManager stateManager) {
+        this.stateManager = stateManager;
     }
 
     public void setLlmService(LlmService llmService) {
@@ -536,17 +546,111 @@ public class ToolExecutor {
         return path.matches(regex);
     }
 
-    public ToolResult handleFileWriteWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
+    public ToolResult handleFileReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
+        String path = (String) params.get("path");
+        if (path == null) return ToolResult.error("Missing path parameter");
+
+        if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
+            path = schemaTargetPath.replaceAll("/+$", "") + "/" + path;
+        }
+
+        try {
+            validateSandboxPath(path, permission, schemaTargetPath);
+        } catch (SecurityException e) {
+            return ToolResult.error(e.getMessage());
+        }
+
+        try {
+            String content = java.nio.file.Files.readString(java.nio.file.Path.of(path));
+            return ToolResult.ok(content);
+        } catch (IOException e) {
+            return ToolResult.error("Failed to read file: " + e.getMessage());
+        }
+    }
+
+    private static final Map<String, List<String>> VALIDATORS = Map.of(
+        ".dart", List.of("dart", "analyze"),
+        ".py", List.of("python3", "-m", "py_compile"),
+        ".java", List.of("javac", "-d", "/dev/null")
+    );
+
+    private String runPostWriteValidator(String filePath) {
+        for (var entry : VALIDATORS.entrySet()) {
+            if (filePath.endsWith(entry.getKey())) {
+                try {
+                    var cmd = new java.util.ArrayList<>(entry.getValue());
+                    cmd.add(filePath);
+                    var proc = new ProcessBuilder(cmd)
+                        .redirectErrorStream(true)
+                        .start();
+                    boolean finished = proc.waitFor(15, TimeUnit.SECONDS);
+                    if (!finished) {
+                        proc.destroyForcibly();
+                        return "[validator timeout]";
+                    }
+                    String out = new String(proc.getInputStream().readAllBytes()).trim();
+                    if (proc.exitValue() != 0 && !out.isEmpty()) {
+                        return out;
+                    }
+                    return "";
+                } catch (Exception e) {
+                    return "[validator error: " + e.getMessage() + "]";
+                }
+            }
+        }
+        return "";
+    }
+
+    public ToolResult handleFileWriteWithSandbox(Map<String, Object> params, ToolPermission permission,
+                                                  String schemaTargetPath, String schemaId, String nodeId) {
         String path = (String) params.get("path");
         String content = (String) params.get("content");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
+        // Resolve relative paths against schema targetPath
+        if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
+            path = schemaTargetPath.replaceAll("/+$", "") + "/" + path;
+        }
+
         try {
             validateSandboxPath(path, permission, schemaTargetPath);
             java.nio.file.Path targetPath = java.nio.file.Path.of(path);
+            boolean exists = java.nio.file.Files.exists(targetPath);
+
+            // Diff-review mode: backup existing file before overwriting
+            boolean requireDiff = Boolean.TRUE.equals(params.get("_diffReview"));
+            String originalContent = null;
+            String backupPath = null;
+            if (requireDiff && exists) {
+                originalContent = java.nio.file.Files.readString(targetPath);
+                backupPath = path + ".axolotl.bak";
+                java.nio.file.Files.copy(targetPath, java.nio.file.Path.of(backupPath),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+
             java.nio.file.Files.createDirectories(targetPath.getParent());
             java.nio.file.Files.writeString(targetPath, content);
-            return ToolResult.ok("File written: " + path);
+
+            // Track file changes
+            if (schemaId != null && nodeId != null) {
+                stateManager.recordFileChange(schemaId, nodeId, path, exists ? "modified" : "created");
+            }
+
+            // Record pending diff for review
+            if (requireDiff && exists && originalContent != null && schemaId != null && nodeId != null) {
+                stateManager.addPendingDiff(schemaId, nodeId,
+                        new ExecutionStateManager.PendingDiff(path, originalContent, content, backupPath));
+            }
+
+            String validation = runPostWriteValidator(path);
+            if (validation.isEmpty()) {
+                return ToolResult.ok("File written: " + path);
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("File written: ").append(path).append("\n");
+            sb.append("--- SYNTAX CHECK (").append(extensionOf(path)).append(") ---\n");
+            sb.append(validation);
+            return ToolResult.ok(sb.toString());
         } catch (SecurityException e) {
             return ToolResult.error(e.getMessage());
         } catch (IOException e) {
@@ -554,9 +658,18 @@ public class ToolExecutor {
         }
     }
 
+    private static String extensionOf(String path) {
+        int dot = path.lastIndexOf('.');
+        return dot >= 0 ? path.substring(dot) : "";
+    }
+
     public ToolResult handleDirectoryReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
         String path = (String) params.get("path");
         if (path == null) path = ".";
+
+        if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
+            path = schemaTargetPath.replaceAll("/+$", "") + "/" + path;
+        }
 
         try {
             validateSandboxPath(path, permission, schemaTargetPath);
@@ -575,11 +688,125 @@ public class ToolExecutor {
     public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission,
                               String schemaId, String nodeId, String schemaTargetPath) {
         if ("file_write".equals(toolId)) {
-            return handleFileWriteWithSandbox(params, permission, schemaTargetPath);
+            return handleFileWriteWithSandbox(params, permission, schemaTargetPath, schemaId, nodeId);
         }
         if ("directory_read".equals(toolId)) {
             return handleDirectoryReadWithSandbox(params, permission, schemaTargetPath);
         }
+        if ("file_read".equals(toolId)) {
+            return handleFileReadWithSandbox(params, permission, schemaTargetPath);
+        }
+        if ("build_app".equals(toolId)) {
+            return handleBuildApp(params, permission, schemaId, nodeId, schemaTargetPath);
+        }
         return execute(toolId, params, permission, schemaId, nodeId);
+    }
+
+    private ToolResult handleBuildApp(Map<String, Object> params, ToolPermission permission,
+                                      String schemaId, String nodeId, String schemaTargetPath) {
+        String projectPath = (String) params.getOrDefault("projectPath", "");
+        if (projectPath.isBlank()) projectPath = schemaTargetPath;
+        if (projectPath == null || projectPath.isBlank()) projectPath = ".";
+
+        java.nio.file.Path projDir = java.nio.file.Path.of(projectPath);
+        boolean isFlutter = java.nio.file.Files.exists(projDir.resolve("pubspec.yaml"));
+
+        var missing = new java.util.ArrayList<String>();
+        var details = new StringBuilder();
+
+        if (!isFlutter) {
+            return ToolResult.error("No pubspec.yaml found at " + projectPath + " — not a Flutter project");
+        }
+
+        details.append("Project: ").append(projectPath).append(" (Flutter)\n");
+
+        // Check Flutter SDK
+        details.append("\n[Flutter SDK] ");
+        try {
+            var proc = new ProcessBuilder("which", "flutter")
+                .redirectErrorStream(true).start();
+            proc.waitFor(5, TimeUnit.SECONDS);
+            if (proc.exitValue() == 0) {
+                String path = new String(proc.getInputStream().readAllBytes()).trim();
+                details.append("✅ ").append(path).append("\n");
+            } else {
+                details.append("❌ Not found\n");
+                missing.add("Flutter SDK — install via: brew install flutter");
+            }
+        } catch (Exception e) {
+            details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
+            missing.add("Flutter SDK — install via: brew install flutter");
+        }
+
+        // Check Android SDK
+        String androidHome = System.getenv("ANDROID_HOME");
+        if (androidHome != null && !androidHome.isBlank()) {
+            details.append("[Android SDK] ✅ ").append(androidHome).append("\n");
+        } else {
+            details.append("[Android SDK] ❌ ANDROID_HOME not set\n");
+            missing.add("Android SDK — install via: flutter config --android-sdk /path/to/sdk");
+        }
+
+        // Check Xcode (macOS)
+        if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+            details.append("[Xcode] ");
+            try {
+                var proc = new ProcessBuilder("xcode-select", "-p")
+                    .redirectErrorStream(true).start();
+                proc.waitFor(5, TimeUnit.SECONDS);
+                if (proc.exitValue() == 0) {
+                    String xp = new String(proc.getInputStream().readAllBytes()).trim();
+                    details.append("✅ ").append(xp).append("\n");
+                } else {
+                    details.append("❌ Not found\n");
+                    missing.add("Xcode — install via: xcode-select --install");
+                }
+            } catch (Exception e) {
+                details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        if (!missing.isEmpty()) {
+            StringBuilder report = new StringBuilder();
+            report.append("=== BUILD ENVIRONMENT CHECK ===\n");
+            report.append(details);
+            report.append("\n⚠️ Missing dependencies (").append(missing.size()).append("):\n");
+            for (int i = 0; i < missing.size(); i++) {
+                report.append("  ").append(i + 1).append(". ").append(missing.get(i)).append("\n");
+            }
+            // Notify frontend via WebSocket
+            if (schemaId != null && webSocketHandler != null) {
+                webSocketHandler.sendDepsNeeded(schemaId, nodeId, missing, projectPath);
+            }
+            return ToolResult.error(report.toString());
+        }
+
+        // All deps present — run build
+        details.append("\n→ Running flutter build apk --debug ...\n");
+        try {
+            var proc = new ProcessBuilder("flutter", "build", "apk", "--debug")
+                .directory(projDir.toFile())
+                .redirectErrorStream(true)
+                .start();
+            boolean finished = proc.waitFor(300, TimeUnit.SECONDS);
+            if (!finished) {
+                proc.destroyForcibly();
+                return ToolResult.error("Build timed out after 300s");
+            }
+            String output = new String(proc.getInputStream().readAllBytes());
+            java.nio.file.Path apkPath = projDir.resolve("build/app/outputs/flutter-apk/app-debug.apk");
+            if (java.nio.file.Files.exists(apkPath)) {
+                long size = java.nio.file.Files.size(apkPath);
+                return ToolResult.ok(
+                    "=== BUILD SUCCESS ===\n" +
+                    "APK: " + apkPath + "\n" +
+                    "Size: " + (size / 1024) + " KB\n" +
+                    "Output:\n" + output
+                );
+            }
+            return ToolResult.error("Build failed:\n" + output);
+        } catch (Exception e) {
+            return ToolResult.error("Build error: " + e.getMessage());
+        }
     }
 }

@@ -2,6 +2,9 @@
 
 > Approved directions for Axolotl development. Each section is a concrete,
 > orderable workstream with rationale, milestones, and risk notes.
+>
+> **Reassess after each workstream** — if a workstream overruns by >50%, cut
+> the lowest-ranked remaining item. Premortem again after any major update.
 
 ---
 
@@ -25,7 +28,8 @@ The Бережно experiment proved the concept but exposed three gaps:
 - Git log summary (`git log --oneline -5` in targetPath if `.git` exists)
 
 **Effort**: ~2 days (PipelineService + ExecutionUtilityService)
-**Risk**: Prompt length growth — cap at 5 most recent runs, prune large file trees.
+**Risk**: Prompt length growth — 5 runs × raw outputSummary can exceed 32K context.
+**Mitigation**: Inject only `generatedFiles` JSON, not raw outputSummary. Cap at 3KB total.
 
 #### 1b. Git-backed session workspace
 **Mechanism**: On first session, `git init` in targetPath if not already a repo.
@@ -35,6 +39,8 @@ Session plan writes commit messages with file list.
 
 **Effort**: ~1 day (ToolExecutor + schemaStore)
 **Risk**: User might have their own git. Check for existing git first, use `git stash` if dirty.
+**Risk**: Branch explosion — `session-N` accumulates indefinitely.
+**Mitigation**: Auto-delete branches >30 days old after commit. Or use `git worktree` instead.
 
 #### 1c. Diff-aware agent
 **Mechanism**: When agent starts a session, inject `git diff main..session-N-1`
@@ -42,11 +48,13 @@ into the system prompt (as "files modified in prior sessions"). This lets the
 agent know what exists and what was recently changed.
 
 **Effort**: ~1 day
+**Risk**: Git diff produces unstructured raw text — a 2000-line diff overwhelms context.
+**Mitigation**: Summarize diff per-file (summary, ±lines), cap at 30 files / 100 lines.
 **Dependency**: 1b must be done first
 
-### Total effort: ~4 days
-### Success criteria: 3 sequential sessions building the same app without file
-conflicts or quality regression.
+### Total effort: ~4 days (×1.5 human factor: ~6 days)
+### Success criteria: 3 sequential sessions building the same app — each session
+passes `dart analyze`, no file count regression across sessions, no manual edits needed.
 
 ---
 
@@ -69,6 +77,8 @@ duration, timestamp. NodeExecution has a `toolCalls` relationship.
 **Effort**: ~3 days (new model + repository + migration)
 **Risk**: Write amplification — each session generates ~50-200 tool calls.
 Mitigate: cap stored args at 1KB, auto-purge after 30 days.
+**Risk**: Tool args may contain secrets (API keys passed to bash).
+**Mitigation**: Add redaction for known patterns (`apiKey`, `password`, `token`) before persistence.
 
 #### 2b. Real-time token tracking for local models
 **Mechanism**: For Ollama: parse stderr output for `prompt eval count` and
@@ -111,8 +121,9 @@ runs `dart analyze` (or equivalent) on the entire project. Results feed into
 a new agent turn to fix all issues in one batch.
 
 **Effort**: ~2 days (new node type + ToolExecutor batch verify)
-**Risk**: Long-running analysis (~30s for medium Flutter projects). Mitigate:
-run in background parallel to output stage.
+**Risk**: Long-running analysis (~30s for medium Flutter projects).
+**Risk**: Parallel verify races with output stage file writes — output modifies files while batch_verify runs.
+**Mitigation**: Serialize: batch_verify → agent fix → batch_verify again. Do NOT run in parallel with output.
 
 #### 3b. Neo4j-powered premortem
 **Mechanism**: Instead of per-file premortem, query Neo4j code graph for
@@ -120,7 +131,8 @@ cross-file dependencies. If agent modifies `database_service.dart`, the
 premortem checks all files importing it.
 
 **Effort**: ~3 days (Neo4j graph queries in premortem prompt)
-**Dependency**: Code graph must be up-to-date for targetPath files.
+**Dependency**: Code graph must be up-to-date for targetPath files (currently only scans `backend/src/main/java/`).
+**Prerequisite**: Extend `update-graph.sh` to scan targetPath project dirs + config toggle. ~1 day unbudgeted.
 
 #### 3c. Regression test suite
 **Mechanism**: After each session, `git stash` (if dirty), run `dart test`,
@@ -130,6 +142,8 @@ self-corrects.
 **Effort**: ~1.5 days (PipelineService post-stage hook)
 **Risk**: Tests might require external services (DB, API). Start with
 `--no-sandbox` for Flutter tests.
+**Risk**: Agent-in-the-loop self-correction is unreliable — models hallucinate fixes for test errors.
+**Mitigation**: Add `maxSelfCorrectRetries: 3`, fallback to StageResult.FAILED on exceed.
 
 ### Total effort: ~6.5 days
 ### Success criteria: A pipeline run that generates Flutter code passes
@@ -160,7 +174,8 @@ Execute button. Polls `GET /api/schemas/{id}/pipeline/status` every 2s while
 `isRunning`.
 
 **Effort**: ~1 day (new component + polling)
-**Risk**: Polling during execution. Mitigate: stop polling on component unmount.
+**Risk**: Polling continues forever if WebSocket disconnects but `isRunning` stays true.
+**Mitigation**: Add polling timeout (60s max), tie to WebSocket `onDisconnect` callback, stop on component unmount.
 
 #### 4c. Keyboard shortcuts
 **Mechanism**: Provide/inject map at StudioView level:
@@ -175,6 +190,7 @@ Execute button. Polls `GET /api/schemas/{id}/pipeline/status` every 2s while
 **Mechanism**: Add `presets/bereghno.json` as a Quick Start preset with:
 Receive (file → 003.md) → Review (manual) → Agent (Flutter) → Verify → Output.
 Default model: @cf/bonsai. Target: emotion tracker app.
+(Preset path: `frontend/public/presets/bereghno.json`)
 
 **Effort**: ~0.5 day
 **Risk**: None.
@@ -208,7 +224,8 @@ Add Cypher `CREATE INDEX node_execution_created_at IF NOT EXISTS FOR ...`.
 Also add TTL to `ExecutionRun` (after 180 days).
 
 **Effort**: ~0.5 day (application.yml + Neo4j config)
-**Risk**: None.
+**Risk**: TTL requires Neo4j Enterprise — local dev with Community silently ignores it.
+**Mitigation**: Add log warning when TTL index creation fails + app-level fallback cleanup for Community.
 
 #### 5c. Integration test for PipelineService
 **Mechanism**: Spin up test Neo4j via Testcontainers, create real schema + nodes,
@@ -228,15 +245,25 @@ CI runs with Node.js 24.
 
 | Rank | Workstream | Effort | Impact | Risk |
 |------|-----------|--------|--------|------|
-| 1 | 1. Multi-Session | 4d | High | Medium |
-| 2 | 4. UI/UX Polish | 2.5d | Medium | Low |
-| 3 | 5. Infrastructure | 3d | Low (but urgent) | Low |
-| 4 | 3. Quality Gates | 6.5d | High | Medium |
-| 5 | 2. Observability | 5.5d | Medium | Low |
+| — | **5a (CI actions)** | 0.5d | Low (deadline) | Low |
+| 1 | 1. Multi-Session | 6d (×1.5 human) | High | Medium |
+| 2 | 4. UI/UX Polish | 3.5d (×1.5) | Medium | Low |
+| 3 | 3. Quality Gates | 10d (×1.5) | High | Medium |
+| 4 | 2. Observability | 8d (×1.5) | Medium | Low |
+| 5 | 5b-c (Infra rest) | 3.5d (×1.5) | Low | Low |
 
-### Urgent note
-CI actions deprecation (#5a) has a hard deadline of **June 2, 2026** — 7 days
-from now. Recommend doing #5a first, then #1 (Multi-Session).
+### Order of execution
+
+1. **#5a (DO FIRST)** — CI actions v5 before June 2 deadline
+2. **Reassess roadmap** — priorities may shift after CI fix lands
+3. **#1 Multi-Session** — core differentiator, highest user-facing impact
+4. **#4 UI/UX** — quick wins, low risk
+5. **#3 Quality Gates** — high impact but gated on #1 learnings
+6. **#2 Observability** — nice-to-have, defer if budget tight
+7. **#5b-c** — after major workstreams land
+
+Reassess roadmap after each workstream. If a workstream overruns by >50%, cut the
+lowest-ranked remaining item.
 
 ---
 

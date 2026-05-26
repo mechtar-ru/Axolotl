@@ -21,6 +21,8 @@ public class Stage {
     private int maxRetries;
     private long timeoutMs;
     private boolean parallel; // if true, runs nodes within this stage in parallel
+    private List<String> enabledTools;
+    private String agentType;
 
     // UI layout
     private double positionX;
@@ -76,6 +78,12 @@ public class Stage {
 
     public boolean isParallel() { return parallel; }
     public void setParallel(boolean parallel) { this.parallel = parallel; }
+
+    public List<String> getEnabledTools() { return enabledTools; }
+    public void setEnabledTools(List<String> enabledTools) { this.enabledTools = enabledTools; }
+
+    public String getAgentType() { return agentType; }
+    public void setAgentType(String agentType) { this.agentType = agentType; }
 
     public double getPositionX() { return positionX; }
     public void setPositionX(double positionX) { this.positionX = positionX; }
