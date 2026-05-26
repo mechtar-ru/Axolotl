@@ -154,16 +154,17 @@ async function fetchNodeStatuses() {
   const results = await Promise.allSettled(
     targets.map(r => schemaApi.getRunNodes(props.schemaId, r.id))
   )
-  for (let i = 0; i < targets.length; i++) {
-    const run = targets[i]
-    const result = results[i]
-    if (result.status === 'fulfilled') {
-      runNodeStatuses.value[run.id] = result.value.map(n => ({
-        nodeId: n.nodeId,
-        status: n.status
-      }))
-    }
-  }
+   for (let i = 0; i < targets.length; i++) {
+     const run = targets[i]
+     const result = results[i]
+     if (result.status === 'fulfilled') {
+       const nodeExecs = (result as PromiseFulfilledResult<NodeExecution[]>).value
+       runNodeStatuses.value[run.id] = nodeExecs.map(n => ({
+         nodeId: n.nodeId,
+         status: n.status
+       }))
+     }
+   }
 }
 
 // ── Run expansion ──
