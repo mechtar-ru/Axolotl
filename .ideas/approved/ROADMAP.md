@@ -20,12 +20,21 @@ The Бережно experiment proved the concept but exposed three gaps:
 - No easy way to roll back a bad session
 
 ### Spike first (1 day)
-Before committing to WS1, prove the hypothesis:
-1. Hardcode `outputSummary` injection from last completed run into agent systemPrompt
-2. Run 2 sequential sessions on Бережно manually
-3. Compare output quality vs baseline (current one-shot stubs)
+Before committing to WS1, prove the hypothesis that cross-session context improves quality.
 
-If spike shows no improvement → **drop WS1**. Reallocate effort to WS4 + WS3.
+**Implementation scope** (single file change):
+- `ExecutionUtilityService.buildStagePrompt()`: add 20-line block to query
+  `NodeExecutionRepository.findByRunId()` for last completed run, extract
+  `outputSummary` from the agent-stage node, append as "## Prior Session Output"
+  section. No new classes, no Neo4j schema changes, no frontend changes.
+
+**Pass/fail criteria** (both must pass):
+1. Agent produces ≥50% fewer stub files (// TODO, // stub) compared to baseline
+   (current one-shot pipeline — measure over 2 sessions of Бережно)
+2. No regression in `dart analyze` errors (≤ baseline count)
+
+**If spike fails** → **drop WS1 completely**. Reallocate 10d effort to WS4 (3d) + WS3
+accelerated (7d). The "What We Are NOT Doing" section stays unchanged.
 
 ### Breakdown
 
