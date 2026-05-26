@@ -175,8 +175,23 @@ export const schemaApi = {
     return response.data;
   },
 
-  async resumeSchema(schemaId: string): Promise<void> {
-    await api.post(`/schemas/${schemaId}/resume`);
+  async resumeSchema(schemaId: string, runId?: string): Promise<void> {
+    const params = runId ? `?runId=${encodeURIComponent(runId)}` : ''
+    await api.post(`/schemas/${schemaId}/resume${params}`);
+  },
+
+  async cleanupRuns(schemaId: string): Promise<{ status: string; released: number }> {
+    const response = await api.post(`/schemas/${schemaId}/cleanup-runs`);
+    return response.data;
+  },
+
+  async deleteRun(schemaId: string, runId: string): Promise<void> {
+    await api.delete(`/schemas/${schemaId}/runs/${runId}`);
+  },
+
+  async cleanupStaleRuns(schemaId: string): Promise<{ status: string; released: number }> {
+    const response = await api.post(`/schemas/${schemaId}/cleanup-runs`);
+    return response.data;
   },
 };
 

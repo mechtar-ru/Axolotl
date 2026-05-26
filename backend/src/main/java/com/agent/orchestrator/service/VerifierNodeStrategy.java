@@ -128,23 +128,30 @@ public class VerifierNodeStrategy {
         while (rewriteRetries <= maxRewriteRetries) {
             // Build verification prompt for this iteration
             StringBuilder verificationPrompt = new StringBuilder();
-            verificationPrompt.append("Ты — верификатор кода. Проверь сгенерированный файл на ошибки.\\n\\n");
+            verificationPrompt.append("Ты — верификатор кода. Проверь сгенерированный файл на ошибки и наличие заглушек (stubs).\\n\\n");
             verificationPrompt.append("Инструкции:\\n");
             verificationPrompt.append("1. Сначала прочитай содержимое файла через file_read\\n");
             if (syntaxCheck) {
                 verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'python3 -m py_compile <filepath>'\\n");
             }
+            verificationPrompt.append("3. Проверь файл на наличие заглушек (stubs):\\n");
+            verificationPrompt.append("   - Посчитай строки реального кода (без комментариев, пустых строк и import'ов)\\n");
+            verificationPrompt.append("   - Если строк кода < 15 для .dart/.py/.java/.ts/.js файла — это заглушка\\n");
+            verificationPrompt.append("   - Найди '// TODO', '// stub', '// placeholder', '// FIXME' — это заглушки\\n");
+            verificationPrompt.append("   - Найди пустые тела классов 'class Foo {}' или функций 'void foo() {}'\\n");
+            verificationPrompt.append("   - Найди 'return null;' в методах, которые должны возвращать данные\\n");
+            verificationPrompt.append("   - Найди 'throw UnimplementedError()' или 'throw UnsupportedOperationException'\\n");
             if (!requiredPatterns.isEmpty()) {
-                verificationPrompt.append("3. Проверь наличие обязательных паттернов через bash grep:\\n");
+                verificationPrompt.append("4. Проверь наличие обязательных паттернов через bash grep:\\n");
                 for (String pattern : requiredPatterns) {
                     verificationPrompt.append("   - \\\"").append(pattern).append("\\\"\\n");
                 }
             }
             if (testCommand != null && !testCommand.isBlank()) {
-                verificationPrompt.append("4. Запусти тестовую команду: bash '").append(testCommand).append("'\\n");
+                verificationPrompt.append("5. Запусти тестовую команду: bash '").append(testCommand).append("'\\n");
             }
             if (premortemEnabled && !premortemPredictions.isEmpty()) {
-                verificationPrompt.append("5. Проверь, какие из предсказанных сценариев отказа подтвердились:\\n");
+                verificationPrompt.append("6. Проверь, какие из предсказанных сценариев отказа подтвердились:\\n");
                 for (String pred : premortemPredictions) {
                     verificationPrompt.append("   - \\\"").append(pred).append("\\\"\\n");
                 }

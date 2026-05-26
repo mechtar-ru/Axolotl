@@ -18,11 +18,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Repository for execution persistence backed by Neo4j.
@@ -207,6 +209,58 @@ public class ExecutionRepository {
             runRepo.releasePausedRun(schemaId);
         } catch (Exception e) {
             log.error("Error releasing paused run for schema {}: {}", schemaId, e.getMessage(), e);
+        }
+    }
+
+    // ────────── Stale Run Cleanup & Deletion ──────────
+
+    /**
+     * Claims a specific paused run by ID (sets it to 'resuming').
+     * Returns the claimed run, or null if not found or not in paused state.
+     */
+    public ExecutionRun claimSpecificRun(String runId) {
+        try {
+            Optional<GraphExecutionRun> result = runRepo.claimSpecificRun(runId);
+            if (result.isPresent()) {
+                return toPocoRun(result.get());
+            }
+            log.warn("No paused run found with id: {}", runId);
+            return null;
+        } catch (Exception e) {
+            log.error("Error claiming specific run {}: {}", runId, e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Marks all runs with status='resuming' for a schema back to 'paused'.
+     * Returns the number of released runs.
+     */
+    public int releaseStaleRuns(String schemaId) {
+        try {
+            long count = runRepo.releaseStaleRuns(schemaId);
+            log.info("Released {} stale runs for schema {}", count, schemaId);
+            return (int) count;
+        } catch (Exception e) {
+            log.error("Error releasing stale runs for schema {}: {}", schemaId, e.getMessage(), e);
+            return 0;
+        }
+    }
+
+    /**
+     * Deletes an ExecutionRun and all its NodeExecution records.
+     * Does not throw on failure — logs and wraps as RuntimeException.
+     */
+    @Transactional
+    public void deleteRun(String runId) {
+        try {
+            // Delete child node executions first, then the run itself
+            runRepo.deleteNodeExecutionsByRunId(runId);
+            runRepo.deleteById(runId);
+            log.info("Deleted run {} and its node executions", runId);
+        } catch (Exception e) {
+            log.error("Error deleting run {}: {}", runId, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete run " + runId, e);
         }
     }
 

@@ -35,7 +35,7 @@ public class PipelineService {
     private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    /** Per-stage timeout — 5 minutes default. Stages exceeding this are failed. */
+    /** Per-stage timeout — 20 minutes default. Stages exceeding this are failed. */
     private static final Duration STAGE_TIMEOUT = Duration.ofMinutes(20);
 
     enum StageRunResult { COMPLETED, PAUSED, FAILED }
