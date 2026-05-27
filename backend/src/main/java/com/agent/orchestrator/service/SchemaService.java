@@ -125,6 +125,12 @@ public class SchemaService {
     }
 
     public WorkflowSchema createSchema(WorkflowSchema schema) {
+        if (schema == null) {
+            throw new IllegalArgumentException("Schema must not be null");
+        }
+        if (schema.getName() == null || schema.getName().isBlank()) {
+            throw new IllegalArgumentException("Schema name is required");
+        }
         String id = UUID.randomUUID().toString();
         schema.setId(id);
         schema.setCreatedAt(Instant.now().toString());
@@ -198,6 +204,9 @@ public class SchemaService {
     }
 
     public void deleteSchema(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Schema ID is required");
+        }
         cancelExecution(id);
         schemaRepository.delete(id);
         log.info("Удалена схема: {}", id);
@@ -206,10 +215,33 @@ public class SchemaService {
     // ────────────────────────── Export / Import ──────────────────────────
 
     public WorkflowSchema exportSchema(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Schema ID is required");
+        }
         return schemaRepository.findById(id);
     }
 
+    public String exportToMermaid(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Schema ID is required");
+        }
+        return schemaExporter.exportToMermaid(id);
+    }
+
+    public String exportToPython(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("Schema ID is required");
+        }
+        return schemaExporter.exportToPython(id);
+    }
+
     public WorkflowSchema importSchema(WorkflowSchema schema, String userId) {
+        if (schema == null) {
+            throw new IllegalArgumentException("Imported schema must not be null");
+        }
+        if (schema.getName() == null || schema.getName().isBlank()) {
+            throw new IllegalArgumentException("Imported schema name is required");
+        }
         String newId = UUID.randomUUID().toString();
         schema.setId(newId);
         schema.setUserId(userId);
@@ -240,14 +272,6 @@ public class SchemaService {
         schemaRepository.save(schema);
         log.info("Imported schema: {} (ID: {})", schema.getName(), newId);
         return schema;
-    }
-
-    public String exportToMermaid(String id) {
-        return schemaExporter.exportToMermaid(id);
-    }
-
-    public String exportToPython(String id) {
-        return schemaExporter.exportToPython(id);
     }
 
     // ────────────────────────── Execution ──────────────────────────
