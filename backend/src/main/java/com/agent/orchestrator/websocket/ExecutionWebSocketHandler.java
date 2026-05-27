@@ -42,7 +42,18 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        log.debug("WebSocket сообщение: {}", message.getPayload());
+        String payload = message.getPayload();
+        if (payload != null && payload.contains("\"type\":\"ping\"")) {
+            // Respond to heartbeat pings
+            try {
+                String pong = "{\"type\":\"pong\"}";
+                session.sendMessage(new TextMessage(pong));
+            } catch (IOException e) {
+                log.debug("Failed to send pong: {}", e.getMessage());
+            }
+            return;
+        }
+        log.debug("WebSocket сообщение: {}", payload);
     }
 
     @Override
