@@ -239,7 +239,8 @@ public class AgentNodeStrategy {
                 Map<String, Object> args = (Map<String, Object>) toolCall.get("arguments");
 
                 String targetPath = currentSchema != null ? currentSchema.getTargetPath() : null;
-                String toolResult = utilityService.executeToolCall(toolId, args, node, schemaId, targetPath);
+                String projectType = currentSchema != null ? currentSchema.getProjectType() : null;
+                String toolResult = utilityService.executeToolCall(toolId, args, node, schemaId, targetPath, projectType);
                 messages.add(new Node.Message("tool", toolResult));
                 messages.add(new Node.Message("tool_call_id", (String) toolCall.get("id")));
 
@@ -308,30 +309,30 @@ public class AgentNodeStrategy {
                             "Auto build check enabled — verifying build...", node.getId());
                 }
                 String targetPath = currentSchema.getTargetPath();
-                var proc = new ProcessBuilder("which", "flutter")
+                String ptStr = currentSchema.getProjectType();
+                com.agent.orchestrator.model.ProjectType pt = com.agent.orchestrator.model.ProjectType.fromString(ptStr);
+                var buildCmd = pt.getBuildCommand();
+                var sdkCheck = buildCmd.getFirst(); // e.g. "flutter", "npm", "python3", "go", "cargo"
+                var proc = new ProcessBuilder("which", sdkCheck)
                         .redirectErrorStream(true).start();
                 proc.waitFor(5, TimeUnit.SECONDS);
                 if (proc.exitValue() != 0) {
-                    String buildMsg = "\n\n[BUILD CHECK] Flutter SDK not found. Install via: brew install flutter";
+                    String buildMsg = "\n\n[BUILD CHECK] " + sdkCheck + " not found. Required for " + pt.getDisplayName() + " projects.";
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schemaId, "warning", buildMsg, node.getId());
                     }
                     return finalResponse + buildMsg;
                 }
 
-                // Run flutter build apk --debug
-                ProcessBuilder buildPb = new ProcessBuilder("flutter", "build", "apk", "--debug");
+                // Run the build command
+                ProcessBuilder buildPb = new ProcessBuilder(buildCmd);
                 buildPb.directory(new java.io.File(targetPath));
                 buildPb.redirectErrorStream(true);
                 Process buildProc = buildPb.start();
                 boolean finished = buildProc.waitFor(300, TimeUnit.SECONDS);
                 String buildOutput = new String(buildProc.getInputStream().readAllBytes());
-                java.nio.file.Path apkPath = java.nio.file.Path.of(targetPath,
-                        "build/app/outputs/flutter-apk/app-debug.apk");
-                if (finished && java.nio.file.Files.exists(apkPath)) {
-                    long size = java.nio.file.Files.size(apkPath);
-                    String successMsg = "\n\n[BUILD CHECK] ✅ APK built: " + apkPath
-                            + " (" + (size / 1024) + " KB)";
+                if (finished && buildProc.exitValue() == 0) {
+                    String successMsg = "\n\n[BUILD CHECK] ✅ " + pt.getDisplayName() + " build succeeded";
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schemaId, "success", successMsg, node.getId());
                     }

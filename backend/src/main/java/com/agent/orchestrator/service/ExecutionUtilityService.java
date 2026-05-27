@@ -564,10 +564,15 @@ public class ExecutionUtilityService {
     // ────────────────────────── tool call execution ──────────────────────────
 
     public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId) {
-        return executeToolCall(toolId, args, node, schemaId, null);
+        return executeToolCall(toolId, args, node, schemaId, null, null);
     }
 
     public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId, String schemaTargetPath) {
+        return executeToolCall(toolId, args, node, schemaId, schemaTargetPath, null);
+    }
+
+    public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId,
+                                  String schemaTargetPath, String projectType) {
         ToolPermission permission = null;
         if (node.getData().getToolPermissions() != null) {
             for (ToolPermission tp : node.getData().getToolPermissions()) {
@@ -592,7 +597,7 @@ public class ExecutionUtilityService {
             args.put("_diffReview", true);
         }
 
-        ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId(), schemaTargetPath);
+        ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId(), schemaTargetPath, projectType);
         return result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
     }
 

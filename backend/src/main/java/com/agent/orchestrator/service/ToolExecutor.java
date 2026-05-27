@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.Tool.ToolCategory;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.model.ToolPermission;
+import com.agent.orchestrator.model.ProjectType;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.agent.orchestrator.llm.LlmService;
 import org.neo4j.driver.Driver;
@@ -568,37 +569,31 @@ public class ToolExecutor {
         }
     }
 
-    private static final Map<String, List<String>> VALIDATORS = Map.of(
-        ".dart", List.of("dart", "analyze"),
-        ".py", List.of("python3", "-m", "py_compile"),
-        ".java", List.of("javac", "-d", "/dev/null")
-    );
+    private ProjectType projectType = ProjectType.FLUTTER;
+
+    public void setProjectType(ProjectType pt) { this.projectType = pt; }
 
     private String runPostWriteValidator(String filePath) {
-        for (var entry : VALIDATORS.entrySet()) {
-            if (filePath.endsWith(entry.getKey())) {
-                try {
-                    var cmd = new java.util.ArrayList<>(entry.getValue());
-                    cmd.add(filePath);
-                    var proc = new ProcessBuilder(cmd)
-                        .redirectErrorStream(true)
-                        .start();
-                    boolean finished = proc.waitFor(15, TimeUnit.SECONDS);
-                    if (!finished) {
-                        proc.destroyForcibly();
-                        return "[validator timeout]";
-                    }
-                    String out = new String(proc.getInputStream().readAllBytes()).trim();
-                    if (proc.exitValue() != 0 && !out.isEmpty()) {
-                        return out;
-                    }
-                    return "";
-                } catch (Exception e) {
-                    return "[validator error: " + e.getMessage() + "]";
-                }
+        if (!projectType.matchesExtension(filePath)) return "";
+        var cmd = new java.util.ArrayList<>(projectType.getValidateCommand());
+        cmd.add(filePath);
+        try {
+            var proc = new ProcessBuilder(cmd)
+                .redirectErrorStream(true)
+                .start();
+            boolean finished = proc.waitFor(15, TimeUnit.SECONDS);
+            if (!finished) {
+                proc.destroyForcibly();
+                return "[validator timeout]";
             }
+            String out = new String(proc.getInputStream().readAllBytes()).trim();
+            if (proc.exitValue() != 0 && !out.isEmpty()) {
+                return out;
+            }
+            return "";
+        } catch (Exception e) {
+            return "[validator error: " + e.getMessage() + "]";
         }
-        return "";
     }
 
     public ToolResult handleFileWriteWithSandbox(Map<String, Object> params, ToolPermission permission,
@@ -687,6 +682,15 @@ public class ToolExecutor {
 
     public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission,
                               String schemaId, String nodeId, String schemaTargetPath) {
+        return execute(toolId, params, permission, schemaId, nodeId, schemaTargetPath, null);
+    }
+
+    public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission,
+                              String schemaId, String nodeId, String schemaTargetPath,
+                              String projectTypeStr) {
+        if (projectTypeStr != null && !projectTypeStr.isBlank()) {
+            this.projectType = ProjectType.fromString(projectTypeStr);
+        }
         if ("file_write".equals(toolId)) {
             return handleFileWriteWithSandbox(params, permission, schemaTargetPath, schemaId, nodeId);
         }
@@ -709,61 +713,44 @@ public class ToolExecutor {
         if (projectPath == null || projectPath.isBlank()) projectPath = ".";
 
         java.nio.file.Path projDir = java.nio.file.Path.of(projectPath);
-        boolean isFlutter = java.nio.file.Files.exists(projDir.resolve("pubspec.yaml"));
+        String manifest = projectType.getManifestFile();
+        boolean hasManifest = java.nio.file.Files.exists(projDir.resolve(manifest));
 
         var missing = new java.util.ArrayList<String>();
         var details = new StringBuilder();
 
-        if (!isFlutter) {
-            return ToolResult.error("No pubspec.yaml found at " + projectPath + " — not a Flutter project");
+        if (!hasManifest) {
+            return ToolResult.error("No " + manifest + " found at " + projectPath
+                    + " — not a " + projectType.getDisplayName() + " project");
         }
 
-        details.append("Project: ").append(projectPath).append(" (Flutter)\n");
+        details.append("Project: ").append(projectPath).append(" (").append(projectType.getDisplayName()).append(")\n");
+        details.append("Detected via: ").append(manifest).append("\n");
 
-        // Check Flutter SDK
-        details.append("\n[Flutter SDK] ");
-        try {
-            var proc = new ProcessBuilder("which", "flutter")
-                .redirectErrorStream(true).start();
-            proc.waitFor(5, TimeUnit.SECONDS);
-            if (proc.exitValue() == 0) {
-                String path = new String(proc.getInputStream().readAllBytes()).trim();
-                details.append("✅ ").append(path).append("\n");
-            } else {
-                details.append("❌ Not found\n");
-                missing.add("Flutter SDK — install via: brew install flutter");
-            }
-        } catch (Exception e) {
-            details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
-            missing.add("Flutter SDK — install via: brew install flutter");
-        }
-
-        // Check Android SDK
-        String androidHome = System.getenv("ANDROID_HOME");
-        if (androidHome != null && !androidHome.isBlank()) {
-            details.append("[Android SDK] ✅ ").append(androidHome).append("\n");
-        } else {
-            details.append("[Android SDK] ❌ ANDROID_HOME not set\n");
-            missing.add("Android SDK — install via: flutter config --android-sdk /path/to/sdk");
-        }
-
-        // Check Xcode (macOS)
-        if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
-            details.append("[Xcode] ");
-            try {
-                var proc = new ProcessBuilder("xcode-select", "-p")
-                    .redirectErrorStream(true).start();
-                proc.waitFor(5, TimeUnit.SECONDS);
-                if (proc.exitValue() == 0) {
-                    String xp = new String(proc.getInputStream().readAllBytes()).trim();
-                    details.append("✅ ").append(xp).append("\n");
-                } else {
-                    details.append("❌ Not found\n");
-                    missing.add("Xcode — install via: xcode-select --install");
-                }
-            } catch (Exception e) {
-                details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
-            }
+        // Check SDK availability per project type
+        switch (projectType) {
+            case FLUTTER:
+                checkSdk(details, missing, "flutter", "Flutter SDK",
+                        "brew install flutter");
+                checkAndroidSdk(details, missing);
+                checkXcode(details, missing);
+                break;
+            case PYTHON:
+                checkSdk(details, missing, "python3", "Python 3",
+                        "brew install python");
+                break;
+            case WEB:
+                checkSdk(details, missing, "node", "Node.js",
+                        "brew install node");
+                break;
+            case GO:
+                checkSdk(details, missing, "go", "Go",
+                        "brew install go");
+                break;
+            case RUST:
+                checkSdk(details, missing, "cargo", "Cargo/Rust",
+                        "brew install rust");
+                break;
         }
 
         if (!missing.isEmpty()) {
@@ -774,7 +761,6 @@ public class ToolExecutor {
             for (int i = 0; i < missing.size(); i++) {
                 report.append("  ").append(i + 1).append(". ").append(missing.get(i)).append("\n");
             }
-            // Notify frontend via WebSocket
             if (schemaId != null && webSocketHandler != null) {
                 webSocketHandler.sendDepsNeeded(schemaId, nodeId, missing, projectPath);
             }
@@ -782,9 +768,10 @@ public class ToolExecutor {
         }
 
         // All deps present — run build
-        details.append("\n→ Running flutter build apk --debug ...\n");
+        details.append("\n→ Running ").append(String.join(" ", projectType.getBuildCommand())).append(" ...\n");
         try {
-            var proc = new ProcessBuilder("flutter", "build", "apk", "--debug")
+            var cmd = new java.util.ArrayList<>(projectType.getBuildCommand());
+            var proc = new ProcessBuilder(cmd)
                 .directory(projDir.toFile())
                 .redirectErrorStream(true)
                 .start();
@@ -794,19 +781,65 @@ public class ToolExecutor {
                 return ToolResult.error("Build timed out after 300s");
             }
             String output = new String(proc.getInputStream().readAllBytes());
-            java.nio.file.Path apkPath = projDir.resolve("build/app/outputs/flutter-apk/app-debug.apk");
-            if (java.nio.file.Files.exists(apkPath)) {
-                long size = java.nio.file.Files.size(apkPath);
+            if (proc.exitValue() == 0) {
                 return ToolResult.ok(
                     "=== BUILD SUCCESS ===\n" +
-                    "APK: " + apkPath + "\n" +
-                    "Size: " + (size / 1024) + " KB\n" +
+                    "Project: " + projectPath + "\n" +
                     "Output:\n" + output
                 );
             }
             return ToolResult.error("Build failed:\n" + output);
         } catch (Exception e) {
             return ToolResult.error("Build error: " + e.getMessage());
+        }
+    }
+
+    private void checkSdk(StringBuilder details, java.util.ArrayList<String> missing,
+                           String binary, String name, String installHint) {
+        details.append("[").append(name).append("] ");
+        try {
+            var proc = new ProcessBuilder("which", binary)
+                .redirectErrorStream(true).start();
+            proc.waitFor(5, TimeUnit.SECONDS);
+            if (proc.exitValue() == 0) {
+                String path = new String(proc.getInputStream().readAllBytes()).trim();
+                details.append("✅ ").append(path).append("\n");
+            } else {
+                details.append("❌ Not found\n");
+                missing.add(name + " — install via: " + installHint);
+            }
+        } catch (Exception e) {
+            details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
+            missing.add(name + " — install via: " + installHint);
+        }
+    }
+
+    private void checkAndroidSdk(StringBuilder details, java.util.ArrayList<String> missing) {
+        String androidHome = System.getenv("ANDROID_HOME");
+        if (androidHome != null && !androidHome.isBlank()) {
+            details.append("[Android SDK] ✅ ").append(androidHome).append("\n");
+        } else {
+            details.append("[Android SDK] ❌ ANDROID_HOME not set\n");
+            missing.add("Android SDK — install via: flutter config --android-sdk /path/to/sdk");
+        }
+    }
+
+    private void checkXcode(StringBuilder details, java.util.ArrayList<String> missing) {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) return;
+        details.append("[Xcode] ");
+        try {
+            var proc = new ProcessBuilder("xcode-select", "-p")
+                .redirectErrorStream(true).start();
+            proc.waitFor(5, TimeUnit.SECONDS);
+            if (proc.exitValue() == 0) {
+                String xp = new String(proc.getInputStream().readAllBytes()).trim();
+                details.append("✅ ").append(xp).append("\n");
+            } else {
+                details.append("❌ Not found\n");
+                missing.add("Xcode — install via: xcode-select --install");
+            }
+        } catch (Exception e) {
+            details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
         }
     }
 }
