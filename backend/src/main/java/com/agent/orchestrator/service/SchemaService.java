@@ -2,6 +2,8 @@ package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionCheckpoint;
+import com.agent.orchestrator.model.ExecutionError;
+import com.agent.orchestrator.model.SchemaValidationResult;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.Node;
@@ -52,6 +54,7 @@ public class SchemaService {
     private final ExecutionRepository executionRepository;
     private final PipelineService pipelineService;
     private final ExecutionStateManager stateManager;
+    private final SchemaValidator schemaValidator;
 
     private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
     private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
@@ -76,7 +79,8 @@ public class SchemaService {
             PlanService planService,
             ExecutionRepository executionRepository,
             PipelineService pipelineService,
-            ExecutionStateManager stateManager) {
+            ExecutionStateManager stateManager,
+            SchemaValidator schemaValidator) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -89,6 +93,7 @@ public class SchemaService {
         this.executionRepository = executionRepository;
         this.pipelineService = pipelineService;
         this.stateManager = stateManager;
+        this.schemaValidator = schemaValidator;
     }
 
     @jakarta.annotation.PostConstruct
@@ -247,11 +252,29 @@ public class SchemaService {
 
     // ────────────────────────── Execution ──────────────────────────
 
+    public SchemaValidationResult validateSchema(String id) {
+        WorkflowSchema schema = schemaRepository.findById(id);
+        if (schema == null) {
+            SchemaValidationResult result = new SchemaValidationResult();
+            result.addError("schema", "Schema not found: " + id);
+            return result;
+        }
+        return schemaValidator.validate(schema);
+    }
+
     public void executeSchema(String id) {
         WorkflowSchema schema = schemaRepository.findById(id);
         if (schema == null)
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + id);
+
+        // Validate schema before execution
+        SchemaValidationResult validation = schemaValidator.validate(schema);
+        if (!validation.isValid()) {
+            log.warn("Schema validation failed for '{}': {} error(s)", schema.getName(), validation.getErrors().size());
+            throw new SchemaValidationException(validation);
+        }
+
         CompletableFuture<?> existing = runningExecutions.get(id);
         if (existing != null && !existing.isDone()) {
             log.warn("Схема уже выполняется: {}", id);
@@ -584,9 +607,13 @@ public class SchemaService {
                             Map.of("nodeId", nodeId, "status", "RUNNING"));
                 }
             } catch (Exception e) {
-                log.error("Failed to resume pipeline for schema {}: {}", schemaId, e.getMessage(), e);
+                ExecutionError error = ExecutionError.fromException(e, "Unknown error resuming pipeline after approval");
+                log.error("Failed to resume pipeline for schema {}: {} ({})", schemaId, error.getMessage(), error.getType(), e);
                 executionRepository.updateRunStatus(claimed.getId(), "paused",
-                        "Resume failed: " + e.getMessage());
+                        "Resume failed: " + error.getMessage());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendError(schemaId, "system", error.getMessage());
+                }
             }
             return;
         }

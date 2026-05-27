@@ -5,8 +5,10 @@ import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.ExecutionRecord;
 import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.NodeExecution;
+import com.agent.orchestrator.model.SchemaValidationResult;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.model.Pipeline;
+import com.agent.orchestrator.service.SchemaValidationException;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.service.AgentService;
@@ -142,7 +144,7 @@ public class AgentController {
     }
 
     @PostMapping("/schemas/{id}/execute")
-    public Map<String, String> executeSchema(
+    public ResponseEntity<Map<String, Object>> executeSchema(
             @PathVariable String id,
             @RequestParam(defaultValue = "EXECUTE") ExecutionMode mode,
             jakarta.servlet.http.HttpServletRequest request) {
@@ -152,15 +154,25 @@ public class AgentController {
         log.info("executeSchema called for schema={} mode={} principal={} remoteAddr={}", id, mode, principal,
                 request.getRemoteAddr());
 
-        String authHeader = request.getHeader("Authorization");
-        if (authHeader != null) {
-            log.debug("Authorization header present (len={})", authHeader.length());
-        } else {
-            log.debug("No Authorization header present");
+        try {
+            schemaService.executeSchema(id);
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "started");
+            result.put("schemaId", id);
+            result.put("mode", mode.name());
+            return ResponseEntity.ok(result);
+        } catch (SchemaValidationException e) {
+            log.warn("Schema execution blocked by validation: {} error(s)", e.getValidationResult().getErrors().size());
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "validation_error");
+            result.put("validation", e.getValidationResult());
+            return ResponseEntity.badRequest().body(result);
         }
+    }
 
-        schemaService.executeSchema(id);
-        return Map.of("status", "started", "schemaId", id, "mode", mode.name());
+    @GetMapping("/schemas/{id}/validate")
+    public SchemaValidationResult validateSchema(@PathVariable String id) {
+        return schemaService.validateSchema(id);
     }
 
     @PostMapping("/schemas/{id}/stop")
@@ -534,9 +546,20 @@ public class AgentController {
     }
 
     @PostMapping("/schemas/{id}/pipeline/execute")
-    public Map<String, String> executePipeline(@PathVariable String id) {
-        pipelineService.executePipeline(id);
-        return Map.of("status", "ok", "message", "Pipeline execution started");
+    public ResponseEntity<Map<String, Object>> executePipeline(@PathVariable String id) {
+        try {
+            pipelineService.executePipeline(id);
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "ok");
+            result.put("message", "Pipeline execution started");
+            return ResponseEntity.ok(result);
+        } catch (SchemaValidationException e) {
+            log.warn("Pipeline execution blocked by validation: {} error(s)", e.getValidationResult().getErrors().size());
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "validation_error");
+            result.put("validation", e.getValidationResult());
+            return ResponseEntity.badRequest().body(result);
+        }
     }
 
     @PostMapping("/schemas/{id}/pipeline/retry")

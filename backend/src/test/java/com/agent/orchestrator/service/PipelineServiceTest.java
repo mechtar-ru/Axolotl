@@ -32,6 +32,7 @@ class PipelineServiceTest {
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock ExecutionRepository executionRepository;
     @Mock ExecutionStateManager stateManager;
+    @Mock SchemaValidator schemaValidator;
     @Captor ArgumentCaptor<WorkflowSchema> schemaCaptor;
 
     PipelineService pipelineService;
@@ -39,7 +40,10 @@ class PipelineServiceTest {
     @BeforeEach
     void setUp() {
         pipelineService = new PipelineService(schemaRepository, nodeExecutor,
-                webSocketHandler, executionRepository, stateManager);
+                webSocketHandler, executionRepository, stateManager, schemaValidator);
+        // Default: validation passes
+        SchemaValidationResult validResult = new SchemaValidationResult();
+        when(schemaValidator.validate(any())).thenReturn(validResult);
     }
 
     // ────────── createDefaultPipeline ──────────

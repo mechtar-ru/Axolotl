@@ -28,6 +28,7 @@ public class PipelineService {
     private final ExecutionWebSocketHandler webSocketHandler;
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
+    private final SchemaValidator schemaValidator;
     private final ExecutorService pipelineExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ConcurrentHashMap<String, CompletableFuture<?>> runningPipelines = new ConcurrentHashMap<>();
@@ -45,12 +46,14 @@ public class PipelineService {
                            NodeExecutor nodeExecutor,
                            ExecutionWebSocketHandler webSocketHandler,
                            ExecutionRepository executionRepository,
-                           ExecutionStateManager stateManager) {
+                           ExecutionStateManager stateManager,
+                           SchemaValidator schemaValidator) {
         this.schemaRepository = schemaRepository;
         this.nodeExecutor = nodeExecutor;
         this.webSocketHandler = webSocketHandler;
         this.executionRepository = executionRepository;
         this.stateManager = stateManager;
+        this.schemaValidator = schemaValidator;
     }
 
     private void clearStaleApprovals(String schemaId) {
@@ -148,6 +151,12 @@ public class PipelineService {
         }
         if (schema.getPipeline() == null) {
             throw new RuntimeException("Schema has no pipeline definition");
+        }
+
+        // Validate schema before execution
+        SchemaValidationResult validation = schemaValidator.validate(schema);
+        if (!validation.isValid()) {
+            throw new SchemaValidationException(validation);
         }
 
         CompletableFuture<?> existing = runningPipelines.get(schemaId);
@@ -606,11 +615,12 @@ public class PipelineService {
                 completedRemaining += level.size();
             }
         } catch (Exception e) {
-            log.error("Pipeline resume failed for schema {}: {}", schemaId, e.getMessage(), e);
-            executionRepository.updateRunStatus(run.getId(), "paused", null);
+            ExecutionError error = ExecutionError.fromException(e, "Unknown error resuming pipeline");
+            log.error("Pipeline resume failed for schema {}: {} ({})", schemaId, error.getMessage(), error.getType(), e);
+            executionRepository.updateRunStatus(run.getId(), "paused", error.getMessage());
             if (webSocketHandler != null) {
                 webSocketHandler.sendError(schema.getId(), "system",
-                        "Pipeline resume failed: " + e.getMessage());
+                        "Pipeline resume failed: " + error.getMessage());
             }
             return;
         }
@@ -940,13 +950,15 @@ public class PipelineService {
 
             return StageRunResult.COMPLETED;
         } catch (Exception e) {
+            ExecutionError error = ExecutionError.fromException(e, "Unknown error in stage " + stage.getName());
             executionRepository.updateRunStageStatus(runId, stage.getId(), "failed");
-            log.error("Stage {} failed: {}", stage.getName(), e.getMessage(), e);
+            log.error("Stage {} failed: {} ({})", stage.getName(), error.getMessage(), error.getType(), e);
             if (webSocketHandler != null) {
                 webSocketHandler.sendError(schema.getId(), stage.getId(),
-                        "Stage failed: " + stage.getName() + " - " + e.getMessage());
+                        "Stage failed: " + stage.getName() + " - " + error.getMessage());
                 webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_stage_failed",
-                        Map.of("stageId", stage.getId(), "status", "failed", "error", e.getMessage()));
+                        Map.of("stageId", stage.getId(), "status", "failed",
+                               "error", error.getMessage(), "errorType", error.getType()));
             }
             return StageRunResult.FAILED;
         }

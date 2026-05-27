@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
 import type { Pipeline, Stage, PipelineStatus } from '../types/pipeline';
 import { schemaApi, settingsApi } from '../services/api';
+import type { SchemaValidationResult } from '../services/api';
 import { api } from '../services/api';
 import { useToast } from '../composables/useToast';
 
@@ -164,11 +165,23 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
   
-  async function executeSchema(id: string) {
+  async function executeSchema(id: string): Promise<{ status: string; validation?: SchemaValidationResult } | void> {
     if (!id) return;
     try {
-      await schemaApi.executeSchema(id, 'EXECUTE');
-    } catch (err) {
+      const result = await schemaApi.executeSchema(id, 'EXECUTE');
+      if (result.status === 'validation_error' && result.validation) {
+        const msgs = result.validation.errors.map(e => e.message).join('; ');
+        toastError('Schema validation failed: ' + msgs);
+        throw new Error('Validation failed: ' + msgs);
+      }
+      return result;
+    } catch (err: any) {
+      if (err?.response?.data?.status === 'validation_error') {
+        const validation = err.response.data.validation;
+        const msgs = validation?.errors?.map((e: any) => e.message).join('; ') || 'Schema validation failed';
+        toastError(msgs);
+        throw new Error(msgs);
+      }
       toastError('Failed to execute schema: ' + ((err as Error).message || err))
       throw err;
     }
@@ -231,8 +244,23 @@ export const useSchemaStore = defineStore('schema', () => {
   }
 
   async function executePipeline(schemaId: string) {
-    await api.post(`/schemas/${schemaId}/pipeline/execute`)
-    pipelineStatus.value = { running: true, stageResults: {} }
+    try {
+      const response = await api.post(`/schemas/${schemaId}/pipeline/execute`)
+      if (response.data?.status === 'validation_error' && response.data?.validation) {
+        const msgs = response.data.validation.errors.map((e: any) => e.message).join('; ')
+        toastError('Pipeline validation failed: ' + msgs)
+        throw new Error('Validation failed: ' + msgs)
+      }
+      pipelineStatus.value = { running: true, stageResults: {} }
+    } catch (err: any) {
+      if (err?.response?.data?.status === 'validation_error') {
+        const validation = err.response.data.validation
+        const msgs = validation?.errors?.map((e: any) => e.message).join('; ') || 'Pipeline validation failed'
+        toastError(msgs)
+        throw new Error(msgs)
+      }
+      throw err
+    }
   }
 
   async function cancelPipelineExecution(schemaId: string) {

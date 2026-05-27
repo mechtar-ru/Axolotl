@@ -106,8 +106,14 @@ export const schemaApi = {
     await api.delete(`/schemas/${id}`);
   },
   
-  async executeSchema(id: string, mode: ExecutionMode = 'EXECUTE'): Promise<void> {
-    await api.post(`/schemas/${id}/execute`, {}, { params: { mode } });
+  async executeSchema(id: string, mode: ExecutionMode = 'EXECUTE'): Promise<{ status: string; validation?: SchemaValidationResult }> {
+    const response = await api.post(`/schemas/${id}/execute`, {}, { params: { mode } });
+    return response.data;
+  },
+
+  async validateSchema(id: string): Promise<SchemaValidationResult> {
+    const response = await api.get(`/schemas/${id}/validate`);
+    return response.data;
   },
 
   async stopSchema(id: string): Promise<void> {
@@ -414,6 +420,20 @@ export interface ExecutionRecord {
     result: string | null;
     durationMs: number;
     status: string;
+  }>;
+}
+
+export interface SchemaValidationResult {
+  valid: boolean;
+  errors: Array<{
+    field: string;
+    message: string;
+    nodeId?: string;
+  }>;
+  warnings: Array<{
+    field: string;
+    message: string;
+    nodeId?: string;
   }>;
 }
 
