@@ -533,26 +533,27 @@ public class AgentController {
 
     // ── Multi-Stage Pipeline ────────────────────────────────────
 
+    /**
+     * @deprecated All schemas use canvas-derived execution since June 2026.
+     * Use POST /schemas/{id}/execute instead.
+     */
+    @Deprecated
     @PostMapping("/schemas/{id}/pipeline/build")
     public Map<String, Object> buildPipelineNodes(@PathVariable String id) {
-        try {
-            WorkflowSchema schema = pipelineService.buildPipelineNodes(id);
-            return Map.of("status", "ok", "nodes", schema.getNodes() != null ? schema.getNodes().size() : 0,
-                    "edges", schema.getEdges() != null ? schema.getEdges().size() : 0);
-        } catch (Exception e) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+        log.warn("pipeline/build called for {} — deprecated, redirecting to /execute", id);
+        schemaService.executeSchema(id);
+        return Map.of("status", "ok", "message", "Execution started (pipeline/build deprecated)");
     }
 
+    /**
+     * @deprecated Unified execution. Use POST /schemas/{id}/execute instead.
+     */
+    @Deprecated
     @PostMapping("/schemas/{id}/pipeline/execute")
     public ResponseEntity<Map<String, Object>> executePipeline(@PathVariable String id) {
         try {
-            pipelineService.executePipeline(id);
-            Map<String, Object> result = new HashMap<>();
-            result.put("status", "ok");
-            result.put("message", "Pipeline execution started");
-            return ResponseEntity.ok(result);
+            schemaService.executeSchema(id);
+            return ResponseEntity.ok(Map.of("status", "ok", "message", "Pipeline execution started"));
         } catch (SchemaValidationException e) {
             log.warn("Pipeline execution blocked by validation: {} error(s)", e.getValidationResult().getErrors().size());
             Map<String, Object> result = new HashMap<>();

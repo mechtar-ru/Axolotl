@@ -238,19 +238,15 @@ export const useSchemaStore = defineStore('schema', () => {
   const pipelineStatus = ref<PipelineStatus>({ running: false, stageResults: {} })
   const pipelineExpanded = ref(false)
 
-  async function buildPipelineNodes(schemaId: string) {
-    const res = await api.post(`/schemas/${schemaId}/pipeline/build`)
-    return res.data
+  // buildPipelineNodes is deprecated — all schemas use canvas-derived execution
+  async function buildPipelineNodes(_schemaId: string) {
+    return { nodes: 0, edges: 0 }
   }
 
+  // executePipeline is deprecated — delegates to executeSchema which goes through PipelineService
   async function executePipeline(schemaId: string) {
     try {
-      const response = await api.post(`/schemas/${schemaId}/pipeline/execute`)
-      if (response.data?.status === 'validation_error' && response.data?.validation) {
-        const msgs = response.data.validation.errors.map((e: any) => e.message).join('; ')
-        toastError('Pipeline validation failed: ' + msgs)
-        throw new Error('Validation failed: ' + msgs)
-      }
+      await executeSchema(schemaId)
       pipelineStatus.value = { running: true, stageResults: {} }
     } catch (err: any) {
       if (err?.response?.data?.status === 'validation_error') {

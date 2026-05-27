@@ -173,14 +173,7 @@ public class PipelineService {
         run.setMode("PIPELINE");
         run.setStartedAt(Instant.now().toString());
         run.setUpdatedAt(Instant.now().toString());
-        // Initialize stage status map
-        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null) {
-            Map<String, String> initStatus = new HashMap<>();
-            for (Stage s : schema.getPipeline().getStages()) {
-                initStatus.put(s.getId(), "pending");
-            }
-            run.setStageStatus(initStatus);
-        }
+        initializeRunStageStatus(run, schema.getPipeline().getStages());
         executionRepository.createRun(run);
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
@@ -193,31 +186,82 @@ public class PipelineService {
             webSocketHandler.sendProgress(schemaId, "system", "PIPELINE_STARTED", 0, "Pipeline started");
         }
 
+        List<Stage> stages = schema.getPipeline().getStages();
+        launchStageExecution(schemaId, schema, stages, runId, cancelFlag);
+    }
+
+    /**
+     * Execute stages derived from canvas nodes (no Pipeline definition required).
+     * Called by SchemaService.executeSchema() when schema has no explicit Pipeline.
+     */
+    @Transactional
+    public void executeDerivedStages(String schemaId, WorkflowSchema schema, List<Stage> stages) {
+        CompletableFuture<?> existing = runningPipelines.get(schemaId);
+        if (existing != null && !existing.isDone()) {
+            log.warn("Pipeline already running: {}", schemaId);
+            throw new RuntimeException("Pipeline '" + schemaId + "' is already running");
+        }
+
+        // Validate schema before execution
+        SchemaValidationResult validation = schemaValidator.validate(schema);
+        if (!validation.isValid()) {
+            throw new SchemaValidationException(validation);
+        }
+
+        String runId = UUID.randomUUID().toString();
+        ExecutionRun run = new ExecutionRun();
+        run.setId(runId);
+        run.setSchemaId(schemaId);
+        run.setStatus("running");
+        run.setMode("EXECUTE"); // derived stages = EXECUTE mode (not PIPELINE)
+        run.setStartedAt(Instant.now().toString());
+        run.setUpdatedAt(Instant.now().toString());
+        initializeRunStageStatus(run, stages);
+        executionRepository.createRun(run);
+
+        AtomicBoolean cancelFlag = new AtomicBoolean(false);
+        cancelFlags.put(schemaId, cancelFlag);
+        stageResults.put(schemaId, new ConcurrentHashMap<>());
+        clearStaleApprovals(schemaId);
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info", "Execution started: " + schema.getName(), null);
+            webSocketHandler.sendProgress(schemaId, "system", "EXECUTION_STARTED", 0, "Execution started");
+        }
+
+        launchStageExecution(schemaId, schema, stages, runId, cancelFlag);
+    }
+
+    /**
+     * Common launch stub for both executePipeline and executeDerivedStages.
+     * Creates the async future that runs stages.
+     */
+    private void launchStageExecution(String schemaId, WorkflowSchema schema, List<Stage> stages,
+                                       String runId, AtomicBoolean cancelFlag) {
         CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> runPipelineStages(schema, runId, cancelFlag), pipelineExecutor);
+                () -> runStages(stages, schema, runId, cancelFlag), pipelineExecutor);
         runningPipelines.put(schemaId, future);
 
         future.whenComplete((result, ex) -> {
             runningPipelines.remove(schemaId);
             cancelFlags.remove(schemaId);
-            // Note: stageResults NOT removed here to avoid race with
-            // retryPipeline/resumePipeline which share the schemaId key.
-            // stageResults is overwritten on next execute/retry/resume.
             if (ex != null) {
                 if (ex instanceof CancellationException || ex.getCause() instanceof CancellationException) {
-                    log.info("Pipeline cancelled for schema {}", schemaId);
+                    log.info("Execution cancelled for schema {}", schemaId);
                     executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
                 } else {
-                    log.error("Pipeline execution failed for {}: {}", schemaId, ex.getMessage(), ex);
+                    log.error("Execution failed for {}: {}", schemaId, ex.getMessage(), ex);
                     executionRepository.updateRunStatus(runId, "failed", ex.getMessage());
                 }
             }
         });
     }
 
-    private void runPipelineStages(WorkflowSchema schema, String runId, AtomicBoolean cancelFlag) {
-        Pipeline pipeline = schema.getPipeline();
-        List<Stage> stages = pipeline.getStages();
+    /**
+     * Run stages directly (the core execution loop).
+     * Used by executePipeline (schema.pipeline stages) and executeDerivedStages (canvas-derived stages).
+     */
+    private void runStages(List<Stage> stages, WorkflowSchema schema, String runId, AtomicBoolean cancelFlag) {
         if (stages == null || stages.isEmpty()) return;
 
         Map<String, Node> nodeMap = new HashMap<>();
@@ -300,13 +344,19 @@ public class PipelineService {
 
         ExecutionRun failedRun = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "failed");
         if (failedRun == null) {
-            throw new RuntimeException("No failed pipeline run found for schema " + schemaId);
+            throw new RuntimeException("No failed execution run found for schema " + schemaId);
         }
 
-        Pipeline pipeline = schema.getPipeline();
-        List<Stage> stages = pipeline.getStages();
-        if (stages == null || stages.isEmpty()) {
-            throw new RuntimeException("Pipeline has no stages to retry");
+        // Derive stages from pipeline or canvas nodes
+        List<Stage> stages;
+        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null
+                && !schema.getPipeline().getStages().isEmpty()) {
+            stages = schema.getPipeline().getStages();
+        } else {
+            stages = createStagesFromNodes(schema);
+        }
+        if (stages.isEmpty()) {
+            throw new RuntimeException("No stages to retry (no pipeline or canvas nodes found)");
         }
 
         Map<String, String> persistedStatus = failedRun.getStageStatus();
@@ -330,7 +380,7 @@ public class PipelineService {
         run.setId(runId);
         run.setSchemaId(schemaId);
         run.setStatus("running");
-        run.setMode("PIPELINE");
+        run.setMode(failedRun.getMode() != null ? failedRun.getMode() : "PIPELINE");
         run.setResumesFrom(failedRun.getId());
         run.setStartedAt(Instant.now().toString());
         run.setUpdatedAt(Instant.now().toString());
@@ -515,9 +565,15 @@ public class PipelineService {
             }
         }
 
-        Pipeline pipeline = schema.getPipeline();
-        List<Stage> stages = pipeline.getStages();
-        if (stages == null || stages.isEmpty() || resumeIndex >= stages.size()) {
+        // Derive stages from pipeline or canvas nodes
+        List<Stage> stages;
+        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null
+                && !schema.getPipeline().getStages().isEmpty()) {
+            stages = schema.getPipeline().getStages();
+        } else {
+            stages = createStagesFromNodes(schema);
+        }
+        if (stages.isEmpty() || resumeIndex >= stages.size()) {
             log.warn("No stages to resume for schema {}", schemaId);
             return;
         }
@@ -1235,5 +1291,68 @@ public class PipelineService {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Initialize the stage status map for an ExecutionRun.
+     */
+    private static void initializeRunStageStatus(ExecutionRun run, List<Stage> stages) {
+        Map<String, String> initStatus = new HashMap<>();
+        for (Stage s : stages) {
+            initStatus.put(s.getId(), "pending");
+        }
+        run.setStageStatus(initStatus);
+    }
+
+    /**
+     * Create Stage objects from the schema's canvas nodes/edges.
+     * Each canvas node becomes a Stage with the same ID, name, model, systemPrompt, nodeType, and config.
+     * Dependencies are derived from edges (source → target).
+     */
+    static List<Stage> createStagesFromNodes(WorkflowSchema schema) {
+        List<Stage> stages = new ArrayList<>();
+        if (schema.getNodes() == null || schema.getNodes().isEmpty()) return stages;
+
+        // Build adjacency: nodeId → list of source node IDs (dependencies)
+        Map<String, List<String>> depMap = new HashMap<>();
+        if (schema.getEdges() != null) {
+            for (Edge edge : schema.getEdges()) {
+                if (edge.getSource() != null && edge.getTarget() != null) {
+                    depMap.computeIfAbsent(edge.getTarget(), k -> new ArrayList<>()).add(edge.getSource());
+                }
+            }
+        }
+
+        for (Node node : schema.getNodes()) {
+            Stage stage = new Stage();
+            stage.setId(node.getId());
+            stage.setName(node.getName() != null ? node.getName() : node.getType() + "-" + node.getId().substring(0, 8));
+            stage.setNodeType(node.getType());
+
+            // Copy model from node data if set
+            if (node.getData() != null && node.getData().getModel() != null) {
+                stage.setModel(node.getData().getModel());
+            }
+
+            // Copy systemPrompt from node data
+            if (node.getData() != null && node.getData().getSystemPrompt() != null) {
+                stage.setSystemPrompt(node.getData().getSystemPrompt());
+            }
+
+            // Copy config into stage config
+            if (node.getData() != null && node.getData().getConfig() != null) {
+                stage.setConfig(new HashMap<>(node.getData().getConfig()));
+            }
+
+            // Set dependencies from edge adjacency
+            List<String> deps = depMap.getOrDefault(node.getId(), List.of());
+            if (!deps.isEmpty()) {
+                stage.setDependencies(new ArrayList<>(deps));
+            }
+
+            stages.add(stage);
+        }
+
+        return stages;
     }
 }

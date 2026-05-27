@@ -75,6 +75,25 @@ const diffDiffs = ref<Array<{filePath: string; diff: string; originalLength: num
 const diffNodeId = ref('')
 
 const showPipelinePanel = ref(false)
+const hasFailedRun = ref(false)
+
+async function checkFailedRun() {
+  if (!appId.value) return
+  try {
+    const runs = await schemaApi.getRuns(appId.value)
+    hasFailedRun.value = runs.some((r: any) => r.status === 'failed')
+  } catch { /* ignore */ }
+}
+
+async function handleRetry() {
+  if (isRunning.value) return
+  try {
+    await schemaStore.retryPipeline(appId.value)
+    await startExecution(true)
+  } catch (e) {
+    toast.error('Failed to retry: ' + ((e as Error).message || e))
+  }
+}
 
 // Provide state for child components
 provide('appState', {
@@ -370,6 +389,7 @@ onMounted(async () => {
     schemaStore.currentSchema = found
     document.title = `${found.name} - Axolotl Studio`
   }
+  checkFailedRun()
 })
 
 // Watch route param changes — needed when navigating between schemas
@@ -543,6 +563,17 @@ function goToDashboard() {
         </svg>
         Pipeline
       </button>
+      <button
+        v-if="!isRunning && hasFailedRun"
+        class="toolbar-btn retry-btn"
+        title="Retry from last failed stage"
+        @click="handleRetry"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        Retry
+      </button>
     </div>
 
     <div class="studio-content" :class="{ 'with-pipeline': showPipelinePanel }">
@@ -677,6 +708,16 @@ function goToDashboard() {
   background: var(--accent-bg);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.retry-btn {
+  margin-left: auto;
+  color: var(--warning);
+}
+.retry-btn:hover {
+  background: var(--warning-bg);
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
 .studio-content {

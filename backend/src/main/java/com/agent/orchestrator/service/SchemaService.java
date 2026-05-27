@@ -2,6 +2,7 @@ package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionCheckpoint;
+import com.agent.orchestrator.model.Stage;
 import com.agent.orchestrator.model.ExecutionError;
 import com.agent.orchestrator.model.SchemaValidationResult;
 import com.agent.orchestrator.model.ExecutionRecord;
@@ -58,15 +59,9 @@ public class SchemaService {
 
     private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
     private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
-
-    private final Map<String, CompletableFuture<?>> runningExecutions = new ConcurrentHashMap<>();
-    private final Map<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
     private final Object executionHistoryLock = new Object();
     private static final int MAX_HISTORY = 100;
-    private static final int MAX_NODE_RESTARTS = 3;
-    private final ExecutorService executionExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    private final Map<String, Map<String, Integer>> nodeFailureCounts = new ConcurrentHashMap<>();
 
     public SchemaService(Neo4jSchemaRepository schemaRepository,
             ExecutionWebSocketHandler webSocketHandler,
@@ -299,14 +294,6 @@ public class SchemaService {
             throw new SchemaValidationException(validation);
         }
 
-        CompletableFuture<?> existing = runningExecutions.get(id);
-        if (existing != null && !existing.isDone()) {
-            log.warn("Schema already executing: {}", id);
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.CONFLICT,
-                    "Schema '" + id + "' is already executing");
-        }
-
         // Fall back to auth context userId for model resolution when schema has none
         if (schema.getUserId() == null) {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
@@ -329,64 +316,20 @@ public class SchemaService {
             }
         }
 
-        // Create ExecutionRun for persistence
-        String runId = UUID.randomUUID().toString();
-        ExecutionRun run = new ExecutionRun();
-        run.setId(runId);
-        run.setSchemaId(id);
-        run.setStatus("running");
-        run.setMode("EXECUTE");
-        run.setStartedAt(Instant.now().toString());
-        run.setUpdatedAt(Instant.now().toString());
-        executionRepository.createRun(run);
-        // Create NodeExecution for each node
-        if (schema.getNodes() != null) {
-            for (Node node : schema.getNodes()) {
-                NodeExecution ne = new NodeExecution();
-                ne.setId(UUID.randomUUID().toString());
-                ne.setRunId(runId);
-                ne.setNodeId(node.getId());
-                ne.setNodeName(node.getName());
-                ne.setNodeType(node.getType());
-                ne.setStatus("pending");
-                ne.setConfigHash(computeConfigHash(node, schema));
-                ne.setStartedAt(Instant.now().toString());
-                executionRepository.createNodeExecution(ne);
-            }
-        }
-
         if (metricsService != null) {
             metricsService.recordSchemaExecutionStart();
         }
 
-        AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        cancelFlags.put(id, cancelFlag);
-        Timer.Sample timerSample = metricsService != null ? metricsService.startTimer() : null;
-        nodeExecutor.setCurrentRunId(id, runId);
-        CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> executeWorkflow(schema, cancelFlag, runId), executionExecutor);
-        runningExecutions.put(id, future);
-        future.whenComplete((result, ex) -> {
-            if (metricsService != null && timerSample != null) {
-                metricsService.stopTimer(timerSample);
-            }
-            runningExecutions.remove(id);
-            cancelFlags.remove(id);
-            if (ex != null && !(ex instanceof CancellationException)) {
-                log.error("Ошибка выполнения схемы {}: {}", id, ex.getMessage(), ex);
-            }
-        });
+        // Derive stages from canvas nodes and delegate to PipelineService
+        List<Stage> stages = PipelineService.createStagesFromNodes(schema);
+        if (stages.isEmpty()) {
+            throw new RuntimeException("No stages derived from canvas nodes for schema " + id);
+        }
+        pipelineService.executeDerivedStages(id, schema, stages);
     }
 
     public void cancelExecution(String id) {
-        AtomicBoolean cancelFlag = cancelFlags.get(id);
-        if (cancelFlag != null) {
-            cancelFlag.set(true);
-        }
-        CompletableFuture<?> future = runningExecutions.get(id);
-        if (future != null) {
-            future.cancel(true);
-        }
+        pipelineService.cancelPipeline(id);
         log.info("Остановка выполнения схемы запрошена: {}", id);
     }
 
@@ -408,123 +351,18 @@ public class SchemaService {
 
     /**
      * Resume a paused execution for the given schema.
+     * Delegates to PipelineService which handles both PIPELINE and EXECUTE mode runs.
      */
     public void resumeExecution(String schemaId) {
-        WorkflowSchema schema = schemaRepository.findById(schemaId);
-        resumeExecution(schemaId, schema);
+        pipelineService.resumePipeline(schemaId);
     }
 
     public void resumeExecution(String schemaId, WorkflowSchema schema) {
-        if (schema == null) return;
-        ExecutionRun parentRun = executionRepository.claimPausedRun(schemaId);
-        if (parentRun == null) {
-            log.warn("No paused run found for schema: {}", schemaId);
-            if (webSocketHandler != null) {
-                webSocketHandler.sendError(schemaId, "system",
-                        "No paused execution found to resume — it may have already been resumed");
-            }
-            return;
-        }
-        resumeExecution(schemaId, schema, parentRun.getId());
+        resumeExecution(schemaId);
     }
 
     public void resumeExecution(String schemaId, WorkflowSchema schema, String parentRunId) {
-        if (schema == null) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + schemaId);
-        }
-
-        // Get parent node executions and resume index
-        List<NodeExecution> parentNodeExecs =
-                executionRepository.getNodeExecutionsByRun(parentRunId);
-        int parentResumeIndex = -1;
-        try {
-            ExecutionRun parentRun = executionRepository.getRunById(parentRunId);
-            if (parentRun != null) {
-                parentResumeIndex = parentRun.getResumeIndex();
-            }
-        } catch (Exception e) {
-            log.debug("Could not read parent run resume index: {}", e.getMessage());
-        }
-
-        // Create child run
-        String childRunId = UUID.randomUUID().toString();
-        ExecutionRun childRun = new ExecutionRun();
-        childRun.setId(childRunId);
-        childRun.setSchemaId(schemaId);
-        childRun.setStatus("running");
-        childRun.setMode("EXECUTE");
-        childRun.setResumesFrom(parentRunId);
-        childRun.setResumeIndex(parentResumeIndex);
-        childRun.setStartedAt(Instant.now().toString());
-        childRun.setUpdatedAt(Instant.now().toString());
-        executionRepository.createRun(childRun);
-
-        // Compute config hashes for current schema nodes
-        List<Node> schemaNodes = schema.getNodes();
-        if (schemaNodes == null) schemaNodes = new ArrayList<>();
-
-        Map<String, String> currentConfigHashes = new HashMap<>();
-        for (Node node : schemaNodes) {
-            currentConfigHashes.put(node.getId(), computeConfigHash(node, schema));
-        }
-
-        // Reset node statuses and create NodeExecution records (use runtime state, not schema entity mutations)
-        for (Node node : schemaNodes) {
-            String currentHash = currentConfigHashes.get(node.getId());
-            NodeExecution matched = parentNodeExecs.stream()
-                    .filter(ne -> ne.getNodeId().equals(node.getId()))
-                    .filter(ne -> "completed".equals(ne.getStatus()))
-                    .filter(ne -> currentHash.equals(ne.getConfigHash()))
-                    .findFirst().orElse(null);
-
-            NodeExecution newNodeExec = new NodeExecution();
-            newNodeExec.setId(UUID.randomUUID().toString());
-            newNodeExec.setRunId(childRunId);
-            newNodeExec.setNodeId(node.getId());
-            newNodeExec.setNodeName(node.getName());
-            newNodeExec.setNodeType(node.getType());
-            newNodeExec.setStartedAt(Instant.now().toString());
-
-            if (matched != null) {
-                newNodeExec.setStatus("skipped");
-                newNodeExec.setOutputSummary(matched.getOutputSummary());
-                newNodeExec.setConfigHash(currentHash);
-                newNodeExec.setCompletedAt(Instant.now().toString());
-            } else {
-                newNodeExec.setStatus("pending");
-                newNodeExec.setConfigHash(currentHash);
-            }
-            executionRepository.createNodeExecution(newNodeExec);
-
-            // Add skipped node results to nodeExecutor so downstream nodes can read them
-            if (matched != null && matched.getOutputSummary() != null) {
-                nodeExecutor.getNodeResults()
-                        .computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
-                        .put(node.getId(), matched.getOutputSummary());
-            }
-        }
-
-        log.info("Resuming schema {}: parentRun={}, childRun={}, {} nodes",
-                schemaId, parentRunId, childRunId, schemaNodes.size());
-
-        // Reset in-memory node statuses to IDLE — parent run may have left AWAITING_APPROVAL
-        for (Node node : schemaNodes) {
-            node.setStatus(Node.NodeStatus.IDLE);
-        }
-
-        AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        cancelFlags.put(schemaId, cancelFlag);
-        nodeExecutor.setCurrentRunId(schemaId, childRunId);
-        CompletableFuture<?> future = CompletableFuture.runAsync(
-                () -> executeWorkflow(schema, cancelFlag, childRunId), executionExecutor)
-            .whenComplete((result, ex) -> {
-                if (ex != null) {
-                    log.error("Resume execution failed for schema {}: {}", schemaId, ex.getMessage(), ex);
-                    executionRepository.releasePausedRun(schemaId);
-                }
-            });
-        runningExecutions.put(schemaId, future);
+        resumeExecution(schemaId, parentRunId);
     }
 
     public List<NodeExecution> getExecutionNodes(String runId) {
@@ -648,23 +486,15 @@ public class SchemaService {
             return;
         }
 
-        // Non-pipeline (EXECUTE mode) — handle through NodeRouter resume
-        WorkflowSchema schema = schemaRepository.findById(schemaId);
-        if (schema == null) {
-            log.warn("Approval requested for non-existent schema: {}", schemaId);
-            // Revert the claim so the run is not stuck in 'resuming'
-            executionRepository.updateRunStatus(claimed.getId(), "paused", null);
-            return;
-        }
-        log.info("Review node {} approved, resuming execution", nodeId);
+        // Non-pipeline (EXECUTE mode) — handle through PipelineService resume
+        log.info("Review node {} approved, resuming execution via PipelineService", nodeId);
         if (webSocketHandler != null) {
             webSocketHandler.sendLog(schemaId, "info",
                     "Plan approved, resuming execution", nodeId);
             webSocketHandler.sendLiveUpdate(schemaId, "review_approved",
                     Map.of("nodeId", nodeId, "status", "RUNNING"));
         }
-        // pass the already-claimed run so resumeExecution skips claimPausedRun
-        resumeExecution(schemaId, schema, claimed.getId());
+        pipelineService.resumePipeline(schemaId, claimed.getId());
     }
 
     /**
@@ -897,252 +727,6 @@ public class SchemaService {
             executionHistory.add(record);
             if (executionHistory.size() > MAX_HISTORY) {
                 executionHistory.subList(0, executionHistory.size() - MAX_HISTORY).clear();
-            }
-        }
-    }
-
-    private void executeWorkflow(WorkflowSchema schema, AtomicBoolean cancelFlag, String runId) {
-        log.info("Выполнение схемы: {}", schema.getName());
-        long startTime = System.currentTimeMillis();
-        long workflowStartTime = startTime;
-
-        Map<String, String> conditionResults = nodeExecutor.getConditionResults();
-        conditionResults.keySet().removeIf(k -> k.startsWith(schema.getId() + ":"));
-        // Preserve injected results when resuming: only clear previous nodeResults if none present
-        Map<String, String> existingResults = nodeExecutor.getNodeResults().get(schema.getId());
-        if (existingResults == null || existingResults.isEmpty()) {
-            nodeExecutor.getNodeResults().remove(schema.getId());
-        } else {
-            log.debug("Preserving existing node results for schema {} (possible resume) - {} entries", schema.getId(), existingResults.size());
-        }
-        nodeFailureCounts.put(schema.getId(), new ConcurrentHashMap<>());
-
-        if (webSocketHandler != null) {
-            webSocketHandler.sendProgress(schema.getId(), "system", "STARTED", 0, "Выполнение начато");
-            webSocketHandler.sendLog(schema.getId(), "info", "Выполнение схемы начато: " + schema.getName(), null);
-        }
-
-        // Создаём задачу в плане, если схема с targetPath (режим приложения)
-        Task executionTask = null;
-        if (schema.getTargetPath() != null && !schema.getTargetPath().isBlank()) {
-            try {
-                String wsId = schema.getWorkspaceId() != null ? schema.getWorkspaceId() : "default";
-                executionTask = planService.createTaskForExecution(
-                        wsId, schema.getId(), schema.getName());
-                log.info("Создана задача выполнения для схемы с targetPath: {} (taskId={})",
-                        schema.getTargetPath(), executionTask.getId());
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schema.getId(), "info",
-                            "Создана задача отслеживания выполнения", null);
-                }
-            } catch (Exception e) {
-                log.warn("Не удалось создать задачу выполнения: {}", e.getMessage(), e);
-            }
-        }
-
-        List<List<Node>> levels = getExecutionLevels(schema);
-        Set<String> skippedNodes = computeSkippedNodes(schema, conditionResults);
-
-        int totalNodes = levels.stream().mapToInt(List::size).sum();
-        int completedCount = 0;
-        int waveNum = 0;
-
-        // Check if resuming from a paused wave — skip already-completed levels
-        int startWave = 0;
-        try {
-            ExecutionRun run = executionRepository.getRunById(runId);
-            if (run != null && run.getResumeIndex() > 0) {
-                startWave = run.getResumeIndex();
-                log.info("Resuming executeWorkflow from wave {}", startWave);
-            }
-        } catch (Exception e) {
-            log.debug("Could not read resume index: {}", e.getMessage());
-        }
-
-        for (List<Node> level : levels) {
-            if (waveNum < startWave) {
-                waveNum++;
-                continue;
-            }
-            if (webSocketHandler != null) {
-                List<String> nodeIds = level.stream().map(Node::getId).toList();
-                webSocketHandler.sendWaveUpdate(schema.getId(), waveNum++, nodeIds, "pending");
-            }
-
-            if (cancelFlag.get()) break;
-
-            List<Node> executable = level.stream()
-                    .filter(node -> !skippedNodes.contains(node.getId()))
-                    .filter(node -> node.getStatus() != Node.NodeStatus.BLOCKED && node.getStatus() != Node.NodeStatus.FAILED)
-                    .filter(node -> !cancelFlag.get())
-                    .toList();
-
-            for (Node node : level) {
-                if (skippedNodes.contains(node.getId())) {
-                    log.info("Пропуск узла (невыполненная ветка условия): {}", node.getId());
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schema.getId(), "info",
-                                "Пропуск узла (невыполненная ветка): " + node.getName(), node.getId());
-                    }
-                }
-            }
-
-            if (executable.isEmpty()) continue;
-
-            if (webSocketHandler != null) {
-                List<String> execIds = executable.stream().map(Node::getId).toList();
-                webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "running");
-            }
-
-            // Emit step events for each node in this level
-            if (webSocketHandler != null) {
-                for (Node node : level) {
-                    String blockType = node.getType() != null ? node.getType() : "unknown";
-                    String label = node.getName() != null ? node.getName() : "Untitled";
-                    webSocketHandler.sendStep(schema.getId(), completedCount, node.getId(), blockType, label, "running", "", 0);
-                }
-            }
-
-            List<CompletableFuture<Void>> futures = new ArrayList<>();
-            for (Node node : executable) {
-                log.info("Начало выполнения узла: {} ({})", node.getId(), node.getName());
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schema.getId(), "info",
-                            "Начало выполнения узла: " + node.getName(), node.getId());
-                }
-
-                final long nodeStartTime = System.currentTimeMillis();
-                futures.add(CompletableFuture.runAsync(() -> {
-                    String resolvedModel = resolveModel(
-                            node.getData() != null ? node.getData().getModel() : null, schema);
-                    nodeExecutor.executeNode(node, schema.getId(), cancelFlag, com.agent.orchestrator.model.ExecutionMode.EXECUTE, resolvedModel);
-                    long nodeTime = System.currentTimeMillis() - nodeStartTime;
-                    log.info("Узел завершен: {} ({}) - {}мс", node.getId(), node.getName(), nodeTime);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendNodeTime(schema.getId(), node.getId(), nodeTime);
-                    }
-                }, executionExecutor));
-            }
-
-            try {
-                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-                // Save checkpoint after each wave
-                    saveCheckpoint(schema, runId, waveNum - 1);
-                if (webSocketHandler != null) {
-                    List<String> execIds = executable.stream().map(Node::getId).toList();
-                    webSocketHandler.sendWaveUpdate(schema.getId(), waveNum - 1, execIds, "completed");
-                }
-            } catch (Exception e) {
-                log.error("Ошибка при параллельном выполнении уровня: {}", e.getMessage(), e);
-            }
-
-            completedCount += executable.size();
-
-            long currentTime = System.currentTimeMillis() - startTime;
-            double nodesPerSecond = currentTime > 0 ? (double) completedCount / (currentTime / 1000.0) : 0;
-            if (webSocketHandler != null) {
-                webSocketHandler.sendMetrics(schema.getId(), totalNodes, completedCount, currentTime, nodesPerSecond);
-                for (Node node : executable) {
-                    webSocketHandler.sendLog(schema.getId(), "success",
-                            "Узел завершен: " + node.getName(), node.getId());
-                }
-            }
-
-            // Check if any node needs approval — pause execution
-            boolean hasPendingApproval = executable.stream()
-                    .anyMatch(n -> n.getStatus() == Node.NodeStatus.AWAITING_APPROVAL);
-            if (hasPendingApproval) {
-                log.info("Execution paused at wave {} — node awaiting approval", waveNum - 1);
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schema.getId(), "info",
-                            "Execution paused — awaiting plan approval", "");
-                    Map<String, Object> pausePayload = new HashMap<>();
-                    pausePayload.put("status", "paused");
-                    pausePayload.put("reason", "AWAITING_APPROVAL");
-                    webSocketHandler.sendLiveUpdate(schema.getId(), "execution_paused", pausePayload);
-                }
-                executionRepository.updateRunPaused(runId, waveNum);
-                break;
-            }
-        }
-
-        // If execution was paused for human approval, return early without overwriting status
-        boolean wasPaused = schema.getNodes().stream()
-                .anyMatch(n -> n.getStatus() == Node.NodeStatus.AWAITING_APPROVAL);
-        if (wasPaused) {
-            log.info("Execution paused — returning early, status remains 'paused'");
-            return;
-        }
-
-        int nodesCompleted = (int) schema.getNodes().stream()
-                .filter(n -> n.getStatus() == Node.NodeStatus.COMPLETED)
-                .count();
-        long totalTime = System.currentTimeMillis() - startTime;
-
-        if (cancelFlag.get()) {
-            if (webSocketHandler != null) {
-                webSocketHandler.sendError(schema.getId(), "system", "Выполнение остановлено");
-                webSocketHandler.sendLog(schema.getId(), "warning", "Выполнение схемы остановлено пользователем", null);
-            }
-            log.warn("Выполнение схемы отменено: {}", schema.getName());
-            // Persist schema node statuses so the REST API reflects the cancellation state
-            try {
-                schemaRepository.save(schema);
-            } catch (Exception e) {
-                log.warn("Failed to persist schema after cancellation: {}", e.getMessage(), e);
-            }
-            try {
-                executionRepository.updateRunStatus(runId, "cancelled", "Cancelled by user");
-                recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "cancelled");
-            } catch (Exception e) {
-                log.warn("Failed to persist cancellation record: {}", e.getMessage(), e);
-            }
-        } else {
-            if (webSocketHandler != null) {
-                webSocketHandler.sendComplete(schema.getId(), totalTime, nodesCompleted);
-                double finalNodesPerSecond = totalTime > 0 ? (double) nodesCompleted / (totalTime / 1000.0) : 0;
-                webSocketHandler.sendMetrics(schema.getId(), nodesCompleted, nodesCompleted, totalTime, finalNodesPerSecond);
-                webSocketHandler.sendLog(schema.getId(), "success",
-                        "Выполнение схемы завершено: " + totalTime + "мс, узлов: " + nodesCompleted, null);
-                Map<String, Object> payload = new HashMap<>();
-                payload.put("status", "completed");
-                payload.put("totalTime", totalTime);
-                payload.put("nodesCompleted", nodesCompleted);
-                webSocketHandler.sendLiveUpdate(schema.getId(), "CUSTOM", payload);
-            }
-            log.info("Выполнение схемы завершено: {} ({}мс, {}/{} узлов)", schema.getName(), totalTime, nodesCompleted, totalNodes);
-
-            // Persist final node statuses back to the stored schema so clients see updated node states
-            try {
-                schemaRepository.save(schema);
-            } catch (Exception e) {
-                log.warn("Failed to persist schema after completion: {}", e.getMessage(), e);
-            }
-
-            // Завершаем задачу в плане, если была создана (схема с targetPath)
-            if (executionTask != null) {
-                try {
-                    List<Task.GeneratedFile> generatedFiles = new ArrayList<>();
-                    String prefix = schema.getId() + ":";
-                    for (java.util.Map.Entry<String, String> entry : nodeExecutor.getOutputFileRegistry().entrySet()) {
-                        if (entry.getKey().startsWith(prefix)) {
-                            generatedFiles.add(new Task.GeneratedFile(entry.getValue(),
-                                    "Сгенерированный файл из узла " + entry.getKey().substring(prefix.length())));
-                        }
-                    }
-                    String wsId = schema.getWorkspaceId() != null ? schema.getWorkspaceId() : "default";
-                    planService.completeTaskForExecution(executionTask.getId(), wsId, generatedFiles);
-                    log.info("Задача выполнения завершена: {} ({} файлов)", executionTask.getId(), generatedFiles.size());
-                } catch (Exception e) {
-                    log.warn("Не удалось завершить задачу выполнения: {}", e.getMessage(), e);
-                }
-            }
-
-            try {
-                    executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
-                recordExecution(schema, workflowStartTime, totalTime, totalNodes, nodesCompleted, "completed");
-            } catch (Exception e) {
-                log.warn("Failed to persist completion record: {}", e.getMessage(), e);
             }
         }
     }
