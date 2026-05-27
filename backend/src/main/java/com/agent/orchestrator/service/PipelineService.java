@@ -162,7 +162,7 @@ public class PipelineService {
         CompletableFuture<?> existing = runningPipelines.get(schemaId);
         if (existing != null && !existing.isDone()) {
             log.warn("Pipeline already running: {}", schemaId);
-            return;
+            throw new RuntimeException("Pipeline '" + schemaId + "' is already running");
         }
 
         String runId = UUID.randomUUID().toString();

@@ -202,8 +202,9 @@ class PipelineServiceTest {
         // First call starts
         pipelineService.executePipeline("running-schema");
 
-        // Second call should be skipped (already running)
-        pipelineService.executePipeline("running-schema");
+        // Second call throws CONFLICT (already running)
+        assertThrows(RuntimeException.class, () ->
+            pipelineService.executePipeline("running-schema"));
 
         verify(executionRepository).createRun(any(ExecutionRun.class));
     }
@@ -244,7 +245,8 @@ class PipelineServiceTest {
         when(schemaRepository.findById("test")).thenReturn(schema);
 
         pipelineService.executePipeline("test");
-        pipelineService.executePipeline("test");
+        assertThrows(RuntimeException.class, () ->
+            pipelineService.executePipeline("test"));
 
         verify(executionRepository).createRun(any(ExecutionRun.class));
     }

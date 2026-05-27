@@ -277,8 +277,10 @@ public class SchemaService {
 
         CompletableFuture<?> existing = runningExecutions.get(id);
         if (existing != null && !existing.isDone()) {
-            log.warn("Схема уже выполняется: {}", id);
-            return;
+            log.warn("Schema already executing: {}", id);
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "Schema '" + id + "' is already executing");
         }
 
         // Fall back to auth context userId for model resolution when schema has none
