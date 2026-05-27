@@ -227,7 +227,19 @@ Default model: @cf/bonsai. Target: emotion tracker app.
 **Effort**: ~0.5 day
 **Risk**: None.
 
-### Total effort: ~3 days
+#### 4e. Stage groups in BlueprintView
+**Mechanism**: Visual grouping of blueprint nodes by pipeline stage. Each stage's
+nodes get a shared background (color-coded by type: receive/agent/review/verify/output)
+with a stage name header. Drag one node in a group shows all nodes in that group.
+Stage operations (retry all) accessible from group header.
+
+**Effort**: ~2 days (VueFlow custom layer + GroupNode component)
+**Risk**: VueFlow groups may conflict with node drag behavior.
+**Mitigation**: Use VueFlow's `nodeExtent` to keep grouped nodes within bounds.
+**Replaces**: The previously proposed standalone "Pipeline Visual Editor" — this
+approach avoids duplicating the blueprint with a second graph editor.
+
+### Total effort: ~3.5 days
 ### Success criteria: A new user can create a Бережно app in 3 clicks, execute
 with Cmd+Enter, and follow progress in the top bar.
 
