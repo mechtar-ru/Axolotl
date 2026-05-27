@@ -60,6 +60,7 @@ const testCommand = ref('')
 const maxFileSizeKb = ref(500)
 const rewriteOnFail = ref(true)
 const maxRewriteRetries = ref(3)
+const stubDetection = ref(true)
 
 const reviewPremortem = ref(true)
 const reviewPrism = ref(false)
@@ -152,6 +153,7 @@ function resetRefs() {
   maxFileSizeKb.value = 500
   rewriteOnFail.value = true
   maxRewriteRetries.value = 3
+  stubDetection.value = true
   reviewPremortem.value = true
   reviewPrism.value = false
   reviewPostmortem.value = false
@@ -189,6 +191,7 @@ watch(() => props.blockId, () => {
   // rewriteOnFail/maxRewriteRetries live at config top level (not inside checks)
   rewriteOnFail.value = (config.rewriteOnFail as boolean) ?? true
   maxRewriteRetries.value = (config.maxRewriteRetries as number) ?? 3
+  stubDetection.value = (config.stubDetection as boolean) ?? true
   // Review fields
   reviewPremortem.value = checks?.premortem ?? true
   reviewPrism.value = checks?.prism ?? false
@@ -287,9 +290,10 @@ function saveConfig() {
     // Merge checks into config
     if (!node.value.data.config) node.value.data.config = {}
     ;(node.value.data.config as Record<string, any>).checks = checks
-    // rewriteOnFail/maxRewriteRetries live at config top level (not in checks)
+    // rewriteOnFail/maxRewriteRetries/stubDetection live at config top level (not in checks)
     ;(node.value.data.config as Record<string, any>).rewriteOnFail = rewriteOnFail.value
     ;(node.value.data.config as Record<string, any>).maxRewriteRetries = maxRewriteRetries.value
+    ;(node.value.data.config as Record<string, any>).stubDetection = stubDetection.value
   }
 
   // Review-specific config
@@ -565,6 +569,12 @@ function handleKeydown(e: KeyboardEvent) {
         <label class="config-checkbox">
           <input type="checkbox" v-model="syntaxCheck" @change="saveConfig" />
           Syntax Check
+        </label>
+
+        <label class="config-checkbox">
+          <input type="checkbox" v-model="stubDetection" @change="saveConfig" />
+          Stub Detection
+          <span class="config-hint">Detect // TODO, empty bodies, return null placeholders</span>
         </label>
 
         <div class="config-field">
