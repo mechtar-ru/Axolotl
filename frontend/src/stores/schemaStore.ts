@@ -199,7 +199,8 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function approveReview(executionId: string, nodeId: string) {
     try {
-      await api.post(`/execution/${executionId}/approve-review?nodeId=${nodeId}`);
+      const sid = currentSchema.value?.id || '';
+      await api.post(`/execution/${executionId}/approve-review?nodeId=${nodeId}&schemaId=${sid}`);
       pendingReview.value = false;
       reviewData.value = null;
     } catch (err) {
@@ -210,7 +211,8 @@ export const useSchemaStore = defineStore('schema', () => {
 
   async function rejectReview(executionId: string, nodeId: string) {
     try {
-      await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}`);
+      const sid = currentSchema.value?.id || '';
+      await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}&schemaId=${sid}`);
       pendingReview.value = false;
       reviewData.value = null;
     } catch (err) {

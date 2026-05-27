@@ -151,8 +151,7 @@ public class NodeExecutor {
     void init() {
         toolExecutor.setWebSocketHandler(webSocketHandler);
         toolExecutor.setLlmService(llmService);
-        // Circular setNodeExecutor dependencies eliminated — strategies and router
-        // now use ExecutionUtilityService and constructor injection instead.
+        toolExecutor.setStateManager(stateManager);
     }
 
     // ────────────────────────── result maps (delegated to stateManager) ──────────────────────────

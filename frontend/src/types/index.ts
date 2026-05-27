@@ -107,6 +107,7 @@ export interface WorkflowSchema {
   targetPath?: string;
   targetPathConflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';
   pipeline?: import('./pipeline').Pipeline;
+  projectType?: 'FLUTTER' | 'PYTHON' | 'WEB' | 'GO' | 'RUST';
 }
 
 export interface PlanningModels {

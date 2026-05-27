@@ -27,9 +27,13 @@ public class WorkflowSchema {
     private String planningRefinedPlan;
     private String planningContext;
     private Pipeline pipeline;
+    private String projectType; // "FLUTTER" | "PYTHON" | "WEB" | "GO" | "RUST", null => FLUTTER
 
     public Pipeline getPipeline() { return pipeline; }
     public void setPipeline(Pipeline pipeline) { this.pipeline = pipeline; }
+
+    public String getProjectType() { return projectType; }
+    public void setProjectType(String projectType) { this.projectType = projectType; }
 
     // Геттеры и сеттеры
     public String getId() { return id; }

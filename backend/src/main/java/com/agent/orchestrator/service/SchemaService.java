@@ -23,6 +23,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.io.*;
+import java.nio.file.*;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CancellationException;
@@ -49,6 +51,7 @@ public class SchemaService {
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
     private final PipelineService pipelineService;
+    private final ExecutionStateManager stateManager;
 
     private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
     private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
@@ -72,7 +75,8 @@ public class SchemaService {
             LlmService llmService,
             PlanService planService,
             ExecutionRepository executionRepository,
-            PipelineService pipelineService) {
+            PipelineService pipelineService,
+            ExecutionStateManager stateManager) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -84,6 +88,7 @@ public class SchemaService {
         this.planService = planService;
         this.executionRepository = executionRepository;
         this.pipelineService = pipelineService;
+        this.stateManager = stateManager;
     }
 
     @jakarta.annotation.PostConstruct
@@ -193,7 +198,44 @@ public class SchemaService {
         log.info("Удалена схема: {}", id);
     }
 
-    // ────────────────────────── Export (delegated) ──────────────────────────
+    // ────────────────────────── Export / Import ──────────────────────────
+
+    public WorkflowSchema exportSchema(String id) {
+        return schemaRepository.findById(id);
+    }
+
+    public WorkflowSchema importSchema(WorkflowSchema schema, String userId) {
+        String newId = UUID.randomUUID().toString();
+        schema.setId(newId);
+        schema.setUserId(userId);
+        schema.setCreatedAt(Instant.now().toString());
+        schema.setUpdatedAt(Instant.now().toString());
+
+        // Strip execution state from nodes
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                node.setStatus(null);
+                if (node.getData() != null) {
+                    node.getData().setMessages(null);
+                    node.getData().setResult(null);
+                }
+            }
+        }
+
+        // Auto-create target directory
+        if (schema.getTargetPath() != null && !schema.getTargetPath().isBlank()) {
+            try {
+                java.nio.file.Files.createDirectories(java.nio.file.Path.of(schema.getTargetPath()));
+                log.info("Created targetPath directory: {}", schema.getTargetPath());
+            } catch (java.io.IOException e) {
+                log.warn("Could not create targetPath {}: {}", schema.getTargetPath(), e.getMessage());
+            }
+        }
+
+        schemaRepository.save(schema);
+        log.info("Imported schema: {} (ID: {})", schema.getName(), newId);
+        return schema;
+    }
 
     public String exportToMermaid(String id) {
         return schemaExporter.exportToMermaid(id);
@@ -508,8 +550,10 @@ public class SchemaService {
      * so the review node can skip re-review on next run.
      */
     public void handleReviewApprove(String executionId, String nodeId) {
-        // Resolve schemaId — executionId can be either a run ID or a schema ID
-        String schemaId = resolveSchemaIdFromExecution(executionId);
+        handleReviewApprove(executionId, nodeId, resolveSchemaIdFromExecution(executionId));
+    }
+
+    public void handleReviewApprove(String executionId, String nodeId, String schemaId) {
         if (schemaId == null) {
             log.warn("Could not resolve schemaId from executionId: {}", executionId);
             return;
@@ -610,7 +654,10 @@ public class SchemaService {
      * Handle review rejection — fail the node.
      */
     public void handleReviewReject(String executionId, String nodeId) {
-        String schemaId = resolveSchemaIdFromExecution(executionId);
+        handleReviewReject(executionId, nodeId, resolveSchemaIdFromExecution(executionId));
+    }
+
+    public void handleReviewReject(String executionId, String nodeId, String schemaId) {
         if (schemaId == null) {
             log.warn("Could not resolve schemaId from executionId: {}", executionId);
             return;
@@ -654,6 +701,79 @@ public class SchemaService {
                 }
             }
         }
+    }
+
+    /**
+     * Handle diff review approval — keep changes, clean up backups, resume pipeline.
+     */
+    public void handleDiffsApprove(String executionId, String nodeId) {
+        String schemaId = resolveSchemaIdFromExecution(executionId);
+        if (schemaId == null) return;
+
+        List<ExecutionStateManager.PendingDiff> diffs = stateManager.getPendingDiffs(schemaId, nodeId);
+        for (ExecutionStateManager.PendingDiff pd : diffs) {
+            if (pd.tempBackupPath != null) {
+                java.io.File backup = new java.io.File(pd.tempBackupPath);
+                if (backup.exists()) backup.delete();
+            }
+        }
+        stateManager.clearPendingDiffs(schemaId, nodeId);
+        log.info("Diff review approved for schema {} node {} ({} files)", schemaId, nodeId, diffs.size());
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info",
+                    "File changes approved, resuming pipeline", nodeId);
+        }
+
+        // Resume the pipeline
+        executionRepository.releasePausedRun(schemaId);
+        ExecutionRun claimed = executionRepository.claimPausedRun(schemaId);
+        if (claimed == null) {
+            log.warn("No paused pipeline run found for schema {} after diff approval", schemaId);
+            return;
+        }
+        pipelineService.resumePipeline(schemaId, claimed.getId());
+    }
+
+    /**
+     * Handle diff review rejection — restore original content from backup.
+     */
+    public void handleDiffsReject(String executionId, String nodeId) {
+        String schemaId = resolveSchemaIdFromExecution(executionId);
+        if (schemaId == null) return;
+
+        List<ExecutionStateManager.PendingDiff> diffs = stateManager.getPendingDiffs(schemaId, nodeId);
+        for (ExecutionStateManager.PendingDiff pd : diffs) {
+            if (pd.tempBackupPath != null) {
+                java.io.File backup = new java.io.File(pd.tempBackupPath);
+                java.io.File target = new java.io.File(pd.filePath);
+                if (backup.exists()) {
+                    try {
+                        java.nio.file.Files.copy(backup.toPath(), target.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        backup.delete();
+                    } catch (IOException e) {
+                        log.error("Failed to restore backup for {}: {}", pd.filePath, e.getMessage());
+                    }
+                }
+            }
+        }
+        stateManager.clearPendingDiffs(schemaId, nodeId);
+        log.info("Diff review rejected for schema {} node {} — files restored from backup", schemaId, nodeId);
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "error",
+                    "File changes rejected, original files restored", nodeId);
+        }
+
+        // Resume pipeline to continue (next stages will see original files)
+        executionRepository.releasePausedRun(schemaId);
+        ExecutionRun claimed = executionRepository.claimPausedRun(schemaId);
+        if (claimed == null) {
+            log.warn("No paused pipeline run found for schema {} after diff rejection", schemaId);
+            return;
+        }
+        pipelineService.resumePipeline(schemaId, claimed.getId());
     }
 
     /**

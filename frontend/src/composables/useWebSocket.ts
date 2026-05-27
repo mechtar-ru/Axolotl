@@ -18,6 +18,8 @@ export interface WebSocketCallbacks {
   // New Wave 3 events
   onStep?: (data: { schemaId: string; stepIndex: number; blockId: string; blockType: string; label: string; status: string; details: string; duration: number }) => void;
   onLiveUpdate?: (data: { schemaId: string; appType: string; payload: Record<string, unknown> }) => void;
+  onDepsNeeded?: (data: { schemaId: string; nodeId: string; missing: string[]; projectPath: string }) => void;
+  onDiffsNeeded?: (data: { schemaId: string; nodeId: string; diffs: Array<{ filePath: string; diff: string; originalLength: number; newLength: number }> }) => void;
   onDisconnect?: () => void;
 }
 
@@ -110,6 +112,12 @@ export function useWebSocket() {
               break;
             case 'live_update':
               callbacks?.onLiveUpdate?.(data);
+              break;
+            case 'deps_needed':
+              callbacks?.onDepsNeeded?.(data);
+              break;
+            case 'diffs_needed':
+              callbacks?.onDiffsNeeded?.(data);
               break;
             default:
               break;

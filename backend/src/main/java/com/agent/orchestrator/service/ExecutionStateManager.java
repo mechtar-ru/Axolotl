@@ -2,7 +2,7 @@ package com.agent.orchestrator.service;
 
 import org.springframework.stereotype.Component;
 
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -13,11 +13,27 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class ExecutionStateManager {
 
+    public static class PendingDiff {
+        public final String filePath;
+        public final String originalContent;
+        public final String newContent;
+        public final String tempBackupPath;
+
+        public PendingDiff(String filePath, String originalContent, String newContent, String tempBackupPath) {
+            this.filePath = filePath;
+            this.originalContent = originalContent;
+            this.newContent = newContent;
+            this.tempBackupPath = tempBackupPath;
+        }
+    }
+
     private final Map<String, Map<String, String>> nodeResults = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
     private final Map<String, String> outputFileRegistry = new ConcurrentHashMap<>();
     private final Map<String, Object> generatedFilesRegistry = new ConcurrentHashMap<>();
     private final Map<String, String> schemaRunIds = new ConcurrentHashMap<>();
+    private final Map<String, Map<String, String>> fileChanges = new ConcurrentHashMap<>();
+    private final Map<String, List<PendingDiff>> pendingDiffRegistry = new ConcurrentHashMap<>();
 
     public Map<String, Map<String, String>> getNodeResults() {
         return nodeResults;
@@ -70,5 +86,39 @@ public class ExecutionStateManager {
 
     public void putGeneratedFile(String key, Object value) {
         generatedFilesRegistry.put(key, value);
+    }
+
+    public void recordFileChange(String schemaId, String nodeId, String path, String action) {
+        String stageKey = schemaId + ":" + nodeId;
+        fileChanges.computeIfAbsent(stageKey, k -> new ConcurrentHashMap<>()).put(path, action);
+    }
+
+    public Map<String, String> getFileChanges(String schemaId, String nodeId) {
+        return fileChanges.getOrDefault(schemaId + ":" + nodeId, Map.of());
+    }
+
+    public Map<String, Map<String, String>> getAllFileChanges() {
+        return fileChanges;
+    }
+
+    public void clearFileChanges(String schemaId, String nodeId) {
+        fileChanges.remove(schemaId + ":" + nodeId);
+    }
+
+    public void addPendingDiff(String schemaId, String nodeId, PendingDiff diff) {
+        String key = schemaId + ":" + nodeId;
+        pendingDiffRegistry.computeIfAbsent(key, k -> Collections.synchronizedList(new ArrayList<>())).add(diff);
+    }
+
+    public List<PendingDiff> getPendingDiffs(String schemaId, String nodeId) {
+        return pendingDiffRegistry.getOrDefault(schemaId + ":" + nodeId, List.of());
+    }
+
+    public Map<String, List<PendingDiff>> getAllPendingDiffs() {
+        return pendingDiffRegistry;
+    }
+
+    public void clearPendingDiffs(String schemaId, String nodeId) {
+        pendingDiffRegistry.remove(schemaId + ":" + nodeId);
     }
 }

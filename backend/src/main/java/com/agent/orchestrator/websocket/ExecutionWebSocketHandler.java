@@ -315,4 +315,21 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         sendMessage(schemaId, toJson(msg));
         log.debug("Live update [{}]: appType={}", schemaId, appType);
     }
+
+    public void sendDepsNeeded(String schemaId, String nodeId, List<String> missing, String projectPath) {
+        Map<String, Object> msg = baseMsg("deps_needed", schemaId);
+        msg.put("nodeId", nodeId);
+        msg.put("missing", missing);
+        msg.put("projectPath", projectPath);
+        sendMessage(schemaId, toJson(msg));
+        log.info("Deps needed [{}]: missing={}", schemaId, missing);
+    }
+
+    public void sendDiffsNeeded(String schemaId, String nodeId, List<Map<String, Object>> diffs) {
+        Map<String, Object> msg = baseMsg("diffs_needed", schemaId);
+        msg.put("nodeId", nodeId);
+        msg.put("diffs", diffs);
+        sendMessage(schemaId, toJson(msg));
+        log.info("Diffs needed [{}]: {} files to review", schemaId, diffs.size());
+    }
 }

@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -115,6 +116,17 @@ public class AgentController {
     @DeleteMapping("/schemas/{id}")
     public void deleteSchema(@PathVariable String id) {
         schemaService.deleteSchema(id);
+    }
+
+    @GetMapping("/schemas/{id}/export")
+    public WorkflowSchema exportSchema(@PathVariable String id) {
+        return schemaService.getSchema(id);
+    }
+
+    @PostMapping("/schemas/import")
+    public WorkflowSchema importSchema(@RequestBody WorkflowSchema schema) {
+        String userId = getCurrentUserId();
+        return schemaService.importSchema(schema, userId);
     }
 
     @GetMapping("/schemas/{id}/export/mermaid")
@@ -215,19 +227,120 @@ public class AgentController {
     @PostMapping("/execution/{executionId}/approve-review")
     public Map<String, String> approveReview(
             @PathVariable String executionId,
-            @RequestParam String nodeId) {
-        schemaService.handleReviewApprove(executionId, nodeId);
-        log.info("Review approved for execution {} node {}", executionId, nodeId);
+            @RequestParam String nodeId,
+            @RequestParam(required = false) String schemaId) {
+        String resolvedSchemaId = schemaId != null ? schemaId : executionId;
+        schemaService.handleReviewApprove(executionId, nodeId, resolvedSchemaId);
+        log.info("Review approved for execution {} node {} schema {}", executionId, nodeId, resolvedSchemaId);
         return Map.of("status", "ok", "message", "Plan approved, resuming execution");
     }
 
     @PostMapping("/execution/{executionId}/reject")
     public Map<String, String> rejectReview(
             @PathVariable String executionId,
-            @RequestParam String nodeId) {
-        schemaService.handleReviewReject(executionId, nodeId);
-        log.info("Review rejected for execution {} node {}", executionId, nodeId);
+            @RequestParam String nodeId,
+            @RequestParam(required = false) String schemaId) {
+        String resolvedSchemaId = schemaId != null ? schemaId : executionId;
+        schemaService.handleReviewReject(executionId, nodeId, resolvedSchemaId);
+        log.info("Review rejected for execution {} node {} schema {}", executionId, nodeId, resolvedSchemaId);
         return Map.of("status", "ok", "message", "Plan rejected, node failed");
+    }
+
+    @PostMapping("/execution/{executionId}/install-deps")
+    public Map<String, Object> installDeps(
+            @PathVariable String executionId,
+            @RequestBody Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        List<String> deps = (List<String>) body.getOrDefault("deps", List.of());
+        String schemaId = (String) body.getOrDefault("schemaId", executionId);
+
+        if (deps.isEmpty()) {
+            return Map.of("status", "error", "message", "No deps specified");
+        }
+
+        log.info("Installing deps for execution {}: {}", executionId, deps);
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        for (String dep : deps) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("dep", dep);
+            result.put("status", "installing");
+            try {
+                String command = buildInstallCommand(dep);
+                if (command == null) {
+                    result.put("status", "error");
+                    result.put("message", "Unknown dependency: " + dep);
+                    results.add(result);
+                    continue;
+                }
+                log.info("Running install command: {}", command);
+                ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+                pb.redirectErrorStream(true);
+                Process proc = pb.start();
+                boolean finished = proc.waitFor(300, TimeUnit.SECONDS);
+                String output = new String(proc.getInputStream().readAllBytes());
+                if (finished && proc.exitValue() == 0) {
+                    result.put("status", "ok");
+                    result.put("message", "Installed successfully");
+                } else if (!finished) {
+                    proc.destroyForcibly();
+                    result.put("status", "error");
+                    result.put("message", "Install timed out after 300s");
+                } else {
+                    result.put("status", "error");
+                    result.put("message", output);
+                }
+            } catch (Exception e) {
+                result.put("status", "error");
+                result.put("message", e.getMessage());
+            }
+            results.add(result);
+        }
+
+        boolean allOk = results.stream().allMatch(r -> "ok".equals(r.get("status")));
+        return Map.of(
+            "status", allOk ? "ok" : "partial",
+            "results", results
+        );
+    }
+
+    @PostMapping("/execution/{executionId}/approve-diffs")
+    public Map<String, String> approveDiffs(
+            @PathVariable String executionId,
+            @RequestParam String nodeId,
+            @RequestParam(required = false) String schemaId) {
+        schemaService.handleDiffsApprove(executionId, nodeId);
+        log.info("Diff review approved for execution {} node {}", executionId, nodeId);
+        return Map.of("status", "ok", "message", "File changes approved, resuming pipeline");
+    }
+
+    @PostMapping("/execution/{executionId}/reject-diffs")
+    public Map<String, String> rejectDiffs(
+            @PathVariable String executionId,
+            @RequestParam String nodeId,
+            @RequestParam(required = false) String schemaId) {
+        schemaService.handleDiffsReject(executionId, nodeId);
+        log.info("Diff review rejected for execution {} node {} — files restored", executionId, nodeId);
+        return Map.of("status", "ok", "message", "File changes rejected, original files restored");
+    }
+
+    private String buildInstallCommand(String dep) {
+        if (dep.toLowerCase().contains("flutter")) {
+            // Try multiple install methods
+            return "which brew >/dev/null 2>&1 && brew install flutter || "
+                 + "(which flutter >/dev/null 2>&1 && echo 'already installed' || "
+                 + "echo 'Please install Flutter SDK manually from https://docs.flutter.dev/get-started/install')";
+        }
+        if (dep.toLowerCase().contains("android") || dep.toLowerCase().contains("sdkmanager")) {
+            return "echo 'Android SDK requires manual setup. Install Android Studio from https://developer.android.com/studio'";
+        }
+        if (dep.toLowerCase().contains("xcode")) {
+            return "xcode-select --install 2>/dev/null || echo 'Xcode CLI tools already installed or unavailable'";
+        }
+        if (dep.toLowerCase().contains("cocoapods") || dep.toLowerCase().contains("pod")) {
+            return "sudo gem install cocoapods 2>/dev/null || brew install cocoapods";
+        }
+        return null;
     }
 
     @GetMapping("/health")

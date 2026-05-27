@@ -119,6 +119,16 @@ export const schemaApi = {
     return response.data.mermaid;
   },
 
+  async exportSchema(id: string): Promise<WorkflowSchema> {
+    const response = await api.get(`/schemas/${id}/export`);
+    return response.data;
+  },
+
+  async importSchema(schema: WorkflowSchema): Promise<WorkflowSchema> {
+    const response = await api.post('/schemas/import', schema);
+    return response.data;
+  },
+
   async generateFromPrompt(prompt: string, model?: string): Promise<{ success: boolean; schema?: WorkflowSchema; error?: string; planExplanation?: string }> {
     const response = await api.post('/schemas/generate-from-prompt', { prompt, model });
     return response.data;

@@ -5,6 +5,8 @@ const props = defineProps<{
   appName: string
   activeMode: StudioMode
   isRunning: boolean
+  canUndo?: boolean
+  canRedo?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -13,6 +15,9 @@ const emit = defineEmits<{
   'back': []
   'show-quick-start': []
   'show-generate-from-prompt': []
+  'export-schema': []
+  'undo': []
+  'redo': []
 }>()
 
 const modes: { id: StudioMode; label: string; icon: string }[] = [
@@ -29,6 +34,18 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
           <path d="M19 12H5M12 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
+      <div class="undo-redo-group">
+        <button class="undo-btn" :disabled="!canUndo" @click="emit('undo')" title="Undo (Ctrl+Z)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <button class="redo-btn" :disabled="!canRedo" @click="emit('redo')" title="Redo (Ctrl+Shift+Z)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M21 10H11a5 5 0 00-5 5v2M21 10l-4-4M21 10l-4 4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
       <h1 class="app-title">{{ appName }}</h1>
     </div>
     
@@ -56,6 +73,17 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
           <path d="M13 2L12 10H21L11 22L12 14H3L13 2Z" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         Quick Start
+      </button>
+
+      <button
+        class="export-btn"
+        @click="emit('export-schema')"
+        title="Export schema as JSON"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export
       </button>
 
       <button
@@ -134,6 +162,39 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.undo-redo-group {
+  display: flex;
+  gap: 2px;
+  margin-right: var(--space-2);
+}
+
+.undo-btn,
+.redo-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.undo-btn:hover:not(:disabled),
+.redo-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.undo-btn:disabled,
+.redo-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .mode-tabs {
@@ -243,6 +304,27 @@ const modes: { id: StudioMode; label: string; icon: string }[] = [
 
 .generate-prompt-btn:hover {
   background: var(--accent-light);
+}
+
+.export-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.export-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 @keyframes pulse {

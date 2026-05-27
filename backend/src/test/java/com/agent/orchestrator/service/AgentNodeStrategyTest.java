@@ -181,7 +181,7 @@ class AgentNodeStrategyTest {
         when(utilityService.parseToolCalls(anyString()))
                 .thenReturn(List.of(toolCall))
                 .thenReturn(List.of());
-        when(utilityService.executeToolCall(anyString(), anyMap(), eq(toolNode), anyString()))
+        when(utilityService.executeToolCall(anyString(), anyMap(), eq(toolNode), anyString(), nullable(String.class), nullable(String.class)))
                 .thenReturn("file1.txt\nfile2.txt");
         when(llmService.chat(anyString(), isNull(), anyString(), isNull()))
                 .thenReturn("{\"tool_calls\": [{\"name\": \"bash\", \"arguments\": {\"command\": \"ls\"}}]}")
@@ -194,7 +194,7 @@ class AgentNodeStrategyTest {
         assertNotNull(result);
         assertEquals("Final result after tools", result);
         verify(utilityService, times(2)).parseToolCalls(anyString());
-        verify(utilityService).executeToolCall(eq("bash"), anyMap(), eq(toolNode), eq("schema-1"));
+        verify(utilityService).executeToolCall(eq("bash"), anyMap(), eq(toolNode), eq("schema-1"), nullable(String.class), nullable(String.class));
     }
 
     @Test

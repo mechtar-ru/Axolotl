@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { settingsApi } from '@/services/api'
+import { personas } from '@/data/personas'
 
 const props = defineProps<{
   blockId: string
@@ -23,6 +24,7 @@ const blockLabel = ref('')
 const blockDescription = ref('')
 const model = ref('')
 const prompt = ref('')
+const selectedPersona = ref('')
 const blockType = ref('agent')
 
 // Source type refs (for source/receive blocks)
@@ -121,11 +123,21 @@ const requiredPatternsText = computed({
   }
 })
 
+function applyPersona() {
+  if (!selectedPersona.value) return
+  const persona = personas.find(p => p.id === selectedPersona.value)
+  if (persona) {
+    prompt.value = persona.systemPrompt
+    saveConfig()
+  }
+}
+
 function resetRefs() {
   blockLabel.value = ''
   blockDescription.value = ''
   model.value = ''
   prompt.value = ''
+  selectedPersona.value = ''
   blockType.value = 'agent'
   sourceType.value = 'text'
   sourceContent.value = ''
@@ -162,6 +174,12 @@ watch(() => props.blockId, () => {
   blockDescription.value = (node.value.data?.description as string) || (config.description as string) || ''
   model.value = (node.value.data?.model as string) || (config.model as string) || 'local'
   prompt.value = (node.value.data?.systemPrompt as string) || (config.systemPrompt as string) || (config.prompt as string) || ''
+  // Detect persona match
+  selectedPersona.value = ''
+  if (prompt.value) {
+    const matched = personas.find(p => p.systemPrompt === prompt.value)
+    if (matched) selectedPersona.value = matched.id
+  }
   // Verifier fields
   const checks = config.checks as Record<string, any> | undefined
   syntaxCheck.value = checks?.syntaxCheck ?? true
@@ -513,6 +531,13 @@ function handleKeydown(e: KeyboardEvent) {
 
       <!-- Prompt (Think blocks) -->
       <div v-if="typeSections.prompt" class="config-section">
+        <label class="config-label">Persona</label>
+        <select v-model="selectedPersona" class="config-select" @change="applyPersona">
+          <option value="">Custom — write your own prompt</option>
+          <option v-for="p in personas" :key="p.id" :value="p.id">
+            {{ p.name }} — {{ p.description }}
+          </option>
+        </select>
         <label class="config-label">System Prompt</label>
         <textarea
           v-model="prompt"

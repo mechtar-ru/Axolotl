@@ -1,101 +1,337 @@
-# Axolotl Development Roadmap
+# Axolotl Roadmap — Next Directions
 
-**Status:** Approved — June 2026  
-**Scope:** Near-term to medium-term (3-6 months)  
-**Philosophy:** Build what's needed now, not what's hypothetically useful later.
-
----
-
-## Phase 0 — Reliability (1-2 sprints, current)
-
-*Make schema execution end-to-end reliable before adding new capabilities.*
-
-### Must fix
-- [ ] **Intermittent 403 on execute/pipeline endpoints** — root-cause the JWT + SecurityConfig interaction
-- [ ] **JVM shutdown during executor calls** — confirm fixed or find remaining cause
-- [ ] **Timeline Run History** — merge to main and validate it's useful for debugging failed executions
-- [ ] **Бережно emotion diary** — run end-to-end successfully as acceptance test of the whole pipeline
-
-### Must have working
-- [ ] Studio → Quick Start → execute → results visible in Timeline (no silent failures)
-- [ ] Review node approval flow (manual mode) works without errors
-- [ ] Agent node generates files in targetPath that survive schema re-execution
-- [ ] Verifier node produces PASS/FAIL with visible checks
-
-### If time
-- [ ] Pipeline TDD mode usability — easy to toggle, clear stage labels, test results visible
-- [ ] Per-node manual re-execution from Studio
+> Approved directions for Axolotl development. Each section is a concrete,
+> orderable workstream with rationale, milestones, and risk notes.
+>
+> **Reassess after each workstream** — if a workstream overruns by >50%, cut
+> the lowest-ranked remaining item. Premortem again after any major update.
 
 ---
 
-## Phase 1 — Provider Diversity (3-4 sprints)
+## 1. Multi-Session App Development
 
-*Axolotl should work with more than one LLM provider.*
+**Goal**: Make Axolotl capable of building a real app over N sessions without
+regression, duplication, or quality loss.
 
 ### Why
-- Single point of failure (Zen goes down → Axolotl is dead)
-- Model ensemble routing requires 2+ working providers before it's even testable
-- Users need local fallback for sensitive work
+The Бережно experiment proved the concept but exposed three gaps:
+- Each session starts blind (no memory of prior sessions' output)
+- Re-runs overwrite/duplicate files
+- No easy way to roll back a bad session
 
-### Scope
-- [ ] **Ollama integration** — test with existing provider abstraction; fix API compatibility issues
-- [ ] **DeepSeek provider** — verify API key + endpoint work; add to test suite
-- [ ] **OpenAI provider** — verify and document setup
-- [ ] **Provider health dashboard** — Settings view shows live status per provider (green/red, last error, latency)
-- [ ] **Graceful degradation** — if primary provider fails, cascade to fallback with user notification
-- [ ] **Simple model routing** — user selects default model; schema can override per-node. No adaptive routing yet.
+### Spike first (1 day)
+Before committing to WS1, prove the hypothesis that cross-session context improves quality.
 
-### Non-goals
-- Model ensemble (requires data we don't have)
-- Automatic failover (start with manual fallback)
-- Cost optimization (one provider, one price)
+**Implementation scope** (single file change):
+- `ExecutionUtilityService.buildStagePrompt()`: add 20-line block to query
+  `NodeExecutionRepository.findByRunId()` for last completed run, extract
+  `outputSummary` from the agent-stage node, append as "## Prior Session Output"
+  section. No new classes, no Neo4j schema changes, no frontend changes.
+
+**Pass/fail criteria** (both must pass):
+1. Agent produces ≥50% fewer stub files (// TODO, // stub) compared to baseline
+   (current one-shot pipeline — measure over 2 sessions of Бережно)
+2. No regression in `dart analyze` errors (≤ baseline count)
+
+**If spike fails** → **drop WS1 completely**. Reallocate 10d effort to WS4 (3d) + WS3
+accelerated (7d). The "What We Are NOT Doing" section stays unchanged.
+
+### Breakdown
+
+#### 1a. Cross-session context injection
+**Mechanism**: Before each agent stage, inject into systemPrompt:
+- `directory_read` output of targetPath (current file tree) — **single source of truth**
+- Last 3 `generatedFiles` arrays from prior completed runs (not raw outputSummary)
+- Git log summary (`git log --oneline -5` in targetPath if `.git` exists) — only branch/commit context, not file diff
+
+> **Design constraint**: file tree is the canonical state. `generatedFiles` explains *intent*, diff explains *what changed*. If they contradict, agent trusts file tree.
+
+**Effort**: ~2 days (PipelineService + ExecutionUtilityService)
+**Risk**: Prompt length growth — 5 runs × raw outputSummary can exceed 32K context.
+**Mitigation**: Inject only `generatedFiles` JSON, not raw outputSummary. Cap at 3KB total.
+
+#### 1b. Git-backed session workspace
+**Mechanism**: On first session, `git init` in targetPath if not already a repo.
+On each session start: `git checkout -b session-N`.
+On session complete: `git add -A && git commit -m "Session N: ..."`.
+Session plan writes commit messages with file list.
+
+**Effort**: ~1 day (ToolExecutor + schemaStore)
+**Risk**: User might have their own git. Check for existing git first, use `git stash` if dirty.
+**Mitigation**: Show `git status` preview and confirm with human before stash. Skip auto-init if `.git` exists.
+**Risk**: Branch explosion — `session-N` accumulates indefinitely.
+**Mitigation**: Auto-delete branches >30 days old after commit (with config toggle, not silent). Or use `git worktree` instead.
+
+#### 1c. Diff-aware agent
+**Mechanism**: When agent starts a session, inject `git diff main..session-N-1`
+into the system prompt (as "files modified in prior sessions"). This lets the
+agent know what exists and what was recently changed.
+
+**Effort**: ~1 day
+**Risk**: Git diff produces unstructured raw text — a 2000-line diff overwhelms context.
+**Mitigation**: Summarize diff per-file (summary, ±lines), cap at 30 files / 100 lines.
+**Dependency**: 1b must be done first
+
+#### 1d. Session kill switch
+**Mechanism**: During session execution, if user cancels mid-run: `git checkout -- .` to revert all uncommitted changes, `git branch -D session-N` if empty.
+Wired to existing Cancel button in PipelinePanel + StudioTopBar.
+
+**Effort**: ~0.5 day (PipelineService + ToolExecutor)
+**Risk**: Reverts user's own working tree changes if any.
+**Mitigation**: Always show diff preview before revert. Only revert files written by agent (via `.gitignore`-like agent file manifest).
+
+### Total effort: ~6.5 days (×1.5 human factor: ~10 days)
+### Success criteria: 3 sequential sessions building the same app — each session
+passes `dart analyze`, no file count regression across sessions, no manual edits needed.
 
 ---
 
-## Phase 2 — Multi-Session Workflows (next quarter)
+## 2. Observability & Debugging
 
-*Turn Axolotl into a reliable multi-session app generator.*
+**Goal**: Make it possible to understand *why* an agent made a decision, not just
+*what* it did.
 
 ### Why
-- Current apps are static — one schema execution produces files, then context is lost for the next session
-- Agents can't reference prior execution results without parsing pipeline-reports
-- The "generatedFiles" JSON list is the only cross-session bridge
+Current observability is limited to `outputSummary` (result text) and bare logs.
+Debugging a bad agent turn requires grepping log files.
 
-### Scope
-- [ ] **Session memory** — agents can query prior execution outputs from Neo4j directly (structured, not regex-hacked)
-- [ ] **Plan-aware execution** — schema execution auto-creates plan tasks; completed tasks visible in Studio
-- [ ] **Cross-session artifacts** — structured dependency tracking between files created in different sessions
-- [ ] **Execution diff** — show what changed between session N and N+1
-- [ ] **Rollback** — ability to revert files to a previous session's state
+### Breakdown
 
-### Keep
-- [ ] **Fixed pipeline template** — Quick Start stays as Receive → Review → Agent → Verify → Output
-- [ ] **No LLM-driven node generation** — don't revisit
+#### 2a. Tool call persistence in Neo4j
+**Mechanism**: Each `toolExecutor.execute()` creates a `ToolCall` node linked to
+`NodeExecution` with: toolId, args JSON, result preview (first 500 chars),
+duration, timestamp. NodeExecution has a `toolCalls` relationship.
+
+**Effort**: ~3 days (new model + repository + migration)
+**Risk**: Write amplification — each session generates ~50-200 tool calls.
+Mitigate: cap stored args at 1KB, auto-purge after 30 days.
+**Risk**: Tool args may contain secrets (API keys passed to bash).
+**Mitigation**: Add redaction for known patterns (`apiKey`, `password`, `token`) before persistence.
+
+#### 2b. Real-time token tracking for local models
+**Mechanism**: For Ollama: parse stderr output for `prompt eval count` and
+`eval count` lines. For MLX/Bonsai: parse response metadata (if available).
+Display in TimelineView node detail rows.
+
+**Effort**: ~2 days (OllamaProvider LLM integration)
+**Risk**: MLX server doesn't expose token counts in API response — would need
+proxy middleware. Start with Ollama only.
+
+#### 2c. MDC tracing
+**Mechanism**: Add `schemaId`, `runId`, `nodeId` to SLF4J MDC at entry points
+(SchemaService, PipelineService, NodeRouter, ToolExecutor). This gives free
+structured logs that can be filtered by any dimension.
+
+**Effort**: ~0.5 day
+**Risk**: None. Well-understood pattern, already partially done in some classes.
+
+### Total effort: ~5.5 days
+### Success criteria: Given a runId, query Neo4j for all tool calls with args and
+results, ordered by time.
 
 ---
 
-## Phase 3 — Post-Adoption (only after 10+ active users)
+## 3. Quality Gates
 
-*Revisit optimization and analytics features from the old ROADMAP.*
+**Goal**: Ensure generated code compiles, passes static analysis, and doesn't
+break existing tests.
 
-### Gate condition
-Axolotl has 10+ users who have each created 5+ schemas, totaling 100+ schema executions providing real usage data.
+### Why
+Post-write syntax validation (added in this cycle) catches individual file errors.
+But cross-file issues (import resolution, type mismatch across files) need
+project-level verification.
 
-### Then consider
-- Node performance analytics (which models/nodes are slow, expensive, or failing)
-- Workflow pattern detection (recurring sub-graphs worth templating)
-- Trajectory extraction for fine-tuning (only if open-weight models are in use)
-- Model ensemble routing (only if 3+ providers are actively used)
-- Anything from the archived `000-vision.md` or `roadmap_01-42.md` in `.ideas/misc/`
+### Breakdown
+
+#### 3a. Project-level verify stage
+**Mechanism**: New `batch_verify` node type. After all agent nodes complete,
+runs `dart analyze` (or equivalent) on the entire project. Results feed into
+a new agent turn to fix all issues in one batch.
+
+**Effort**: ~4 days (new node type + ToolExecutor batch verify — review node precedent: 5d full-stack)
+**Risk**: Long-running analysis (~30s for medium Flutter projects).
+**Risk**: Parallel verify races with output stage file writes — output modifies files while batch_verify runs.
+**Mitigation**: Serialize: batch_verify → agent fix → batch_verify again. Do NOT run in parallel with output.
+
+#### 3b. Neo4j-powered premortem
+**Mechanism**: Instead of per-file premortem, query Neo4j code graph for
+cross-file dependencies. If agent modifies `database_service.dart`, the
+premortem checks all files importing it.
+
+**Effort**: ~3 days (Neo4j graph queries in premortem prompt)
+**Dependency**: Code graph must be up-to-date for targetPath files (currently only scans `backend/src/main/java/`).
+**Prerequisite**: Extend `update-graph.sh` to scan targetPath project dirs + config toggle. ~2-3 days unbudgeted.
+
+#### 3c. Regression test suite
+**Mechanism**: After each session, `git stash` (if dirty), run `dart test`,
+restore. Fail the execution if tests break. Agent sees test output and
+self-corrects.
+
+**Effort**: ~1.5 days (PipelineService post-stage hook)
+**Risk**: Tests might require external services (DB, API). Start with
+`--no-sandbox` for Flutter tests.
+**Risk**: Agent-in-the-loop self-correction is unreliable — models hallucinate fixes for test errors.
+**Mitigation**: Add `maxSelfCorrectRetries: 3`, fallback to StageResult.FAILED on exceed.
+
+### Total effort: ~6.5 days
+### Success criteria: A pipeline run that generates Flutter code passes
+`dart analyze` at project level with 0 errors.
 
 ---
 
-## Archive
+## 4. UI/UX Polish
 
-Old roadmap files moved to `.ideas/misc/`:
-- `001.md` — Big vision / aspirational product concept (archived)
-- `roadmap_01.md` through `roadmap_42.md` — 12-month AI OS plan (archived)
+**Goal**: Reduce friction in daily Axolotl use.
 
-Rejected approaches documented in `.ideas/rejected/REJECTED.md`.
+### Why
+The UI premortems identified ~40 risks. Most are minor but cumulative friction.
 
-The old roadmap wasn't wrong — it was written for a mature product. These phases match where Axolotl actually is right now.
+### Breakdown
+
+#### 4a. BlockConfigPanel refs reset
+**Mechanism**: On block switch, all 40+ refs re-initialize from fresh config
+data. Currently stale refs persist. Add `watch(blockId, { immediate: true })`
+that calls `resetRefs()` before loading new block config.
+
+**Effort**: ~0.5 day (or 1.5d if `reactive()`→`ref()` restructuring needed)
+**Risk**: Already documented as "Critical" in premortem. Root cause is deeply
+nested Vue reactive objects — `watch` may be insufficient if nested path
+reactivity doesn't trigger.
+**Mitigation**: If watch fails, restructure from `reactive()` to plain `ref()`
+with manual getter. Allocate +1d contingency.
+
+#### 4b. Pipeline progress in StudioTopBar
+**Mechanism**: Mini progress bar with stage names and status colors next to the
+Execute button. Polls `GET /api/schemas/{id}/pipeline/status` every 2s while
+`isRunning`.
+
+**Effort**: ~1 day (new component + polling)
+**Risk**: Polling continues forever if WebSocket disconnects but `isRunning` stays true.
+**Mitigation**: Add polling timeout (60s max), tie to WebSocket `onDisconnect` callback, stop on component unmount.
+
+#### 4c. Keyboard shortcuts
+**Mechanism**: Provide/inject map at StudioView level:
+- `Cmd+Enter` → Execute
+- `Cmd+S` → Trigger save (already auto-saves, but visual feedback)
+- `Cmd+Shift+D` → Toggle timeline/blueprint mode
+
+**Effort**: ~0.5 day
+**Risk**: Conflicts with browser defaults. Use `useMagicKeys` from VueUse.
+
+#### 4d. Бережно template
+**Mechanism**: Add `presets/bereghno.json` as a Quick Start preset with:
+Receive (file → 003.md) → Review (manual) → Agent (Flutter) → Verify → Output.
+Default model: @cf/bonsai. Target: emotion tracker app.
+(Preset path: `frontend/public/presets/bereghno.json`)
+
+**Effort**: ~0.5 day
+**Risk**: None.
+
+#### 4e. Stage groups in BlueprintView
+**Mechanism**: Visual grouping of blueprint nodes by pipeline stage. Each stage's
+nodes get a shared background (color-coded by type: receive/agent/review/verify/output)
+with a stage name header. Drag one node in a group shows all nodes in that group.
+Stage operations (retry all) accessible from group header.
+
+**Effort**: ~2 days (VueFlow custom layer + GroupNode component)
+**Risk**: VueFlow groups may conflict with node drag behavior.
+**Mitigation**: Use VueFlow's `nodeExtent` to keep grouped nodes within bounds.
+**Replaces**: The previously proposed standalone "Pipeline Visual Editor" — this
+approach avoids duplicating the blueprint with a second graph editor.
+
+### Total effort: ~3.5 days
+### Success criteria: A new user can create a Бережно app in 3 clicks, execute
+with Cmd+Enter, and follow progress in the top bar.
+
+**Not in scope**: full accessibility audit (ARIA labels, keyboard nav beyond shortcuts).
+Low priority — revisit after WS1.
+
+---
+
+## 5. Infrastructure & CI
+
+**Goal**: Keep the project maintainable and green.
+
+### Why
+GitHub Actions Node.js 20 deprecation (June 2, 2026) will break CI silently.
+Neo4j data grows unbounded. Test coverage is low.
+
+### Breakdown
+
+#### 5a. CI action updates
+**Mechanism**: Bump all actions to v5. Add `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+env to proactively test.
+
+**Effort**: ~0.5 day
+**Risk**: `actions/cache@v5` changed cache key format — `save-always` required for branch cache.
+Not a silent drop-in: may invalidate all existing caches on first run.
+**Mitigation**: Add `save-always: true` explicitly. Expect first post-upgrade run to be uncached.
+
+#### 5b. Neo4j TTL indexes
+**Mechanism**: Set TTL on `NodeExecution` nodes (auto-delete after 90 days).
+Add Cypher `CREATE INDEX node_execution_created_at IF NOT EXISTS FOR ...`.
+Also add TTL to `ExecutionRun` (after 180 days).
+
+**Effort**: ~0.5 day (application.yml + Neo4j config)
+**Risk**: TTL requires Neo4j Enterprise — local dev with Community silently ignores it.
+**Mitigation**: Add log warning when TTL index creation fails + app-level fallback cleanup for Community.
+
+#### 5c. Integration test for PipelineService
+**Mechanism**: Spin up test Neo4j via Testcontainers, create real schema + nodes,
+run `executePipeline()` and assert stage results. Currently PipelineServiceTest
+uses only Mockito, missing real Neo4j interactions.
+
+**Effort**: ~2 days
+**Risk**: Testcontainers needs Docker. Bundle with `mvn test -Pintegration`.
+
+### Total effort: ~3 days
+### Success criteria: `mvn test -Pintegration` passes with real Neo4j,
+CI runs with Node.js 24.
+
+---
+
+## Priority Recommendation
+
+| Rank | Workstream | Effort | Impact | Risk |
+|------|-----------|--------|--------|------|
+| — | **5a (CI actions)** | 0.5d | Low (deadline) | Low |
+| — | **WS1 spike** | 1d | Validates WS1 | Low |
+| 1 | 1. Multi-Session (full) | 10d (×1.5 human) | High | Medium |
+| 2 | 4. UI/UX Polish | 3d | Medium | Low |
+| 3 | 3. Quality Gates | 13d (×1.5) | High | Medium |
+| 4 | 2. Observability | 8d (×1.5) | Medium | Low |
+| 5 | 5b-c (Infra rest) | 3.5d (×1.5) | Low | Low |
+
+### Order of execution
+
+1. **#5a (DO FIRST)** — CI actions v5 before June 2 deadline
+2. **WS1 spike (1d)** — validate multi-session value
+   - If spike fails → drop WS1. Do WS4 next.
+   - If spike passes → proceed to full WS1.
+3. **#1 Multi-Session** (or #4 UI/UX if spike failed)
+4. **Reassess** — then next workstream
+5. Continue down the priority table
+
+Reassess roadmap after each workstream. If a workstream overruns by >50%, cut the
+lowest-ranked remaining item.
+
+---
+
+## What We Are NOT Doing (this cycle)
+
+| Excluded | Rationale | Revisit when |
+|----------|-----------|--------------|
+| Mobile app for Axolotl itself (React Native / Flutter) | Premature — desktop web is the primary UI | User requests it |
+| Multi-user / teams | No demand signal yet | Any team adopts Axolotl |
+| Plugin system (third-party nodes/types) | Requires stable node API first | After WS1 + WS3 land |
+| Windows native packaging | macOS + web covers current users | User requests it |
+| Full i18n (beyond EN/RU docs) | Low value per effort | After WS4 |
+
+**Tech debt that blocks nothing** (deferred indefinitely):
+- `BlockConfigPanel.vue` complete rewrite (40+ refs) — fixed with targeted watch
+- Dead code removal in `CustomLlmProvider.java` (commented fallback logic)
+- Frontend test coverage on non-critical components
+
+---
+
+*Last updated: 2026-05-26*

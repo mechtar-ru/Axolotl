@@ -81,6 +81,79 @@ public class CustomLlmProvider implements LlmProvider {
         return sendStreamingRequest(endpoint, systemPrompt, userPrompt, tokenConsumer);
     }
 
+    private String sendStreamingRequest(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt,
+                                       java.util.function.Consumer<String> tokenConsumer) {
+        try {
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", endpoint.getModelName());
+
+            List<Map<String, String>> messages = new ArrayList<>();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                messages.add(Map.of("role", "system", "content", systemPrompt));
+            }
+            messages.add(Map.of("role", "user", "content", userPrompt));
+            requestBody.put("messages", messages);
+            requestBody.put("stream", true);
+
+            String jsonBody = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(requestBody);
+
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint.getBaseUrl() + "/chat/completions"))
+                    .header("Content-Type", "application/json")
+                    .timeout(Duration.ofSeconds(120));
+
+            if ("bearer".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
+                builder.header("Authorization", "Bearer " + endpoint.getApiKey());
+            } else if ("api-key".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
+                builder.header("X-API-Key", endpoint.getApiKey());
+            }
+
+            HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
+
+            StringBuilder fullResponse = new StringBuilder();
+            HttpResponse<java.io.InputStream> response = httpClient.send(request,
+                    HttpResponse.BodyHandlers.ofInputStream());
+
+            if (response.statusCode() == 200) {
+                java.io.InputStream in = response.body();
+                java.io.BufferedReader reader2 = new java.io.BufferedReader(new java.io.InputStreamReader(in));
+
+                long deadline = System.currentTimeMillis() + 120_000;
+                String line;
+                while ((line = reader2.readLine()) != null) {
+                    if (System.currentTimeMillis() > deadline) break;
+                    if (line.startsWith("data: ")) {
+                        String data = line.substring(6);
+                        if (!data.equals("[DONE]")) {
+                            try {
+                                var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(data);
+                                String content = node.at("/choices/0/delta/content").asText("");
+                                if (content.isEmpty()) {
+                                    content = node.at("/choices/0/delta/reasoning_content").asText("");
+                                }
+                                if (!content.isEmpty()) {
+                                    fullResponse.append(content);
+                                    tokenConsumer.accept(content);
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+                reader2.close();
+                return fullResponse.toString();
+            } else {
+                String error = "Error: HTTP " + response.statusCode();
+                tokenConsumer.accept(error);
+                return error;
+            }
+        } catch (Exception e) {
+            log.error("Custom LLM streaming request failed", e);
+            String error = "Error: " + e.getMessage();
+            tokenConsumer.accept(error);
+            return error;
+        }
+    }
+
     private String sendRequest(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
@@ -124,83 +197,6 @@ public class CustomLlmProvider implements LlmProvider {
         } catch (Exception e) {
             log.error("Custom LLM request failed", e);
             return "Error: " + e.getMessage();
-        }
-    }
-
-    private String sendStreamingRequest(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt,
-                                       java.util.function.Consumer<String> tokenConsumer) {
-        try {
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", endpoint.getModelName());
-
-            List<Map<String, String>> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(Map.of("role", "system", "content", systemPrompt));
-            }
-            messages.add(Map.of("role", "user", "content", userPrompt));
-            requestBody.put("messages", messages);
-            requestBody.put("stream", true);
-
-            String jsonBody = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(requestBody);
-
-            HttpRequest.Builder builder = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint.getBaseUrl() + "/chat/completions"))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(120));
-
-            if ("bearer".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
-                builder.header("Authorization", "Bearer " + endpoint.getApiKey());
-            } else if ("api-key".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
-                builder.header("X-API-Key", endpoint.getApiKey());
-            }
-
-            HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
-
-            StringBuilder fullResponse = new StringBuilder();
-            HttpResponse<java.io.InputStream> response = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofInputStream());
-
-            if (response.statusCode() == 200) {
-                java.io.InputStream in = response.body();
-
-                Thread reader = new Thread(() -> {
-                    try (java.io.BufferedReader reader2 = new java.io.BufferedReader(new java.io.InputStreamReader(in))) {
-                        String line;
-                        while ((line = reader2.readLine()) != null) {
-                            if (line.startsWith("data: ")) {
-                                String data = line.substring(6);
-                                if (!data.equals("[DONE]")) {
-                                    try {
-                                        var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(data);
-                                        String content = node.at("/choices/0/delta/content").asText("");
-                                        if (content.isEmpty()) {
-                                            content = node.at("/choices/0/delta/reasoning_content").asText("");
-                                        }
-                                        if (!content.isEmpty()) {
-                                            fullResponse.append(content);
-                                            tokenConsumer.accept(content);
-                                        }
-                                    } catch (Exception ignored) {}
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.error("Streaming read error", e);
-                    }
-                });
-                reader.start();
-                reader.join(120000);
-                return fullResponse.toString();
-            } else {
-                String error = "Error: HTTP " + response.statusCode();
-                tokenConsumer.accept(error);
-                return error;
-            }
-        } catch (Exception e) {
-            log.error("Custom LLM streaming request failed", e);
-            String error = "Error: " + e.getMessage();
-            tokenConsumer.accept(error);
-            return error;
         }
     }
 

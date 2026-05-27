@@ -4,6 +4,7 @@ import { useSchemaStore } from '@/stores/schemaStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { storeToRefs } from 'pinia'
 import { settingsApi } from '@/services/api'
+import type { WorkflowSchema } from '@/types'
 
 const emit = defineEmits<{
   addNode: []
@@ -67,6 +68,7 @@ const schemaName = computed(() => currentSchema.value?.name || '')
 const schemaDescription = computed(() => currentSchema.value?.description || '')
 const targetPath = computed(() => currentSchema.value?.targetPath || '')
 const defaultModel = computed(() => currentSchema.value?.defaultModel || '')
+const schemaProjectType = computed(() => currentSchema.value?.projectType || 'FLUTTER')
 
 // ─── Actions ─────────────────────────────────────────────────────
 function updateName(value: string) {
@@ -84,6 +86,14 @@ function updateDefaultModel(value: string) {
   schemaStore.markDirty({
     ...currentSchema.value,
     defaultModel: value || undefined,
+  })
+}
+
+function updateProjectType(value: string) {
+  if (!currentSchema.value) return
+  schemaStore.markDirty({
+    ...currentSchema.value,
+    projectType: value as WorkflowSchema['projectType'],
   })
 }
 
@@ -206,6 +216,22 @@ function onFolderPicked(event: Event) {
               </option>
             </optgroup>
           </template>
+        </select>
+      </div>
+
+      <!-- Project Type -->
+      <div class="config-section">
+        <label class="config-label">Project Type</label>
+        <select
+          :value="schemaProjectType"
+          @change="updateProjectType(($event.target as HTMLSelectElement).value)"
+          class="config-select"
+        >
+          <option value="FLUTTER">Flutter</option>
+          <option value="PYTHON">Python</option>
+          <option value="WEB">Web (Vite/React)</option>
+          <option value="GO">Go</option>
+          <option value="RUST">Rust</option>
         </select>
       </div>
 

@@ -26,7 +26,7 @@ class ToolExecutorTest {
         params.put("content", "test");
 
         ToolResult result = executor.handleFileWriteWithSandbox(params, unrestrictedPerm,
-                "/Users/evgenijtihomirov/git/Axolotl/MyApp/");
+                "/Users/evgenijtihomirov/git/Axolotl/MyApp/", null, null);
 
         assertFalse(result.isSuccess());
         assertTrue(result.getError().contains("blocked"));
@@ -43,7 +43,7 @@ class ToolExecutorTest {
         params.put("path", tempDir.resolve("test.txt").toString());
         params.put("content", "hello");
 
-        ToolResult result = executor.handleFileWriteWithSandbox(params, unrestrictedPerm, tempDir.toString());
+        ToolResult result = executor.handleFileWriteWithSandbox(params, unrestrictedPerm, tempDir.toString(), null, null);
 
         assertTrue(result.isSuccess());
         assertTrue(Files.exists(tempDir.resolve("test.txt")));
@@ -65,7 +65,7 @@ class ToolExecutorTest {
         params.put("path", overrideDir.resolve("override.txt").toString());
         params.put("content", "override");
 
-        ToolResult result = executor.handleFileWriteWithSandbox(params, overridePerm, tempDir.toString());
+        ToolResult result = executor.handleFileWriteWithSandbox(params, overridePerm, tempDir.toString(), null, null);
 
         assertTrue(result.isSuccess());
         Files.deleteIfExists(overrideDir.resolve("override.txt"));
@@ -86,7 +86,7 @@ class ToolExecutorTest {
         params.put("path", "/outside/anywhere/file.txt");
         params.put("content", "test");
 
-        ToolResult result = executor.handleFileWriteWithSandbox(params, overridePerm, tempDir.toString());
+        ToolResult result = executor.handleFileWriteWithSandbox(params, overridePerm, tempDir.toString(), null, null);
 
         assertFalse(result.isSuccess());
         assertTrue(result.getError().contains("blocked") || result.getError().contains("not in node's allowedPaths"));

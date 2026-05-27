@@ -27,6 +27,7 @@ public class PipelineService {
     private final NodeExecutor nodeExecutor;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final ExecutionRepository executionRepository;
+    private final ExecutionStateManager stateManager;
     private final ExecutorService pipelineExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ConcurrentHashMap<String, CompletableFuture<?>> runningPipelines = new ConcurrentHashMap<>();
@@ -43,11 +44,20 @@ public class PipelineService {
     public PipelineService(Neo4jSchemaRepository schemaRepository,
                            NodeExecutor nodeExecutor,
                            ExecutionWebSocketHandler webSocketHandler,
-                           ExecutionRepository executionRepository) {
+                           ExecutionRepository executionRepository,
+                           ExecutionStateManager stateManager) {
         this.schemaRepository = schemaRepository;
         this.nodeExecutor = nodeExecutor;
         this.webSocketHandler = webSocketHandler;
         this.executionRepository = executionRepository;
+        this.stateManager = stateManager;
+    }
+
+    private void clearStaleApprovals(String schemaId) {
+        if (stateManager == null) return;
+        Map<String, String> nodeResults = stateManager.getNodeResults().get(schemaId);
+        if (nodeResults == null) return;
+        nodeResults.keySet().removeIf(k -> k.endsWith(":approved"));
     }
 
     public WorkflowSchema buildPipelineNodes(String schemaId) {
@@ -78,6 +88,8 @@ public class PipelineService {
             data.setSystemPrompt(stage.getSystemPrompt());
             data.setUserPrompt(stage.getUserPrompt());
             data.setConfig(stage.getConfig());
+            data.setEnabledTools(stage.getEnabledTools());
+            if (stage.getAgentType() != null) data.setAgentType(stage.getAgentType());
 
             if (stage.getSubagentSchemaId() != null) {
                 if (data.getConfig() == null) data.setConfig(new HashMap<>());
@@ -165,6 +177,7 @@ public class PipelineService {
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         cancelFlags.put(schemaId, cancelFlag);
         stageResults.put(schemaId, new ConcurrentHashMap<>());
+        clearStaleApprovals(schemaId);
 
         if (webSocketHandler != null) {
             webSocketHandler.sendLog(schemaId, "info", "Pipeline execution started: " + schema.getName(), null);
@@ -815,12 +828,35 @@ public class PipelineService {
 
             // Execute node with timeout
             Runnable executionTask = () -> {
-                // Resolve input mappings from upstream stages
                 if (existingNodeRef.get() != null && existingNodeRef.get().getData() != null) {
-                    resolveInputMappings(stage, existingNodeRef.get().getData(), schemaId);
-                }
-
-                if (existingNodeRef.get() != null) {
+                    Node.NodeData nd = existingNodeRef.get().getData();
+                    // Sync stage prompts to blueprint node before execution
+                    if (stage.getSystemPrompt() != null && !stage.getSystemPrompt().isBlank()) {
+                        nd.setSystemPrompt(stage.getSystemPrompt());
+                    }
+                    if (stage.getUserPrompt() != null && !stage.getUserPrompt().isBlank()) {
+                        nd.setUserPrompt(stage.getUserPrompt());
+                    }
+                    if (stage.getConfig() != null) {
+                        Map<String, Object> merged = new HashMap<>();
+                        if (nd.getConfig() != null) merged.putAll(nd.getConfig());
+                        merged.putAll(stage.getConfig());
+                        nd.setConfig(merged);
+                        // Extract enabledTools from stage config if present
+                        Object tools = stage.getConfig().get("enabledTools");
+                        if (tools instanceof List) {
+                            try {
+                                @SuppressWarnings("unchecked")
+                                List<String> toolList = (List<String>) tools;
+                                nd.setEnabledTools(toolList);
+                            } catch (Exception e) {
+                                log.warn("Could not set enabledTools from stage config: {}", e.getMessage());
+                            }
+                        }
+                    } else if (nd.getConfig() == null && "source".equals(stage.getNodeType())) {
+                        nd.setConfig(new HashMap<>());
+                    }
+                    resolveInputMappings(stage, nd, schemaId);
                     nodeExecutor.executeNode(existingNodeRef.get(), schemaId, cancelFlag,
                             ExecutionMode.EXECUTE, resolvedModel);
                 } else {
@@ -861,6 +897,36 @@ public class PipelineService {
                                     "reason", "awaiting_approval"));
                 }
                 return StageRunResult.PAUSED;
+            }
+
+            // Pending diff review check — if agent modified existing files with requireDiffReview
+            if (executedNode != null && "agent".equals(executedNode.getType())) {
+                List<ExecutionStateManager.PendingDiff> pendingDiffs = stateManager.getPendingDiffs(schemaId, executedNode.getId());
+                if (!pendingDiffs.isEmpty()) {
+                    List<Map<String, Object>> diffPayloads = new ArrayList<>();
+                    for (ExecutionStateManager.PendingDiff pd : pendingDiffs) {
+                        Map<String, Object> d = new HashMap<>();
+                        d.put("filePath", pd.filePath);
+                        d.put("diff", computeSimpleDiff(pd.originalContent, pd.newContent));
+                        d.put("originalLength", pd.originalContent.length());
+                        d.put("newLength", pd.newContent.length());
+                        diffPayloads.add(d);
+                    }
+
+                    // Store runId and nodeId for approve/reject
+                    String diffKey = schemaId + ":" + executedNode.getId();
+                    stateManager.putGeneratedFile("_diffRun:" + diffKey, runId);
+
+                    executionRepository.updateRunStageStatus(runId, stage.getId(), "paused");
+                    log.info("Pipeline paused at stage {} with {} diffs for review", stage.getId(), pendingDiffs.size());
+                    executionRepository.updateRunStatus(runId, "paused",
+                            "Awaiting diff review for " + stage.getId() + " (" + pendingDiffs.size() + " files)");
+                    persistResumeState(schemaId, runId, stageIndex);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendDiffsNeeded(schema.getId(), executedNode.getId(), diffPayloads);
+                    }
+                    return StageRunResult.PAUSED;
+                }
             }
 
             executionRepository.updateRunStageStatus(runId, stage.getId(), "completed");
@@ -1112,5 +1178,50 @@ public class PipelineService {
             }
         }
         return null;
+    }
+
+    private static String computeSimpleDiff(String oldText, String newText) {
+        if (oldText.equals(newText)) return "(no changes)";
+        String[] oldLines = oldText.split("\n", -1);
+        String[] newLines = newText.split("\n", -1);
+        StringBuilder sb = new StringBuilder();
+        int maxContext = 3;
+
+        // Find the differing range
+        int start = 0;
+        while (start < oldLines.length && start < newLines.length
+                && oldLines[start].equals(newLines[start])) {
+            start++;
+        }
+        int oldEnd = oldLines.length - 1;
+        int newEnd = newLines.length - 1;
+        while (oldEnd >= start && newEnd >= start
+                && oldLines[oldEnd].equals(newLines[newEnd])) {
+            oldEnd--;
+            newEnd--;
+        }
+
+        // Context before changes
+        int ctxStart = Math.max(0, start - maxContext);
+        for (int i = ctxStart; i < start; i++) {
+            sb.append("  ").append(oldLines[i]).append("\n");
+        }
+
+        // Removed lines
+        for (int i = start; i <= oldEnd; i++) {
+            sb.append("- ").append(oldLines[i]).append("\n");
+        }
+        // Added lines
+        for (int i = start; i <= newEnd; i++) {
+            sb.append("+ ").append(newLines[i]).append("\n");
+        }
+
+        // Context after changes
+        int ctxEnd = Math.min(newLines.length - 1, oldEnd + maxContext);
+        for (int i = Math.max(oldEnd, newEnd) + 1; i <= ctxEnd && i < newLines.length; i++) {
+            sb.append("  ").append(newLines[i]).append("\n");
+        }
+
+        return sb.toString();
     }
 }
