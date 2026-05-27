@@ -419,6 +419,10 @@ public class SchemaService {
         ExecutionRun parentRun = executionRepository.claimPausedRun(schemaId);
         if (parentRun == null) {
             log.warn("No paused run found for schema: {}", schemaId);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendError(schemaId, "system",
+                        "No paused execution found to resume — it may have already been resumed");
+            }
             return;
         }
         resumeExecution(schemaId, schema, parentRun.getId());
@@ -681,6 +685,10 @@ public class SchemaService {
         ExecutionRun run = executionRepository.claimSpecificRun(runId);
         if (run == null) {
             log.warn("No paused run found for id: {}", runId);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendError(schemaId, "system",
+                        "No paused execution found for the specified run — it may have already been resumed");
+            }
             return;
         }
         resumeExecution(schemaId, schema, run.getId());
