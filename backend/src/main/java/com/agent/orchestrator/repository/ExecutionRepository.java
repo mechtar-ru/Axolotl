@@ -369,6 +369,15 @@ public class ExecutionRepository {
         });
     }
 
+    public void deleteRunsOlderThan(long cutoffTimestamp) {
+        try {
+            runRepo.deleteRunsOlderThan(String.valueOf(cutoffTimestamp));
+            log.info("Deleted runs older than cutoff={}", cutoffTimestamp);
+        } catch (Exception e) {
+            log.error("Error deleting old runs: {}", e.getMessage(), e);
+        }
+    }
+
     // ────────── Retry helper for writes ──────────
 
     private void withRetry(Runnable operation) {

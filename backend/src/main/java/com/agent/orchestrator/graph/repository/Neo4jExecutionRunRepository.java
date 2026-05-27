@@ -95,4 +95,16 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         RETURN r
         """)
     Optional<GraphExecutionRun> claimSpecificRun(@Param("runId") String runId);
+
+    @Query("""
+        MATCH (r:ExecutionRun)
+        WHERE r.startedAt < $cutoffTimestamp
+        WITH r
+        MATCH (n:NodeExecution {runId: r.id})
+        DETACH DELETE n
+        WITH r
+        DETACH DELETE r
+        RETURN count(r) AS deletedCount
+        """)
+    long deleteRunsOlderThan(@Param("cutoffTimestamp") String cutoffTimestamp);
 }
