@@ -1,19 +1,20 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.service.SettingsService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.anthropic.AnthropicChatModel;
+import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.StringReader;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,8 +26,6 @@ public class AnthropicProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
 
-    private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
     private final SettingsService settingsService;
 
     @Value("${axolotl.llm.anthropic.base-url:https://api.anthropic.com}")
@@ -42,10 +41,6 @@ public class AnthropicProvider implements LlmProvider {
     private int timeoutSeconds;
 
     public AnthropicProvider(SettingsService settingsService) {
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-        this.objectMapper = new ObjectMapper();
         this.settingsService = settingsService;
     }
 
@@ -58,61 +53,34 @@ public class AnthropicProvider implements LlmProvider {
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String effectiveModel = resolveModel(model);
-        String effectiveKey = getEffectiveApiKey();
-        if (effectiveKey == null || effectiveKey.isBlank()) {
-            return "Anthropic: API ключ не настроен. Установите axolotl.llm.anthropic.api-key в application.properties";
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
+            return "Anthropic: API key not configured";
         }
 
         try {
-            var requestBody = new java.util.HashMap<String, Object>();
-            requestBody.put("model", effectiveModel);
-            requestBody.put("max_tokens", 4096);
-
-            var messages = new ArrayList<Map<String, String>>();
-            messages.add(Map.of("role", "user", "content", userPrompt));
-            requestBody.put("messages", messages);
-
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                requestBody.put("system", systemPrompt);
-            }
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/messages"))
-                    .header("Content-Type", "application/json")
-                    .header("x-api-key", getEffectiveApiKey())
-                    .header("anthropic-version", "2023-06-01")
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
+            ChatLanguageModel chatModel = AnthropicChatModel.builder()
+                    .apiKey(getEffectiveApiKey())
+                    .modelName(effectiveModel)
+                    .baseUrl(baseUrl)
+                    .temperature(0.7)
+                    .maxTokens(4096)
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            log.info("Anthropic запрос: model={}", effectiveModel);
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                JsonNode content = root.path("content");
-                StringBuilder sb = new StringBuilder();
-                for (JsonNode block : content) {
-                    if ("text".equals(block.path("type").asText())) {
-                        sb.append(block.path("text").asText(""));
-                    }
-                }
-                int inputTokens = root.path("usage").path("input_tokens").asInt(0);
-                int outputTokens = root.path("usage").path("output_tokens").asInt(0);
-                log.info("Anthropic ответ ({}+{} токенов): {}...", inputTokens, outputTokens,
-                        sb.substring(0, Math.min(100, sb.length())));
-                return sb.toString();
-            } else {
-                String error = "Anthropic ошибка (HTTP " + response.statusCode() + "): " + response.body();
-                log.error(error);
-                return error;
+            List<ChatMessage> messages = new ArrayList<>();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                messages.add(new SystemMessage(systemPrompt));
             }
+            messages.add(new UserMessage(userPrompt));
+
+            ChatResponse response = chatModel.chat(messages);
+            String content = response.aiMessage().text();
+            log.info("Anthropic response: {}",
+                    content.length() > 100 ? content.substring(0, 100) + "..." : content);
+            return content;
         } catch (Exception e) {
-            String error = "Anthropic недоступен: " + e.getMessage();
-            log.error(error);
+            String error = "Anthropic error: " + e.getMessage();
+            log.error(error, e);
             return error;
         }
     }
@@ -132,20 +100,24 @@ public class AnthropicProvider implements LlmProvider {
         String effectiveKey = getEffectiveApiKey();
         if (effectiveKey == null || effectiveKey.isBlank()) return List.of();
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/models"))
+            var client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .build();
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(baseUrl + "/v1/models"))
                     .header("x-api-key", effectiveKey)
                     .header("anthropic-version", "2023-06-01")
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                JsonNode data = root.path("data");
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                var root = mapper.readTree(response.body());
+                var data = root.path("data");
                 List<String> models = new ArrayList<>();
                 if (data.isArray()) {
-                    for (JsonNode m : data) {
+                    for (var m : data) {
                         String id = m.path("id").asText();
                         if (id != null && !id.isBlank()) {
                             models.add(id);
@@ -184,66 +156,50 @@ public class AnthropicProvider implements LlmProvider {
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
-            String error = "Anthropic: API ключ не настроен";
+            String error = "Anthropic: API key not configured";
             onToken.accept(error);
             return error;
         }
 
         try {
-            var requestBody = new java.util.HashMap<String, Object>();
-            requestBody.put("model", effectiveModel);
-            requestBody.put("max_tokens", 4096);
-            requestBody.put("stream", true);
-
-            var messages = new ArrayList<Map<String, String>>();
-            messages.add(Map.of("role", "user", "content", userPrompt));
-            requestBody.put("messages", messages);
-
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                requestBody.put("system", systemPrompt);
-            }
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/v1/messages"))
-                    .header("Content-Type", "application/json")
-                    .header("x-api-key", getEffectiveApiKey())
-                    .header("anthropic-version", "2023-06-01")
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
+            StreamingChatLanguageModel streamingModel = AnthropicStreamingChatModel.builder()
+                    .apiKey(getEffectiveApiKey())
+                    .modelName(effectiveModel)
+                    .baseUrl(baseUrl)
+                    .temperature(0.7)
+                    .maxTokens(4096)
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            log.info("Anthropic streaming запрос: model={}", effectiveModel);
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            StringBuilder fullResponse = new StringBuilder();
-
-            // Anthropic streams Server-Sent Events (SSE)
-            BufferedReader reader = new BufferedReader(new StringReader(response.body()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank() || !line.startsWith("data: ")) continue;
-                String data = line.substring(6);
-
-                try {
-                    JsonNode event = objectMapper.readTree(data);
-                    String type = event.path("type").asText("");
-                    if ("content_block_delta".equals(type)) {
-                        String token = event.path("delta").path("text").asText("");
-                        if (!token.isEmpty()) {
-                            fullResponse.append(token);
-                            onToken.accept(token);
-                        }
-                    }
-                    if ("message_stop".equals(type)) break;
-                } catch (Exception ignored) {}
+            List<ChatMessage> messages = new ArrayList<>();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                messages.add(new SystemMessage(systemPrompt));
             }
+            messages.add(new UserMessage(userPrompt));
+
+            StringBuilder fullResponse = new StringBuilder();
+            streamingModel.chat(messages, new StreamingChatResponseHandler() {
+                @Override
+                public void onPartialResponse(String token) {
+                    fullResponse.append(token);
+                    onToken.accept(token);
+                }
+
+                @Override
+                public void onCompleteResponse(ChatResponse response) {
+                    log.info("Anthropic streaming complete");
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    log.error("Anthropic streaming error: {}", error.getMessage());
+                }
+            });
 
             return fullResponse.toString();
         } catch (Exception e) {
-            String error = "Anthropic streaming недоступен: " + e.getMessage();
-            log.error(error);
+            String error = "Anthropic streaming error: " + e.getMessage();
+            log.error(error, e);
             onToken.accept(error);
             return error;
         }

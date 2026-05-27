@@ -1,32 +1,34 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.service.SettingsService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.StringReader;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-@Component
+@Component("zenProvider")
 public class OpencodeZenProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpencodeZenProvider.class);
 
-    private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
+    static final String DEFAULT_BASE_URL = "https://opencode.ai/zen/v1";
+    private static final int TIMEOUT_SECONDS = 3600;
+
     private final SettingsService settingsService;
 
     @Value("${axolotl.llm.zen.base-url:https://opencode.ai/zen/v1}")
@@ -38,15 +40,7 @@ public class OpencodeZenProvider implements LlmProvider {
     @Value("${axolotl.llm.zen.default-model:deepseek-v4-flash-free}")
     private String defaultModel;
 
-    @Value("${axolotl.llm.zen.timeout:3600}")
-    private int timeoutSeconds;
-
     public OpencodeZenProvider(SettingsService settingsService) {
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .version(HttpClient.Version.HTTP_1_1)
-                .build();
-        this.objectMapper = new ObjectMapper();
         this.settingsService = settingsService;
     }
 
@@ -59,128 +53,33 @@ public class OpencodeZenProvider implements LlmProvider {
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String effectiveModel = resolveModel(model);
-        
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
-            return "OpenCode Zen: API ключ не настроен. Установите ZEN_API_KEY в .env файле";
+            return "Zen: API key not configured";
         }
 
         try {
-            var messages = new ArrayList<Map<String, String>>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(Map.of("role", "system", "content", systemPrompt));
-            }
-            messages.add(Map.of("role", "user", "content", userPrompt));
-
-            var requestBody = new java.util.HashMap<String, Object>();
-            requestBody.put("model", effectiveModel);
-            requestBody.put("messages", messages);
-            requestBody.put("stream", false);
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/chat/completions"))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + getEffectiveApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .build();
-
-            log.info("OpenCode Zen запрос: model={}", effectiveModel);
-
-            HttpResponse<String> response;
+            ChatLanguageModel chatModel = createChatModel(effectiveModel);
+            List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
+            ChatResponse response = chatModel.chat(messages);
+            return response.aiMessage().text();
+        } catch (Exception e) {
+            log.warn("Zen chat error, retrying once: {}", e.getMessage());
             try {
-                response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            } catch (Exception e) {
-                log.error("OpenCode Zen первая попытка неудачна: тип={} msg={}", e.getClass().getName(), e.getMessage(), e);
-                // Retry once with a fresh HttpClient to rule out shared-state issues
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-                HttpClient retryClient = HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(10))
-                        .build();
-                HttpRequest retryRequest = HttpRequest.newBuilder()
-                        .uri(URI.create(baseUrl + "/chat/completions"))
-                        .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + getEffectiveApiKey())
-                        .POST(HttpRequest.BodyPublishers.ofString(json))
-                        .timeout(Duration.ofSeconds(timeoutSeconds))
-                        .build();
-                log.info("OpenCode Zen повторная попытка: model={}", effectiveModel);
-                response = retryClient.send(retryRequest, HttpResponse.BodyHandlers.ofString());
-            }
-
-            if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                JsonNode message = root.path("choices").path(0).path("message");
-                String content = message.path("content").asText("");
-                int tokens = root.path("usage").path("total_tokens").asInt(0);
-
-                // Check for structured tool_calls from native OpenAI-compatible API
-                JsonNode toolCalls = message.path("tool_calls");
-                if (toolCalls.isArray() && toolCalls.size() > 0) {
-                    StringBuilder sb = new StringBuilder();
-                    if (content != null && !content.isBlank()) {
-                        sb.append(content).append("\n");
-                    }
-                    // Convert API tool_calls to text format parseToolCalls() expects
-                    var convertedCalls = objectMapper.createArrayNode();
-                    for (int i = 0; i < toolCalls.size(); i++) {
-                        JsonNode tc = toolCalls.get(i);
-                        var call = objectMapper.createObjectNode();
-                        call.put("id", tc.path("id").asText("call_" + i));
-                        call.put("name", tc.path("function").path("name").asText(""));
-                        String argsStr = tc.path("function").path("arguments").asText("{}");
-                        try {
-                            call.set("arguments", objectMapper.readTree(argsStr));
-                        } catch (Exception e) {
-                            call.set("arguments", objectMapper.createObjectNode());
-                        }
-                        convertedCalls.add(call);
-                    }
-                    var wrapper = objectMapper.createObjectNode();
-                    wrapper.set("tool_calls", convertedCalls);
-                    String toolCallsJson = objectMapper.writeValueAsString(wrapper);
-                    // Parse to compact string to strip any pretty-printing
-                    sb.append(toolCallsJson);
-                    log.info("OpenCode Zen ответ ({} токенов, {} tool calls)", tokens, toolCalls.size());
-                    return sb.toString();
-                }
-
-                log.info("OpenCode Zen ответ ({} токенов): {}", tokens,
-                        content.length() > 100 ? content.substring(0, 100) + "..." : content);
-                return content;
-            } else {
-                String error = "OpenCode Zen ошибка (HTTP " + response.statusCode() + "): " + response.body();
-                log.error(error);
+                ChatLanguageModel chatModel = createChatModel(effectiveModel);
+                List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
+                ChatResponse response = chatModel.chat(messages);
+                return response.aiMessage().text();
+            } catch (Exception e2) {
+                String error = "Zen error: " + e2.getMessage();
+                log.error(error, e2);
                 return error;
             }
-        } catch (Exception e) {
-            String error = "OpenCode Zen недоступен: " + e.getMessage();
-            log.error(error);
-            return error;
         }
     }
 
     @Override
     public boolean isAvailable() {
-        String key = getEffectiveApiKey();
-        if (key == null || key.isBlank()) return false;
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + key)
-                    .GET()
-                    .timeout(Duration.ofSeconds(5))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() == 200;
-        } catch (Exception e) {
-            return false;
-        }
+        return getEffectiveApiKey() != null && !getEffectiveApiKey().isBlank();
     }
 
     @Override
@@ -190,29 +89,35 @@ public class OpencodeZenProvider implements LlmProvider {
 
     @Override
     public List<String> listModels() {
-        String key = getEffectiveApiKey();
-        if (key == null || key.isBlank()) return List.of();
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) return List.of();
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + key)
-                    .GET()
-                    .timeout(Duration.ofSeconds(5))
+            var client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .version(java.net.http.HttpClient.Version.HTTP_1_1)
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(baseUrl + "/models"))
+                    .header("Authorization", "Bearer " + getEffectiveApiKey())
+                    .GET()
+                    .timeout(Duration.ofSeconds(10))
+                    .build();
+            var response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                JsonNode data = root.path("data");
-                if (data.isArray() && data.size() > 0) {
-                    List<String> models = new ArrayList<>();
-                    for (JsonNode node : data) {
-                        String id = node.path("id").asText();
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                var root = mapper.readTree(response.body());
+                var data = root.path("data");
+                List<String> models = new ArrayList<>();
+                if (data.isArray()) {
+                    for (var m : data) {
+                        String id = m.path("id").asText();
                         if (id != null && !id.isBlank()) {
                             models.add(id);
                         }
                     }
-                    return models;
                 }
+                return models;
+            } else {
+                log.warn("Zen models API returned {}", response.statusCode());
             }
         } catch (Exception e) {
             log.warn("Zen models API unavailable: {}", e.getMessage());
@@ -225,15 +130,6 @@ public class OpencodeZenProvider implements LlmProvider {
         return baseUrl;
     }
 
-    private String resolveModel(String model) {
-        if (model == null || model.isBlank() || isProviderName(model)) return defaultModel;
-        return model;
-    }
-
-    private boolean isProviderName(String model) {
-        return "zen".equalsIgnoreCase(model) || "opencode".equalsIgnoreCase(model);
-    }
-
     @Override
     public boolean supportsStreaming() {
         return true;
@@ -243,189 +139,104 @@ public class OpencodeZenProvider implements LlmProvider {
     public String streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
-        
-        String effectiveKey = getEffectiveApiKey();
-        if (effectiveKey == null || effectiveKey.isBlank()) {
-            String error = "OpenCode Zen: API ключ не настроен";
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
+            String error = "Zen: API key not configured";
             onToken.accept(error);
             return error;
         }
 
         try {
-            var messages = new ArrayList<Map<String, String>>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(Map.of("role", "system", "content", systemPrompt));
-            }
-            messages.add(Map.of("role", "user", "content", userPrompt));
-
-            var requestBody = new java.util.HashMap<String, Object>();
-            requestBody.put("model", effectiveModel);
-            requestBody.put("messages", messages);
-            requestBody.put("stream", true);
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/chat/completions"))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + effectiveKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .build();
-
-            log.info("OpenCode Zen streaming запрос: model={}", effectiveModel);
-
-            int maxRetries = 3;
-            HttpResponse<String> response = null;
-            for (int attempt = 0; attempt <= maxRetries; attempt++) {
-                try {
-                    HttpClient client = attempt == 0 ? httpClient : HttpClient.newBuilder()
-                            .connectTimeout(Duration.ofSeconds(10)).build();
-                    HttpRequest req = attempt == 0 ? request : HttpRequest.newBuilder()
-                            .uri(URI.create(baseUrl + "/chat/completions"))
-                            .header("Content-Type", "application/json")
-                            .header("Authorization", "Bearer " + getEffectiveApiKey())
-                            .POST(HttpRequest.BodyPublishers.ofString(json))
-                            .timeout(Duration.ofSeconds(timeoutSeconds))
-                            .build();
-                    if (attempt > 0) {
-                        log.info("OpenCode Zen streaming попытка {}/{}: model={}", attempt + 1, maxRetries + 1, effectiveModel);
-                    }
-                    response = client.send(req, HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() == 429) {
-                        long backoffMs = (long) Math.pow(2, attempt) * 2000;
-                        log.warn("OpenCode Zen streaming 429 (попытка {}), жду {}ms", attempt + 1, backoffMs);
-                        Thread.sleep(backoffMs);
-                        continue;
-                    }
-                    break;
-                } catch (Exception e) {
-                    if (attempt < maxRetries) {
-                        log.error("OpenCode Zen streaming ошибка (попытка {}): {} - {}", attempt + 1, e.getClass().getName(), e.getMessage());
-                        long backoffMs = (long) Math.pow(2, attempt) * 1000;
-                        try { Thread.sleep(backoffMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    } else {
-                        log.error("OpenCode Zen streaming все попытки неудачны", e);
-                        String error = "OpenCode Zen streaming недоступен: " + e.getMessage();
-                        onToken.accept(error);
-                        return error;
-                    }
-                }
-            }
-
-            if (response == null) {
-                String error = "OpenCode Zen streaming: не удалось получить ответ";
-                onToken.accept(error);
-                return error;
-            }
+            StreamingChatLanguageModel streamingModel = createStreamingChatModel(effectiveModel);
+            List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
 
             StringBuilder fullResponse = new StringBuilder();
+            streamingModel.chat(messages, new StreamingChatResponseHandler() {
+                @Override
+                public void onPartialResponse(String token) {
+                    fullResponse.append(token);
+                    onToken.accept(token);
+                }
 
-            // Track streaming tool calls: index → {id, name, arguments-builder}
-            var streamingToolCalls = new java.util.concurrent.ConcurrentHashMap<Integer, java.util.Map<String, Object>>();
+                @Override
+                public void onCompleteResponse(ChatResponse response) {
+                    log.info("Zen streaming complete");
+                }
 
-            BufferedReader reader = new BufferedReader(new StringReader(response.body()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank() || !line.startsWith("data: ")) continue;
-                String data = line.substring(6);
-                if ("[DONE]".equals(data)) break;
+                @Override
+                public void onError(Throwable error) {
+                    log.error("Zen streaming error: {}", error.getMessage());
+                }
+            });
+            return fullResponse.toString();
+        } catch (Exception e) {
+            log.warn("Zen streaming error, retrying once: {}", e.getMessage());
+            try {
+                StreamingChatLanguageModel streamingModel = createStreamingChatModel(effectiveModel);
+                List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
 
-                try {
-                    JsonNode node = objectMapper.readTree(data);
-                    JsonNode delta = node.path("choices").path(0).path("delta");
-
-                    // Accumulate text content tokens
-                    String token = delta.path("content").asText("");
-                    if (!token.isEmpty()) {
+                StringBuilder fullResponse = new StringBuilder();
+                streamingModel.chat(messages, new StreamingChatResponseHandler() {
+                    @Override
+                    public void onPartialResponse(String token) {
                         fullResponse.append(token);
                         onToken.accept(token);
                     }
 
-                    // Accumulate streaming tool call deltas
-                    JsonNode deltaToolCalls = delta.path("tool_calls");
-                    if (deltaToolCalls.isArray()) {
-                        for (JsonNode tcChunk : deltaToolCalls) {
-                            int idx = tcChunk.path("index").asInt(-1);
-                            if (idx < 0) continue;
-
-                            streamingToolCalls.putIfAbsent(idx, new java.util.HashMap<>());
-                            var tc = streamingToolCalls.get(idx);
-
-                            // First chunk: id + name
-                            String chunkId = tcChunk.path("id").asText("");
-                            if (!chunkId.isEmpty()) tc.put("id", chunkId);
-                            String chunkName = tcChunk.path("function").path("name").asText("");
-                            if (!chunkName.isEmpty()) tc.put("name", chunkName);
-
-                            // Accumulate arguments incrementally
-                            String argsDelta = tcChunk.path("function").path("arguments").asText("");
-                            if (!argsDelta.isEmpty()) {
-                                tc.computeIfAbsent("args_buf", k -> new StringBuilder());
-                                ((StringBuilder) tc.get("args_buf")).append(argsDelta);
-                            }
-                        }
+                    @Override
+                    public void onCompleteResponse(ChatResponse response) {
+                        log.info("Zen streaming retry complete");
                     }
-                } catch (Exception ignored) {}
-            }
 
-            // If response is empty despite body having content, check for non-SSE JSON error
-            if (fullResponse.isEmpty() && !response.body().isBlank()) {
-                String body = response.body().trim();
-                if (body.startsWith("{")) {
-                    try {
-                        JsonNode errNode = objectMapper.readTree(body);
-                        JsonNode err = errNode.path("error");
-                        if (!err.isMissingNode()) {
-                            String errMsg = err.path("message").asText("");
-                            String errType = err.path("type").asText("");
-                            String text = "[" + errType + "] " + errMsg;
-                            fullResponse.append(text);
-                            onToken.accept(text);
-                            log.warn("OpenCode Zen streaming error: {}", text);
-                        }
-                    } catch (Exception ignored) {}
-                }
-                if (fullResponse.isEmpty()) {
-                    String snippet = body.length() > 300 ? body.substring(0, 300) + "..." : body;
-                    log.warn("OpenCode Zen streaming вернул пустой ответ. Тело: {}", snippet);
-                }
-            }
-
-            // After stream ends, append any accumulated tool calls to the response text
-            if (!streamingToolCalls.isEmpty()) {
-                var convertedCalls = objectMapper.createArrayNode();
-                for (int idx : new java.util.TreeSet<>(streamingToolCalls.keySet())) {
-                    var tc = streamingToolCalls.get(idx);
-                    var call = objectMapper.createObjectNode();
-                    if (tc.get("id") != null) call.put("id", (String) tc.get("id"));
-                    else call.put("id", "call_" + idx);
-                    if (tc.get("name") != null) call.put("name", (String) tc.get("name"));
-                    else call.put("name", "");
-                    if (tc.get("args_buf") != null) {
-                        String argsStr = tc.get("args_buf").toString();
-                        try {
-                            call.set("arguments", objectMapper.readTree(argsStr));
-                        } catch (Exception e) {
-                            call.set("arguments", objectMapper.createObjectNode());
-                        }
-                    } else {
-                        call.set("arguments", objectMapper.createObjectNode());
+                    @Override
+                    public void onError(Throwable error) {
+                        log.error("Zen streaming retry error: {}", error.getMessage());
                     }
-                    convertedCalls.add(call);
-                }
-                var wrapper = objectMapper.createObjectNode();
-                wrapper.set("tool_calls", convertedCalls);
-                String toolCallsJson = objectMapper.writeValueAsString(wrapper);
-                fullResponse.append("\n").append(toolCallsJson);
+                });
+                return fullResponse.toString();
+            } catch (Exception e2) {
+                String error = "Zen streaming error: " + e2.getMessage();
+                log.error(error, e2);
+                onToken.accept(error);
+                return error;
             }
-
-            return fullResponse.toString();
-        } catch (Exception e) {
-            String error = "OpenCode Zen streaming недоступен: " + e.getMessage();
-            log.error(error);
-            onToken.accept(error);
-            return error;
         }
+    }
+
+    private ChatLanguageModel createChatModel(String modelName) {
+        return OpenAiChatModel.builder()
+                .apiKey(getEffectiveApiKey())
+                .modelName(modelName)
+                .baseUrl(baseUrl)
+                .temperature(0.7)
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .build();
+    }
+
+    private StreamingChatLanguageModel createStreamingChatModel(String modelName) {
+        return OpenAiStreamingChatModel.builder()
+                .apiKey(getEffectiveApiKey())
+                .modelName(modelName)
+                .baseUrl(baseUrl)
+                .temperature(0.7)
+                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+                .build();
+    }
+
+    private static List<ChatMessage> buildMessages(String systemPrompt, String userPrompt) {
+        List<ChatMessage> messages = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            messages.add(new SystemMessage(systemPrompt));
+        }
+        messages.add(new UserMessage(userPrompt));
+        return messages;
+    }
+
+    private String resolveModel(String model) {
+        if (model == null || model.isBlank() || isProviderName(model)) return defaultModel;
+        return model;
+    }
+
+    private boolean isProviderName(String model) {
+        return "zen".equalsIgnoreCase(model) || "opencode".equalsIgnoreCase(model);
     }
 }

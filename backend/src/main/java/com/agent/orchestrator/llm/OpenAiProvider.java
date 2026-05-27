@@ -1,19 +1,20 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.service.SettingsService;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.ChatLanguageModel;
+import dev.langchain4j.model.chat.StreamingChatLanguageModel;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.StringReader;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,8 +26,6 @@ public class OpenAiProvider implements LlmProvider {
 
     private static final Logger log = LoggerFactory.getLogger(OpenAiProvider.class);
 
-    private final HttpClient httpClient;
-    private final ObjectMapper objectMapper;
     private final SettingsService settingsService;
 
     @Value("${axolotl.llm.openai.base-url:https://api.openai.com/v1}")
@@ -42,10 +41,6 @@ public class OpenAiProvider implements LlmProvider {
     private int timeoutSeconds;
 
     public OpenAiProvider(SettingsService settingsService) {
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
-        this.objectMapper = new ObjectMapper();
         this.settingsService = settingsService;
     }
 
@@ -58,71 +53,41 @@ public class OpenAiProvider implements LlmProvider {
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         String effectiveModel = resolveModel(model);
-        String effectiveKey = getEffectiveApiKey();
-        if (effectiveKey == null || effectiveKey.isBlank()) {
-            return "OpenAI: API ключ не настроен. Установите axolotl.llm.openai.api-key в application.properties";
+        if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
+            return "OpenAI: API key not configured";
         }
 
         try {
-            var messages = new ArrayList<Map<String, String>>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(Map.of("role", "system", "content", systemPrompt));
-            }
-            messages.add(Map.of("role", "user", "content", userPrompt));
-
-            var requestBody = new java.util.HashMap<String, Object>();
-            requestBody.put("model", effectiveModel);
-            requestBody.put("messages", messages);
-            requestBody.put("stream", false);
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/chat/completions"))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + getEffectiveApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
+            ChatLanguageModel chatModel = OpenAiChatModel.builder()
+                    .apiKey(getEffectiveApiKey())
+                    .modelName(effectiveModel)
+                    .baseUrl(baseUrl)
+                    .temperature(0.7)
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            log.info("OpenAI запрос: model={}", effectiveModel);
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                String content = root.path("choices").path(0).path("message").path("content").asText("");
-                int tokens = root.path("usage").path("total_tokens").asInt(0);
-                log.info("OpenAI ответ ({} токенов): {}...", tokens,
-                        content.substring(0, Math.min(100, content.length())));
-                return content;
-            } else {
-                String error = "OpenAI ошибка (HTTP " + response.statusCode() + "): " + response.body();
-                log.error(error);
-                return error;
+            List<ChatMessage> messages = new ArrayList<>();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                messages.add(new SystemMessage(systemPrompt));
             }
+            messages.add(new UserMessage(userPrompt));
+
+            ChatResponse response = chatModel.chat(messages);
+            String content = response.aiMessage().text();
+            int tokens = response.tokenUsage() != null ? response.tokenUsage().totalTokenCount() : 0;
+            log.info("OpenAI response ({} tokens): {}", tokens,
+                    content.length() > 100 ? content.substring(0, 100) + "..." : content);
+            return content;
         } catch (Exception e) {
-            String error = "OpenAI недоступен: " + e.getMessage();
-            log.error(error);
+            String error = "OpenAI error: " + e.getMessage();
+            log.error(error, e);
             return error;
         }
     }
 
     @Override
     public boolean isAvailable() {
-        if (apiKey == null || apiKey.isBlank()) return false;
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/models"))
-                    .header("Authorization", "Bearer " + getEffectiveApiKey())
-                    .GET()
-                    .timeout(Duration.ofSeconds(5))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() == 200;
-        } catch (Exception e) {
-            return false;
-        }
+        return getEffectiveApiKey() != null && !getEffectiveApiKey().isBlank();
     }
 
     @Override
@@ -135,22 +100,24 @@ public class OpenAiProvider implements LlmProvider {
         String effectiveKey = getEffectiveApiKey();
         if (effectiveKey == null || effectiveKey.isBlank()) return List.of();
         try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/models"))
+            var client = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .build();
+            var request = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(baseUrl + "/models"))
                     .header("Authorization", "Bearer " + effectiveKey)
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                JsonNode data = root.path("data");
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                var root = mapper.readTree(response.body());
+                var data = root.path("data");
                 List<String> models = new ArrayList<>();
-                for (JsonNode m : data) {
+                for (var m : data) {
                     String id = m.path("id").asText("");
-                    if (!id.isBlank()) {
-                        models.add(id);
-                    }
+                    if (!id.isBlank()) models.add(id);
                 }
                 return models;
             }
@@ -184,60 +151,50 @@ public class OpenAiProvider implements LlmProvider {
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
-            String error = "OpenAI: API ключ не настроен";
+            String error = "OpenAI: API key not configured";
             onToken.accept(error);
             return error;
         }
 
         try {
-            var messages = new ArrayList<Map<String, String>>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(Map.of("role", "system", "content", systemPrompt));
-            }
-            messages.add(Map.of("role", "user", "content", userPrompt));
-
-            var requestBody = new java.util.HashMap<String, Object>();
-            requestBody.put("model", effectiveModel);
-            requestBody.put("messages", messages);
-            requestBody.put("stream", true);
-
-            String json = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(baseUrl + "/chat/completions"))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + getEffectiveApiKey())
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
+            StreamingChatLanguageModel streamingModel = OpenAiStreamingChatModel.builder()
+                    .apiKey(getEffectiveApiKey())
+                    .modelName(effectiveModel)
+                    .baseUrl(baseUrl)
+                    .temperature(0.7)
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .build();
 
-            log.info("OpenAI streaming запрос: model={}", effectiveModel);
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            StringBuilder fullResponse = new StringBuilder();
-
-            // OpenAI streams Server-Sent Events (SSE)
-            BufferedReader reader = new BufferedReader(new StringReader(response.body()));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank() || !line.startsWith("data: ")) continue;
-                String data = line.substring(6);
-                if ("[DONE]".equals(data)) break;
-
-                try {
-                    JsonNode node = objectMapper.readTree(data);
-                    String token = node.path("choices").path(0).path("delta").path("content").asText("");
-                    if (!token.isEmpty()) {
-                        fullResponse.append(token);
-                        onToken.accept(token);
-                    }
-                } catch (Exception ignored) {}
+            List<ChatMessage> messages = new ArrayList<>();
+            if (systemPrompt != null && !systemPrompt.isBlank()) {
+                messages.add(new SystemMessage(systemPrompt));
             }
+            messages.add(new UserMessage(userPrompt));
+
+            StringBuilder fullResponse = new StringBuilder();
+            streamingModel.chat(messages, new StreamingChatResponseHandler() {
+                @Override
+                public void onPartialResponse(String token) {
+                    fullResponse.append(token);
+                    onToken.accept(token);
+                }
+
+                @Override
+                public void onCompleteResponse(ChatResponse response) {
+                    log.info("OpenAI streaming complete: {} tokens",
+                            response.tokenUsage() != null ? response.tokenUsage().totalTokenCount() : 0);
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    log.error("OpenAI streaming error: {}", error.getMessage());
+                }
+            });
 
             return fullResponse.toString();
         } catch (Exception e) {
-            String error = "OpenAI streaming недоступен: " + e.getMessage();
-            log.error(error);
+            String error = "OpenAI streaming error: " + e.getMessage();
+            log.error(error, e);
             onToken.accept(error);
             return error;
         }
