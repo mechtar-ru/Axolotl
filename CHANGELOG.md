@@ -5,36 +5,168 @@ All notable changes to Axolotl are documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/)  
 Versioning: SemVer via git tags.
 
-## [Unreleased]
+## [v0.4.0] - 2026-05-28
 
 ### Added
 
-- **Harness directory**: OpenCode integration harness with Playwright MCP server (JSON-RPC 2.0 stdio protocol), tool specs, sub-agent/skill/memory/middleware configs, and component manifest. READMEs for all 4 harness subsystems (`ee9765d9`).
-- **TDD cross-stage input mappings**: TDD stages now wire `inputMapping` so upstream outputs flow downstream — verify-test-X receives test output, impl-X receives test output to satisfy, verify-X receives impl output. System prompts reference upstream results (`b5cdde65`).
+#### Pipeline & Execution
+- **Draft pipeline**: Multi-phase pipeline with draft-gate review dialog (collapsible artifact cards), artifact resolution, and full test coverage (`515e9d82`, `2034726e`, `e13e119e`).
+- **LLM thoughts & reasoning**: `LlmResponse` record, provider reasoning extraction from API responses, structured capture via `ReasoningCapture`, and persistence to `NodeExecution.reasoning` (`8cf4f356`).
+- **Run history timeline**: Full TimelineView rewrite from live-only WebSocket to persistent `ExecutionRun` history. Run cards with status dots, mode tags, relative time, duration, tokens. Expandable node lists with 200-char preview + "Show more" modal, pretty-printed JSON, Copy button. Live Events bar, stale run release, delete with 3s confirmation. Backend `POST /cleanup-runs`, `DELETE /runs/{runId}` endpoints (`b26e54bf`).
+- **Diff review**: `file_write` on existing files creates `.bak` backup before overwrite. Pipeline pauses at `AWAITING_DIFF_APPROVAL`. `DiffReviewDialog.vue` shows unified diff per file with Accept/Reject buttons. `POST /approve-diffs` removes `.bak`, `POST /reject-diffs` restores originals. Toggle in stage config (`b26e54bf`).
+- **Missing dependencies install**: `build_app` tool sends `deps_needed` WebSocket event with missing-tool list. `DepsInstallDialog.vue` displays per-dependency install status (⟳ → ✅/❌). `POST /api/execution/{id}/install-deps` triggers sequential brew installation. User dismisses or retries pipeline after install (`b26e54bf`).
+- **Parallel stage execution**: Stages within a topological-sort level now run concurrently via `CompletableFuture.runAsync` + `allOf().join()` (was sequential per level) (`d2fe4977`).
+
+#### Production Hardening (WS1)
+- **Schema validation**: `SchemaValidator` validates name/nodes/edges/pipeline stages at `GET /api/schemas/{id}/validate`, returns structured `ValidationResult` with error vs warning. Execution blocked until errors resolved (`5359c1f5`).
+- **Concurrent execution guard**: `executeSchema` throws HTTP 409, `executePipeline` throws `RuntimeException` — prevents silent concurrent execution (`34aef03f`).
+- **Input validation**: Non-null + non-blank enforced on schema name, import, delete, and export endpoints (`c9d2da2f`).
+- **Edge case audit**: Resume without paused run returns WS error. Empty stage list, null stage configs handled gracefully (`a86c4d7b`).
+
+#### Infrastructure (WS2)
+- **Neo4j TTL cleanup**: `ExecutionLogCleanupService` removes `ExecutionRun` and `NodeExecution` nodes older than 30 days, runs daily via `@Scheduled` (`d504c28a`).
+
+#### Quality Gates (WS3)
+- **Stub detection toggle**: `VerifierNodeStrategy` detects `// TODO`, empty bodies, `return null`, `throw UnimplementedError`. Toggle in BlockConfigPanel (`9748341e`).
+- **Post-write syntax validation**: `ToolExecutor.handleFileWriteWithSandbox` runs `dart analyze` / `python3 -m py_compile` / `javac` after `file_write` with 15s timeout. Errors returned in tool output for LLM self-correction (`af7f9c5b`).
+
+#### Observability (WS4)
+- **Token tracking**: `LlmUsage` threaded through all 7 providers (OpenAI, Anthropic, DeepSeek, Ollama, Zen, Custom, RLM). Accumulated via `ExecutionStateManager.recordTokenUsage()`, persisted to `NodeExecution.tokensUsed`. Displayed in TimelineEntry (`fa2abf26`).
+- **Tool call history**: `estimateToolCalls()` counts tool invocations in agent result text, persisted to `NodeExecution.toolCalls`. WS tool call events captured with duration + success/fail (`fa2abf26`).
+- **MDC tracing**: `TraceIdFilter` injects 8-char hex `traceId` per HTTP request into SLF4J MDC. Log pattern includes `[%X{traceId}]` (`94724a87`).
+
+#### Schema & Blueprint
+- **Schema import/export**: `GET /api/schemas/{id}/export` returns full schema JSON (excluding IDs/timestamps). `POST /api/schemas/import` creates new schema from JSON. Export button in StudioTopBar downloads `.json`, Import button in Dashboard opens file picker and navigates to imported schema (`2be92469`).
+- **Blueprint undo/redo**: `useUndoRedo` composable tracks node/edge state history; Ctrl+Z (undo), Ctrl+Shift+Z (redo) shortcuts; undo/redo buttons in BlueprintToolbar (`93864f5f`).
+- **Agent personas**: Four preset system prompts — Architect (writes specs before code), Hacker (code without plan), Teacher (explains each solution), Minimalist (lean, YAGNI), TDD (tests-first). Persona selector in BlockConfigPanel replaces `block.systemPrompt` on switch (`56247760`).
+- **Non-Flutter targets**: `ProjectType` enum with FLUTTER, PYTHON, WEB (Vite/React), GO, RUST. SchemaPropertiesPanel dropdown. Per-language build (`flutter build apk --debug` / `python3 -m py_compile` / `npm run build` / `go build` / `cargo build`) and validate (`dart analyze` / `py_compile` / `tsc --noEmit` / `go vet` / `cargo check`) commands (`30ea30ce`).
+- **Blueprint node tools**: Tools sync from stage config to blueprint node dynamically instead of hardcoded defaults (`f8e3b99a`).
+
+#### LangChain4j Migration
+- **All 7 LLM providers migrated** from Spring AI to LangChain4j `ChatLanguageModel`: OpenAI, Anthropic, DeepSeek, Ollama, Zen API, Custom endpoints, RLM. Unified tool call handling via `LangChainToolAdapter`. Removed all Spring AI dependencies (`012adf85`).
+
+#### UI/UX
+- **BaseButton.vue**: Shared button component with `variant="primary|secondary|danger|ghost"` prop, loading spinner, disabled state. CSS button tokens (`--btn-padding`, `--btn-font-size`, `--btn-font-weight`, `--btn-radius`) in `tokens.css` (`2edae7bd`).
+- **CSS design token system**: Global `tokens.css` with backgrounds (`--bg-canvas`, `--bg-surface`), accent colors (`--accent`, `--accent-secondary`), typography (`--font-mono`), spacing (`--space-1` through `--space-8`), type scale (`--text-xs` through `--text-3xl`), radii, z-index scale. Migrated across 20+ components (`2edae7bd`).
+- **WebSocket resilience**: Exponential backoff reconnection 1s→16s, heartbeat ping at 30s / pong timeout 8s, `onReconnect` callback, `onDisconnect` callback resets execution state (`5359c1f5`, `a5998e18`).
+- **Projects folder prompt**: First-login dialog when `projectsFolder` setting is empty. Editable in SettingsView. Clickable folder icon in SchemaPropertiesPanel opens native `webkitdirectory` picker (`0634e3ba`).
+- **SettingsView decomposition**: Extracted `ProviderCard.vue` (684 lines) and `CustomEndpointList.vue` (408 lines). Removed 571 lines of dead code. SettingsView reduced from 1400→498 lines (`eef22e8c`).
+- **UI audit fixes**: `toast.error()` wired to 16+ error paths. Empty-state CTAs on Dashboard, Timeline, PipelinePanel. Focus trap in AppModal. `:focus-visible` global styles. `.mono` utility class. Hardcoded z-index → `var(--z-*)` everywhere (`2edae7bd`).
+
+#### Developer Experience
+- **Harness directory**: OpenCode integration harness with Playwright MCP server (JSON-RPC 2.0 stdio protocol), tool specs, sub-agent/skill/memory/middleware configs, component manifest, READMEs for all 4 subsystems (`ee9765d9`).
+- **Roadmap docs**: `ROADMAP.md` with 5 workstreams, effort estimates, risk assessment, premortem mitigations. Harness scripts for testing (`a9ce2ca2`).
+- **CI workflows**: Neo4j service container for backend tests, `actions/cache` for npm with `save-always: true`, Node 22, `v5` checkout/setup-node. Feature branch triggers. Proper Docker tags with semver+sha (`a772ae12`).
+- **C4 architecture diagrams**: 6 Mermaid C4 diagrams (Context, Container, Frontend/Backend Components, Dynamic Execution, Deployment). VitePress documentation site populated (`b79548c6`).
+
+#### Other
+- **TDD cross-stage input mappings**: TDD stages wire `inputMapping` so upstream outputs flow downstream — verify-test receives test output, impl receives test output to satisfy, verify receives impl output. System prompts reference upstream results (`b5cdde65`).
+- **PermitAll mcp endpoint**: `POST /api/schemas/{id}/execute` explicitly permitAll in SecurityConfig for pipeline mode without auth token (`c1425dc0`).
+
+### Changed
+
+- **LangChain4j migration**: All 7 LLM providers use `ChatLanguageModel` instead of Spring AI's `ChatClient`. Removed `spring-ai-starter-*` dependencies from `pom.xml`. Providers configuration moved from properties to programmatic builder (`012adf85`).
+- **WebSocket reconnection**: From no reconnection to exponential backoff (1s → 2s → 4s → 8s → 16s) with heartbeat. `onDisconnect` callback resets `isRunning` on unexpected close. `onReconnect` fires after each successful reconnect (`5359c1f5`).
+- **SchemaService.updateSchema**: From full ObjectMapper replacement to non-null field merge — preserves fields not in the request body, preventing data loss on single-field PUT (`2f59b0c0`).
+- **SettingsView layout**: Fields respaced with consistent margins and label positions. Static provider description replaces dynamic scrolling list. Initial API key population via eye icon toggle (`f8e3b99a`).
+- **TimelineView**: From live-only WebSocket feed to persistent Neo4j-backed history with run/delete/stale-release controls (`b26e54bf`).
+- **Backend port**: 8082 remains, all pipeline endpoints consolidated under `/api/execution/` prefix (`f8e3b99a`).
+- **PromptEditorModal**: Templates panel now collapsible, emoji icons replaced with inline SVGs (`2edae7bd`).
+- **Logback configuration**: `org.springframework.data.neo4j.cypher.unrecognized` suppressed to ERROR level, "no active WS session" messages set to DEBUG (`f23f9351`).
+- **Neo4j versioning**: `@Version` field added to `GraphExecutionRun` and `GraphExecutionRecord` for optimistic locking (`f23f9351`).
+- **`resolveStageModel`**: System-default model constants ("deepseek-v4-flash"/"deepseek-v4-flash-free") treated as transparent when schema has an explicit `defaultModel` (`f8e3b99a`).
+- **`ExecutionStateManager` cleanup**: `removeSchema()` clears all 7 maps on pipeline completion to prevent unbounded memory growth (`d2fe4977`).
+- **ToolExecutor bash sandbox**: Blocks command substitution (`$(`, `` ` ``) and validates each pipe segment against allowed commands. `validateSandboxPath` uses `Path.normalize()` for canonical path comparison (`d2fe4977`).
 
 ### Fixed
 
-- **LiveView ChatAppUI missing executionResult**: The `:execution-result` prop was never passed to ChatAppUI, so agent messages never appeared in the chat view (`1384f4db`).
-- **handleReviewApprove TOCTOU**: Two concurrent approve requests could both find the same paused run. Fixed via atomic `claimPausedRun` Cypher (WHERE status='paused' SET status='resuming' RETURN) (`0bfaf10b`).
-- **Emoji→SVG migration**: All emoji icons across node components (AgentNode, ReceiveBlock, ReviewBlock, etc.) replaced with inline SVGs for consistent rendering (`d3eab44e`).
+#### Pipeline & Execution
+- **Pipeline not pausing on AWAITING_APPROVAL**: Wave loop broke and returned early after setting pause (`ce96a7f0`). Post-loop completion code no longer overwrites paused status (`b6eca96a`).
+- **Double AWAITING_APPROVAL on resume**: Schema nodes carried stale approval status from parent run — resume resets node statuses to PENDING and sets approval flag (`b6eca96a`).
+- **Atomic pause state**: `updateRunPaused` combines `status=paused` + `resumeIndex` in one atomic Cypher query (`1df048ec`).
+- **Pipeline failure propagation**: Failed stages counted as completed and pipeline status set to "completed" — `pipelineFailed` flag breaks all loops, calls `updateRunCompleted("failed")`, sends `pipeline_failed` WS event (`b6eca96a`).
+- **Stale approval flag leak**: `clearStaleApprovals` resets node approval before each execution, preventing leaked approval from prior runs (`f8e3b99a`).
+- **Pipeline resume crash**: `resumePipeline` wrapped in try-catch; `releasePausedRun()` prevents runs stuck in `'resuming'` status (`f23f9351`).
+- **Retry respects paused stages**: Tracks stages paused before failure, sets `skipApprovalCheck=false` for them (`f23f9351`).
+- **Pipeline stage timeout**: 5-minute per-stage timeout via `CompletableFuture.orTimeout` (`cbe2e55c`). Increased to 20 minutes for code generation scenarios (`f8e3b99a`).
+- **Config mutation side-effect**: Stage config cloned via `new HashMap<>(existing)` before `resolveInputMappings` (`cbe2e55c`).
+- **ResumeIndex persistence**: Added to `GraphExecutionRun` Neo4j field, fallback when in-memory state lost on restart (`cbe2e55c`).
+- **TOCTOU in handleReviewApprove**: Atomic `claimPausedRun` Cypher (`WHERE status='paused' SET status='resuming' RETURN`) prevents double-claim (`0bfaf10b`).
+- **ResumeExecution argument overload**: Added 3-param overload without claim phase for already-claimed runs (`0bfaf10b`).
+- **claimPausedRun order**: `ORDER BY r.startedAt DESC LIMIT 1` — picks latest paused run, not first (`f8e3b99a`).
+- **NodeRouter preserves AWAITING_APPROVAL**: No longer unconditionally overwrites node status to COMPLETED (`f4adc059`).
+- **Hardcoded model fallback**: Removed from `createDefaultPipeline` — empty string fails with clear log instead of silently routing to arbitrary model (`f23f9351`).
+- **Ollama request timeout**: Increased from 120s to 3600s in `application.yml` to support multi-iteration code generation (`f8e3b99a`).
+- **ToolExecutor relative path resolution**: `handleFileReadWithSandbox` prepends `schemaTargetPath` for agent-generated relative paths (`f8e3b99a`).
+- **ResumePipeline revert status**: Updated by runId directly without status precondition (`151198b9`).
 
-### Known Issues (from 2026-05-21 audit)
+#### Review Node
+- **Empty plan in ReviewApprovalDialog**: Three root causes fixed: (1) `rewrittenPlan=""` passed `!= null` check — added `isBlank()` fallback chain `rewrittenPlan → planText → "No content available for review planning."`. (2) LLM returned empty content due to garbage `inputContent` ("Файл не найден..."). (3) Zen API 429 rate limit errors silently dropped by SSE parser — added retry logic with exponential backoff (2s/4s/8s/16s) and plain JSON error fallback (`cd1bbe95`, `bd37f996`, `69daa78d`).
+- **Review node always requires approval**: Manual mode now transitions to `AWAITING_APPROVAL` on both PASS and REWRITE verdicts (previously only on REWRITE) (`1384f4db`).
+- **Findings serialization**: Review findings now serialized as JSON array instead of object with numeric keys (`1384f4db`).
 
-- **ExecutionUtilityService regression risk (High)**: Monolith utility with high blast radius. Critical bugs silently break all execution. Needs decomposition or test coverage.
-- **NodeRouter inline handlers (Medium)**: Inline handler logic creates untestable paths. Should extract to strategy classes for testable dispatch.
-- **In-memory pipeline state (High)**: PipelineService uses `ConcurrentHashMap` — all state lost on process crash. Needs crash-resilient state machine (Neo4j-driven).
-- **Silent error propagation (High)**: LLM failures, agent errors, backend exceptions caught-and-logged without reaching Studio UI. Needs end-to-end error surfacing.
-- **Deepest finding**: Axolotl's single-path orchestration makes complex workflows fast — until state/scale/resource failures hit. Lack of defensive contracts, e2e coverage, and architectural split pushes system into "invisible break" mode where failures are silent and user is unaware.
+#### Schema & Data
+- **SchemaService.updateSchema data loss**: Full ObjectMapper replacement on partial PUT wiped name/targetPath/pipeline — fixed to merge non-null fields from incoming request into existing schema (`2f59b0c0`).
+- **GraphExecutionRun JSON storage**: `stageStatus` and `stageOutputs` as JSON strings in Neo4j (SDN 6 cannot store `Map` as node property) (`c1425dc0`).
+- **Neo4j @Version warnings**: Added `@Version` field to `GraphExecutionRun` and `GraphExecutionRecord` (`f23f9351`).
+- **Execution run query**: `getLatestRunBySchemaAndStatus` uses `ORDER BY startedAt DESC LIMIT 1` instead of grabbing first match (`f8e3b99a`).
+- **Schema validation on import**: Name uniqueness check, JSON deserialization error handling (`a86c4d7b`).
 
-### Fixed
+#### Frontend
+- **VueFlow crashes**: `node.dimensions` undefined → added `dimensions: { width: 200, height: 100 }` to all node creation sites (`a99100c2`). Edge rendering broken by direct `edges.value = ...` → replaced with `setNodes()`/`setEdges()`, added `v-if="flowReady"` guard (`de223a28`).
+- **BlockConfigPanel stale data**: 40+ refs not reset on block switch — `resetRefs()` on block not found (`5edbab06`).
+- **BlueprintView infinite loop**: Deep watch + store mutation — `syncing` flag prevents re-entrant store mutation (`5edbab06`).
+- **PipelinePanel silent failures**: fire-and-forget execute/cancel with no error display — `await` + error display, `stageLevels` converted to `computed`, cleanup timeout in `onUnmounted` (`5edbab06`).
+- **WebSocket disconnect frozen state**: `onDisconnect` callback resets execution flags on unexpected close (`a5998e18`).
+- **Review dialog reject irreversible**: Added `window.confirm()` before reject (`a5998e18`).
+- **ResumeBanner stale paused run**: Re-verify paused execution on each click (`a5998e18`).
+- **BlockConfigPanel provider list**: `loadProviders()` called on every `blockId` change, not just mount — new providers from Settings appear immediately (`81773370`).
+- **GenericAppUI redundant API calls**: `fetchGeneratedFiles` cached by `schemaId` (`81773370`).
+- **DesignWorkspaceUI timer leak**: `clearSaveContextTimer` in `onUnmounted` (`81773370`).
+- **DashboardView race condition**: `getSchema` retried 3 times with 200/400/600ms backoff after `applyTemplate` (`5790877a`).
+- **SettingsView dead code**: `toggleShowKey` referencing deleted reactive objects — removed (`0894890b`).
+- **CustomEndpointList split state**: Rewritten to be self-contained with internal API calls (`eef22e8c`).
+- **LiveView missing executionResult**: `executionResult` prop never passed to ChatAppUI — agent messages never rendered in live panel (`1384f4db`).
+- **File upload content delivery**: Frontend only saved filename — now reads content via `FileReader` and sends as `sourceData` (`af7f9c5b`).
+- **SchemaPropertiesPanel debounce**: 400ms debounce on name/description inputs (`5edbab06`).
+- **BlockPalette JSON.stringify**: Wrapped in try/catch (`03630d0e`).
+- **ChatAppUI executionResult**: Prop wired into chat bubbles (`03630d0e`).
+- **AppDashboardView rename**: Syncs with schemaStore (`03630d0e`).
+- **QuickStartDialog conflict**: Target path conflict check before app creation (`03630d0e`).
+- **CI TypeScript errors**: `targets[i]`, `results[i]` in template expressions → non-null assertions (`!`). Various strict-null fixes across CustomEdge, BlockConfigPanel, SettingsView, QuickStartDialog, DashboardView, TimelineView (`e61fade6`, `bfadfea1`, `38f58594`).
 
-- **Pipeline resume crash releases paused run**: `resumePipeline` now wraps core execution in try-catch and calls `releasePausedRun()` on failure, preventing runs from being stuck permanently in 'resuming' status. Added Cypher query and `ExecutionRepository.releasePausedRun()` wrapper.
-- **Pipeline retry respects paused stages**: `retryPipeline` now tracks stages that were `paused` before the failure and sets `skipApprovalCheck=false` for them — previously all retried stages bypassed approval, silently force-completing previously-paused review nodes.
-- **Hardcoded model fallback removed**: `AgentController.createDefaultPipeline` replaced `"deepseek-v4-flash-free"` fallback with empty string `""`. When no default model is configured, stages are created without a model and execution fails with a clear log message instead of silently routing to an arbitrary model.
-- **TDD checkbox persists across navigation**: `PipelinePanel.vue` initializes `tddEnabled` ref from `store.currentSchema?.pipeline?.tddEnabled` instead of hardcoded `false`, so re-creating a pipeline after navigation remembers the user's TDD preference.
-- **Trailing slash 403 on API endpoints**: Spring Boot 3.x disables trailing-slash matching, causing `MvcRequestMatcher` to reject endpoints like `/api/schemas/`. Added `TrailingSlashFilter` that normalizes request URIs before Spring Security processing — strips trailing slashes from `getRequestURI()`, `getRequestURL()`, `getServletPath()`, `getPathInfo()` (`fc67cd34`).
-- **ReviewBlock VueFlow fragment root**: ReviewBlock had two root elements, breaking VueFlow node position/drag inheritance. Wrapped in single `div` (`4a90e9cf`).
-- **README misleading provider key docs**: Listed Zen as the only required API key. Now lists all supported providers (OpenAI, Anthropic, DeepSeek, Zen) with note that Ollama and custom endpoints need no key (`b5cdde65`).
+#### Security
+- **DebugShutdownListener thread dump**: Downgraded from `log.warn` to `log.info` with inner dump at `log.debug` (`0894890b`).
+- **Bash injection**: Shell metacharacter check blocks command substitution (`$(`, `` ` ``), validates pipe segments against allowed commands (`d2fe4977`).
+- **Path traversal**: `validateSandboxPath` uses `Path.normalize().toAbsolutePath()` instead of `startsWith` string matching (`d2fe4977`).
+- **JWT auth hardening**: `shouldNotFilter()` lists permitAll paths; removed paths still accessible via `permitAll()` but authenticated requests populate SecurityContext (`4476002e`, `672cfe66`).
+- **Trailing slash 403**: `TrailingSlashFilter` normalizes URIs before Spring Security processing (`fc67cd34`).
+
+#### CI & Build
+- **docs.yml**: `npm ci` → `npm install` (no lockfile). Removed cache config (`72b74ae6`, `51866bb9`).
+- **ci.yml**: Neo4j 5-enterprise service container with health check. Npm cache with `save-always: true`. Feature branch triggers. Removed `continue-on-error: true` (was hiding failures). Backend test mock stubbing fixed for nullable parameters (`3683d3e0`, `edb79c16`).
+- **release.yml**: `docker/metadata-action` split into backend/frontend with semver+sha tags (`a772ae12`).
+
+#### Other
+- **ReviewBlock VueFlow fragment**: Two root elements broke VueFlow node position — wrapped in single `div` (`4a90e9cf`).
+- **TDD checkbox persists**: Initialized from `store.currentSchema?.pipeline?.tddEnabled` instead of hardcoded `false` (`f23f9351`).
+- **Auth redirect loop**: `api.ts` only clears auth on 401, not 403 (expected for anonymous users hitting non-permitAll) (`4476002e`).
+- **BlockConfigPanel model clearing**: Review/verify model persists through `config` map (`3efcb5e7`).
+
+### Removed
+
+- **LiveView.vue**: Unused execution overlay. Removed from StudioView, StudioTopBar, SchemaPropertiesPanel (`4cbfa816`).
+- **Spring AI dependencies**: `spring-ai-starter-model-ollama`, `spring-ai-starter-model-openai`, Spring AI BOM (`012adf85`).
+- **SettingsView dead code**: 571 lines removed — `toggleShowKey`, `useAutoSave`, stale refs, duplicate CSS (`eef22e8c`).
+- **`useAutoSave` composable**: Replaced by schemaStore dirty-flag auto-save (`eef22e8c`).
+- **Hardcoded model lists**: Providers now fetch dynamically from API (`012adf85`).
+- **Old StatusBar.vue**: CSS-only tag badges replace status bar (`2edae7bd`).
+
+### Security
+
+- **Bash injection prevention**: `handleBash` blocks command substitution (`$(`, `` ` ``) and validates pipe segments against allowed commands set (`d2fe4977`).
+- **Path traversal prevention**: `validateSandboxPath` uses `Path.normalize().toAbsolutePath()` canonical comparison instead of string `startsWith` (`d2fe4977`).
+- **ExecutionStateManager memory leak**: `removeSchema()` clears all maps on pipeline completion — prevents OOM over many runs (`d2fe4977`).
 
 ## [v0.3.0] - 2026-05-20
 
@@ -75,32 +207,29 @@ Versioning: SemVer via git tags.
 - **Logging**: Java code migrated from `System.out.println` to SLF4J `LoggerFactory.getLogger(...)`. Full stack traces added to 20+ message-only catch blocks in SchemaService, repositories, and controllers (`43d01a48`, `f6e19f75`).
 - **ToolExecutor sandbox**: `handleFileWrite` validates sandbox path via `validateSandboxPath()` and auto-creates parent directories (`1b7c3a1b`, `a72d3d97`).
 - **Schema creation** auto-creates `targetPath` directory via `Files.createDirectories()` (`295a6feb`).
-- **Review node config fields** saved into `config` object (not top-level `baseData`) to survive Jackson deserialization. `buildVueFlowNodes` merges config with model/systemPrompt into flat config; `syncFlowToStore` reverses the split on save (`a2548429`).
-- **Neo4j deprecation warnings** suppressed via `NotificationConfig.disableCategories(Set.of(NotificationCategory.DEPRECATION))` (`44d19aba`).
-- **Execution API** exposes both in-memory `executionHistory` (legacy) and Neo4j-persisted runs API. Both remain active (`f3b4ae77`).
+- **Review node config fields** saved into `config` object (not top-level `baseData`) to survive Jackson deserialization (`a2548429`).
+- **Neo4j deprecation warnings** suppressed via `NotificationConfig.disableCategories()` (`44d19aba`).
 
 ### Fixed
 
-- **Auth redirect loop**: Frontend `api.ts` interceptor no longer clears auth on 403 (only 401). 403 from anonymous users hitting non-permitAll endpoints is expected behavior, not a global auth failure (`2e599e8c`).
-- **Expired JWT handling**: `JwtAuthFilter` silently skips invalid tokens (no 401 for permitAll endpoints), while protected endpoints still reject anonymous access (`77ff9ad9`).
-- **BlockConfigPanel model clearing**: Review/verify model selection no longer resets on node switch. Config fields (checks, mode, maxIterations, generatePlan) persist through the `config` map (`3efcb5e7`).
-- **Review/verify checks persistence**: Full round-trip fix — checks, mode selector, and max iterations now survive navigation to dashboard and back (`a2548429`).
-- **VueFlow `nextSibling` crash**: BlueprintView elements changed from `v-if` to `v-show` to prevent VueFlow DOM child pointer invalidation (`584eb241`).
-- **VueFlow `instance.update` crash**: Component types wrapped with `markRaw` to prevent Vue reactivity proxy from breaking `h()` calls during node click re-renders (`584eb241`).
-- **Main.css missing import**: `main.ts` was not importing `main.css` (which imports `tokens.css`), breaking the entire 103-variable CSS token system. Fixed by adding the import (`584eb241`).
-- **Spring AI dead code**: Removed `SpringAiLlmProvider` (146 lines) and `SpringAiConfig` (153 lines) plus unused Maven dependencies. No functional impact (`f86211c8`).
-- **JSON injection**: `Neo4jPlanRepository` `findByParentId`/`findBySchemaId` switched from string concatenation to Jackson `writeValueAsString` for Cypher parameter escaping. `ReviewNodeStrategy` all JSON construction uses ObjectMapper. `PlaywrightClient` error responses use ObjectMapper (`f6e19f75`, `1b7c3a1b`).
-- **McpIntegrationTest failures**: Fixed via Testcontainers Neo4j module (`neo4j:5-enterprise`) for fresh DB per test run. `Neo4jPlanRepository` now propagates Neo4j exceptions as `RuntimeException` instead of returning null silently (`3443a1d0`).
-- **Flaky e2e tests**: Replaced `waitForTimeout` with `waitForSelector`. Reduced Playwright workers to 1. Increased timeouts to 35s (`584eb241`).
+- **Auth redirect loop**: Frontend `api.ts` interceptor no longer clears auth on 403 (only 401) (`2e599e8c`).
+- **Expired JWT handling**: `JwtAuthFilter` silently skips invalid tokens, protected endpoints still reject anonymous (`77ff9ad9`).
+- **BlockConfigPanel model clearing**: Review/verify model no longer resets on node switch (`3efcb5e7`).
+- **VueFlow `nextSibling` crash**: `v-if` → `v-show` to prevent DOM child pointer invalidation (`584eb241`).
+- **VueFlow `instance.update` crash**: `markRaw` wraps component types to prevent Vue reactivity proxy from breaking `h()` (`584eb241`).
+- **Main.css missing import**: Added in `main.ts` to load 103-variable CSS token system (`584eb241`).
+- **Spring AI dead code**: Removed `SpringAiLlmProvider` (146 lines), `SpringAiConfig` (153 lines), unused Maven deps (`f86211c8`).
+- **JSON injection**: All Cypher/JSON construction via ObjectMapper instead of string concatenation (`f6e19f75`, `1b7c3a1b`).
+- **McpIntegrationTest failures**: Testcontainers Neo4j module (`neo4j:5-enterprise`) for fresh DB per run (`3443a1d0`).
+- **Flaky e2e tests**: `waitForTimeout` → `waitForSelector`. Reduced workers to 1. Increased timeouts to 35s (`584eb241`).
 
 ### Removed
 
-- **Spring AI provider**: `SpringAiLlmProvider.java`, `SpringAiConfig.java`, Spring AI BOM and Maven dependencies (`spring-ai-starter-model-ollama`, `spring-ai-starter-model-openai`) (`f86211c8`).
-- **`POST /api/schemas/{id}/generate-nodes` endpoint**: Quick Start now uses fixed pipeline template. `SchemaService.generateSchemaFromPrompt` is a stub returning errors. Frontend `generateNodes` API call removed (`bcd94abc`, `a8b16f6f`).
-- **SQLite and PostgreSQL**: All references removed from code and documentation. Neo4j is the only database (`01788810`).
-- **`useAutoSave` composable**: Removed in favor of schemaStore's built-in dirty-flag auto-save with debounce. Competed with store's persistence (`1b7c3a1b`).
-- **Hardcoded model lists**: All providers now fetch dynamically from API. Static fallback lists removed from all 4 providers (`47b4ea40`).
-- **Deprecated emoji icons**: All remaining emoji-only icons replaced with inline SVGs (`e4348107`).
+- **Spring AI provider**: `SpringAiLlmProvider.java`, `SpringAiConfig.java`, Spring AI BOM, Maven dependencies (`f86211c8`).
+- **`POST /api/schemas/{id}/generate-nodes`**: Quick Start uses fixed pipeline template (`bcd94abc`).
+- **SQLite and PostgreSQL**: All references removed. Neo4j is the only database (`01788810`).
+- **`useAutoSave` composable**: Replaced by schemaStore built-in dirty-flag auto-save (`1b7c3a1b`).
+- **Hardcoded model lists**: Static fallback lists removed from all 4 providers (`47b4ea40`).
 
 ## [v0.2.1] - 2026-04-26
 
