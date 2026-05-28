@@ -2,110 +2,158 @@
   <div v-if="visible" class="review-overlay">
     <div class="review-modal">
       <div class="review-header">
-        <span class="review-title">▲ Plan Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
+        <span v-if="draftMode" class="review-title">Draft Review — Review artifacts before implementation</span>
+        <span v-else class="review-title">Plan Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
         <button class="close-btn" title="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
       <div class="review-body">
-        <!-- Final Plan Section -->
-        <div class="review-section">
-          <h4 class="section-title">Final Plan</h4>
-          <pre v-if="!editing" class="plan-text">{{ plan }}</pre>
-          <textarea v-else v-model="editedPlan" class="plan-textarea" />
-        </div>
-
-        <!-- Findings Section -->
-        <div v-if="findings.length > 0" class="review-section">
-          <h4 class="section-title">Findings ({{ findings.length }})</h4>
-          <div class="findings-list">
+        <!-- Draft Mode: Artifacts -->
+        <template v-if="draftMode">
+          <div
+            v-for="(artifact, idx) in draftArtifacts"
+            :key="idx"
+            class="draft-artifact-card"
+          >
             <div
-              v-for="(finding, idx) in findings"
-              :key="idx"
-              class="finding-item"
+              class="draft-artifact-header"
+              :class="'draft-type-' + artifact.type"
+              @click="toggleArtifact(idx)"
             >
-              <div class="finding-header">
-                <span class="finding-icon" :class="severityClass(finding.severity)">
-                  {{ severityIcon(finding.severity) }}
-                </span>
-                <span
-                  class="severity-badge"
-                  :class="severityClass(finding.severity)"
-                >
-                  {{ finding.severity }}
-                </span>
-                <span class="finding-source">{{ finding.source }}</span>
+              <svg
+                class="draft-chevron"
+                :class="{ expanded: artifact.expanded }"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                width="14"
+                height="14"
+              >
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+              <span class="draft-artifact-badge" :class="'draft-type-' + artifact.type">
+                {{ artifact.label }}
+              </span>
+              <span class="draft-artifact-name">{{ artifact.name }}</span>
+            </div>
+            <div v-if="collapsedPanels[idx]" class="draft-artifact-body">
+              <pre v-if="!editingDraft[idx]" class="plan-text">{{ artifact.content }}</pre>
+              <textarea
+                v-else
+                v-model="editedDraftContent[idx]"
+                class="plan-textarea"
+                rows="6"
+              />
+              <button
+                v-if="!editingDraft[idx]"
+                class="draft-edit-btn"
+                @click.stop="startDraftEdit(idx, artifact.content)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> Edit
+              </button>
+              <div v-else class="draft-edit-actions">
+                <button class="btn-confirm-cancel" @click.stop="cancelDraftEdit(idx)">Cancel</button>
+                <button class="btn-confirm-yes" @click.stop="saveDraftEdit(idx)">Save</button>
               </div>
-              <p class="finding-description">{{ finding.description }}</p>
-              <p v-if="finding.suggestion" class="finding-suggestion">
-                <span class="suggestion-label">Suggestion:</span> {{ finding.suggestion }}
-              </p>
             </div>
           </div>
-        </div>
+          <div class="draft-summary">
+            <h4 class="section-title">Your Feedback</h4>
+            <textarea
+              v-model="feedbackText"
+              class="feedback-textarea"
+              placeholder="Type feedback on the drafts or revision request..."
+              rows="3"
+            />
+            <button class="add-feedback-btn" @click="addFeedback">+ Add more</button>
+            <div v-if="feedbackItems.length > 0" class="feedback-items-list">
+              <div v-for="(item, idx) in feedbackItems" :key="idx" class="feedback-tag">{{ item }}</div>
+            </div>
+          </div>
+        </template>
 
-        <!-- Feedback History Section -->
-        <div v-if="feedbackHistory.length > 0" class="review-section">
-          <h4 class="section-title">Feedback History</h4>
-          <div class="feedback-list">
-            <div
-              v-for="(item, idx) in feedbackHistory"
-              :key="idx"
-              class="feedback-item"
-            >
-              <span class="feedback-index">#{{ idx + 1 }}</span>
-              <span class="feedback-text">"{{ item.text }}"</span>
-              <span v-if="item.applied" class="feedback-applied">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg> applied
-              </span>
-              <span v-else class="feedback-not-applied">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> not applied
-              </span>
-            </div>
+        <!-- Standard Review Mode -->
+        <template v-else>
+          <!-- Final Plan Section -->
+          <div class="review-section">
+            <h4 class="section-title">Final Plan</h4>
+            <pre v-if="!editing" class="plan-text">{{ plan }}</pre>
+            <textarea v-else v-model="editedPlan" class="plan-textarea" />
           </div>
-        </div>
 
-        <!-- Your Feedback Section -->
-        <div class="review-section">
-          <h4 class="section-title">Your Feedback</h4>
-          <textarea
-            v-model="feedbackText"
-            class="feedback-textarea"
-            placeholder="Type your feedback or revision request..."
-            rows="3"
-          />
-          <button class="add-feedback-btn" @click="addFeedback">+ Add more</button>
-          <div v-if="feedbackItems.length > 0" class="feedback-items-list">
-            <div
-              v-for="(item, idx) in feedbackItems"
-              :key="idx"
-              class="feedback-tag"
-            >
-              {{ item }}
+          <!-- Findings Section -->
+          <div v-if="findings.length > 0" class="review-section">
+            <h4 class="section-title">Findings ({{ findings.length }})</h4>
+            <div class="findings-list">
+              <div v-for="(finding, idx) in findings" :key="idx" class="finding-item">
+                <div class="finding-header">
+                  <span class="finding-icon" :class="severityClass(finding.severity)"></span>
+                  <span class="severity-badge" :class="severityClass(finding.severity)">{{ finding.severity }}</span>
+                  <span class="finding-source">{{ finding.source }}</span>
+                </div>
+                <p class="finding-description">{{ finding.description }}</p>
+                <p v-if="finding.suggestion" class="finding-suggestion">
+                  <span class="suggestion-label">Suggestion:</span> {{ finding.suggestion }}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+
+          <!-- Feedback History Section -->
+          <div v-if="feedbackHistory.length > 0" class="review-section">
+            <h4 class="section-title">Feedback History</h4>
+            <div class="feedback-list">
+              <div v-for="(item, idx) in feedbackHistory" :key="idx" class="feedback-item">
+                <span class="feedback-index">#{{ idx + 1 }}</span>
+                <span class="feedback-text">"{{ item.text }}"</span>
+                <span v-if="item.applied" class="feedback-applied">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg> applied
+                </span>
+                <span v-else class="feedback-not-applied">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> not applied
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Your Feedback Section -->
+          <div class="review-section">
+            <h4 class="section-title">Your Feedback</h4>
+            <textarea
+              v-model="feedbackText"
+              class="feedback-textarea"
+              placeholder="Type your feedback or revision request..."
+              rows="3"
+            />
+            <button class="add-feedback-btn" @click="addFeedback">+ Add more</button>
+            <div v-if="feedbackItems.length > 0" class="feedback-items-list">
+              <div v-for="(item, idx) in feedbackItems" :key="idx" class="feedback-tag">{{ item }}</div>
+            </div>
+          </div>
+        </template>
       </div>
 
       <div class="review-footer">
         <div class="footer-actions">
           <button v-if="!showRejectConfirm" class="btn-reject" @click="showRejectConfirm = true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> Reject
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg> {{ draftMode ? 'Reject Drafts' : 'Reject' }}
           </button>
           <span v-else class="confirm-reject-inline">
             <span class="confirm-text">Sure?</span>
             <button class="btn-confirm-yes" @click="handleReject">Yes, reject</button>
             <button class="btn-confirm-cancel" @click="showRejectConfirm = false">Cancel</button>
           </span>
-          <button class="btn-edit" @click="startEdit">
+          <button v-if="!draftMode" class="btn-edit" @click="startEdit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg> Edit Plan
           </button>
           <button class="btn-suggest" @click="emitSuggest">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Suggest &amp; Regenerate
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> {{ draftMode ? 'Regenerate with Feedback' : 'Suggest &amp; Regenerate' }}
           </button>
           <button class="btn-approve" @click="emitApprove">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Accept
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> {{ draftMode ? 'Approve &amp; Implement' : 'Accept' }}
           </button>
         </div>
       </div>
@@ -128,6 +176,14 @@ interface FeedbackItem {
   applied: boolean;
 }
 
+interface DraftArtifact {
+  type: string;
+  name: string;
+  label: string;
+  content: string;
+  expanded?: boolean;
+}
+
 const props = withDefaults(defineProps<{
   visible: boolean;
   schemaId: string;
@@ -140,6 +196,8 @@ const props = withDefaults(defineProps<{
   maxIterations: number;
   mode: string;
   feedbackHistory: FeedbackItem[];
+  draftMode?: boolean;
+  draftArtifacts?: DraftArtifact[];
 }>(), {
   visible: false,
   schemaId: '',
@@ -152,6 +210,8 @@ const props = withDefaults(defineProps<{
   maxIterations: 3,
   mode: 'manual',
   feedbackHistory: () => [],
+  draftMode: false,
+  draftArtifacts: () => [],
 });
 
 const emit = defineEmits<{
@@ -166,10 +226,13 @@ const editedPlan = ref(props.rewrittenPlan);
 const feedbackText = ref('');
 const feedbackItems = ref<string[]>([]);
 const showRejectConfirm = ref(false);
+const collapsedPanels = ref<boolean[]>([]);
+const editingDraft = ref<boolean[]>([]);
+const editedDraftContent = ref<string[]>([]);
 
 const plan = computed(() => {
-  if (editing.value) return editedPlan.value
-  return props.rewrittenPlan || props.originalPlan || ''
+  if (editing.value) return editedPlan.value;
+  return props.rewrittenPlan || props.originalPlan || '';
 });
 
 const modeLabel = computed(() => {
@@ -177,7 +240,7 @@ const modeLabel = computed(() => {
 });
 
 const maxIterLabel = computed(() => {
-  return props.maxIterations === 0 ? '∞' : String(props.maxIterations);
+  return props.maxIterations === 0 ? '\u221E' : String(props.maxIterations);
 });
 
 watch(() => props.rewrittenPlan, (val) => {
@@ -192,8 +255,33 @@ watch(() => props.visible, (v) => {
     editedPlan.value = props.rewrittenPlan;
     feedbackText.value = '';
     feedbackItems.value = [];
+    showRejectConfirm.value = false;
+    // Initialize draft collapse state: first expanded, rest collapsed
+    collapsedPanels.value = props.draftArtifacts.map((_, i) => i === 0);
+    editingDraft.value = props.draftArtifacts.map(() => false);
+    editedDraftContent.value = props.draftArtifacts.map(a => a.content);
   }
 });
+
+function toggleArtifact(idx: number) {
+  collapsedPanels.value[idx] = !collapsedPanels.value[idx];
+}
+
+function startDraftEdit(idx: number, content: string) {
+  if (editedDraftContent.value[idx] === undefined) {
+    editedDraftContent.value[idx] = content;
+  }
+  editingDraft.value[idx] = true;
+}
+
+function cancelDraftEdit(idx: number) {
+  editingDraft.value[idx] = false;
+  editedDraftContent.value[idx] = props.draftArtifacts[idx]?.content || '';
+}
+
+function saveDraftEdit(idx: number) {
+  editingDraft.value[idx] = false;
+}
 
 function severityClass(severity: string): string {
   switch (severity.toUpperCase()) {
@@ -203,10 +291,6 @@ function severityClass(severity: string): string {
     case 'INFO': return 'severity-info';
     default: return 'severity-info';
   }
-}
-
-function severityIcon(_severity: string): string {
-  return '';
 }
 
 function startEdit() {
@@ -225,7 +309,17 @@ function addFeedback() {
 }
 
 function emitApprove() {
-  emit('approve', plan.value);
+  // In draft mode, pass edited artifacts as the plan content
+  if (props.draftMode) {
+    const editedArtifacts = props.draftArtifacts.map((a, i) => ({
+      type: a.type,
+      name: a.name,
+      content: editingDraft.value[i] ? editedDraftContent.value[i] : a.content,
+    }));
+    emit('approve', JSON.stringify(editedArtifacts));
+  } else {
+    emit('approve', plan.value);
+  }
 }
 
 function emitSuggest() {
@@ -665,5 +759,113 @@ function handleReject() {
   border-radius: var(--radius-md);
   cursor: pointer;
   font-size: var(--text-xs);
+}
+
+/* Draft Artifact Cards */
+.draft-artifact-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.draft-artifact-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+
+.draft-artifact-header:hover {
+  background: var(--bg-hover);
+}
+
+.draft-chevron {
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.draft-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.draft-artifact-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.draft-type-spec {
+  background: color-mix(in srgb, #6366f1 20%, transparent);
+  color: #a5b4fc;
+  border: 1px solid color-mix(in srgb, #6366f1 30%, transparent);
+}
+
+.draft-type-plan {
+  background: color-mix(in srgb, #f59e0b 20%, transparent);
+  color: #fcd34d;
+  border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent);
+}
+
+.draft-type-ui {
+  background: color-mix(in srgb, #ec4899 20%, transparent);
+  color: #f9a8d4;
+  border: 1px solid color-mix(in srgb, #ec4899 30%, transparent);
+}
+
+.draft-type-backend {
+  background: color-mix(in srgb, #3b82f6 20%, transparent);
+  color: #93c5fd;
+  border: 1px solid color-mix(in srgb, #3b82f6 30%, transparent);
+}
+
+.draft-artifact-name {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.draft-artifact-body {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.draft-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--space-2);
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  transition: background var(--transition);
+}
+
+.draft-edit-btn:hover {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.draft-edit-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.draft-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-color);
 }
 </style>
