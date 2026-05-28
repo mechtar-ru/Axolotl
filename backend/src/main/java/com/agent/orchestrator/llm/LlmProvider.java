@@ -15,13 +15,30 @@ public interface LlmProvider {
     String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config);
 
     /**
+     * Отправить запрос к LLM с отслеживанием токенов.
+     * По умолчанию делегирует в chat() без отслеживания.
+     */
+    default String chat(String model, String systemPrompt, String userPrompt,
+                        Map<String, Object> config, LlmUsage usage) {
+        return chat(model, systemPrompt, userPrompt, config);
+    }
+
+    /**
      * Stream tokens from LLM via callback. Returns the full response at the end.
      * Default implementation falls back to non-streaming chat.
      */
     default String streamingChat(String model, String systemPrompt, String userPrompt,
                                   Map<String, Object> config, java.util.function.Consumer<String> onToken) {
-        String response = chat(model, systemPrompt, userPrompt, config);
-        // Simulate streaming by sending the full response as one token
+        return streamingChat(model, systemPrompt, userPrompt, config, onToken, null);
+    }
+
+    /**
+     * Stream tokens with tracking. Default falls back to non-streaming with usage.
+     */
+    default String streamingChat(String model, String systemPrompt, String userPrompt,
+                                  Map<String, Object> config, java.util.function.Consumer<String> onToken,
+                                  LlmUsage usage) {
+        String response = chat(model, systemPrompt, userPrompt, config, usage);
         onToken.accept(response);
         return response;
     }

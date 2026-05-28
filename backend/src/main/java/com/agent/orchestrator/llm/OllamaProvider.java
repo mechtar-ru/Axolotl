@@ -36,6 +36,12 @@ public class OllamaProvider implements LlmProvider {
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+        return chat(model, systemPrompt, userPrompt, config, null);
+    }
+
+    @Override
+    public String chat(String model, String systemPrompt, String userPrompt,
+                       Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
 
         try {
@@ -54,6 +60,11 @@ public class OllamaProvider implements LlmProvider {
 
             ChatResponse response = chatModel.chat(messages);
             String content = response.aiMessage().text();
+            if (usage != null && response.tokenUsage() != null) {
+                usage.setInputTokens(response.tokenUsage().inputTokenCount());
+                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
+                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
+            }
             log.info("Ollama response: {}",
                     content.length() > 100 ? content.substring(0, 100) + "..." : content);
             return content;

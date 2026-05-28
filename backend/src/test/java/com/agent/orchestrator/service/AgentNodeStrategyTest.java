@@ -22,6 +22,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
+import com.agent.orchestrator.llm.LlmUsage;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -94,7 +95,7 @@ class AgentNodeStrategyTest {
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
-        when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
+        when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class), any()))
                 .thenReturn("Test response");
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
@@ -108,7 +109,7 @@ class AgentNodeStrategyTest {
         verify(utilityService).buildContextBlock(anyMap());
         verify(utilityService, times(2)).interpolateVariables(anyString(), eq(schema), anyMap());
         verify(utilityService).extractGeneratedFiles("Test response");
-        verify(llmService).streamingChat(eq("resolved-model"), anyString(), anyString(), isNull(), any(Consumer.class));
+        verify(llmService).streamingChat(eq("resolved-model"), anyString(), anyString(), isNull(), any(Consumer.class), any());
         verify(webSocketHandler, atLeastOnce()).sendProgress(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
 
@@ -119,7 +120,7 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
+        when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class), any()))
                 .thenReturn("Response with files");
         Map<String, Object> extractedFiles = Map.of("file1.txt", 150);
         when(utilityService.extractGeneratedFiles("Response with files")).thenReturn(extractedFiles);
@@ -146,7 +147,7 @@ class AgentNodeStrategyTest {
         when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
         when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull())).thenReturn("Tool response");
+        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn("Tool response");
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
@@ -156,7 +157,7 @@ class AgentNodeStrategyTest {
         verify(utilityService).buildToolDefinitions(anyList());
         verify(utilityService).buildToolInstructions(anyList());
         verify(utilityService).buildMessagesForToolCall(anyList());
-        verify(llmService).chat(anyString(), isNull(), anyString(), isNull());
+        verify(llmService).chat(anyString(), isNull(), anyString(), isNull(), any());
     }
 
     @Test
@@ -183,7 +184,7 @@ class AgentNodeStrategyTest {
                 .thenReturn(List.of());
         when(utilityService.executeToolCall(anyString(), anyMap(), eq(toolNode), anyString(), nullable(String.class), nullable(String.class)))
                 .thenReturn("file1.txt\nfile2.txt");
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull()))
+        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any()))
                 .thenReturn("{\"tool_calls\": [{\"name\": \"bash\", \"arguments\": {\"command\": \"ls\"}}]}")
                 .thenReturn("Final result after tools");
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -262,7 +263,7 @@ class AgentNodeStrategyTest {
         when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
         when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull())).thenReturn("Tool result");
+        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn("Tool result");
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 

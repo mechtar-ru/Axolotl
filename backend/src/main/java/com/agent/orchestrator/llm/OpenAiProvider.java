@@ -52,6 +52,12 @@ public class OpenAiProvider implements LlmProvider {
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+        return chat(model, systemPrompt, userPrompt, config, null);
+    }
+
+    @Override
+    public String chat(String model, String systemPrompt, String userPrompt,
+                       Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             return "OpenAI: API key not configured";
@@ -74,6 +80,11 @@ public class OpenAiProvider implements LlmProvider {
 
             ChatResponse response = chatModel.chat(messages);
             String content = response.aiMessage().text();
+            if (usage != null && response.tokenUsage() != null) {
+                usage.setInputTokens(response.tokenUsage().inputTokenCount());
+                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
+                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
+            }
             int tokens = response.tokenUsage() != null ? response.tokenUsage().totalTokenCount() : 0;
             log.info("OpenAI response ({} tokens): {}", tokens,
                     content.length() > 100 ? content.substring(0, 100) + "..." : content);

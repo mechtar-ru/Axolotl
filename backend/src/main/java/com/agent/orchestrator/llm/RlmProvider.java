@@ -59,6 +59,12 @@ public class RlmProvider implements LlmProvider {
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+        return chat(model, systemPrompt, userPrompt, config, null);
+    }
+
+    @Override
+    public String chat(String model, String systemPrompt, String userPrompt,
+                       Map<String, Object> config, LlmUsage usage) {
         if (!enabled) {
             return "RLM provider not enabled. Set axolotl.llm.rlm.enabled=true";
         }

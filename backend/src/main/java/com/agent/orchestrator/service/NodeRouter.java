@@ -8,6 +8,7 @@ import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.LlmUsage;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import jakarta.annotation.PostConstruct;
@@ -206,11 +207,18 @@ public class NodeRouter {
                 node.setStatus(Node.NodeStatus.COMPLETED);
             }
 
-            // Persist result to Neo4j
+            // Persist result to Neo4j with token/tool call tracking
             if (nodeExecutionId != null) {
                 try {
+                    LlmUsage usage = stateManager.getAndClearTokenUsage(schemaId, node.getId());
+                    long tokensUsed = usage != null ? usage.getTotalTokens() : 0L;
+                    int toolCalls = 0;
+                    if (result != null) {
+                        // Estimate tool calls from the output (parseToolCalls pattern)
+                        toolCalls = estimateToolCalls(result);
+                    }
                     executionRepository.updateNodeExecution(
-                            nodeExecutionId, "completed", result, 0L, 0L, 0, null);
+                            nodeExecutionId, "completed", result, tokensUsed, 0L, toolCalls, null);
                 } catch (Exception e) {
                     log.debug("Не удалось сохранить результат узла в БД: {}", e.getMessage());
                 }
@@ -225,8 +233,10 @@ public class NodeRouter {
             // Persist error to Neo4j
             if (nodeExecutionId != null) {
                 try {
+                    LlmUsage usage = stateManager.getAndClearTokenUsage(schemaId, node.getId());
+                    long tokensUsed = usage != null ? usage.getTotalTokens() : 0L;
                     executionRepository.updateNodeExecution(
-                            nodeExecutionId, "failed", null, 0L, 0L, 0, e.getMessage());
+                            nodeExecutionId, "failed", null, tokensUsed, 0L, 0, e.getMessage());
                 } catch (Exception ex) {
                     log.debug("Не удалось сохранить ошибку узла в БД: {}", ex.getMessage());
                 }
@@ -235,6 +245,31 @@ public class NodeRouter {
     }
 
     // ─── Inline handlers (simple enough to keep here) ───
+
+    /**
+     * Estimate tool call count from agent result text.
+     * Counts occurrences of "tool_calls" JSON keys or named tool invocations.
+     */
+    private int estimateToolCalls(String result) {
+        if (result == null || result.isBlank()) return 0;
+        int count = 0;
+        // Count "tool_calls" keys in LLM response
+        int idx = 0;
+        while ((idx = result.indexOf("\"tool_calls\"", idx)) != -1) {
+            count++;
+            idx += 12;
+        }
+        // Also count named tool calls like "file_write", "bash", etc.
+        String[] toolNames = {"file_write", "bash", "file_read", "grep", "glob", "web_fetch", "read", "write", "directory_read"};
+        for (String name : toolNames) {
+            int nameIdx = 0;
+            while ((nameIdx = result.indexOf("\"" + name + "\"", nameIdx)) != -1) {
+                count++;
+                nameIdx += name.length() + 2;
+            }
+        }
+        return count;
+    }
 
     private String handleConditionNode(Node node, String schemaId) {
         String conditionExpr = node.getData() != null && node.getData().getCondition() != null

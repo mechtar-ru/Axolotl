@@ -79,6 +79,12 @@ public class CustomLlmProvider implements LlmProvider {
 
     @Override
     public String chat(String modelHint, String systemPrompt, String userPrompt, Map<String, Object> config) {
+        return chat(modelHint, systemPrompt, userPrompt, config, null);
+    }
+
+    @Override
+    public String chat(String modelHint, String systemPrompt, String userPrompt,
+                       Map<String, Object> config, LlmUsage usage) {
         List<CustomLlmEndpoint> endpoints = endpointRepository.findEnabled();
         if (endpoints.isEmpty()) {
             return "Error: No custom LLM endpoints configured";
@@ -90,7 +96,7 @@ public class CustomLlmProvider implements LlmProvider {
 
         // Use LangChain4j for Bearer auth (most common), raw HTTP for api-key auth
         if (!"api-key".equals(endpoint.getAuthType())) {
-            return chatWithLangChain4j(endpoint, systemPrompt, userPrompt);
+            return chatWithLangChain4j(endpoint, systemPrompt, userPrompt, usage);
         } else {
             return sendRequest(endpoint, systemPrompt, userPrompt);
         }
@@ -118,6 +124,11 @@ public class CustomLlmProvider implements LlmProvider {
     }
 
     private String chatWithLangChain4j(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt) {
+        return chatWithLangChain4j(endpoint, systemPrompt, userPrompt, null);
+    }
+
+    private String chatWithLangChain4j(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt,
+                                        LlmUsage usage) {
         try {
             String effectiveKey = endpoint.getApiKey() != null ? endpoint.getApiKey() : "";
             ChatLanguageModel chatModel = OpenAiChatModel.builder()
@@ -135,6 +146,11 @@ public class CustomLlmProvider implements LlmProvider {
             messages.add(new UserMessage(userPrompt));
 
             ChatResponse response = chatModel.chat(messages);
+            if (usage != null && response.tokenUsage() != null) {
+                usage.setInputTokens(response.tokenUsage().inputTokenCount());
+                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
+                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
+            }
             return response.aiMessage().text();
         } catch (Exception e) {
             log.error("Custom LLM LangChain4j chat error", e);

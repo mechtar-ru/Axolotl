@@ -2,6 +2,7 @@ package com.agent.orchestrator.service;
 
 import org.springframework.stereotype.Component;
 
+import com.agent.orchestrator.llm.LlmUsage;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -34,6 +35,25 @@ public class ExecutionStateManager {
     private final Map<String, String> schemaRunIds = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> fileChanges = new ConcurrentHashMap<>();
     private final Map<String, List<PendingDiff>> pendingDiffRegistry = new ConcurrentHashMap<>();
+    private final Map<String, LlmUsage> nodeTokenUsage = new ConcurrentHashMap<>();
+
+    /**
+     * Record per-node token usage.
+     * Key format: schemaId + ":" + nodeId
+     */
+    public void recordTokenUsage(String key, LlmUsage usage) {
+        nodeTokenUsage.merge(key, usage, (existing, incoming) -> {
+            existing.add(incoming);
+            return existing;
+        });
+    }
+
+    /**
+     * Read and clear per-node token usage.
+     */
+    public LlmUsage getAndClearTokenUsage(String schemaId, String nodeId) {
+        return nodeTokenUsage.remove(schemaId + ":" + nodeId);
+    }
 
     public Map<String, Map<String, String>> getNodeResults() {
         return nodeResults;

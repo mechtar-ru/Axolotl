@@ -52,6 +52,12 @@ public class OpencodeZenProvider implements LlmProvider {
 
     @Override
     public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+        return chat(model, systemPrompt, userPrompt, config, null);
+    }
+
+    @Override
+    public String chat(String model, String systemPrompt, String userPrompt,
+                       Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             return "Zen: API key not configured";
@@ -61,6 +67,11 @@ public class OpencodeZenProvider implements LlmProvider {
             ChatLanguageModel chatModel = createChatModel(effectiveModel);
             List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
             ChatResponse response = chatModel.chat(messages);
+            if (usage != null && response.tokenUsage() != null) {
+                usage.setInputTokens(response.tokenUsage().inputTokenCount());
+                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
+                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
+            }
             return response.aiMessage().text();
         } catch (Exception e) {
             log.warn("Zen chat error, retrying once: {}", e.getMessage());
@@ -68,6 +79,11 @@ public class OpencodeZenProvider implements LlmProvider {
                 ChatLanguageModel chatModel = createChatModel(effectiveModel);
                 List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
                 ChatResponse response = chatModel.chat(messages);
+                if (usage != null && response.tokenUsage() != null) {
+                    usage.setInputTokens(response.tokenUsage().inputTokenCount());
+                    usage.setOutputTokens(response.tokenUsage().outputTokenCount());
+                    usage.setTotalTokens(response.tokenUsage().totalTokenCount());
+                }
                 return response.aiMessage().text();
             } catch (Exception e2) {
                 String error = "Zen error: " + e2.getMessage();

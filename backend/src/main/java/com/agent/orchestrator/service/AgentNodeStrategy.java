@@ -2,6 +2,7 @@ package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.LlmUsage;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.Node;
@@ -112,12 +113,17 @@ public class AgentNodeStrategy {
             }
         }
 
+        LlmUsage usage = new LlmUsage();
         String result = llmService.streamingChat(model, systemPrompt, prompt, null,
                 token -> {
                     if (webSocketHandler != null) {
                         webSocketHandler.sendToken(schemaId, node.getId(), token);
                     }
-                });
+                }, usage);
+
+        if (usage.getTotalTokens() > 0) {
+            stateManager.recordTokenUsage(schemaId + ":" + node.getId(), usage);
+        }
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 70, "Ответ получен");
@@ -202,6 +208,7 @@ public class AgentNodeStrategy {
         int iterationCount = 0;
         long totalStartTime = System.currentTimeMillis();
         String lastResponse = null;
+        LlmUsage totalUsage = new LlmUsage();
 
         while (toolCallCount < maxToolCalls) {
             long iterationStartTime = System.currentTimeMillis();
@@ -213,8 +220,10 @@ public class AgentNodeStrategy {
                 webSocketHandler.sendLog(schemaId, "info", "Итерация " + iterationCount, node.getId());
             }
 
+            LlmUsage iterUsage = new LlmUsage();
             lastResponse = llmService.chat(model, null,
-                    utilityService.buildMessagesForToolCall(messages), null);
+                    utilityService.buildMessagesForToolCall(messages), null, iterUsage);
+            totalUsage.add(iterUsage);
             messages.add(new Node.Message("assistant", lastResponse));
             fullResponse.append(lastResponse).append("\n");
 
@@ -264,6 +273,9 @@ public class AgentNodeStrategy {
         }
 
         long totalDuration = System.currentTimeMillis() - totalStartTime;
+        if (totalUsage.getTotalTokens() > 0) {
+            stateManager.recordTokenUsage(schemaId + ":" + node.getId(), totalUsage);
+        }
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 90, "Завершение");
             webSocketHandler.sendLog(schemaId, "info", "Выполнено инструментов: " + toolCallCount, node.getId());
