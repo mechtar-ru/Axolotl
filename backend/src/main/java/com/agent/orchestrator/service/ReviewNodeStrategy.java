@@ -3,6 +3,7 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -76,6 +77,27 @@ public class ReviewNodeStrategy {
                 ? (String) config.get("mode") : "manual";
         int maxAutoIterations = config.get("maxAutoIterations") instanceof Number
                 ? ((Number) config.get("maxAutoIterations")).intValue() : 3;
+
+        // Check if schema has autoApproveDrafts enabled — skip review
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        if (schema != null && schema.isAutoApproveDrafts()) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50,
+                        "Auto-approve: drafts complete, skipping review");
+                webSocketHandler.sendLog(schemaId, "info",
+                        "autoApproveDrafts=true — review auto-approved", node.getId());
+            }
+            Map<String, Object> passResult = new HashMap<>();
+            passResult.put("status", "PASS");
+            passResult.put("findings", JSON_MAPPER.createArrayNode());
+            passResult.put("summary", "Drafts auto-approved (autoApproveDrafts=true)");
+            passResult.put("plan", inputContent);
+            passResult.put("originalInput", inputContent);
+            passResult.put("mode", mode);
+            passResult.put("finalResult", buildResultJson("PASS", "[]",
+                    "Drafts auto-approved", inputContent, null, null));
+            return serializeResult(passResult);
+        }
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10,

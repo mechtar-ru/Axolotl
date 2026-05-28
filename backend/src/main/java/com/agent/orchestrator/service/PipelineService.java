@@ -1044,7 +1044,7 @@ public class PipelineService {
         Pipeline pipeline = new Pipeline();
         pipeline.setId("default-pipeline");
         pipeline.setName("Default Pipeline");
-        pipeline.setDescription("Default 5-stage pipeline for " + appType);
+        pipeline.setDescription("Default 9-stage pipeline with draft phases for " + appType);
         pipeline.setParallelStrategy("sequential");
         pipeline.setTddEnabled(false);
 
@@ -1059,13 +1059,66 @@ public class PipelineService {
         source.setPositionY(200);
         stages.add(source);
 
+        // ── Draft stages (spec → plan → ui → backend) ──
+        Stage draftSpec = new Stage();
+        draftSpec.setId("draft-spec");
+        draftSpec.setName("Draft Spec");
+        draftSpec.setNodeType("draft");
+        draftSpec.setDependencies(List.of("receive-1"));
+        draftSpec.setSystemPrompt("Generate a specification document for: " + description);
+        draftSpec.setPositionX(350);
+        draftSpec.setPositionY(200);
+        Map<String, Object> draftSpecConfig = new HashMap<>();
+        draftSpecConfig.put("draftType", "spec");
+        draftSpec.setConfig(draftSpecConfig);
+        stages.add(draftSpec);
+
+        Stage draftPlan = new Stage();
+        draftPlan.setId("draft-plan");
+        draftPlan.setName("Draft Plan");
+        draftPlan.setNodeType("draft");
+        draftPlan.setDependencies(List.of("draft-spec"));
+        draftPlan.setSystemPrompt("Generate an implementation plan from the spec for: " + description);
+        draftPlan.setPositionX(550);
+        draftPlan.setPositionY(200);
+        Map<String, Object> draftPlanConfig = new HashMap<>();
+        draftPlanConfig.put("draftType", "plan");
+        draftPlan.setConfig(draftPlanConfig);
+        stages.add(draftPlan);
+
+        Stage draftUi = new Stage();
+        draftUi.setId("draft-ui");
+        draftUi.setName("Draft UI");
+        draftUi.setNodeType("draft");
+        draftUi.setDependencies(List.of("draft-plan"));
+        draftUi.setSystemPrompt("Generate an OpenUI YAML spec from the plan for: " + description);
+        draftUi.setPositionX(750);
+        draftUi.setPositionY(200);
+        Map<String, Object> draftUiConfig = new HashMap<>();
+        draftUiConfig.put("draftType", "ui");
+        draftUi.setConfig(draftUiConfig);
+        stages.add(draftUi);
+
+        Stage draftBackend = new Stage();
+        draftBackend.setId("draft-backend");
+        draftBackend.setName("Draft Backend");
+        draftBackend.setNodeType("draft");
+        draftBackend.setDependencies(List.of("draft-ui"));
+        draftBackend.setSystemPrompt("Generate backend module architecture from the UI spec for: " + description);
+        draftBackend.setPositionX(950);
+        draftBackend.setPositionY(200);
+        Map<String, Object> draftBackendConfig = new HashMap<>();
+        draftBackendConfig.put("draftType", "backend");
+        draftBackend.setConfig(draftBackendConfig);
+        stages.add(draftBackend);
+
         Stage review = new Stage();
         review.setId("review-1");
         review.setName("Review Plan");
         review.setNodeType("review");
-        review.setDependencies(List.of("receive-1"));
+        review.setDependencies(List.of("draft-backend"));
         review.setSystemPrompt("Review the plan for: " + description);
-        review.setPositionX(350);
+        review.setPositionX(1150);
         review.setPositionY(200);
         stages.add(review);
 
@@ -1075,7 +1128,7 @@ public class PipelineService {
         agent.setNodeType("agent");
         agent.setDependencies(List.of("review-1"));
         agent.setSystemPrompt("Execute the plan for: " + description);
-        agent.setPositionX(650);
+        agent.setPositionX(1450);
         agent.setPositionY(200);
         stages.add(agent);
 
@@ -1085,7 +1138,7 @@ public class PipelineService {
         verifier.setNodeType("verifier");
         verifier.setDependencies(List.of("think-1"));
         verifier.setSystemPrompt("Verify the results for: " + description);
-        verifier.setPositionX(950);
+        verifier.setPositionX(1750);
         verifier.setPositionY(200);
         stages.add(verifier);
 
@@ -1095,7 +1148,7 @@ public class PipelineService {
         output.setNodeType("output");
         output.setDependencies(List.of("verify-1"));
         output.setSystemPrompt("Output the results for: " + description);
-        output.setPositionX(1250);
+        output.setPositionX(2050);
         output.setPositionY(200);
         stages.add(output);
 

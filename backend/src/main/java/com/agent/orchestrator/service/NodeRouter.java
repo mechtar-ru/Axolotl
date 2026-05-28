@@ -178,6 +178,10 @@ public class NodeRouter {
                     result = nodeExecutor.executeSchemaBuilderNode(node, schemaId, resolvedModel);
                     break;
 
+                case "draft":
+                    result = nodeExecutor.executeDraftNode(node, schemaId, resolvedModel);
+                    break;
+
                 default:
                     result = "Неизвестный тип узла: " + nodeType;
                     log.warn("Unknown node type: {}", nodeType);

@@ -1,7 +1,7 @@
 export interface Stage {
   id: string
   name: string
-  nodeType: 'source' | 'review' | 'agent' | 'verifier' | 'output' | 'transform' | 'custom'
+  nodeType: 'source' | 'review' | 'agent' | 'verifier' | 'output' | 'transform' | 'custom' | 'draft'
   subagentSchemaId?: string
   model?: string
   systemPrompt?: string

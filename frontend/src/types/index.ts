@@ -62,7 +62,7 @@ export interface DesignWorkspaceFile {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition' | 'transform' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'transform' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder' | 'draft';
   parentId?: string;
   collapsed?: boolean;
   name: string;
@@ -107,6 +107,7 @@ export interface WorkflowSchema {
   targetPath?: string;
   targetPathConflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';
   pipeline?: import('./pipeline').Pipeline;
+  autoApproveDrafts?: boolean;
   projectType?: 'FLUTTER' | 'PYTHON' | 'WEB' | 'GO' | 'RUST';
 }
 

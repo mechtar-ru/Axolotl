@@ -43,7 +43,8 @@ const dirInputRef = ref<HTMLInputElement>()
 const typeSections = computed(() => {
   const t = blockType.value
   return {
-    model: ['agent', 'review', 'verifier'].includes(t),
+    model: ['agent', 'review', 'verifier', 'draft'].includes(t),
+    draft: t === 'draft',
     prompt: t === 'agent',
     memory: t === 'memory',
     action: t === 'output',
@@ -69,6 +70,9 @@ const reviewMode = ref('manual')
 const reviewMaxIterations = ref(3)
 const reviewMaxAutoIterations = ref(3)
 const reviewGeneratePlan = ref(true)
+
+// Draft type selector
+const draftType = ref('spec')
 
 const providerOptions = ref<{ value: string; label: string; group: string }[]>([])
 
@@ -192,6 +196,8 @@ watch(() => props.blockId, () => {
   rewriteOnFail.value = (config.rewriteOnFail as boolean) ?? true
   maxRewriteRetries.value = (config.maxRewriteRetries as number) ?? 3
   stubDetection.value = (config.stubDetection as boolean) ?? true
+  // Draft type
+  draftType.value = (config.draftType as string) || 'spec'
   // Review fields
   reviewPremortem.value = checks?.premortem ?? true
   reviewPrism.value = checks?.prism ?? false
@@ -279,6 +285,12 @@ function saveConfig() {
     Object.assign(node.value.data.config || {}, sourceConfigUpdates)
   }
 
+  // Draft-specific config
+  if (typeSections.value.draft) {
+    if (!node.value.data.config) node.value.data.config = {}
+    ;(node.value.data.config as Record<string, any>).draftType = draftType.value
+  }
+
   // Verifier-specific config
   if (typeSections.value.verifier) {
     const checks = {
@@ -350,6 +362,12 @@ function saveConfig() {
           },
           rewriteOnFail: rewriteOnFail.value,
           maxRewriteRetries: maxRewriteRetries.value,
+        }
+      }
+      if (typeSections.value.draft) {
+        baseData.config = {
+          ...baseData.config,
+          draftType: draftType.value,
         }
       }
       if (typeSections.value.review) {
@@ -530,6 +548,17 @@ function handleKeydown(e: KeyboardEvent) {
               <option v-for="m in models" :key="m.value" :value="m.value">{{ m.label }}</option>
             </optgroup>
           </template>
+        </select>
+      </div>
+
+      <!-- Draft Type (Draft blocks) -->
+      <div v-if="typeSections.draft" class="config-section">
+        <label class="config-label">Draft Type</label>
+        <select v-model="draftType" class="config-select" @change="saveConfig">
+          <option value="spec">Spec — 1-page functional spec</option>
+          <option value="plan">Plan — Implementation breakdown</option>
+          <option value="ui">UI — OpenUISpec component design</option>
+          <option value="backend">Backend — Modules, API, DB schema</option>
         </select>
       </div>
 

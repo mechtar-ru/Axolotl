@@ -42,6 +42,7 @@ public class NodeExecutor {
     private final SchemaBuilderNodeStrategy schemaBuilderStrategy;
     private final VerifierNodeStrategy verifierStrategy;
     private final ReviewNodeStrategy reviewStrategy;
+    private final DraftNodeStrategy draftStrategy;
 
     @Value("${axolotl.sandbox.allowedWriteDirs:.}")
     private java.util.List<String> allowedWriteDirs;
@@ -128,7 +129,8 @@ public class NodeExecutor {
                         AgentNodeStrategy agentStrategy,
                         VerifierNodeStrategy verifierStrategy,
                         SchemaBuilderNodeStrategy schemaBuilderStrategy,
-                        ReviewNodeStrategy reviewStrategy) {
+                        ReviewNodeStrategy reviewStrategy,
+                        DraftNodeStrategy draftStrategy) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -145,6 +147,7 @@ public class NodeExecutor {
         this.verifierStrategy = verifierStrategy;
         this.schemaBuilderStrategy = schemaBuilderStrategy;
         this.reviewStrategy = reviewStrategy;
+        this.draftStrategy = draftStrategy;
     }
 
     @PostConstruct
@@ -235,6 +238,12 @@ public class NodeExecutor {
 
     public String executeReviewNode(Node node, String schemaId, String resolvedModel) {
         return reviewStrategy.executeReviewNode(node, schemaId, resolvedModel);
+    }
+
+    // ────────────────────────── draft nodes (delegated to DraftNodeStrategy) ──────────────────────────
+
+    public String executeDraftNode(Node node, String schemaId, String resolvedModel) {
+        return draftStrategy.executeDraftNode(node, schemaId, resolvedModel);
     }
 
     // ────────────────────────── Test accessors (package-private, delegate to ExecutionUtilityService) ──────────────────────────

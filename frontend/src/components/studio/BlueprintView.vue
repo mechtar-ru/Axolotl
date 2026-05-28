@@ -19,6 +19,7 @@ import RememberBlock from '@/components/blocks/RememberBlock.vue'
 import ActBlock from '@/components/blocks/ActBlock.vue'
 import VerifyBlock from '@/components/blocks/VerifyBlock.vue'
 import ReviewBlock from '@/components/blocks/ReviewBlock.vue'
+import DraftBlock from '@/components/blocks/DraftBlock.vue'
 
 const props = defineProps<{
   appId: string
@@ -34,6 +35,7 @@ const nodeTypes = {
   agent: markRaw(ThinkBlock),
   verifier: markRaw(VerifyBlock),
   review: markRaw(ReviewBlock),
+  draft: markRaw(DraftBlock),
   memory: markRaw(RememberBlock),
   output: markRaw(ActBlock),
 }

@@ -16,6 +16,12 @@ const blockTypes = ref<BlockType[]>([
     icon: 'M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1'
   },
   {
+    type: 'draft',
+    label: 'Draft',
+    color: '#14b8a6',
+    icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z'
+  },
+  {
     type: 'review',
     label: 'Review',
     color: '#f59e0b',

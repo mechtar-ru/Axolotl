@@ -69,6 +69,9 @@ const schemaDescription = computed(() => currentSchema.value?.description || '')
 const targetPath = computed(() => currentSchema.value?.targetPath || '')
 const defaultModel = computed(() => currentSchema.value?.defaultModel || '')
 const schemaProjectType = computed(() => currentSchema.value?.projectType || 'FLUTTER')
+const hasReviewNode = computed(() =>
+  (currentSchema.value?.nodes || []).some(n => n.type === 'review')
+)
 
 // ─── Actions ─────────────────────────────────────────────────────
 function updateName(value: string) {
@@ -94,6 +97,14 @@ function updateProjectType(value: string) {
   schemaStore.markDirty({
     ...currentSchema.value,
     projectType: value as WorkflowSchema['projectType'],
+  })
+}
+
+function updateAutoApproveDrafts(value: boolean) {
+  if (!currentSchema.value) return
+  schemaStore.markDirty({
+    ...currentSchema.value,
+    autoApproveDrafts: value,
   })
 }
 
@@ -235,6 +246,19 @@ function onFolderPicked(event: Event) {
         </select>
       </div>
 
+      <!-- Auto-approve drafts (visible when review node exists) -->
+      <div v-if="hasReviewNode" class="config-section">
+        <label class="config-checkbox">
+          <input
+            type="checkbox"
+            :checked="currentSchema?.autoApproveDrafts ?? false"
+            @change="updateAutoApproveDrafts(($event.target as HTMLInputElement).checked)"
+          />
+          Auto-approve drafts
+          <span class="config-hint">Skip human approval of draft artifacts</span>
+        </label>
+      </div>
+
       <!-- Quick Actions -->
       <div class="config-section quick-actions">
         <label class="config-label">Quick Actions</label>
@@ -371,6 +395,32 @@ function onFolderPicked(event: Event) {
 .icon {
   flex-shrink: 0;
   color: var(--text-muted);
+}
+
+.config-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  flex-wrap: wrap;
+}
+
+.config-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.config-hint {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+  width: 100%;
+  margin-left: calc(16px + var(--space-2));
 }
 
 .clickable-icon {

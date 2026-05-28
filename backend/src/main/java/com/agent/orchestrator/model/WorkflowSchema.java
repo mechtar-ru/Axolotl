@@ -28,6 +28,10 @@ public class WorkflowSchema {
     private String planningContext;
     private Pipeline pipeline;
     private String projectType; // "FLUTTER" | "PYTHON" | "WEB" | "GO" | "RUST", null => FLUTTER
+    private boolean autoApproveDrafts;
+
+    public boolean isAutoApproveDrafts() { return autoApproveDrafts; }
+    public void setAutoApproveDrafts(boolean autoApproveDrafts) { this.autoApproveDrafts = autoApproveDrafts; }
 
     public Pipeline getPipeline() { return pipeline; }
     public void setPipeline(Pipeline pipeline) { this.pipeline = pipeline; }
