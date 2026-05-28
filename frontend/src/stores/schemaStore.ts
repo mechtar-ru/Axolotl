@@ -105,7 +105,9 @@ export const useSchemaStore = defineStore('schema', () => {
     try {
       defaultModel = await settingsApi.getUserDefaultModel();
       if (!defaultModel) defaultModel = undefined;
-    } catch {}
+    } catch {
+      console.warn('[schemaStore] Failed to fetch user default model, continuing without it');
+    }
 
     const newSchema = {
       id: `new-${Date.now()}`,
@@ -305,7 +307,9 @@ export const useSchemaStore = defineStore('schema', () => {
           schemas.value[idx] = resp.data
         }
       }
-    } catch {}
+    } catch {
+      console.warn('[schemaStore] Failed to refresh schema ' + schemaId);
+    }
   }
 
   return {

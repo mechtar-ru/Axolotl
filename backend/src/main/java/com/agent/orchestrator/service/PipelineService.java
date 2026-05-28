@@ -285,26 +285,29 @@ public class PipelineService {
                         Map.of("stageIds", stageIds, "status", "running"));
             }
 
-            boolean paused = false;
-            boolean hasFailure = false;
-            int stageIndex = completedStages;
-            for (Stage stage : level) {
-                if (cancelFlag.get() || paused || hasFailure) break;
+            // Assign sequential indices before launching parallel execution
+            // Run stages within a level concurrently
+            java.util.concurrent.CompletableFuture<Void>[] futures = new java.util.concurrent.CompletableFuture[level.size()];
+            boolean[] levelPaused = { false };
+            boolean[] levelFailed = { false };
 
-                StageRunResult result = executeSingleStage(stage, schema, runId, nodeMap,
-                        cancelFlag, schema.getId(), stageIndex, false);
-                stageIndex++;
-                if (result == StageRunResult.PAUSED) {
-                    paused = true;
-                    break;
-                } else if (result == StageRunResult.FAILED) {
-                    hasFailure = true;
-                    // Continue to next stage in the level
-                }
-                // COMPLETED: continue to next
+            for (int si = 0; si < level.size(); si++) {
+                Stage stage = level.get(si);
+                int stageIdx = completedStages + si;
+                futures[si] = java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    if (cancelFlag.get() || levelPaused[0] || levelFailed[0]) return;
+                    StageRunResult result = executeSingleStage(stage, schema, runId, nodeMap,
+                            cancelFlag, schema.getId(), stageIdx, false);
+                    if (result == StageRunResult.PAUSED) {
+                        synchronized (levelPaused) { levelPaused[0] = true; }
+                    } else if (result == StageRunResult.FAILED) {
+                        synchronized (levelFailed) { levelFailed[0] = true; }
+                    }
+                });
             }
+            java.util.concurrent.CompletableFuture.allOf(futures).join();
 
-            if (paused) break;
+            if (levelPaused[0]) break;
 
             completedStages += level.size();
             int progress = (int) ((double) completedStages / totalStages * 100);
@@ -333,6 +336,7 @@ public class PipelineService {
 
         if (!isPaused) {
             executionRepository.updateRunCompleted(runId, cancelFlag.get() ? "cancelled" : "completed", 0, 0.0);
+            stateManager.removeSchema(schema.getId());
         }
     }
 

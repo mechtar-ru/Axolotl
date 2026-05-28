@@ -141,4 +141,18 @@ public class ExecutionStateManager {
     public void clearPendingDiffs(String schemaId, String nodeId) {
         pendingDiffRegistry.remove(schemaId + ":" + nodeId);
     }
+
+    /**
+     * Remove all state for a schema — prevents unbounded memory growth.
+     */
+    public void removeSchema(String schemaId) {
+        nodeResults.remove(schemaId);
+        conditionResults.keySet().removeIf(k -> k.startsWith(schemaId));
+        outputFileRegistry.keySet().removeIf(k -> k.startsWith(schemaId));
+        generatedFilesRegistry.keySet().removeIf(k -> k.startsWith(schemaId));
+        schemaRunIds.remove(schemaId);
+        fileChanges.keySet().removeIf(k -> k.startsWith(schemaId + ":"));
+        pendingDiffRegistry.keySet().removeIf(k -> k.startsWith(schemaId + ":"));
+        nodeTokenUsage.keySet().removeIf(k -> k.startsWith(schemaId + ":"));
+    }
 }

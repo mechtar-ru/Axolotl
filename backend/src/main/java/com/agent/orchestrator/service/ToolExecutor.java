@@ -271,6 +271,24 @@ public class ToolExecutor {
             return interceptRmCommand(command, cwd);
         }
 
+        // Block command substitution — unambiguous arbitrary code execution vector
+        if (command.contains("$(") || command.contains("`")) {
+            return ToolResult.error("Command blocked: substitution ($(..) or backticks) not allowed");
+        }
+
+        // Validate each pipe segment's command is in the allowed set
+        if (command.contains("|")) {
+            String[] pipeline = command.split("\\|");
+            for (String segment : pipeline) {
+                segment = segment.trim();
+                if (segment.isEmpty()) continue;
+                String segCmd = segment.split("\\s+")[0];
+                if (!DEFAULT_ALLOWED_COMMANDS.contains(segCmd)) {
+                    return ToolResult.error("Pipe chain blocked: '" + segCmd + "' not in allowed set: " + DEFAULT_ALLOWED_COMMANDS);
+                }
+            }
+        }
+
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
             if (cwd != null) pb.directory(new File(cwd));
@@ -525,11 +543,11 @@ public class ToolExecutor {
         }
 
         if (schemaTargetPath != null && !schemaTargetPath.isBlank()) {
-            String normalizedRequested = requestedPath.replace("\\", "/");
-            String normalizedTarget = schemaTargetPath.replace("\\", "/");
+            String normalizedRequested = Path.of(requestedPath).normalize().toAbsolutePath().toString().replace("\\", "/");
+            String normalizedTarget = Path.of(schemaTargetPath).normalize().toAbsolutePath().toString().replace("\\", "/");
             if (!normalizedTarget.endsWith("/")) normalizedTarget += "/";
             if (normalizedRequested.startsWith(normalizedTarget)) {
-                return requestedPath;
+                return normalizedRequested;
             }
             throw new SecurityException("File write blocked: path " + requestedPath
                     + " is outside schema targetPath: " + schemaTargetPath);
