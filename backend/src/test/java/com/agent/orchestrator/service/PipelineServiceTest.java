@@ -49,13 +49,13 @@ class PipelineServiceTest {
     // ────────── createDefaultPipeline ──────────
 
     @Test
-    void createDefaultPipeline_createsFiveStages() {
+    void createDefaultPipeline_createsNineStages() {
         Pipeline pipeline = PipelineService.createDefaultPipeline("sokoban", "A Sokoban game");
 
         assertNotNull(pipeline);
         assertEquals("default-pipeline", pipeline.getId());
         assertNotNull(pipeline.getStages());
-        assertEquals(5, pipeline.getStages().size());
+        assertEquals(9, pipeline.getStages().size());
         assertEquals("sequential", pipeline.getParallelStrategy());
     }
 
@@ -65,10 +65,14 @@ class PipelineServiceTest {
 
         List<Stage> stages = pipeline.getStages();
         assertEquals("source", stages.get(0).getNodeType());
-        assertEquals("review", stages.get(1).getNodeType());
-        assertEquals("agent", stages.get(2).getNodeType());
-        assertEquals("verifier", stages.get(3).getNodeType());
-        assertEquals("output", stages.get(4).getNodeType());
+        assertEquals("draft", stages.get(1).getNodeType());
+        assertEquals("draft", stages.get(2).getNodeType());
+        assertEquals("draft", stages.get(3).getNodeType());
+        assertEquals("draft", stages.get(4).getNodeType());
+        assertEquals("review", stages.get(5).getNodeType());
+        assertEquals("agent", stages.get(6).getNodeType());
+        assertEquals("verifier", stages.get(7).getNodeType());
+        assertEquals("output", stages.get(8).getNodeType());
     }
 
     @Test
@@ -77,10 +81,14 @@ class PipelineServiceTest {
 
         List<Stage> stages = pipeline.getStages();
         assertNull(stages.get(0).getDependencies()); // source — no deps
-        assertEquals(List.of("receive-1"), stages.get(1).getDependencies()); // review ← source
-        assertEquals(List.of("review-1"), stages.get(2).getDependencies());  // agent ← review
-        assertEquals(List.of("think-1"), stages.get(3).getDependencies());   // verify ← agent
-        assertEquals(List.of("verify-1"), stages.get(4).getDependencies());  // output ← verify
+        assertEquals(List.of("receive-1"), stages.get(1).getDependencies()); // draft-spec ← source
+        assertEquals(List.of("draft-spec"), stages.get(2).getDependencies()); // draft-plan ← draft-spec
+        assertEquals(List.of("draft-plan"), stages.get(3).getDependencies()); // draft-ui ← draft-plan
+        assertEquals(List.of("draft-ui"), stages.get(4).getDependencies()); // draft-backend ← draft-ui
+        assertEquals(List.of("draft-backend"), stages.get(5).getDependencies()); // review ← draft-backend
+        assertEquals(List.of("review-1"), stages.get(6).getDependencies());  // agent ← review
+        assertEquals(List.of("think-1"), stages.get(7).getDependencies());   // verify ← agent
+        assertEquals(List.of("verify-1"), stages.get(8).getDependencies());  // output ← verify
     }
 
     @Test
@@ -228,7 +236,7 @@ class PipelineServiceTest {
         assertEquals("running", run.getStatus());
         assertEquals("PIPELINE", run.getMode());
         assertNotNull(run.getStageStatus());
-        assertEquals(5, run.getStageStatus().size());
+        assertEquals(9, run.getStageStatus().size());
 
         for (Map.Entry<String, String> e : run.getStageStatus().entrySet()) {
             assertEquals("pending", e.getValue(), "Stage " + e.getKey() + " should start as pending");
@@ -262,21 +270,22 @@ class PipelineServiceTest {
     void expandTddStages_noopWhenTddDisabled() {
         Pipeline pipeline = PipelineService.createDefaultPipeline("app", "desc");
         // createDefaultPipeline sets tddEnabled=false, expandTddStages is a no-op
-        assertEquals(5, pipeline.getStages().size());
-        assertEquals("think-1", pipeline.getStages().get(2).getId());
-        assertEquals("verify-1", pipeline.getStages().get(3).getId());
+        assertEquals(9, pipeline.getStages().size());
+        assertEquals("think-1", pipeline.getStages().get(6).getId());
+        assertEquals("verify-1", pipeline.getStages().get(7).getId());
     }
 
     @Test
     void expandTddStages_expandsAgentVerifierPair() {
         Pipeline pipeline = createTddPipeline();
 
-        assertEquals(7, pipeline.getStages().size(),
-                "5 stages + (4 TDD - 2 original) = 7 stages");
+        assertEquals(11, pipeline.getStages().size(),
+                "9 stages + (4 TDD - 2 original) = 11 stages");
 
         // Verify IDs in order
         List<String> ids = pipeline.getStages().stream().map(Stage::getId).toList();
-        assertEquals(List.of("receive-1", "review-1",
+        assertEquals(List.of("receive-1", "draft-spec", "draft-plan", "draft-ui", "draft-backend",
+                "review-1",
                 "test-think-1", "verify-test-think-1",
                 "impl-think-1", "verify-think-1",
                 "act-1"), ids);

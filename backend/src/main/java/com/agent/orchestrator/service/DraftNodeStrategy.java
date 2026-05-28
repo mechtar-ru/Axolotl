@@ -39,6 +39,7 @@ public class DraftNodeStrategy {
     private final Neo4jSchemaRepository schemaRepository;
 
     private static final String AXOLOTL_DIR = ".axolotl";
+    private static final ObjectMapper mapper = new ObjectMapper();
 
     // ── System prompts per draft type ──
 
@@ -152,12 +153,32 @@ public class DraftNodeStrategy {
         // Collect predecessor context as input
         var predResults = utilityService.collectPredecessorResults(
                 schemaRepository.findById(schemaId), node.getId());
-        String input = predResults.values().stream()
-                .findFirst().map(Object::toString).orElse("");
-        if (input.isBlank()) {
-            input = node.getData() != null && node.getData().getSourceData() != null
-                    ? node.getData().getSourceData() : "No input provided";
+        StringBuilder inputBuilder = new StringBuilder();
+        for (Map.Entry<String, Object> entry : predResults.entrySet()) {
+            Object value = entry.getValue();
+            if (value == null) continue;
+            String str = value.toString();
+            // Try to parse as DraftResult — if it has a filePath, read the file content
+            try {
+                DraftResult dr = mapper.readValue(str, DraftResult.class);
+                if (dr.getFilePath() != null && !dr.getFilePath().isBlank()
+                        && Files.exists(Path.of(dr.getFilePath()))) {
+                    String fileContent = Files.readString(Path.of(dr.getFilePath()));
+                    String label = dr.getDraftType() != null
+                            ? dr.getDraftType().toUpperCase() : "PREDECESSOR";
+                    inputBuilder.append("=== ").append(label).append(" DRAFT ===\n")
+                            .append(fileContent).append("\n\n");
+                    continue;
+                }
+            } catch (Exception ignored) {
+                // Not a DraftResult — use raw string
+            }
+            inputBuilder.append(str).append("\n\n");
         }
+        String input = inputBuilder.toString().isBlank()
+                ? (node.getData() != null && node.getData().getSourceData() != null
+                    ? node.getData().getSourceData() : "No input provided")
+                : inputBuilder.toString().trim();
 
         // Resolve model
         String model = resolvedModel;
@@ -200,7 +221,6 @@ public class DraftNodeStrategy {
 
             // Return DraftResult as JSON for downstream node consumption
             DraftResult result = new DraftResult(draftType, artifactPath.toString(), summary);
-            ObjectMapper mapper = new ObjectMapper();
             return mapper.writeValueAsString(result);
 
         } catch (Exception e) {
