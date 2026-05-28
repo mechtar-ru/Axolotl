@@ -209,14 +209,20 @@ provide('executionProgress', executionProgress)
       console.log('🔌 WebSocket reconnected, refreshing schema state for', schemaId)
       // Refresh schema state to recover from stale WS state
       try {
-        await schemaStore.loadSchema(schemaId)
+        const schema = await schemaApi.getSchema(schemaId)
+        if (schema) {
+          schemaStore.updateCurrentSchema(schema)
+        }
         // Re-query execution runs to get current status
         const runs = await schemaApi.getRuns(schemaId)
-        if (runs.length > 0 && (runs[0].status === 'running' || runs[0].status === 'paused')) {
-          setIsExecuting(true)
-        } else if (runs.length > 0 && runs[0].status === 'completed') {
-          setIsExecuting(false)
-          executionError.value = null
+        if (runs.length > 0) {
+          const latestRun = runs[0]!
+          if (latestRun.status === 'running' || latestRun.status === 'paused') {
+            setIsExecuting(true)
+          } else if (latestRun.status === 'completed') {
+            setIsExecuting(false)
+            executionError.value = null
+          }
         }
       } catch (e) {
         console.warn('🔌 Reconnect state recovery failed:', e)

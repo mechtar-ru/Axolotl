@@ -8,6 +8,23 @@
       }
     }
   },
+  "agent": {
+    "explorer": {
+      "model": "opencode/big-pickle"
+    },
+    "oracle": {
+      "model": "opencode/big-pickle"
+    },
+    "librarian": {
+      "model": "opencode/big-pickle"
+    },
+    "designer": {
+      "model": "opencode/big-pickle"
+    },
+    "fixer": {
+      "model": "opencode/big-pickle"
+    }
+  },
   "plugin": [
     "oc-mnemoria"
   ],

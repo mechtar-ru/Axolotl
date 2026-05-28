@@ -188,7 +188,7 @@ describe('DesignWorkspaceUI', () => {
     }
     vi.mocked(schemaApi.getSchema).mockResolvedValue(mockSchema as any)
     vi.mocked(schemaApi.updateSchema).mockResolvedValue(mockSchema as any)
-    vi.mocked(schemaApi.executeSchema).mockResolvedValue(undefined)
+    vi.mocked(schemaApi.executeSchema).mockResolvedValue({ status: 'ok' })
 
     const provides = createProvides()
     const wrapper = mount(DesignWorkspaceUI, {

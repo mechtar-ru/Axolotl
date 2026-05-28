@@ -62,7 +62,7 @@ export interface DesignWorkspaceFile {
 
 export interface FlowNode {
   id: string;
-  type: 'source' | 'agent' | 'output' | 'condition' | 'transform' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder' | 'draft';
+  type: 'source' | 'agent' | 'output' | 'condition' | 'transform' | 'loop' | 'group' | 'comment' | 'memory' | 'guardrail' | 'human' | 'fallback' | 'webhook' | 'schedule' | 'subagent' | 'schemabuilder' | 'draft' | 'review';
   parentId?: string;
   collapsed?: boolean;
   name: string;
