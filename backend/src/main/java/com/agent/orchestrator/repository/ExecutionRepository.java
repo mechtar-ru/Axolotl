@@ -271,7 +271,7 @@ public class ExecutionRepository {
     }
 
     public void updateNodeExecution(String id, String status, String outputSummary,
-                                     long tokensUsed, long durationMs, int toolCalls, String error) {
+                                      long tokensUsed, long durationMs, int toolCalls, String error) {
         withRetry(() -> nodeExecRepo.findById(id).ifPresent(graph -> {
             graph.setStatus(status);
             graph.setOutputSummary(outputSummary);
@@ -279,6 +279,22 @@ public class ExecutionRepository {
             graph.setDurationMs(durationMs);
             graph.setToolCalls(toolCalls);
             graph.setError(error);
+            graph.setCompletedAt(java.time.Instant.now().toString());
+            nodeExecRepo.save(graph);
+        }));
+    }
+
+    public void updateNodeExecution(String id, String status, String outputSummary,
+                                      long tokensUsed, long durationMs, int toolCalls,
+                                      String error, String reasoning) {
+        withRetry(() -> nodeExecRepo.findById(id).ifPresent(graph -> {
+            graph.setStatus(status);
+            graph.setOutputSummary(outputSummary);
+            graph.setTokensUsed(tokensUsed);
+            graph.setDurationMs(durationMs);
+            graph.setToolCalls(toolCalls);
+            graph.setError(error);
+            graph.setReasoning(reasoning);
             graph.setCompletedAt(java.time.Instant.now().toString());
             nodeExecRepo.save(graph);
         }));
@@ -480,6 +496,7 @@ public class ExecutionRepository {
         g.setConfigHash(n.getConfigHash());
         g.setStartedAt(n.getStartedAt());
         g.setCompletedAt(n.getCompletedAt());
+        g.setReasoning(n.getReasoning());
         return g;
     }
 
@@ -501,6 +518,7 @@ public class ExecutionRepository {
         n.setConfigHash(g.getConfigHash());
         n.setStartedAt(g.getStartedAt());
         n.setCompletedAt(g.getCompletedAt());
+        n.setReasoning(g.getReasoning());
         return n;
     }
 

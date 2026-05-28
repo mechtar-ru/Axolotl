@@ -2,6 +2,7 @@ package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmUsage;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.ExecutionMode;
@@ -34,15 +35,17 @@ public class AgentNodeStrategy {
     private final Neo4jSchemaRepository schemaRepository;
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionStateManager stateManager;
+    private final ReasoningCapture reasoningCapture;
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
-                             LlmService llmService,
-                             ExecutionWebSocketHandler webSocketHandler,
-                             MemPalaceClient memPalaceClient,
-                             ToolExecutor toolExecutor,
-                             Neo4jSchemaRepository schemaRepository,
-                             ProjectContextBuilder projectContextBuilder,
-                             ExecutionStateManager stateManager) {
+                              LlmService llmService,
+                              ExecutionWebSocketHandler webSocketHandler,
+                              MemPalaceClient memPalaceClient,
+                              ToolExecutor toolExecutor,
+                              Neo4jSchemaRepository schemaRepository,
+                              ProjectContextBuilder projectContextBuilder,
+                              ExecutionStateManager stateManager,
+                              ReasoningCapture reasoningCapture) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -51,6 +54,7 @@ public class AgentNodeStrategy {
         this.schemaRepository = schemaRepository;
         this.projectContextBuilder = projectContextBuilder;
         this.stateManager = stateManager;
+        this.reasoningCapture = reasoningCapture;
     }
 
     // ─── Agent execution ───
@@ -114,12 +118,16 @@ public class AgentNodeStrategy {
         }
 
         LlmUsage usage = new LlmUsage();
-        String result = llmService.streamingChat(model, systemPrompt, prompt, null,
+        LlmResponse streamingResp = llmService.streamingChat(model, systemPrompt, prompt, null,
                 token -> {
                     if (webSocketHandler != null) {
                         webSocketHandler.sendToken(schemaId, node.getId(), token);
                     }
                 }, usage);
+        String result = streamingResp.text();
+        if (streamingResp.reasoning() != null) {
+            reasoningCapture.capture(node.getId(), streamingResp.reasoning());
+        }
 
         if (usage.getTotalTokens() > 0) {
             stateManager.recordTokenUsage(schemaId + ":" + node.getId(), usage);
@@ -221,8 +229,12 @@ public class AgentNodeStrategy {
             }
 
             LlmUsage iterUsage = new LlmUsage();
-            lastResponse = llmService.chat(model, null,
+            LlmResponse iterResp = llmService.chat(model, null,
                     utilityService.buildMessagesForToolCall(messages), null, iterUsage);
+            lastResponse = iterResp.text();
+            if (iterResp.reasoning() != null) {
+                reasoningCapture.capture(node.getId(), iterResp.reasoning());
+            }
             totalUsage.add(iterUsage);
             messages.add(new Node.Message("assistant", lastResponse));
             fullResponse.append(lastResponse).append("\n");

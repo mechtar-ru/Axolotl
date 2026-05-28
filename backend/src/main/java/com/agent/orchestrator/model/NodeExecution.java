@@ -21,6 +21,7 @@ public class NodeExecution {
     private String configHash;     // SHA256 конфига узла на момент выполнения
     private String startedAt;
     private String completedAt;
+    private String reasoning;      // LLM reasoning/thought content (nullable)
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
@@ -69,4 +70,7 @@ public class NodeExecution {
 
     public String getCompletedAt() { return completedAt; }
     public void setCompletedAt(String completedAt) { this.completedAt = completedAt; }
+
+    public String getReasoning() { return reasoning; }
+    public void setReasoning(String reasoning) { this.reasoning = reasoning; }
 }

@@ -371,7 +371,7 @@ public class AgentController {
         Map<String, Object> result = new HashMap<>();
         try {
             long start = System.currentTimeMillis();
-            String response = llmService.chat(model, null, message, null);
+            String response = llmService.chat(model, null, message, null).text();
             long duration = System.currentTimeMillis() - start;
             result.put("success", true);
             result.put("response", response);

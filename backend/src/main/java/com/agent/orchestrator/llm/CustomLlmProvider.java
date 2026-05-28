@@ -3,15 +3,6 @@ package com.agent.orchestrator.llm;
 import com.agent.orchestrator.model.CustomLlmEndpoint;
 import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import dev.langchain4j.model.openai.OpenAiChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -27,6 +18,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
+
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
 @Component
 public class CustomLlmProvider implements LlmProvider {
@@ -78,136 +71,67 @@ public class CustomLlmProvider implements LlmProvider {
     }
 
     @Override
-    public String chat(String modelHint, String systemPrompt, String userPrompt, Map<String, Object> config) {
+    public LlmResponse chat(String modelHint, String systemPrompt, String userPrompt, Map<String, Object> config) {
         return chat(modelHint, systemPrompt, userPrompt, config, null);
     }
 
     @Override
-    public String chat(String modelHint, String systemPrompt, String userPrompt,
+    public LlmResponse chat(String modelHint, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
         List<CustomLlmEndpoint> endpoints = endpointRepository.findEnabled();
         if (endpoints.isEmpty()) {
-            return "Error: No custom LLM endpoints configured";
+            return textOnly("Error: No custom LLM endpoints configured");
         }
 
         CustomLlmEndpoint endpoint = endpoints.get(0);
         endpoint.setLastUsedAt(Instant.now());
         endpointRepository.save(endpoint);
 
-        // Use LangChain4j for Bearer auth (most common), raw HTTP for api-key auth
-        if (!"api-key".equals(endpoint.getAuthType())) {
-            return chatWithLangChain4j(endpoint, systemPrompt, userPrompt, usage);
-        } else {
-            return sendRequest(endpoint, systemPrompt, userPrompt);
-        }
+        return chatWithOpenAiClient(endpoint, systemPrompt, userPrompt, usage);
     }
 
     @Override
-    public String streamingChat(String modelHint, String systemPrompt, String userPrompt,
+    public LlmResponse streamingChat(String modelHint, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> tokenConsumer) {
         List<CustomLlmEndpoint> endpoints = endpointRepository.findEnabled();
         if (endpoints.isEmpty()) {
             tokenConsumer.accept("Error: No custom LLM endpoints configured");
-            return "Error: No custom LLM endpoints configured";
+            return textOnly("Error: No custom LLM endpoints configured");
         }
 
         CustomLlmEndpoint endpoint = endpoints.get(0);
         endpoint.setLastUsedAt(Instant.now());
         endpointRepository.save(endpoint);
 
-        // Use LangChain4j for Bearer auth, raw HTTP for api-key auth
-        if (!"api-key".equals(endpoint.getAuthType())) {
-            return streamingChatWithLangChain4j(endpoint, systemPrompt, userPrompt, tokenConsumer);
-        } else {
-            return sendStreamingRequest(endpoint, systemPrompt, userPrompt, tokenConsumer);
-        }
+        return streamingChatWithOpenAiClient(endpoint, systemPrompt, userPrompt, tokenConsumer);
     }
 
-    private String chatWithLangChain4j(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt) {
-        return chatWithLangChain4j(endpoint, systemPrompt, userPrompt, null);
-    }
-
-    private String chatWithLangChain4j(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt,
-                                        LlmUsage usage) {
+    /**
+     * Non-streaming chat via OpenAiChatClient (supports reasoning extraction).
+     */
+    private LlmResponse chatWithOpenAiClient(CustomLlmEndpoint endpoint, String systemPrompt,
+                                              String userPrompt, LlmUsage usage) {
         try {
-            String effectiveKey = endpoint.getApiKey() != null ? endpoint.getApiKey() : "";
-            ChatLanguageModel chatModel = OpenAiChatModel.builder()
-                    .baseUrl(endpoint.getBaseUrl())
-                    .modelName(endpoint.getModelName() != null ? endpoint.getModelName() : "default")
-                    .apiKey(effectiveKey)
-                    .temperature(0.7)
-                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                    .build();
-
-            List<ChatMessage> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(new SystemMessage(systemPrompt));
+            if ("bearer".equals(endpoint.getAuthType()) || endpoint.getAuthType() == null) {
+                String key = endpoint.getApiKey() != null ? endpoint.getApiKey() : "";
+                String model = endpoint.getModelName() != null ? endpoint.getModelName() : "default";
+                return OpenAiChatClient.chat(key, endpoint.getBaseUrl(), model,
+                        systemPrompt, userPrompt, usage, TIMEOUT_SECONDS);
+            } else {
+                return sendRawHttpRequest(endpoint, systemPrompt, userPrompt, usage);
             }
-            messages.add(new UserMessage(userPrompt));
-
-            ChatResponse response = chatModel.chat(messages);
-            if (usage != null && response.tokenUsage() != null) {
-                usage.setInputTokens(response.tokenUsage().inputTokenCount());
-                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
-                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
-            }
-            return response.aiMessage().text();
         } catch (Exception e) {
-            log.error("Custom LLM LangChain4j chat error", e);
-            // Fall back to raw HTTP on failure
-            log.info("Falling back to raw HTTP for custom LLM chat");
-            return sendRequest(endpoint, systemPrompt, userPrompt);
+            log.error("Custom LLM chat error, falling back to raw HTTP", e);
+            return sendRawHttpRequest(endpoint, systemPrompt, userPrompt, usage);
         }
     }
 
-    private String streamingChatWithLangChain4j(CustomLlmEndpoint endpoint, String systemPrompt,
-                                                 String userPrompt, Consumer<String> tokenConsumer) {
-        try {
-            String effectiveKey = endpoint.getApiKey() != null ? endpoint.getApiKey() : "";
-            StreamingChatLanguageModel streamingModel = OpenAiStreamingChatModel.builder()
-                    .baseUrl(endpoint.getBaseUrl())
-                    .modelName(endpoint.getModelName() != null ? endpoint.getModelName() : "default")
-                    .apiKey(effectiveKey)
-                    .temperature(0.7)
-                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                    .build();
-
-            List<ChatMessage> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(new SystemMessage(systemPrompt));
-            }
-            messages.add(new UserMessage(userPrompt));
-
-            StringBuilder fullResponse = new StringBuilder();
-            streamingModel.chat(messages, new StreamingChatResponseHandler() {
-                @Override
-                public void onPartialResponse(String token) {
-                    fullResponse.append(token);
-                    tokenConsumer.accept(token);
-                }
-
-                @Override
-                public void onCompleteResponse(ChatResponse response) {
-                    log.info("Custom LLM streaming complete");
-                }
-
-                @Override
-                public void onError(Throwable error) {
-                    log.error("Custom LLM streaming error: {}", error.getMessage());
-                }
-            });
-            return fullResponse.toString();
-        } catch (Exception e) {
-            log.error("Custom LLM LangChain4j streaming error", e);
-            log.info("Falling back to raw HTTP for custom LLM streaming");
-            return sendStreamingRequest(endpoint, systemPrompt, userPrompt, tokenConsumer);
-        }
-    }
-
-    // --- Raw HTTP fallback for api-key auth and failures ---
-
+    /**
+     * Raw HTTP fallback for api-key auth and error recovery (supports reasoning extraction).
+     */
     @SuppressWarnings("unchecked")
-    private String sendRequest(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt) {
+    private LlmResponse sendRawHttpRequest(CustomLlmEndpoint endpoint, String systemPrompt,
+                                            String userPrompt, LlmUsage usage) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
@@ -237,25 +161,25 @@ public class CustomLlmProvider implements LlmProvider {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
-                var node = objectMapper.readTree(response.body());
-                String content = node.at("/choices/0/message/content").asText();
-                if (content == null || content.isBlank()) {
-                    content = node.at("/choices/0/message/reasoning_content").asText();
-                }
-                return content != null ? content : "";
+                return OpenAiChatClient.parseResponse(response.body(), usage);
             } else {
-                log.error("Custom LLM request failed: {} - {}", response.statusCode(), response.body());
-                return "Error: HTTP " + response.statusCode();
+                String error = "Custom LLM request failed: HTTP " + response.statusCode();
+                log.error("{} - {}", error, truncate(response.body(), 500));
+                return textOnly(error);
             }
         } catch (Exception e) {
             log.error("Custom LLM request failed", e);
-            return "Error: " + e.getMessage();
+            return textOnly("Error: " + e.getMessage());
         }
     }
 
+    /**
+     * Streaming chat — uses raw HTTP SSE for both bearer and api-key auth.
+     */
     @SuppressWarnings("unchecked")
-    private String sendStreamingRequest(CustomLlmEndpoint endpoint, String systemPrompt, String userPrompt,
-                                        Consumer<String> tokenConsumer) {
+    private LlmResponse streamingChatWithOpenAiClient(CustomLlmEndpoint endpoint,
+                                                       String systemPrompt, String userPrompt,
+                                                       Consumer<String> tokenConsumer) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
@@ -284,12 +208,13 @@ public class CustomLlmProvider implements LlmProvider {
             HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 
             StringBuilder fullResponse = new StringBuilder();
-            HttpResponse<InputStream> response = httpClient.send(request,
+            StringBuilder reasoningBuffer = new StringBuilder();
+
+            HttpResponse<InputStream> rawResponse = httpClient.send(request,
                     HttpResponse.BodyHandlers.ofInputStream());
 
-            if (response.statusCode() == 200) {
-                InputStream in = response.body();
-
+            if (rawResponse.statusCode() == 200) {
+                InputStream in = rawResponse.body();
                 Thread reader = new Thread(() -> {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
                         String line;
@@ -299,9 +224,12 @@ public class CustomLlmProvider implements LlmProvider {
                                 if (!data.equals("[DONE]")) {
                                     try {
                                         var node = objectMapper.readTree(data);
+                                        // reasoning_content comes before content in SSE
+                                        String reasoning = node.at("/choices/0/delta/reasoning_content").asText("");
                                         String content = node.at("/choices/0/delta/content").asText("");
-                                        if (content.isEmpty()) {
-                                            content = node.at("/choices/0/delta/reasoning_content").asText("");
+
+                                        if (!reasoning.isEmpty()) {
+                                            reasoningBuffer.append(reasoning);
                                         }
                                         if (!content.isEmpty()) {
                                             fullResponse.append(content);
@@ -316,18 +244,25 @@ public class CustomLlmProvider implements LlmProvider {
                     }
                 });
                 reader.start();
-                reader.join(120000);
-                return fullResponse.toString();
+                try { reader.join(120000); } catch (InterruptedException ignored) {}
+
+                String reasoning = reasoningBuffer.length() > 0 ? reasoningBuffer.toString() : null;
+                String text = fullResponse.toString();
+
+                if (reasoning != null && !reasoning.isBlank()) {
+                    return new LlmResponse(text, reasoning);
+                }
+                return textOnly(text);
             } else {
-                String error = "Error: HTTP " + response.statusCode();
+                String error = "Error: HTTP " + rawResponse.statusCode();
                 tokenConsumer.accept(error);
-                return error;
+                return textOnly(error);
             }
         } catch (Exception e) {
             log.error("Custom LLM streaming request failed", e);
             String error = "Error: " + e.getMessage();
             tokenConsumer.accept(error);
-            return error;
+            return textOnly(error);
         }
     }
 
@@ -361,5 +296,10 @@ public class CustomLlmProvider implements LlmProvider {
             log.error("Connection test failed", e);
             return false;
         }
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
 }

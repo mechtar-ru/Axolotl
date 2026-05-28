@@ -65,7 +65,7 @@ public class PlanningService {
         try {
             String resolvedModel = resolveOutlineModel(schemaId, model);
             log.info("Planning outline for schema {} using model {}", schemaId, resolvedModel);
-            String llmResponse = llmService.chat(resolvedModel, OUTLINE_SYSTEM_PROMPT, prompt, null);
+            String llmResponse = llmService.chat(resolvedModel, OUTLINE_SYSTEM_PROMPT, prompt, null).text();
             if (llmResponse == null || llmResponse.isBlank()) {
                 result.put("success", false);
                 result.put("error", "LLM returned empty response");
@@ -87,7 +87,7 @@ public class PlanningService {
             String resolvedModel = resolveRefineModel(schemaId, model);
             String userPrompt = buildRefineUserPrompt(prompt, outline, userEdits, answers);
             log.info("Refining plan for schema {} using model {}", schemaId, resolvedModel);
-            String llmResponse = llmService.chat(resolvedModel, REFINE_SYSTEM_PROMPT, userPrompt, null);
+            String llmResponse = llmService.chat(resolvedModel, REFINE_SYSTEM_PROMPT, userPrompt, null).text();
             if (llmResponse == null || llmResponse.isBlank()) {
                 result.put("success", false);
                 result.put("error", "LLM returned empty response");

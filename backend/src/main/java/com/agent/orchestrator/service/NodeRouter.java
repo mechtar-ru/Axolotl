@@ -43,6 +43,7 @@ public class NodeRouter {
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
+    private final ReasoningCapture reasoningCapture;
 
     public NodeRouter(NodeExecutor nodeExecutor,
                       ExecutionUtilityService utilityService,
@@ -55,7 +56,8 @@ public class NodeRouter {
                       PlanService planService,
                       ProjectContextBuilder projectContextBuilder,
                       ExecutionRepository executionRepository,
-                      ExecutionStateManager stateManager) {
+                      ExecutionStateManager stateManager,
+                      ReasoningCapture reasoningCapture) {
         this.nodeExecutor = nodeExecutor;
         this.utilityService = utilityService;
         this.llmService = llmService;
@@ -68,6 +70,7 @@ public class NodeRouter {
         this.projectContextBuilder = projectContextBuilder;
         this.executionRepository = executionRepository;
         this.stateManager = stateManager;
+        this.reasoningCapture = reasoningCapture;
     }
 
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
@@ -211,18 +214,18 @@ public class NodeRouter {
                 node.setStatus(Node.NodeStatus.COMPLETED);
             }
 
-            // Persist result to Neo4j with token/tool call tracking
+            // Persist result to Neo4j with token/tool call + reasoning tracking
             if (nodeExecutionId != null) {
                 try {
                     LlmUsage usage = stateManager.getAndClearTokenUsage(schemaId, node.getId());
                     long tokensUsed = usage != null ? usage.getTotalTokens() : 0L;
                     int toolCalls = 0;
                     if (result != null) {
-                        // Estimate tool calls from the output (parseToolCalls pattern)
                         toolCalls = estimateToolCalls(result);
                     }
+                    String reasoning = reasoningCapture.consume(node.getId());
                     executionRepository.updateNodeExecution(
-                            nodeExecutionId, "completed", result, tokensUsed, 0L, toolCalls, null);
+                            nodeExecutionId, "completed", result, tokensUsed, 0L, toolCalls, null, reasoning);
                 } catch (Exception e) {
                     log.debug("Не удалось сохранить результат узла в БД: {}", e.getMessage());
                 }
@@ -421,11 +424,11 @@ public class NodeRouter {
             String validationPrompt = "Проверь, соответствует ли следующий текст правилам.\n"
                     + "Правила:\n" + rules + "\n\nТекст:\n" + input
                     + "\n\nОтветь только 'ДА' или 'НЕТ: [причина]'";
-            return llmService.chat(null, null, validationPrompt, null);
+            return llmService.chat(null, null, validationPrompt, null).text();
         } else if ("transform".equals(guardrailMode)) {
             String transformPrompt = "Примени следующие правила трансформации к тексту.\n"
                     + "Правила:\n" + rules + "\n\nТекст:\n" + input;
-            return llmService.chat(null, null, transformPrompt, null);
+            return llmService.chat(null, null, transformPrompt, null).text();
         } else {
             return input;
         }
@@ -475,7 +478,7 @@ public class NodeRouter {
                 webSocketHandler.sendLog(schemaId, "warning",
                         "Fallback активирован: " + node.getName(), node.getId());
             }
-            return llmService.chat(null, null, fallbackPrompt, null);
+            return llmService.chat(null, null, fallbackPrompt, null).text();
         } else {
             return "Пропущен (предшественник успешен)";
         }

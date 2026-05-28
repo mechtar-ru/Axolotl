@@ -1,15 +1,6 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.service.SettingsService;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import dev.langchain4j.model.openai.OpenAiChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
 @Component
 public class OpenAiProvider implements LlmProvider {
@@ -51,48 +44,25 @@ public class OpenAiProvider implements LlmProvider {
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         return chat(model, systemPrompt, userPrompt, config, null);
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
-            return "OpenAI: API key not configured";
+            return textOnly("OpenAI: API key not configured");
         }
 
         try {
-            ChatLanguageModel chatModel = OpenAiChatModel.builder()
-                    .apiKey(getEffectiveApiKey())
-                    .modelName(effectiveModel)
-                    .baseUrl(baseUrl)
-                    .temperature(0.7)
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .build();
-
-            List<ChatMessage> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(new SystemMessage(systemPrompt));
-            }
-            messages.add(new UserMessage(userPrompt));
-
-            ChatResponse response = chatModel.chat(messages);
-            String content = response.aiMessage().text();
-            if (usage != null && response.tokenUsage() != null) {
-                usage.setInputTokens(response.tokenUsage().inputTokenCount());
-                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
-                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
-            }
-            int tokens = response.tokenUsage() != null ? response.tokenUsage().totalTokenCount() : 0;
-            log.info("OpenAI response ({} tokens): {}", tokens,
-                    content.length() > 100 ? content.substring(0, 100) + "..." : content);
-            return content;
+            return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
+                    systemPrompt, userPrompt, usage, timeoutSeconds);
         } catch (Exception e) {
             String error = "OpenAI error: " + e.getMessage();
             log.error(error, e);
-            return error;
+            return textOnly(error);
         }
     }
 
@@ -158,56 +128,23 @@ public class OpenAiProvider implements LlmProvider {
     }
 
     @Override
-    public String streamingChat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             String error = "OpenAI: API key not configured";
             onToken.accept(error);
-            return error;
+            return textOnly(error);
         }
 
         try {
-            StreamingChatLanguageModel streamingModel = OpenAiStreamingChatModel.builder()
-                    .apiKey(getEffectiveApiKey())
-                    .modelName(effectiveModel)
-                    .baseUrl(baseUrl)
-                    .temperature(0.7)
-                    .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .build();
-
-            List<ChatMessage> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(new SystemMessage(systemPrompt));
-            }
-            messages.add(new UserMessage(userPrompt));
-
-            StringBuilder fullResponse = new StringBuilder();
-            streamingModel.chat(messages, new StreamingChatResponseHandler() {
-                @Override
-                public void onPartialResponse(String token) {
-                    fullResponse.append(token);
-                    onToken.accept(token);
-                }
-
-                @Override
-                public void onCompleteResponse(ChatResponse response) {
-                    log.info("OpenAI streaming complete: {} tokens",
-                            response.tokenUsage() != null ? response.tokenUsage().totalTokenCount() : 0);
-                }
-
-                @Override
-                public void onError(Throwable error) {
-                    log.error("OpenAI streaming error: {}", error.getMessage());
-                }
-            });
-
-            return fullResponse.toString();
+            return OpenAiChatClient.streamingChat(getEffectiveApiKey(), baseUrl, effectiveModel,
+                    systemPrompt, userPrompt, onToken, timeoutSeconds);
         } catch (Exception e) {
             String error = "OpenAI streaming error: " + e.getMessage();
             log.error(error, e);
             onToken.accept(error);
-            return error;
+            return textOnly(error);
         }
     }
 }

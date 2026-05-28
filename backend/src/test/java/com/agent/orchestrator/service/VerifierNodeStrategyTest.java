@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
+
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Edge;
@@ -41,7 +43,8 @@ class VerifierNodeStrategyTest {
     @BeforeEach
     void setUp() {
         strategy = new VerifierNodeStrategy(utilityService, agentStrategy, llmService,
-                webSocketHandler, schemaRepository, stateManager);
+                webSocketHandler, schemaRepository,                 stateManager,
+                null); // ReasoningCapture
 
         node = new Node();
         node.setId("v1");
@@ -133,7 +136,7 @@ class VerifierNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "v3")).thenReturn(Map.of("up", "def foo(): pass"));
         when(llmService.chat(anyString(), isNull(), anyString(), isNull()))
-                .thenReturn("- Potential null pointer\n- Missing error handling");
+                .thenReturn(textOnly("- Potential null pointer\n- Missing error handling"));
         when(agentStrategy.executeToolAgentNode(eq(premortemNode), eq("schema-1"), eq("test-model")))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [{\"name\": \"syntax\", \"passed\": true}], \"summary\": \"OK\"}");
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
@@ -153,7 +156,7 @@ class VerifierNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "v1")).thenReturn(Map.of("up", "def fib(n): return n"));
         when(llmService.chat(anyString(), isNull(), anyString(), isNull()))
-                .thenReturn("def fib(n): return n if n < 2 else fib(n-1) + fib(n-2)");
+                .thenReturn(textOnly("def fib(n): return n if n < 2 else fib(n-1) + fib(n-2)"));
 
         // First call FAIL, second call PASS
         when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))

@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
+
 @Component
 public class OllamaProvider implements LlmProvider {
 
@@ -35,12 +37,12 @@ public class OllamaProvider implements LlmProvider {
     private int timeoutSeconds;
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         return chat(model, systemPrompt, userPrompt, config, null);
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
 
@@ -67,11 +69,11 @@ public class OllamaProvider implements LlmProvider {
             }
             log.info("Ollama response: {}",
                     content.length() > 100 ? content.substring(0, 100) + "..." : content);
-            return content;
+            return textOnly(content);
         } catch (Exception e) {
             String error = "Ollama error: " + e.getMessage();
             log.error(error, e);
-            return error;
+            return textOnly(error);
         }
     }
 
@@ -99,7 +101,7 @@ public class OllamaProvider implements LlmProvider {
     }
 
     @Override
-    public String streamingChat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
 
@@ -136,12 +138,12 @@ public class OllamaProvider implements LlmProvider {
                 }
             });
 
-            return fullResponse.toString();
+            return textOnly(fullResponse.toString());
         } catch (Exception e) {
             String error = "Ollama streaming error: " + e.getMessage();
             log.error(error, e);
             onToken.accept(error);
-            return error;
+            return textOnly(error);
         }
     }
 

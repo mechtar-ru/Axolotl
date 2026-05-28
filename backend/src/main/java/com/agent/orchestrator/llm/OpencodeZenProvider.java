@@ -1,15 +1,6 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.service.SettingsService;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.chat.StreamingChatLanguageModel;
-import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
-import dev.langchain4j.model.openai.OpenAiChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
 @Component("zenProvider")
 public class OpencodeZenProvider implements LlmProvider {
@@ -51,44 +44,32 @@ public class OpencodeZenProvider implements LlmProvider {
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         return chat(model, systemPrompt, userPrompt, config, null);
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
-            return "Zen: API key not configured";
+            return textOnly("Zen: API key not configured");
         }
 
         try {
-            ChatLanguageModel chatModel = createChatModel(effectiveModel);
-            List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
-            ChatResponse response = chatModel.chat(messages);
-            if (usage != null && response.tokenUsage() != null) {
-                usage.setInputTokens(response.tokenUsage().inputTokenCount());
-                usage.setOutputTokens(response.tokenUsage().outputTokenCount());
-                usage.setTotalTokens(response.tokenUsage().totalTokenCount());
-            }
-            return response.aiMessage().text();
+            return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
+                    systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
+                    java.net.http.HttpClient.Version.HTTP_1_1);
         } catch (Exception e) {
             log.warn("Zen chat error, retrying once: {}", e.getMessage());
             try {
-                ChatLanguageModel chatModel = createChatModel(effectiveModel);
-                List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
-                ChatResponse response = chatModel.chat(messages);
-                if (usage != null && response.tokenUsage() != null) {
-                    usage.setInputTokens(response.tokenUsage().inputTokenCount());
-                    usage.setOutputTokens(response.tokenUsage().outputTokenCount());
-                    usage.setTotalTokens(response.tokenUsage().totalTokenCount());
-                }
-                return response.aiMessage().text();
+                return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
+                        systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
+                        java.net.http.HttpClient.Version.HTTP_1_1);
             } catch (Exception e2) {
                 String error = "Zen error: " + e2.getMessage();
                 log.error(error, e2);
-                return error;
+                return textOnly(error);
             }
         }
     }
@@ -152,99 +133,32 @@ public class OpencodeZenProvider implements LlmProvider {
     }
 
     @Override
-    public String streamingChat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> onToken) {
         String effectiveModel = resolveModel(model);
         if (getEffectiveApiKey() == null || getEffectiveApiKey().isBlank()) {
             String error = "Zen: API key not configured";
             onToken.accept(error);
-            return error;
+            return textOnly(error);
         }
 
         try {
-            StreamingChatLanguageModel streamingModel = createStreamingChatModel(effectiveModel);
-            List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
-
-            StringBuilder fullResponse = new StringBuilder();
-            streamingModel.chat(messages, new StreamingChatResponseHandler() {
-                @Override
-                public void onPartialResponse(String token) {
-                    fullResponse.append(token);
-                    onToken.accept(token);
-                }
-
-                @Override
-                public void onCompleteResponse(ChatResponse response) {
-                    log.info("Zen streaming complete");
-                }
-
-                @Override
-                public void onError(Throwable error) {
-                    log.error("Zen streaming error: {}", error.getMessage());
-                }
-            });
-            return fullResponse.toString();
+            return OpenAiChatClient.streamingChat(getEffectiveApiKey(), baseUrl, effectiveModel,
+                    systemPrompt, userPrompt, onToken, TIMEOUT_SECONDS,
+                    java.net.http.HttpClient.Version.HTTP_1_1);
         } catch (Exception e) {
             log.warn("Zen streaming error, retrying once: {}", e.getMessage());
             try {
-                StreamingChatLanguageModel streamingModel = createStreamingChatModel(effectiveModel);
-                List<ChatMessage> messages = buildMessages(systemPrompt, userPrompt);
-
-                StringBuilder fullResponse = new StringBuilder();
-                streamingModel.chat(messages, new StreamingChatResponseHandler() {
-                    @Override
-                    public void onPartialResponse(String token) {
-                        fullResponse.append(token);
-                        onToken.accept(token);
-                    }
-
-                    @Override
-                    public void onCompleteResponse(ChatResponse response) {
-                        log.info("Zen streaming retry complete");
-                    }
-
-                    @Override
-                    public void onError(Throwable error) {
-                        log.error("Zen streaming retry error: {}", error.getMessage());
-                    }
-                });
-                return fullResponse.toString();
+                return OpenAiChatClient.streamingChat(getEffectiveApiKey(), baseUrl, effectiveModel,
+                        systemPrompt, userPrompt, onToken, TIMEOUT_SECONDS,
+                        java.net.http.HttpClient.Version.HTTP_1_1);
             } catch (Exception e2) {
                 String error = "Zen streaming error: " + e2.getMessage();
                 log.error(error, e2);
                 onToken.accept(error);
-                return error;
+                return textOnly(error);
             }
         }
-    }
-
-    private ChatLanguageModel createChatModel(String modelName) {
-        return OpenAiChatModel.builder()
-                .apiKey(getEffectiveApiKey())
-                .modelName(modelName)
-                .baseUrl(baseUrl)
-                .temperature(0.7)
-                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                .build();
-    }
-
-    private StreamingChatLanguageModel createStreamingChatModel(String modelName) {
-        return OpenAiStreamingChatModel.builder()
-                .apiKey(getEffectiveApiKey())
-                .modelName(modelName)
-                .baseUrl(baseUrl)
-                .temperature(0.7)
-                .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                .build();
-    }
-
-    private static List<ChatMessage> buildMessages(String systemPrompt, String userPrompt) {
-        List<ChatMessage> messages = new ArrayList<>();
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            messages.add(new SystemMessage(systemPrompt));
-        }
-        messages.add(new UserMessage(userPrompt));
-        return messages;
     }
 
     private String resolveModel(String model) {

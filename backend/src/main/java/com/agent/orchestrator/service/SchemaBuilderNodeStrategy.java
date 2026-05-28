@@ -1,6 +1,7 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
+import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
@@ -38,6 +39,7 @@ public class SchemaBuilderNodeStrategy {
     private final ExecutionWebSocketHandler webSocketHandler;
     private final Neo4jSchemaRepository schemaRepository;
     private final PlanService planService;
+    private final ReasoningCapture reasoningCapture;
 
     private static final String SCHEMA_BUILDER_SYSTEM_PROMPT = """
             You are a workflow architect. Given an analysis/result text, design an Axolotl workflow schema.
@@ -92,12 +94,14 @@ public class SchemaBuilderNodeStrategy {
                                      LlmService llmService,
                                      ExecutionWebSocketHandler webSocketHandler,
                                      Neo4jSchemaRepository schemaRepository,
-                                     PlanService planService) {
+                                     PlanService planService,
+                                     ReasoningCapture reasoningCapture) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.schemaRepository = schemaRepository;
         this.planService = planService;
+        this.reasoningCapture = reasoningCapture;
     }
 
     public String executeSchemaBuilderNode(Node node, String schemaId, String resolvedModel) {
@@ -124,7 +128,11 @@ public class SchemaBuilderNodeStrategy {
             model = utilityService.resolveModel(node.getData() != null ? node.getData().getModel() : null,
                     null, null, null);
         }
-        String llmResponse = llmService.chat(model, SCHEMA_BUILDER_SYSTEM_PROMPT, input, null);
+        LlmResponse llmResp = llmService.chat(model, SCHEMA_BUILDER_SYSTEM_PROMPT, input, null);
+        String llmResponse = llmResp.text();
+        if (llmResp.reasoning() != null) {
+            reasoningCapture.capture(node.getId(), llmResp.reasoning());
+        }
 
         if (llmResponse == null || llmResponse.isBlank()
                 || llmResponse.startsWith("Error:") || llmResponse.startsWith("Ollama")) {

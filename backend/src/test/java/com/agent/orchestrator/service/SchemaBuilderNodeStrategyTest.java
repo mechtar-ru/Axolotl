@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
+
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Edge;
@@ -41,7 +43,8 @@ class SchemaBuilderNodeStrategyTest {
     @BeforeEach
     void setUp() {
         strategy = new SchemaBuilderNodeStrategy(utilityService, llmService, webSocketHandler,
-                schemaRepository, planService);
+                schemaRepository,                 planService,
+                null); // ReasoningCapture
 
         node = new Node();
         node.setId("sb1");
@@ -79,7 +82,7 @@ class SchemaBuilderNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "sb1")).thenReturn(Map.of("input", "Build a code analysis tool"));
         when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("test-model");
-        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(llmJson);
+        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(textOnly(llmJson));
         doNothing().when(schemaRepository).save(any(WorkflowSchema.class));
         Plan mockPlan = new Plan();
         mockPlan.setId("plan-1");
@@ -115,7 +118,7 @@ class SchemaBuilderNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "sb2")).thenReturn(Map.of("input", "test"));
         when(utilityService.resolveModel(isNull(), isNull(), isNull(), isNull())).thenReturn("resolved-model");
-        when(llmService.chat(eq("resolved-model"), anyString(), anyString(), isNull())).thenReturn(llmJson);
+        when(llmService.chat(eq("resolved-model"), anyString(), anyString(), isNull())).thenReturn(textOnly(llmJson));
         doNothing().when(schemaRepository).save(any(WorkflowSchema.class));
         Plan mockPlan = new Plan();
         mockPlan.setId("plan-1");
@@ -145,7 +148,7 @@ class SchemaBuilderNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "sb1")).thenReturn(Map.of("input", "test data"));
         when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("test-model");
-        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn("Error: LLM unavailable");
+        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(textOnly("Error: LLM unavailable"));
 
         String result = strategy.executeSchemaBuilderNode(node, "schema-1", "test-model");
 
@@ -159,7 +162,7 @@ class SchemaBuilderNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "sb1")).thenReturn(Map.of("input", "test data"));
         when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("test-model");
-        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(llmWithMarkdown);
+        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(textOnly(llmWithMarkdown));
         doNothing().when(schemaRepository).save(any(WorkflowSchema.class));
         Plan mockPlan = new Plan();
         mockPlan.setId("plan-1");
@@ -180,7 +183,7 @@ class SchemaBuilderNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "sb1")).thenReturn(Map.of("input", "test data"));
         when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("test-model");
-        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(llmJson);
+        when(llmService.chat(eq("test-model"), anyString(), anyString(), isNull())).thenReturn(textOnly(llmJson));
         doNothing().when(schemaRepository).save(any(WorkflowSchema.class));
         Plan mockPlan = new Plan();
         mockPlan.setId("plan-1");

@@ -196,7 +196,7 @@ public class SkillService {
             "Given the task: " + query + "\nSuggest a tool sequence (comma-separated tool names). " +
             "Available tools: file_read, file_write, directory_read, bash, memory_read, memory_write, " +
             "web_search, web_fetch, rlm_predict. Respond with just comma-separated tool names.",
-            null);
+            null).text();
         
         if (generatedSequence != null) {
             return Arrays.asList(generatedSequence.split(","));

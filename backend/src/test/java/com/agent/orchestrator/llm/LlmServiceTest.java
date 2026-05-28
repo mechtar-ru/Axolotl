@@ -13,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
 @ExtendWith(MockitoExtension.class)
 class LlmServiceTest {
@@ -39,56 +40,56 @@ class LlmServiceTest {
 
     @Test
     void resolveProvider_ollama() {
-        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("ollama", null, "test", null);
         verify(ollama).chat(eq("ollama"), isNull(), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_local() {
-        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("local", null, "test", null);
         verify(ollama).chat(eq("local"), isNull(), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_gptPrefix() {
-        when(openai.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(openai.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("gpt-4o", null, "test", null);
         verify(openai).chat(eq("gpt-4o"), isNull(), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_claudePrefix() {
-        when(anthropic.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(anthropic.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("claude-sonnet-4-20250514", "system", "test", null);
         verify(anthropic).chat(eq("claude-sonnet-4-20250514"), eq("system"), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_deepseekPrefix() {
-        when(deepseek.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(deepseek.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("deepseek-chat", null, "test", null);
         verify(deepseek).chat(eq("deepseek-chat"), isNull(), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_ollamaModelNames() {
-        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("gemma4:e2b", null, "test", null);
         verify(ollama).chat(eq("gemma4:e2b"), isNull(), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_null_defaultsToOllama() {
-        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat(null, null, "test", null);
         verify(ollama).chat(isNull(), isNull(), eq("test"), isNull(), any());
     }
 
     @Test
     void resolveProvider_blank_defaultsToOllama() {
-        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn("ok");
+        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("ok"));
         llmService.chat("  ", null, "test", null);
         verify(ollama).chat(eq("  "), isNull(), eq("test"), isNull(), any());
     }
@@ -108,8 +109,8 @@ class LlmServiceTest {
     @Test
     void chat_unknownProvider_defaultsToOllama() {
         // "nonexistent" doesn't match any prefix → falls back to ollama
-        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn("fallback response");
-        String result = llmService.chat("nonexistent", null, "test", null);
+        when(ollama.chat(any(), any(), any(), any(), any())).thenReturn(textOnly("fallback response"));
+        String result = llmService.chat("nonexistent", null, "test", null).text();
         assertEquals("fallback response", result);
         verify(ollama).chat(eq("nonexistent"), isNull(), eq("test"), isNull(), any());
     }
@@ -130,9 +131,9 @@ class LlmServiceTest {
 
     @Test
     void streamingChat_delegatesToProvider() {
-        when(ollama.streamingChat(any(), any(), any(), any(), any(), any())).thenReturn("streamed");
+        when(ollama.streamingChat(any(), any(), any(), any(), any(), any())).thenReturn(textOnly("streamed"));
         StringBuilder tokens = new StringBuilder();
-        String result = llmService.streamingChat("ollama", null, "test", null, tokens::append);
+        String result = llmService.streamingChat("ollama", null, "test", null, tokens::append).text();
         assertEquals("streamed", result);
         verify(ollama).streamingChat(eq("ollama"), isNull(), eq("test"), isNull(), any(), any());
     }

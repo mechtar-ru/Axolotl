@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
+
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.DraftResult;
@@ -44,7 +46,8 @@ class DraftNodeStrategyTest {
     @BeforeEach
     void setUp(@TempDir Path tempDir) {
         this.tempDir = tempDir;
-        strategy = new DraftNodeStrategy(utilityService, llmService, webSocketHandler, schemaRepository);
+        strategy = new DraftNodeStrategy(utilityService, llmService, webSocketHandler,                 schemaRepository,
+                null); // ReasoningCapture
 
         node = new Node();
         node.setId("d1");
@@ -68,7 +71,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("# Spec Document\n\nThis is a test specification.");
+                .thenReturn(textOnly("# Spec Document\n\nThis is a test specification."));
 
         String result = strategy.executeDraftNode(node, "schema-1", "resolved-model");
 
@@ -102,7 +105,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d2")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("# Default spec");
+                .thenReturn(textOnly("# Default spec"));
 
         String result = strategy.executeDraftNode(emptyNode, "schema-1", "model");
 
@@ -120,7 +123,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("# Implementation Plan\n\nPhase 1: ...");
+                .thenReturn(textOnly("# Implementation Plan\n\nPhase 1: ..."));
 
         String result = strategy.executeDraftNode(node, "schema-1", "model");
 
@@ -138,7 +141,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("- name: LoginForm\n  template: |\n    <form>...</form>");
+                .thenReturn(textOnly("- name: LoginForm\n  template: |\n    <form>...</form>"));
 
         String result = strategy.executeDraftNode(node, "schema-1", "model");
 
@@ -156,7 +159,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("# Backend Modules\n\n## API Layer\n...");
+                .thenReturn(textOnly("# Backend Modules\n\n## API Layer\n..."));
 
         String result = strategy.executeDraftNode(node, "schema-1", "model");
 
@@ -193,7 +196,7 @@ class DraftNodeStrategyTest {
                             "LLM input should contain artifact file content, got: " + input);
                     assertFalse(input.contains("draftType"),
                             "LLM input should NOT contain DraftResult JSON");
-                    return "# Implementation Plan\n\nBased on spec...";
+                    return textOnly("# Implementation Plan\n\nBased on spec...");
                 });
 
         Map<String, Object> planConfig = new ConcurrentHashMap<>();
@@ -223,7 +226,7 @@ class DraftNodeStrategyTest {
                     // Should contain the raw DraftResult JSON since file doesn't exist
                     assertTrue(input.contains("draftType") || input.contains("filePath"),
                             "LLM input should contain raw string when file missing, got: " + input);
-                    return "# Plan from fallback";
+                    return textOnly("# Plan from fallback");
                 });
 
         String result = strategy.executeDraftNode(node, "schema-1", "model");
@@ -237,7 +240,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("Error: LLM quota exceeded");
+                .thenReturn(textOnly("Error: LLM quota exceeded"));
 
         String result = strategy.executeDraftNode(node, "schema-1", "model");
 
@@ -250,7 +253,7 @@ class DraftNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(llmService.chat(anyString(), anyString(), anyString(), isNull()))
-                .thenReturn("");
+                .thenReturn(textOnly(""));
 
         String result = strategy.executeDraftNode(node, "schema-1", "model");
 
@@ -265,7 +268,7 @@ class DraftNodeStrategyTest {
         when(utilityService.collectPredecessorResults(schema, "d1")).thenReturn(Map.of());
         when(utilityService.resolveModel(eq("test-model"), isNull(), isNull(), isNull())).thenReturn("resolved-default");
         when(llmService.chat(eq("resolved-default"), anyString(), anyString(), isNull()))
-                .thenReturn("# Spec with resolved model");
+                .thenReturn(textOnly("# Spec with resolved model"));
 
         String result = strategy.executeDraftNode(node, "schema-1", null);
 
@@ -284,7 +287,7 @@ class DraftNodeStrategyTest {
                     String input = invocation.getArgument(2);
                     assertEquals("No input provided", input,
                             "Should use fallback when no predecessors");
-                    return "# Spec from empty input";
+                    return textOnly("# Spec from empty input");
                 });
 
         strategy.executeDraftNode(node, "schema-1", "model");

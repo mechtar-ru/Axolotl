@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
+
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Edge;
@@ -44,7 +46,8 @@ class ReviewNodeStrategyTest {
     @BeforeEach
     void setUp() {
         strategy = new ReviewNodeStrategy(utilityService, llmService, webSocketHandler,
-                schemaRepository, stateManager, planService, executionRepository);
+                schemaRepository, stateManager, planService,                 executionRepository,
+                null); // ReasoningCapture
 
         node = new Node();
         node.setId("r1");
@@ -84,7 +87,7 @@ class ReviewNodeStrategyTest {
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
                 .thenAnswer(invocation -> {
                     String userPrompt = invocation.getArgument(2);
-                    return "{\"status\": \"PASS\", \"findings\": [], \"summary\": \"Plan looks good\"}";
+                    return textOnly("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"Plan looks good\"}");
                 });
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
 
@@ -112,6 +115,8 @@ class ReviewNodeStrategyTest {
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
+        when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any()))
+                .thenReturn(textOnly("{\"status\":\"PASS\",\"findings\":[],\"summary\":\"OK\"}"));
 
         String result = strategy.executeReviewNode(nodeNoModel, "schema-1", null);
 
@@ -135,7 +140,7 @@ class ReviewNodeStrategyTest {
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
-                .thenReturn("{\"status\": \"PASS\", \"findings\": [{\"severity\": \"info\", \"message\": \"Looks good\"}], \"summary\": \"OK\"}");
+                .thenReturn(textOnly("{\"status\": \"PASS\", \"findings\": [{\"severity\": \"info\", \"message\": \"Looks good\"}], \"summary\": \"OK\"}"));
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
 
         String result = strategy.executeReviewNode(nodeWithoutPlanGen, "schema-1", "test-model");
@@ -168,9 +173,9 @@ class ReviewNodeStrategyTest {
         // Second call: analysis returns REWRITE
         // Third call: re-review returns PASS
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
-                .thenReturn("Initial plan: build a complex system with tests")
-                .thenReturn("{\"status\": \"REWRITE\", \"findings\": [{\"severity\": \"warning\", \"message\": \"Missing test plan\"}], \"summary\": \"Needs tests\", \"rewrittenPlan\": \"Improved plan that includes tests\"}")
-                .thenReturn("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"Now includes tests\"}");
+                .thenReturn(textOnly("Initial plan: build a complex system with tests"))
+                .thenReturn(textOnly("{\"status\": \"REWRITE\", \"findings\": [{\"severity\": \"warning\", \"message\": \"Missing test plan\"}], \"summary\": \"Needs tests\", \"rewrittenPlan\": \"Improved plan that includes tests\"}"))
+                .thenReturn(textOnly("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"Now includes tests\"}"));
 
         String result = strategy.executeReviewNode(node, "schema-1", "test-model");
 
@@ -197,7 +202,7 @@ class ReviewNodeStrategyTest {
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
 
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
-                .thenReturn("{\"status\": \"REWRITE\", \"findings\": [{\"severity\": \"critical\", \"message\": \"Security issue\"}], \"summary\": \"Fix security\", \"rewrittenPlan\": \"Secure version\"}");
+                .thenReturn(textOnly("{\"status\": \"REWRITE\", \"findings\": [{\"severity\": \"critical\", \"message\": \"Security issue\"}], \"summary\": \"Fix security\", \"rewrittenPlan\": \"Secure version\"}"));
 
         String result = strategy.executeReviewNode(node, "schema-1", "test-model");
 
@@ -223,7 +228,7 @@ class ReviewNodeStrategyTest {
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
 
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
-                .thenReturn("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"All good\"}");
+                .thenReturn(textOnly("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"All good\"}"));
 
         String result = strategy.executeReviewNode(node, "schema-1", "test-model");
 
@@ -242,7 +247,7 @@ class ReviewNodeStrategyTest {
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
 
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class)))
-                .thenReturn("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"Empty input\"}");
+                .thenReturn(textOnly("{\"status\": \"PASS\", \"findings\": [], \"summary\": \"Empty input\"}"));
 
         String result = strategy.executeReviewNode(node, "schema-1", "test-model");
 

@@ -54,6 +54,9 @@ public class GraphNodeExecution {
     @Property("completedAt")
     private String completedAt;
 
+    @Property("reasoning")
+    private String reasoning;
+
     public GraphNodeExecution() {}
 
     public String getId() { return id; }
@@ -103,4 +106,7 @@ public class GraphNodeExecution {
 
     public String getCompletedAt() { return completedAt; }
     public void setCompletedAt(String completedAt) { this.completedAt = completedAt; }
+
+    public String getReasoning() { return reasoning; }
+    public void setReasoning(String reasoning) { this.reasoning = reasoning; }
 }

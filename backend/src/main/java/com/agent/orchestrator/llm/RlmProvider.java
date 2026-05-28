@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static com.agent.orchestrator.llm.LlmResponse.textOnly;
+
 /**
  * RLM Provider — wraps Python `rlm` package (Recursive Language Models).
  * Manages REPL environment with context variable, llm_query() recursion, FINAL_VAR() answer extraction.
@@ -58,15 +60,15 @@ public class RlmProvider implements LlmProvider {
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         return chat(model, systemPrompt, userPrompt, config, null);
     }
 
     @Override
-    public String chat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
         if (!enabled) {
-            return "RLM provider not enabled. Set axolotl.llm.rlm.enabled=true";
+            return textOnly("RLM provider not enabled. Set axolotl.llm.rlm.enabled=true");
         }
 
         String effectiveModel = (model != null && !model.isBlank() && !isProviderName(model))
@@ -126,14 +128,14 @@ public class RlmProvider implements LlmProvider {
             boolean finished = process.waitFor(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                return "RLM timed out after " + timeoutSeconds + "s";
+                return textOnly("RLM timed out after " + timeoutSeconds + "s");
             }
 
             int exitCode = process.exitValue();
             if (exitCode != 0) {
                 String error = "RLM subprocess failed (exit " + exitCode + "): " + processOutput;
                 log.error(error);
-                return error;
+                return textOnly(error);
             }
 
             if (outputFile.exists() && outputFile.length() > 0) {
@@ -141,34 +143,34 @@ public class RlmProvider implements LlmProvider {
                 try {
                     JsonNode root = objectMapper.readTree(jsonOutput);
                     String answer = root.path("answer").asText(null);
-                    String error = root.path("error").asText(null);
+                    String resultError = root.path("error").asText(null);
 
-                    if (error != null) {
-                        log.error("RLM returned error: {}", error);
-                        return "RLM error: " + error;
+                    if (resultError != null) {
+                        log.error("RLM returned error: {}", resultError);
+                        return textOnly("RLM error: " + resultError);
                     }
                     if (answer != null) {
                         log.info("RLM response: answer length={}", answer.length());
-                        return answer;
+                        return textOnly(answer);
                     }
 
-                    return jsonOutput;
+                    return textOnly(jsonOutput);
                 } catch (Exception e) {
                     log.warn("Failed to parse RLM JSON output, returning raw: {}", e.getMessage());
-                    return jsonOutput;
+                    return textOnly(jsonOutput);
                 }
             }
 
             String output = processOutput.toString().trim();
             if (output.isEmpty()) {
-                return "RLM produced no output";
+                return textOnly("RLM produced no output");
             }
-            return output;
+            return textOnly(output);
 
         } catch (Exception e) {
             String error = "RLM execution failed: " + e.getMessage();
             log.error(error, e);
-            return error;
+            return textOnly(error);
         } finally {
             if (promptFile != null) promptFile.delete();
             if (outputFile != null) outputFile.delete();
@@ -221,10 +223,10 @@ public class RlmProvider implements LlmProvider {
     }
 
     @Override
-    public String streamingChat(String model, String systemPrompt, String userPrompt,
+    public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
                                 Map<String, Object> config, java.util.function.Consumer<String> onToken) {
-        String response = chat(model, systemPrompt, userPrompt, config);
-        onToken.accept(response);
+        LlmResponse response = chat(model, systemPrompt, userPrompt, config);
+        onToken.accept(response.text());
         return response;
     }
 

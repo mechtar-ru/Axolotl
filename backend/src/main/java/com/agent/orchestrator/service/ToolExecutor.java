@@ -387,7 +387,7 @@ public class ToolExecutor {
                 Provide structured output following the signature.
                 """, signature, task, data);
 
-            String result = llmService.chat("ollama", null, fullPrompt, null);
+            String result = llmService.chat("ollama", null, fullPrompt, null).text();
             return ToolResult.ok(result);
         } catch (Exception e) {
             return ToolResult.error("RLM predict failed: " + e.getMessage());

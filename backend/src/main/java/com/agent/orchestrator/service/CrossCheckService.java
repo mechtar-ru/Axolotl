@@ -47,7 +47,7 @@ public class CrossCheckService {
             """, context, originalOutput);
 
         try {
-            String result = llmService.chat("ollama", null, verificationPrompt, null);
+            String result = llmService.chat("ollama", null, verificationPrompt, null).text();
 
             CrossCheckResult checkResult = parseResult(result);
             checkResult.setAgentName(agentName);

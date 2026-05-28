@@ -243,7 +243,7 @@ public class ExecutionUtilityService {
                 String summary = llmService.chat("ollama",
                         "Ты компрессор контекста. Сжато передай суть, сохранив ключевые факты, числа, имена.",
                         "Сожми следующий контекст, сохранив ключевые факты:\n\n" + context,
-                        null);
+                        null).text();
                 return "[СЖАТЫЙ КОНТЕКСТ]:\n" + summary;
             } catch (Exception e) {
                 return context.substring(0, MAX_CONTEXT_CHARS) + "\n... [контекст обрезан]";

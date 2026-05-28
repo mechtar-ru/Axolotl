@@ -1,6 +1,7 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
+import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.WorkflowSchema;
@@ -32,6 +33,7 @@ public class ReviewNodeStrategy {
     private final ExecutionStateManager stateManager;
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
+    private final ReasoningCapture reasoningCapture;
 
     public ReviewNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -39,7 +41,8 @@ public class ReviewNodeStrategy {
                               Neo4jSchemaRepository schemaRepository,
                               ExecutionStateManager stateManager,
                               PlanService planService,
-                              ExecutionRepository executionRepository) {
+                              ExecutionRepository executionRepository,
+                              ReasoningCapture reasoningCapture) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -47,6 +50,7 @@ public class ReviewNodeStrategy {
         this.stateManager = stateManager;
         this.planService = planService;
         this.executionRepository = executionRepository;
+        this.reasoningCapture = reasoningCapture;
     }
 
     // ────────────────────────── review execution ──────────────────────────
@@ -151,12 +155,16 @@ public class ReviewNodeStrategy {
                 planPrompt += "\n\nThe user provided the following feedback on the previous plan: " + pendingFeedback + ". Incorporate it.";
             }
             String planSystemPrompt = "You are a structured planner. Create a clear, detailed implementation plan.";
-            planText = llmService.streamingChat(model, planSystemPrompt, planPrompt, null,
+            LlmResponse planResp = llmService.streamingChat(model, planSystemPrompt, planPrompt, null,
                     token -> {
                         if (webSocketHandler != null) {
                             webSocketHandler.sendToken(schemaId, node.getId(), token);
                         }
                     });
+            planText = planResp.text();
+            if (planResp.reasoning() != null) {
+                reasoningCapture.capture(node.getId(), planResp.reasoning());
+            }
         } else {
             planText = inputContent;
         }
@@ -222,12 +230,16 @@ public class ReviewNodeStrategy {
         }
 
         String systemPrompt = "You are a structured reviewer. Analyze the provided plan and return findings in JSON format.";
-        String analysisResult = llmService.streamingChat(model, systemPrompt, reviewPrompt.toString(), null,
+                    LlmResponse analysisResp = llmService.streamingChat(model, systemPrompt, reviewPrompt.toString(), null,
                 token -> {
                     if (webSocketHandler != null) {
                         webSocketHandler.sendToken(schemaId, node.getId(), token);
                     }
                 });
+            String analysisResult = analysisResp.text();
+            if (analysisResp.reasoning() != null) {
+                reasoningCapture.capture(node.getId(), analysisResp.reasoning());
+            }
 
         // Parse analysis result
         String reviewStatus = "PASS";
@@ -325,12 +337,16 @@ public class ReviewNodeStrategy {
                     // Re-run Phase 2 with rewritten plan
                     String reReviewPrompt = reviewPrompt.toString()
                             .replace(planText, rewrittenPlan != null ? rewrittenPlan : planText);
-                    String reResult = llmService.streamingChat(model, systemPrompt, reReviewPrompt, null,
+                    LlmResponse reResp = llmService.streamingChat(model, systemPrompt, reReviewPrompt, null,
                             token -> {
                                 if (webSocketHandler != null) {
                                     webSocketHandler.sendToken(schemaId, node.getId(), token);
                                 }
                             });
+                    String reResult = reResp.text();
+                    if (reResp.reasoning() != null) {
+                        reasoningCapture.capture(node.getId(), reResp.reasoning());
+                    }
 
                     // Parse re-result
                     if (reResult != null && !reResult.isBlank()) {
@@ -396,12 +412,16 @@ public class ReviewNodeStrategy {
 
                     String hyReReviewPrompt = reviewPrompt.toString()
                             .replace(planText, rewrittenPlan != null ? rewrittenPlan : planText);
-                    String hyResult = llmService.streamingChat(model, systemPrompt, hyReReviewPrompt, null,
+                    LlmResponse hyResp = llmService.streamingChat(model, systemPrompt, hyReReviewPrompt, null,
                             token -> {
                                 if (webSocketHandler != null) {
                                     webSocketHandler.sendToken(schemaId, node.getId(), token);
                                 }
                             });
+                    String hyResult = hyResp.text();
+                    if (hyResp.reasoning() != null) {
+                        reasoningCapture.capture(node.getId(), hyResp.reasoning());
+                    }
 
                     if (hyResult != null && !hyResult.isBlank()) {
                         try {

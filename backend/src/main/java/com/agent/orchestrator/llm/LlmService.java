@@ -146,17 +146,17 @@ public class LlmService {
 
     // --- Core methods ---
 
-    public String chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt, Map<String, Object> config) {
         return chat(model, systemPrompt, userPrompt, config, null);
     }
 
-    public String streamingChat(String model, String systemPrompt, String userPrompt,
-                                 Map<String, Object> config, java.util.function.Consumer<String> onToken) {
+    public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
+                                      Map<String, Object> config, java.util.function.Consumer<String> onToken) {
         return streamingChat(model, systemPrompt, userPrompt, config, onToken, null);
     }
 
-    public String chat(String model, String systemPrompt, String userPrompt,
-                       Map<String, Object> config, LlmUsage usage) {
+    public LlmResponse chat(String model, String systemPrompt, String userPrompt,
+                            Map<String, Object> config, LlmUsage usage) {
         String providerName = resolveProvider(model);
         LlmProvider provider = providers.get(providerName);
 
@@ -170,9 +170,9 @@ public class LlmService {
         return provider.chat(strippedModel, systemPrompt, userPrompt, config, usage);
     }
 
-    public String streamingChat(String model, String systemPrompt, String userPrompt,
-                                 Map<String, Object> config, java.util.function.Consumer<String> onToken,
-                                 LlmUsage usage) {
+    public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
+                                      Map<String, Object> config, java.util.function.Consumer<String> onToken,
+                                      LlmUsage usage) {
         String providerName = resolveProvider(model);
         LlmProvider provider = providers.get(providerName);
 

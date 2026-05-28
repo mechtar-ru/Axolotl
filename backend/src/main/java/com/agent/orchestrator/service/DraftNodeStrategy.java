@@ -1,6 +1,7 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
+import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.DraftResult;
 import com.agent.orchestrator.model.Node;
@@ -37,6 +38,7 @@ public class DraftNodeStrategy {
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final Neo4jSchemaRepository schemaRepository;
+    private final ReasoningCapture reasoningCapture;
 
     private static final String AXOLOTL_DIR = ".axolotl";
     private static final ObjectMapper mapper = new ObjectMapper();
@@ -117,11 +119,13 @@ public class DraftNodeStrategy {
     public DraftNodeStrategy(ExecutionUtilityService utilityService,
                              LlmService llmService,
                              ExecutionWebSocketHandler webSocketHandler,
-                             Neo4jSchemaRepository schemaRepository) {
+                             Neo4jSchemaRepository schemaRepository,
+                             ReasoningCapture reasoningCapture) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.schemaRepository = schemaRepository;
+        this.reasoningCapture = reasoningCapture;
     }
 
     /**
@@ -193,7 +197,11 @@ public class DraftNodeStrategy {
         }
 
         // Single LLM call — no tools
-        String llmResponse = llmService.chat(model, systemPrompt, input, null);
+        LlmResponse llmResp = llmService.chat(model, systemPrompt, input, null);
+        String llmResponse = llmResp.text();
+        if (llmResp.reasoning() != null) {
+            reasoningCapture.capture(node.getId(), llmResp.reasoning());
+        }
         if (llmResponse == null || llmResponse.isBlank()
                 || llmResponse.startsWith("Error:")) {
             String error = "Draft failed: " + (llmResponse != null ? llmResponse : "empty response");

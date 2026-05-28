@@ -1,6 +1,7 @@
 package com.agent.orchestrator.service;
 
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
+import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
@@ -33,19 +34,22 @@ public class VerifierNodeStrategy {
     private final ExecutionWebSocketHandler webSocketHandler;
     private final Neo4jSchemaRepository schemaRepository;
     private final ExecutionStateManager stateManager;
+    private final ReasoningCapture reasoningCapture;
 
     public VerifierNodeStrategy(ExecutionUtilityService utilityService,
                                 AgentNodeStrategy agentStrategy,
                                 LlmService llmService,
                                 ExecutionWebSocketHandler webSocketHandler,
                                 Neo4jSchemaRepository schemaRepository,
-                                ExecutionStateManager stateManager) {
+                                ExecutionStateManager stateManager,
+                                ReasoningCapture reasoningCapture) {
         this.utilityService = utilityService;
         this.agentStrategy = agentStrategy;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.schemaRepository = schemaRepository;
         this.stateManager = stateManager;
+        this.reasoningCapture = reasoningCapture;
     }
 
     // ────────────────────────── verifier execution ──────────────────────────
@@ -108,7 +112,11 @@ public class VerifierNodeStrategy {
             }
             String premortemPrompt = "Analyze the following code and predict potential failure scenarios, bugs, or issues. "
                     + "List each prediction as a separate line starting with '- '\\n\\nCode:\\n" + inputContent;
-            String premortemResult = llmService.chat(model, null, premortemPrompt, null);
+            LlmResponse premortemResp = llmService.chat(model, null, premortemPrompt, null);
+            String premortemResult = premortemResp.text();
+            if (premortemResp.reasoning() != null) {
+                reasoningCapture.capture(node.getId(), premortemResp.reasoning());
+            }
             if (premortemResult != null) {
                 for (String line : premortemResult.split("\\n")) {
                     String trimmed = line.trim();
@@ -262,7 +270,11 @@ public class VerifierNodeStrategy {
                         + "Errors found:\\n" + errorsBuilder.toString() + "\\n\\n"
                         + "Fix the issues and return ONLY the corrected code. Do NOT include any explanations, markdown fences, or extra text.";
 
-                String fixedCode = llmService.chat(model, null, fixPrompt, null);
+                LlmResponse fixedResp = llmService.chat(model, null, fixPrompt, null);
+                String fixedCode = fixedResp.text();
+                if (fixedResp.reasoning() != null) {
+                    reasoningCapture.capture(node.getId(), fixedResp.reasoning());
+                }
                 if (fixedCode != null && !fixedCode.isBlank()) {
                     // Clean up the response (remove markdown fences if present)
                     String cleaned = fixedCode.trim();
