@@ -1,28 +1,28 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "opencode/big-pickle",
+  "model": "opencode/deepseek-v4-flash-free",
   "provider": {
     "opencode": {
       "models": {
-        "big-pickle": {}
+        "deepseek-v4-flash-free": {}
       }
     }
   },
   "agent": {
     "explorer": {
-      "model": "opencode/big-pickle"
+      "model": "opencode/deepseek-v4-flash-free"
     },
     "oracle": {
-      "model": "opencode/big-pickle"
+      "model": "opencode/deepseek-v4-flash-free"
     },
     "librarian": {
-      "model": "opencode/big-pickle"
+      "model": "opencode/deepseek-v4-flash-free"
     },
     "designer": {
-      "model": "opencode/big-pickle"
+      "model": "opencode/deepseek-v4-flash-free"
     },
     "fixer": {
-      "model": "opencode/big-pickle"
+      "model": "opencode/deepseek-v4-flash-free"
     }
   },
   "plugin": [
