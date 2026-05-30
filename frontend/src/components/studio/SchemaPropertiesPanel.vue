@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useCanvasStore } from '@/stores/useCanvasStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { storeToRefs } from 'pinia'
 import { settingsApi } from '@/services/api'
@@ -13,8 +14,9 @@ const emit = defineEmits<{
 }>()
 
 const schemaStore = useSchemaStore()
+const canvasStore = useCanvasStore()
 const settingsStore = useSettingsStore()
-const { currentSchema } = storeToRefs(schemaStore)
+const { currentSchema } = storeToRefs(canvasStore)
 
 const isEditingPath = ref(false)
 const folderPickerRef = ref<HTMLInputElement | null>(null)
@@ -28,7 +30,7 @@ function debounceMarkDirty(data: any) {
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(() => {
     if (!isAlive) return
-    schemaStore.markDirty(data)
+    canvasStore.markDirty(data)
     saveTimeout = null
   }, 400)
 }
@@ -86,7 +88,7 @@ function updateDescription(value: string) {
 
 function updateDefaultModel(value: string) {
   if (!currentSchema.value) return
-  schemaStore.markDirty({
+  canvasStore.markDirty({
     ...currentSchema.value,
     defaultModel: value || undefined,
   })
@@ -94,7 +96,7 @@ function updateDefaultModel(value: string) {
 
 function updateProjectType(value: string) {
   if (!currentSchema.value) return
-  schemaStore.markDirty({
+  canvasStore.markDirty({
     ...currentSchema.value,
     projectType: value as WorkflowSchema['projectType'],
   })
@@ -102,7 +104,7 @@ function updateProjectType(value: string) {
 
 function updateAutoApproveDrafts(value: boolean) {
   if (!currentSchema.value) return
-  schemaStore.markDirty({
+  canvasStore.markDirty({
     ...currentSchema.value,
     autoApproveDrafts: value,
   })
@@ -127,7 +129,7 @@ function commitPath(value: string) {
     // Clear was rejected — just reset
     return
   }
-  schemaStore.markDirty({ ...currentSchema.value, targetPath: trimmed })
+  canvasStore.markDirty({ ...currentSchema.value, targetPath: trimmed })
 }
 
 function cancelEditPath() {
@@ -149,7 +151,7 @@ function onFolderPicked(event: Event) {
   const path = base ? `${base}/${dirName}/` : `${dirName}/`
   if (!currentSchema.value) return
   if (path !== currentSchema.value.targetPath) {
-    schemaStore.markDirty({ ...currentSchema.value, targetPath: path })
+    canvasStore.markDirty({ ...currentSchema.value, targetPath: path })
   }
 }
 </script>

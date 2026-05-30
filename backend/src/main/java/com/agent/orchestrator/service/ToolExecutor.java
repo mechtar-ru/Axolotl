@@ -64,6 +64,15 @@ public class ToolExecutor {
         registerTool(new Tool("file_write", "Write File", "Write content to a file", """
             {"type":"object","properties":{"path":{"type":"string","description":"Absolute path to file"},"content":{"type":"string","description":"Content to write"}},"required":["path","content"]}
             """, ToolCategory.FILE_SYSTEM));
+        registerTool(new Tool("write_file", "Write File", "Write content to a file (alias for file_write)", """
+            {"type":"object","properties":{"path":{"type":"string","description":"Absolute path to file"},"content":{"type":"string","description":"Content to write"}},"required":["path","content"]}
+            """, ToolCategory.FILE_SYSTEM));
+        registerTool(new Tool("create_file", "Create File", "Write content to a new file (alias for file_write)", """
+            {"type":"object","properties":{"path":{"type":"string","description":"Absolute path to file"},"content":{"type":"string","description":"Content to write"}},"required":["path","content"]}
+            """, ToolCategory.FILE_SYSTEM));
+        registerTool(new Tool("save_file", "Save File", "Save content to a file (alias for file_write)", """
+            {"type":"object","properties":{"path":{"type":"string","description":"Absolute path to file"},"content":{"type":"string","description":"Content to write"}},"required":["path","content"]}
+            """, ToolCategory.FILE_SYSTEM));
 
         registerTool(new Tool("directory_read", "List Directory", "List files in a directory", """
             {"type":"object","properties":{"path":{"type":"string","description":"Absolute path to directory"}},"required":["path"]}
@@ -132,6 +141,9 @@ public class ToolExecutor {
 
         handlers.put("file_read", this::handleFileRead);
         handlers.put("file_write", this::handleFileWrite);
+        handlers.put("write_file", this::handleFileWrite);
+        handlers.put("create_file", this::handleFileWrite);
+        handlers.put("save_file", this::handleFileWrite);
         handlers.put("directory_read", this::handleDirectoryRead);
         handlers.put("bash", this::handleBash);
         handlers.put("execute_command", this::handleBash);
@@ -728,7 +740,7 @@ public class ToolExecutor {
         if (projectTypeStr != null && !projectTypeStr.isBlank()) {
             this.projectType = ProjectType.fromString(projectTypeStr);
         }
-        if ("file_write".equals(toolId)) {
+        if ("file_write".equals(toolId) || "write_file".equals(toolId) || "create_file".equals(toolId) || "save_file".equals(toolId)) {
             return handleFileWriteWithSandbox(params, permission, schemaTargetPath, schemaId, nodeId);
         }
         if ("directory_read".equals(toolId)) {
@@ -805,6 +817,11 @@ public class ToolExecutor {
         }
 
         // All deps present — run build
+        Object buildModeObj = params.getOrDefault("buildMode", "debug");
+        String buildMode = buildModeObj instanceof String ? (String) buildModeObj : "debug";
+        var buildResults = new java.util.ArrayList<String>();
+        var buildErrors = new java.util.ArrayList<String>();
+
         details.append("\n→ Running ").append(String.join(" ", projectType.getBuildCommand())).append(" ...\n");
         try {
             var cmd = new java.util.ArrayList<>(projectType.getBuildCommand());
@@ -815,20 +832,102 @@ public class ToolExecutor {
             boolean finished = proc.waitFor(300, TimeUnit.SECONDS);
             if (!finished) {
                 proc.destroyForcibly();
-                return ToolResult.error("Build timed out after 300s");
+                buildResults.add("✗ " + String.join(" ", cmd) + " → TIMED OUT");
+            } else {
+                String output = new String(proc.getInputStream().readAllBytes());
+                if (proc.exitValue() == 0) {
+                    buildResults.add("✓ " + String.join(" ", cmd) + " → SUCCESS");
+                } else {
+                    buildResults.add("✗ " + String.join(" ", cmd) + " → FAILED");
+                    buildErrors.add("Main build failed:\n" + output);
+                }
             }
-            String output = new String(proc.getInputStream().readAllBytes());
-            if (proc.exitValue() == 0) {
-                return ToolResult.ok(
-                    "=== BUILD SUCCESS ===\n" +
-                    "Project: " + projectPath + "\n" +
-                    "Output:\n" + output
-                );
-            }
-            return ToolResult.error("Build failed:\n" + output);
         } catch (Exception e) {
-            return ToolResult.error("Build error: " + e.getMessage());
+            buildResults.add("✗ Main build → ERROR: " + e.getMessage());
+            buildErrors.add("Main build error: " + e.getMessage());
         }
+
+        // For Flutter projects, run additional builds (appbundle, iOS)
+        if (projectType == ProjectType.FLUTTER) {
+            // AppBundle (requires ANDROID_HOME)
+            if (System.getenv("ANDROID_HOME") != null && !System.getenv("ANDROID_HOME").isBlank()) {
+                var appbundleCmd = java.util.List.of("flutter", "build", "appbundle", "--" + buildMode);
+                details.append("→ Running ").append(String.join(" ", appbundleCmd)).append(" ...\n");
+                try {
+                    var pb = new ProcessBuilder(appbundleCmd)
+                        .directory(projDir.toFile())
+                        .redirectErrorStream(true);
+                    var p = pb.start();
+                    if (p.waitFor(300, TimeUnit.SECONDS)) {
+                        String out = new String(p.getInputStream().readAllBytes());
+                        if (p.exitValue() == 0) {
+                            buildResults.add("✓ " + String.join(" ", appbundleCmd) + " → SUCCESS");
+                        } else {
+                            buildResults.add("✗ " + String.join(" ", appbundleCmd) + " → FAILED (non-blocking)");
+                            buildErrors.add("AppBundle build output:\n" + out);
+                        }
+                    } else {
+                        p.destroyForcibly();
+                        buildResults.add("✗ " + String.join(" ", appbundleCmd) + " → TIMED OUT");
+                    }
+                } catch (Exception e) {
+                    buildResults.add("✗ AppBundle build → ERROR: " + e.getMessage());
+                }
+            }
+
+            // iOS build (macOS only, xcode-select -p must succeed)
+            if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+                try {
+                    var xcCheck = new ProcessBuilder("xcode-select", "-p")
+                        .redirectErrorStream(true).start();
+                    if (xcCheck.waitFor(5, TimeUnit.SECONDS) && xcCheck.exitValue() == 0) {
+                        var iosCmd = java.util.List.of("flutter", "build", "ios", "--no-codesign", "--" + buildMode);
+                        details.append("→ Running ").append(String.join(" ", iosCmd)).append(" ...\n");
+                        try {
+                            var pb = new ProcessBuilder(iosCmd)
+                                .directory(projDir.toFile())
+                                .redirectErrorStream(true);
+                            var p = pb.start();
+                            if (p.waitFor(300, TimeUnit.SECONDS)) {
+                                String out = new String(p.getInputStream().readAllBytes());
+                                if (p.exitValue() == 0) {
+                                    buildResults.add("✓ " + String.join(" ", iosCmd) + " → SUCCESS");
+                                } else {
+                                    buildResults.add("✗ " + String.join(" ", iosCmd) + " → FAILED (non-blocking)");
+                                }
+                            } else {
+                                p.destroyForcibly();
+                                buildResults.add("✗ " + String.join(" ", iosCmd) + " → TIMED OUT");
+                            }
+                        } catch (Exception e) {
+                            buildResults.add("✗ iOS build → ERROR: " + e.getMessage());
+                        }
+                    }
+                } catch (Exception e) {
+                    // xcode-select check failed — skip iOS build
+                }
+            }
+        }
+
+        StringBuilder finalResult = new StringBuilder();
+        if (!buildErrors.isEmpty()) {
+            finalResult.append("=== BUILD RESULTS WITH ERRORS ===\n");
+        } else {
+            finalResult.append("=== BUILD RESULTS ===\n");
+        }
+        finalResult.append("Project: ").append(projectPath).append("\n");
+        for (String r : buildResults) {
+            finalResult.append(r).append("\n");
+        }
+        if (!buildErrors.isEmpty()) {
+            finalResult.append("\nErrors:\n");
+            for (String e : buildErrors) {
+                finalResult.append(e).append("\n=====\n");
+            }
+        }
+        return buildErrors.isEmpty() && buildResults.stream().anyMatch(r -> r.startsWith("✓ "))
+            ? ToolResult.ok(finalResult.toString())
+            : ToolResult.error(finalResult.toString());
     }
 
     private void checkSdk(StringBuilder details, java.util.ArrayList<String> missing,

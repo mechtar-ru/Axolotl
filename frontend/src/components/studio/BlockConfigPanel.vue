@@ -2,8 +2,10 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useCanvasStore } from '@/stores/useCanvasStore'
 import { settingsApi } from '@/services/api'
 import { personas } from '@/data/personas'
+import { getBlockByType } from '@/blockRegistry'
 
 const props = defineProps<{
   blockId: string
@@ -14,6 +16,7 @@ const emit = defineEmits<{
 }>()
 
 const schemaStore = useSchemaStore()
+const canvasStore = useCanvasStore()
 const { nodes } = useVueFlow({ id: 'blueprint-flow' })
 
 // Look up the VueFlow node by blockId
@@ -39,21 +42,15 @@ const fetching = ref(false)
 const fileInputRef = ref<HTMLInputElement>()
 const dirInputRef = ref<HTMLInputElement>()
 
-// Determine config sections based on block type
-const typeSections = computed(() => {
-  const t = blockType.value
-  return {
-    model: ['agent', 'review', 'verifier', 'draft'].includes(t),
-    draft: t === 'draft',
-    prompt: t === 'agent',
-    memory: t === 'memory',
-    action: t === 'output',
-    input: t === 'source',
-    verifier: t === 'verifier',
-    review: t === 'review',
-    auto: t === 'review' && (reviewMode.value === 'auto' || reviewMode.value === 'hybrid'),
-  }
+// Config sections driven by BlockRegistry — which panels to show
+const activePanels = computed(() => {
+  const def = getBlockByType(blockType.value)
+  if (!def) return new Set<string>()
+  return new Set(def.configPanels.map(s => s.id))
 })
+
+const isReview = computed(() => blockType.value === 'review')
+const isAutoMode = computed(() => reviewMode.value === 'auto' || reviewMode.value === 'hybrid')
 
 const syntaxCheck = ref(true)
 const requiredPatterns = ref<string[]>([])
@@ -62,6 +59,7 @@ const maxFileSizeKb = ref(500)
 const rewriteOnFail = ref(true)
 const maxRewriteRetries = ref(3)
 const stubDetection = ref(true)
+const expectedFileCount = ref<number | null>(null)
 
 const reviewPremortem = ref(true)
 const reviewPrism = ref(false)
@@ -70,6 +68,10 @@ const reviewMode = ref('manual')
 const reviewMaxIterations = ref(3)
 const reviewMaxAutoIterations = ref(3)
 const reviewGeneratePlan = ref(true)
+
+// Pipeline resilience: auto retry count and fallback models
+const autoRetryCount = ref(0)
+const fallbackModels = ref<string[]>([])
 
 // Draft type selector
 const draftType = ref('spec')
@@ -158,6 +160,9 @@ function resetRefs() {
   rewriteOnFail.value = true
   maxRewriteRetries.value = 3
   stubDetection.value = true
+  expectedFileCount.value = null
+  autoRetryCount.value = 0
+  fallbackModels.value = []
   reviewPremortem.value = true
   reviewPrism.value = false
   reviewPostmortem.value = false
@@ -196,6 +201,9 @@ watch(() => props.blockId, () => {
   rewriteOnFail.value = (config.rewriteOnFail as boolean) ?? true
   maxRewriteRetries.value = (config.maxRewriteRetries as number) ?? 3
   stubDetection.value = (config.stubDetection as boolean) ?? true
+  expectedFileCount.value = (config.expectedFileCount as number) ?? null
+  autoRetryCount.value = (config.autoRetryCount as number) ?? 0
+  fallbackModels.value = (config.fallbackModels as string[]) ?? []
   // Draft type
   draftType.value = (config.draftType as string) || 'spec'
   // Review fields
@@ -256,6 +264,15 @@ function fetchUrlPreview() {
   // For MVP, URL preview not implemented — config is saved, backend handles at execution
 }
 
+function toggleFallbackModel(model: string) {
+  if (fallbackModels.value.includes(model)) {
+    fallbackModels.value = fallbackModels.value.filter(m => m !== model)
+  } else {
+    fallbackModels.value = [...fallbackModels.value, model]
+  }
+  saveConfig()
+}
+
 function saveConfig() {
   if (!node.value) return
 
@@ -268,6 +285,8 @@ function saveConfig() {
       description: blockDescription.value,
       model: model.value,
       systemPrompt: prompt.value,
+      autoRetryCount: autoRetryCount.value,
+      fallbackModels: fallbackModels.value,
     },
   }
 
@@ -286,13 +305,30 @@ function saveConfig() {
   }
 
   // Draft-specific config
-  if (typeSections.value.draft) {
+  if (activePanels.value.has('draftType')) {
     if (!node.value.data.config) node.value.data.config = {}
     ;(node.value.data.config as Record<string, any>).draftType = draftType.value
   }
 
+  // Agent-specific config
+  if (blockType.value === 'agent') {
+    if (!node.value.data.config) node.value.data.config = {}
+    if (expectedFileCount.value != null && expectedFileCount.value > 0) {
+      ;(node.value.data.config as Record<string, any>).expectedFileCount = expectedFileCount.value
+    } else {
+      delete (node.value.data.config as Record<string, any>).expectedFileCount
+    }
+  }
+
+  // Pipeline resilience config (applies to any LLM-using node)
+  if (activePanels.value.has('model')) {
+    if (!node.value.data.config) node.value.data.config = {}
+    ;(node.value.data.config as Record<string, any>).autoRetryCount = autoRetryCount.value
+    ;(node.value.data.config as Record<string, any>).fallbackModels = fallbackModels.value
+  }
+
   // Verifier-specific config
-  if (typeSections.value.verifier) {
+  if (activePanels.value.has('checks') && !isReview.value) {
     const checks = {
       syntaxCheck: syntaxCheck.value,
       requiredPatterns: requiredPatterns.value,
@@ -309,7 +345,7 @@ function saveConfig() {
   }
 
   // Review-specific config
-  if (typeSections.value.review) {
+  if (isReview.value) {
     const checks = {
       premortem: reviewPremortem.value,
       prism: reviewPrism.value,
@@ -324,8 +360,8 @@ function saveConfig() {
   }
 
   // Sync to schemaStore for persistence
-  if (schemaStore.currentSchema?.nodes) {
-    const updatedNodes = schemaStore.currentSchema.nodes.map(n => {
+  if (canvasStore.currentSchema?.nodes) {
+    const updatedNodes = canvasStore.currentSchema.nodes.map(n => {
       if (n.id !== props.blockId) return n
     const baseData: Record<string, any> = {
       ...(n.data || {}),
@@ -334,6 +370,8 @@ function saveConfig() {
         description: blockDescription.value,
         model: model.value,
         systemPrompt: prompt.value,
+        autoRetryCount: autoRetryCount.value,
+        fallbackModels: fallbackModels.value,
       },
       // Top-level fields for backend NodeData deserialization
       model: model.value,
@@ -351,7 +389,7 @@ function saveConfig() {
         })
         baseData.sourceData = sourceContent.value
       }
-      if (typeSections.value.verifier) {
+      if (activePanels.value.has('checks') && !isReview.value) {
         baseData.config = {
           ...baseData.config,
           checks: {
@@ -364,13 +402,13 @@ function saveConfig() {
           maxRewriteRetries: maxRewriteRetries.value,
         }
       }
-      if (typeSections.value.draft) {
+      if (activePanels.value.has('draftType')) {
         baseData.config = {
           ...baseData.config,
           draftType: draftType.value,
         }
       }
-      if (typeSections.value.review) {
+      if (isReview.value) {
         baseData.config = {
           ...baseData.config,
           checks: {
@@ -391,8 +429,8 @@ function saveConfig() {
         data: baseData
       }
     })
-    schemaStore.markDirty({
-      ...schemaStore.currentSchema,
+    canvasStore.markDirty({
+      ...canvasStore.currentSchema,
       nodes: updatedNodes
     })
   }
@@ -442,7 +480,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Input Type / Source Type (Receive blocks) -->
-      <div v-if="typeSections.input" class="config-section">
+      <div v-if="activePanels.has('sourceType')" class="config-section">
         <label class="config-label">Input Type</label>
         <select v-model="sourceType" class="config-select" @change="saveConfig">
           <option value="text">Chat / Text</option>
@@ -453,7 +491,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Text mode -->
-      <div v-if="typeSections.input && sourceType === 'text'" class="config-section">
+      <div v-if="activePanels.has('sourceType') && sourceType === 'text'" class="config-section">
         <label class="config-label">Source Content</label>
         <textarea
           v-model="sourceContent"
@@ -465,7 +503,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- File Reference mode -->
-      <div v-if="typeSections.input && sourceType === 'file'" class="config-section">
+      <div v-if="activePanels.has('sourceType') && sourceType === 'file'" class="config-section">
         <label class="config-label">File Path</label>
         <div class="path-row">
           <input
@@ -488,7 +526,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- URL Fetch mode -->
-      <div v-if="typeSections.input && sourceType === 'url'" class="config-section">
+      <div v-if="activePanels.has('sourceType') && sourceType === 'url'" class="config-section">
         <label class="config-label">URL</label>
         <div class="url-row">
           <input
@@ -509,7 +547,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Project Directory mode -->
-      <div v-if="typeSections.input && sourceType === 'project'" class="config-section">
+      <div v-if="activePanels.has('sourceType') && sourceType === 'project'" class="config-section">
         <label class="config-label">Project Path</label>
         <div class="path-row">
           <input
@@ -539,7 +577,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Model Selector (Think blocks) -->
-      <div v-if="typeSections.model" class="config-section">
+      <div v-if="activePanels.has('model')" class="config-section">
         <label class="config-label">Model</label>
         <select v-model="model" class="config-select">
           <option value="">Auto (user default)</option>
@@ -549,10 +587,40 @@ function handleKeydown(e: KeyboardEvent) {
             </optgroup>
           </template>
         </select>
+
+        <!-- Pipeline Resilience: Auto Retry -->
+        <label class="config-label" style="margin-top: 8px;">Auto Retry Count</label>
+        <input
+          v-model.number="autoRetryCount"
+          type="number"
+          min="0"
+          max="5"
+          class="num-input"
+          style="width: 80px;"
+          @input="saveConfig"
+        />
+
+        <!-- Pipeline Resilience: Fallback Models -->
+        <label class="config-label" style="margin-top: 8px;">Fallback Models</label>
+        <div class="fallback-models-list">
+          <label v-for="opt in providerOptions" :key="opt.value" class="fallback-model-item">
+            <input
+              type="checkbox"
+              :value="opt.value"
+              :checked="fallbackModels.includes(opt.value)"
+              @change="toggleFallbackModel(opt.value)"
+            />
+            <span class="fallback-model-label">{{ opt.label }}</span>
+            <span class="fallback-model-group">{{ opt.group }}</span>
+          </label>
+          <div v-if="providerOptions.length === 0" class="fallback-empty">
+            No models available
+          </div>
+        </div>
       </div>
 
       <!-- Draft Type (Draft blocks) -->
-      <div v-if="typeSections.draft" class="config-section">
+      <div v-if="activePanels.has('draftType')" class="config-section">
         <label class="config-label">Draft Type</label>
         <select v-model="draftType" class="config-select" @change="saveConfig">
           <option value="spec">Spec — 1-page functional spec</option>
@@ -563,7 +631,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Prompt (Think blocks) -->
-      <div v-if="typeSections.prompt" class="config-section">
+      <div v-if="activePanels.has('systemPrompt')" class="config-section">
         <label class="config-label">Persona</label>
         <select v-model="selectedPersona" class="config-select" @change="applyPersona">
           <option value="">Custom — write your own prompt</option>
@@ -581,8 +649,23 @@ function handleKeydown(e: KeyboardEvent) {
         />
       </div>
 
+      <!-- Expected File Count (Agent blocks) -->
+      <div v-if="blockType === 'agent'" class="config-section">
+        <label class="config-label">Expected Files (optional)</label>
+        <input
+          v-model="expectedFileCount"
+          type="number"
+          class="config-input"
+          min="0"
+          max="100"
+          placeholder="0 = no minimum"
+          @input="saveConfig"
+        />
+        <span class="config-hint">Warn if agent creates fewer files than this number</span>
+      </div>
+
       <!-- Memory Type (Remember blocks) -->
-      <div v-if="typeSections.memory" class="config-section">
+      <div v-if="activePanels.has('memory')" class="config-section">
         <label class="config-label">Memory Type</label>
         <select v-model="blockType" class="config-select">
           <option value="memory">Chat History</option>
@@ -592,7 +675,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Verification Checks (Verify blocks) -->
-      <div v-if="typeSections.verifier" class="config-section">
+      <div v-if="activePanels.has('checks') && !isReview" class="config-section">
         <label class="config-label">Verification Checks</label>
 
         <label class="config-checkbox">
@@ -663,7 +746,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Review Checks (Review blocks) -->
-      <div v-if="typeSections.review" class="config-section">
+      <div v-if="activePanels.has('checks') && isReview" class="config-section">
         <label class="config-label">Review Checks</label>
 
         <label class="config-checkbox">
@@ -703,7 +786,7 @@ function handleKeydown(e: KeyboardEvent) {
         </div>
 
         <!-- Auto-iteration config: only shown for auto/hybrid -->
-        <template v-if="typeSections.auto">
+        <template v-if="isAutoMode">
           <div class="config-field">
             <label class="config-label">Max Auto Iterations</label>
             <input
@@ -724,7 +807,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Action Type (Act blocks) -->
-      <div v-if="typeSections.action" class="config-section">
+      <div v-if="activePanels.has('output')" class="config-section">
         <label class="config-label">Action Type</label>
         <select v-model="blockType" class="config-select">
           <option value="output">Reply / Output</option>
@@ -945,5 +1028,46 @@ textarea { scrollbar-width: thin; scrollbar-color: var(--border-color) transpare
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
+}
+
+.fallback-models-list {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+  margin-top: var(--space-1);
+  background: var(--bg-primary);
+}
+.fallback-model-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.fallback-model-item:hover {
+  background: var(--bg-hover);
+}
+.fallback-model-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.fallback-model-label {
+  flex: 1;
+  color: var(--text-primary);
+}
+.fallback-model-group {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.fallback-empty {
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: center;
 }
 </style>

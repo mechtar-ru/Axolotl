@@ -157,33 +157,88 @@ public class LlmService {
 
     public LlmResponse chat(String model, String systemPrompt, String userPrompt,
                             Map<String, Object> config, LlmUsage usage) {
-        String providerName = resolveProvider(model);
-        LlmProvider provider = providers.get(providerName);
+        // Build model chain: primary + fallbacks from config
+        List<String> models = buildModelChain(model, config);
 
-        if (provider == null) {
-            String error = "Provider not found: " + providerName + " (available: " + providers.keySet() + ")";
-            log.error(error);
-            throw new RuntimeException(error);
+        Exception lastException = null;
+        for (String m : models) {
+            try {
+                String providerName = resolveProvider(m);
+                LlmProvider provider = providers.get(providerName);
+                if (provider == null) {
+                    String error = "Provider not found: " + providerName + " (available: " + providers.keySet() + ")";
+                    log.error(error);
+                    throw new RuntimeException(error);
+                }
+                String strippedModel = stripProviderPrefix(m);
+                LlmResponse response = provider.chat(strippedModel, systemPrompt, userPrompt, config, usage);
+                if (m != null && !m.equals(model)) {
+                    log.info("Fallback succeeded: primary={} used={}", model, m);
+                }
+                return response;
+            } catch (Exception e) {
+                if (m != null) {
+                    log.warn("Model {} failed: {}; trying fallback if available", m, e.getMessage());
+                } else {
+                    log.warn("Model <null> failed: {}; trying fallback if available", e.getMessage());
+                }
+                lastException = e;
+            }
         }
-
-        String strippedModel = stripProviderPrefix(model);
-        return provider.chat(strippedModel, systemPrompt, userPrompt, config, usage);
+        throw new RuntimeException("All models exhausted — last error: "
+                + (lastException != null ? lastException.getMessage() : "unknown"));
     }
 
     public LlmResponse streamingChat(String model, String systemPrompt, String userPrompt,
                                       Map<String, Object> config, java.util.function.Consumer<String> onToken,
                                       LlmUsage usage) {
-        String providerName = resolveProvider(model);
-        LlmProvider provider = providers.get(providerName);
+        List<String> models = buildModelChain(model, config);
 
-        if (provider == null) {
-            String error = "Provider not found: " + providerName;
-            onToken.accept(error);
-            throw new RuntimeException(error);
+        Exception lastException = null;
+        for (String m : models) {
+            try {
+                String providerName = resolveProvider(m);
+                LlmProvider provider = providers.get(providerName);
+                if (provider == null) {
+                    String error = "Provider not found: " + providerName;
+                    onToken.accept(error);
+                    throw new RuntimeException(error);
+                }
+                String strippedModel = stripProviderPrefix(m);
+                LlmResponse response = provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken, usage);
+                if (m != null && !m.equals(model)) {
+                    log.info("Fallback succeeded: primary={} used={}", model, m);
+                }
+                return response;
+            } catch (Exception e) {
+                if (m != null) {
+                    log.warn("Streaming model {} failed: {}; trying fallback", m, e.getMessage());
+                } else {
+                    log.warn("Streaming model <null> failed: {}; trying fallback", e.getMessage());
+                }
+                lastException = e;
+            }
         }
+        throw new RuntimeException("All models exhausted — last error: "
+                + (lastException != null ? lastException.getMessage() : "unknown"));
+    }
 
-        String strippedModel = stripProviderPrefix(model);
-        return provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken, usage);
+    /**
+     * Build the ordered model chain: [primary] + [fallbackModels from config].
+     */
+    @SuppressWarnings("unchecked")
+    List<String> buildModelChain(String primaryModel, Map<String, Object> config) {
+        List<String> models = new ArrayList<>();
+        models.add(primaryModel);
+        if (config != null && config.get("fallbackModels") instanceof List) {
+            List<String> fallbacks = (List<String>) config.get("fallbackModels");
+            for (String fb : fallbacks) {
+                if (fb != null && !fb.isBlank() && !models.contains(fb)) {
+                    models.add(fb);
+                }
+            }
+        }
+        return models;
     }
 
     private String stripProviderPrefix(String model) {

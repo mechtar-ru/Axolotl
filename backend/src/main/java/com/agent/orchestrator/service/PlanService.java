@@ -95,6 +95,19 @@ public class PlanService {
         return summary;
     }
 
+    public String getSessionGoal(String workspaceId) {
+        Plan plan = getPlan(workspaceId);
+        return plan.getSessionGoal();
+    }
+
+    public void setSessionGoal(String workspaceId, String sessionGoal) {
+        Plan plan = getPlan(workspaceId);
+        plan.setSessionGoal(sessionGoal);
+        plan.touch();
+        planRepository.save(plan);
+        notifyPlanUpdated(plan);
+    }
+
     public Plan updatePlan(Plan plan) {
         plan.touch();
         planRepository.save(plan);

@@ -156,7 +156,7 @@ async function generate() {
           checks: { syntaxCheck: true, testCommand: '', premortem: true },
           rewriteOnFail: true,
           maxRewriteRetries: 3,
-          config: {},
+          config: { stubDetection: true },
           validationCriteria: description,
         } as Record<string, any>,
       },

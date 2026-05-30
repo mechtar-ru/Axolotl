@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useSchemaStore } from '../../stores/schemaStore'
+import { useCanvasStore } from '../../stores/useCanvasStore'
+import { usePipelineStore } from '../../stores/usePipelineStore'
 
-const store = useSchemaStore()
+const canvasStore = useCanvasStore()
+const pipelineStore = usePipelineStore()
 
-const pipeline = computed(() => store.currentSchema?.pipeline)
+const pipeline = computed(() => canvasStore.currentSchema?.pipeline)
 const stages = computed(() => pipeline.value?.stages ?? [])
 
 const nodeTypeColors: Record<string, string> = {
@@ -94,7 +96,7 @@ const stageLevels = computed(() => {
                 <div v-if="getStageTag(stage.id)" class="stage-tag" :class="'tag-' + getStageTag(stage.id)!.toLowerCase().replace(' ', '-')">{{ getStageTag(stage.id) }}</div>
                 <div class="stage-model" v-if="stage.model">Model: {{ stage.model }}</div>
               </div>
-              <div class="stage-status completed" v-if="stage.id in store.pipelineStatus.stageResults">
+              <div class="stage-status completed" v-if="stage.id in pipelineStore.pipelineStatus.stageResults">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>

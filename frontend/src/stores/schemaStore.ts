@@ -1,86 +1,19 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
-import type { Pipeline, Stage, PipelineStatus } from '../types/pipeline';
-import { schemaApi, settingsApi } from '../services/api';
+import type { WorkflowSchema } from '../types';
+import { schemaApi, api } from '../services/api';
 import type { SchemaValidationResult } from '../services/api';
-import { api } from '../services/api';
 import { useToast } from '../composables/useToast';
+import { useCanvasStore } from './useCanvasStore';
 
 const { error: toastError } = useToast();
 
-export interface ReviewFinding {
-  source: string;
-  severity: string;
-  description: string;
-  suggestion: string;
-}
-
-export interface ReviewData {
-  executionId: string;
-  nodeId: string;
-  originalPlan: string;
-  rewrittenPlan: string;
-  findings: ReviewFinding[];
-  iteration: number;
-  maxIterations: number;
-}
+// Re-export types from review store for backward compat
+export type { ReviewData, ReviewFinding } from './useReviewStore';
 
 export const useSchemaStore = defineStore('schema', () => {
   const schemas = ref<WorkflowSchema[]>([]);
-  const currentSchema = ref<WorkflowSchema | null>(null);
   const loading = ref(false);
-  const pendingReview = ref(false);
-  const reviewData = ref<ReviewData | null>(null);
-
-  // ─── Dirty-flag auto-save state ──────────────────────────────────
-  const isDirty = ref(false)
-  let saveTimer: ReturnType<typeof setTimeout> | null = null
-  let isFlushing = false
-
-  /**
-   * Mark the schema as having unsaved changes.
-   * Updates `currentSchema` in-memory immediately, starts a 2s debounce
-   * timer to persist to backend. Callers should NOT call updateSchema()
-   * directly for normal edits — use markDirty() instead.
-   */
-  function markDirty(schema: WorkflowSchema) {
-    currentSchema.value = schema
-    isDirty.value = true
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(flushSave, 2000)
-  }
-
-  /**
-   * Persist dirty changes to backend immediately.
-   * Flushes the debounce timer and calls updateSchema. Skip if nothing
-   * is dirty (no-op). Re-throws on failure so callers can handle errors.
-   */
-  async function flushSave() {
-    if (saveTimer) {
-      clearTimeout(saveTimer)
-      saveTimer = null
-    }
-    if (!isDirty.value || !currentSchema.value || isFlushing) return
-    isFlushing = true
-
-    try {
-      const updated = await schemaApi.updateSchema(currentSchema.value.id, currentSchema.value)
-      // Sync returned data back so we stay consistent with backend
-      const idx = schemas.value.findIndex(s => s.id === currentSchema.value!.id)
-      if (idx !== -1) {
-        schemas.value[idx] = updated
-      }
-      currentSchema.value = updated
-      isDirty.value = false
-    } catch (err) {
-      toastError('Failed to save schema: ' + ((err as Error).message || err))
-      isDirty.value = true
-      throw err
-    } finally {
-      isFlushing = false
-    }
-  }
 
   // ─── Schema CRUD ─────────────────────────────────────────────────
 
@@ -89,26 +22,14 @@ export const useSchemaStore = defineStore('schema', () => {
     try {
       const data = await schemaApi.getSchemas();
       schemas.value = data;
-      if (schemas.value.length > 0 && !currentSchema.value) {
-        currentSchema.value = schemas.value[0]!;
-      }
     } catch (err) {
       toastError('Failed to load schemas: ' + ((err as Error).message || err))
     } finally {
       loading.value = false;
     }
   }
-  
-  async function createSchema(name: string, appType?: string) {
-    // Pre-fill user default model if available
-    let defaultModel: string | undefined;
-    try {
-      defaultModel = await settingsApi.getUserDefaultModel();
-      if (!defaultModel) defaultModel = undefined;
-    } catch {
-      console.warn('[schemaStore] Failed to fetch user default model, continuing without it');
-    }
 
+  async function createSchema(name: string, appType?: string) {
     const newSchema = {
       id: `new-${Date.now()}`,
       name,
@@ -117,20 +38,18 @@ export const useSchemaStore = defineStore('schema', () => {
       appType: appType || 'CUSTOM',
       nodes: [],
       edges: [],
-      defaultModel,
       createdAt: new Date().toISOString(),
     } as WorkflowSchema;
     try {
       const created = await schemaApi.createSchema(newSchema);
       schemas.value.push(created);
-      currentSchema.value = created;
       return created;
     } catch (err) {
       toastError('Failed to create schema: ' + ((err as Error).message || err))
       throw err;
     }
   }
-  
+
   async function updateSchema(schema: WorkflowSchema) {
     try {
       const updated = await schemaApi.updateSchema(schema.id, schema);
@@ -138,35 +57,23 @@ export const useSchemaStore = defineStore('schema', () => {
       if (index !== -1) {
         schemas.value[index] = updated;
       }
-      if (currentSchema.value?.id === schema.id) {
-        currentSchema.value = updated;
-      }
-      isDirty.value = false
       return updated;
     } catch (err) {
       toastError('Failed to update schema: ' + ((err as Error).message || err))
       throw err;
     }
   }
-  
+
   async function deleteSchema(id: string) {
     try {
       await schemaApi.deleteSchema(id);
       schemas.value = schemas.value.filter(s => s.id !== id);
-      if (currentSchema.value?.id === id) {
-        currentSchema.value = schemas.value[0] || null;
-      }
-      isDirty.value = false
-      if (saveTimer) {
-        clearTimeout(saveTimer)
-        saveTimer = null
-      }
     } catch (err) {
       toastError('Failed to delete schema: ' + ((err as Error).message || err))
       throw err;
     }
   }
-  
+
   async function executeSchema(id: string): Promise<{ status: string; validation?: SchemaValidationResult } | void> {
     if (!id) return;
     try {
@@ -197,111 +104,12 @@ export const useSchemaStore = defineStore('schema', () => {
     }
   }
 
-  function updateCurrentSchema(schema: WorkflowSchema) {
-    currentSchema.value = schema;
-  }
-
-  // Review approval state
-  function handleReviewAwaitingApproval(data: ReviewData) {
-    reviewData.value = data;
-    pendingReview.value = true;
-  }
-
-  function clearReview() {
-    pendingReview.value = false;
-    reviewData.value = null;
-  }
-
-  async function approveReview(executionId: string, nodeId: string) {
-    try {
-      const sid = currentSchema.value?.id || '';
-      await api.post(`/execution/${executionId}/approve-review?nodeId=${nodeId}&schemaId=${sid}`);
-      pendingReview.value = false;
-      reviewData.value = null;
-    } catch (err) {
-      toastError('Failed to approve review: ' + ((err as Error).message || err))
-      throw err;
-    }
-  }
-
-  async function rejectReview(executionId: string, nodeId: string) {
-    try {
-      const sid = currentSchema.value?.id || '';
-      await api.post(`/execution/${executionId}/reject?nodeId=${nodeId}&schemaId=${sid}`);
-      pendingReview.value = false;
-      reviewData.value = null;
-    } catch (err) {
-      toastError('Failed to reject review: ' + ((err as Error).message || err))
-      throw err;
-    }
-  }
-
-  // ─── Pipeline state ────────────────────────────────────────────
-  const pipelineStatus = ref<PipelineStatus>({ running: false, stageResults: {} })
-  const pipelineExpanded = ref(false)
-
-  // buildPipelineNodes is deprecated — all schemas use canvas-derived execution
-  async function buildPipelineNodes(_schemaId: string) {
-    return { nodes: 0, edges: 0 }
-  }
-
-  // executePipeline is deprecated — delegates to executeSchema which goes through PipelineService
-  async function executePipeline(schemaId: string) {
-    try {
-      await executeSchema(schemaId)
-      pipelineStatus.value = { running: true, stageResults: {} }
-    } catch (err: any) {
-      if (err?.response?.data?.status === 'validation_error') {
-        const validation = err.response.data.validation
-        const msgs = validation?.errors?.map((e: any) => e.message).join('; ') || 'Pipeline validation failed'
-        toastError(msgs)
-        throw new Error(msgs)
-      }
-      throw err
-    }
-  }
-
-  async function cancelPipelineExecution(schemaId: string) {
-    await api.post(`/schemas/${schemaId}/pipeline/cancel`)
-    pipelineStatus.value = { running: false, stageResults: {} }
-  }
-
-  async function retryPipeline(schemaId: string) {
-    await api.post(`/schemas/${schemaId}/pipeline/retry`)
-    pipelineStatus.value = { running: true, stageResults: {} }
-  }
-
-  async function refreshPipelineStatus(schemaId: string) {
-    const res = await api.get(`/schemas/${schemaId}/pipeline/status`)
-    pipelineStatus.value = res.data
-  }
-
-  async function createDefaultPipeline(schemaId: string, appType?: string, description?: string, tddEnabled?: boolean) {
-    await api.post(`/schemas/${schemaId}/pipeline/default`, {
-      appType: appType || 'custom',
-      description: description || '',
-      tddEnabled: !!tddEnabled
-    })
-    // Re-fetch the schema to get the persisted pipeline and update currentSchema
-    const resp = await api.get(`/schemas/${schemaId}`)
-    if (resp.data && currentSchema.value) {
-      currentSchema.value = resp.data
-    }
-    // Reset execution state — no run in progress after creation
-    pipelineStatus.value = { running: false, stageResults: {} }
-  }
-
-  function setPipeline(pipeline: Pipeline | undefined) {
-    if (currentSchema.value) {
-      currentSchema.value.pipeline = pipeline
-    }
-  }
-
   async function refreshCurrentSchema(schemaId: string) {
     try {
       const resp = await api.get(`/schemas/${schemaId}`)
       if (resp.data) {
-        currentSchema.value = resp.data
+        const canvasStore = useCanvasStore()
+        canvasStore.currentSchema = resp.data
         const idx = schemas.value.findIndex(s => s.id === schemaId)
         if (idx !== -1) {
           schemas.value[idx] = resp.data
@@ -314,12 +122,7 @@ export const useSchemaStore = defineStore('schema', () => {
 
   return {
     schemas,
-    currentSchema,
     loading,
-    // Dirty-flag auto-save
-    isDirty,
-    markDirty,
-    flushSave,
     // Schema CRUD
     loadSchemas,
     createSchema,
@@ -327,24 +130,7 @@ export const useSchemaStore = defineStore('schema', () => {
     deleteSchema,
     executeSchema,
     cancelExecution,
-    updateCurrentSchema,
-    // Review
-    pendingReview,
-    reviewData,
-    handleReviewAwaitingApproval,
-    clearReview,
-    approveReview,
-    rejectReview,
-    // Pipeline
-    pipelineStatus,
-    pipelineExpanded,
-    buildPipelineNodes,
-    executePipeline,
-    cancelPipelineExecution,
-    retryPipeline,
-    refreshPipelineStatus,
-    createDefaultPipeline,
-    setPipeline,
+    // Re-fetch
     refreshCurrentSchema,
   };
 });

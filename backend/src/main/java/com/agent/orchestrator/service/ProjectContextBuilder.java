@@ -1,8 +1,10 @@
 package com.agent.orchestrator.service;
 
+import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.Plan;
 import com.agent.orchestrator.model.Task;
 import com.agent.orchestrator.model.TaskStatus;
+import com.agent.orchestrator.repository.ExecutionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,18 +21,29 @@ public class ProjectContextBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectContextBuilder.class);
     private static final int MAX_CHARS = 4000;
+    private static final int MAX_SESSION_HISTORY = 3;
 
     private final PlanService planService;
+    private final ExecutionRepository executionRepository;
 
-    public ProjectContextBuilder(PlanService planService) {
+    public ProjectContextBuilder(PlanService planService,
+                                  ExecutionRepository executionRepository) {
         this.planService = planService;
+        this.executionRepository = executionRepository;
     }
 
     /**
      * Build a context string describing the current project state.
-     * Includes file tree and session history from the plan.
+     * Includes file tree, session history from the plan, session goal, and past run results.
      */
     public String buildContext(String targetPath, String workspaceId) {
+        return buildContext(targetPath, workspaceId, null);
+    }
+
+    /**
+     * Build context with optional schemaId for fetching past execution run results.
+     */
+    public String buildContext(String targetPath, String workspaceId, String schemaId) {
         StringBuilder sb = new StringBuilder();
         sb.append("Current project state (target: ").append(targetPath).append("):\n\n");
 
@@ -42,7 +55,17 @@ public class ProjectContextBuilder {
             sb.append("(directory does not exist yet)\n");
         }
 
-        // Session history
+        // Session goal
+        try {
+            String sessionGoal = planService.getSessionGoal(workspaceId);
+            if (sessionGoal != null && !sessionGoal.isBlank()) {
+                sb.append("\n## This Session Goal\n\n").append(sessionGoal).append("\n");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read session goal: {}", e.getMessage());
+        }
+
+        // Session history (completed tasks from plan)
         try {
             Plan plan = planService.getPlan(workspaceId);
             List<Task> completedTasks = plan.getTasks().stream()
@@ -66,6 +89,32 @@ public class ProjectContextBuilder {
             log.warn("Failed to read plan history: {}", e.getMessage());
         }
 
+        // Past execution run results (if schemaId provided)
+        if (schemaId != null && !schemaId.isBlank()) {
+            try {
+                List<ExecutionRun> completedRuns = executionRepository.getCompletedRuns(schemaId, MAX_SESSION_HISTORY);
+                if (!completedRuns.isEmpty()) {
+                    sb.append("\nPast execution run results:\n");
+                    for (int i = 0; i < completedRuns.size(); i++) {
+                        ExecutionRun run = completedRuns.get(i);
+                        sb.append("  [Run ").append(i + 1).append("] ")
+                          .append("status=").append(run.getStatus());
+                        if (run.getError() != null && !run.getError().isBlank()) {
+                            sb.append(", error=").append(run.getError().length() > 80
+                                    ? run.getError().substring(0, 80) + "..."
+                                    : run.getError());
+                        }
+                        if (run.getTotalTokens() > 0) {
+                            sb.append(", tokens=").append(run.getTotalTokens());
+                        }
+                        sb.append("\n");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to read past execution runs: {}", e.getMessage());
+            }
+        }
+
         // Truncate if too long (>1000 tokens ≈ 4000 chars)
         if (sb.length() > MAX_CHARS) {
             sb.setLength(MAX_CHARS);
@@ -81,8 +130,8 @@ public class ProjectContextBuilder {
             for (int i = 0; i < sorted.size(); i++) {
                 Path entry = sorted.get(i);
                 boolean isLast = (i == sorted.size() - 1);
-                String connector = isLast ? "└── " : "├── ";
-                String nextPrefix = isLast ? prefix + "    " : prefix + "│   ";
+                String connector = isLast ? "\u2514\u2500\u2500 " : "\u251C\u2500\u2500 ";
+                String nextPrefix = isLast ? prefix + "    " : prefix + "\u2502   ";
 
                 if (Files.isDirectory(entry)) {
                     sb.append(prefix).append(connector).append(entry.getFileName()).append("/\n");

@@ -13,6 +13,7 @@ public class Plan {
     private String schemaId;
     private PlanLevel level = PlanLevel.PROJECT;
     private List<Task> tasks = new ArrayList<>();
+    private String sessionGoal;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -46,6 +47,9 @@ public class Plan {
 
     public PlanLevel getLevel() { return level; }
     public void setLevel(PlanLevel level) { this.level = level; }
+
+    public String getSessionGoal() { return sessionGoal; }
+    public void setSessionGoal(String sessionGoal) { this.sessionGoal = sessionGoal; }
 
     public List<Task> getTasks() { return tasks; }
     public void setTasks(List<Task> tasks) { this.tasks = tasks; }

@@ -1,6 +1,8 @@
 package com.agent.orchestrator.controller;
 
+import com.agent.orchestrator.llm.CustomLlmProvider;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.model.CustomLlmEndpoint;
 import com.agent.orchestrator.service.SettingsService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -19,10 +21,13 @@ public class SettingsController {
 
     private final SettingsService settingsService;
     private final LlmService llmService;
+    private final CustomLlmProvider customLlmProvider;
 
-    public SettingsController(SettingsService settingsService, LlmService llmService) {
+    public SettingsController(SettingsService settingsService, LlmService llmService,
+                              CustomLlmProvider customLlmProvider) {
         this.settingsService = settingsService;
         this.llmService = llmService;
+        this.customLlmProvider = customLlmProvider;
     }
 
     @GetMapping
@@ -164,6 +169,25 @@ public class SettingsController {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "ok");
         response.put("defaultModel", model);
+        return ResponseEntity.ok(response);
+    }
+
+    // ──── Provider connection test ────
+
+    @PostMapping("/providers/test")
+    public ResponseEntity<Map<String, Object>> testProviderConnection(
+            @RequestBody Map<String, Object> body) {
+        CustomLlmEndpoint endpoint = new CustomLlmEndpoint();
+        endpoint.setBaseUrl((String) body.get("baseUrl"));
+        endpoint.setApiKey((String) body.get("apiKey"));
+        endpoint.setAuthType((String) body.getOrDefault("authType", "bearer"));
+        endpoint.setModelName((String) body.getOrDefault("modelName", "default"));
+
+        boolean success = customLlmProvider.testConnection(endpoint);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("success", success);
+        response.put("message", success ? "Connection successful" : "Connection failed");
         return ResponseEntity.ok(response);
     }
 

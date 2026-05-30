@@ -31,7 +31,21 @@ public final class OpenAiChatClient {
     private static final Logger log = LoggerFactory.getLogger(OpenAiChatClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    // OpenRouter identification headers
+    private static final String OPENROUTER_REFERER = "https://axolotl.app";
+    private static final String OPENROUTER_TITLE = "Axolotl";
+
     private OpenAiChatClient() {
+    }
+
+    /**
+     * If the baseUrl contains "openrouter.ai", add the required HTTP-Referer and X-Title headers.
+     */
+    static void addOpenRouterHeadersIfNeeded(HttpRequest.Builder builder, String baseUrl) {
+        if (baseUrl != null && baseUrl.contains("openrouter.ai")) {
+            builder.header("HTTP-Referer", OPENROUTER_REFERER);
+            builder.header("X-Title", OPENROUTER_TITLE);
+        }
     }
 
     // ──────────────────────────────────────────────
@@ -63,13 +77,13 @@ public final class OpenAiChatClient {
                 .version(httpVersion)
                 .build();
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
-                .timeout(Duration.ofSeconds(timeoutSec))
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
+                .timeout(Duration.ofSeconds(timeoutSec));
+        addOpenRouterHeadersIfNeeded(builder, baseUrl);
+        HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -123,13 +137,13 @@ public final class OpenAiChatClient {
                 .version(httpVersion)
                 .build();
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
-                .timeout(Duration.ofSeconds(timeoutSec))
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
+                .timeout(Duration.ofSeconds(timeoutSec));
+        addOpenRouterHeadersIfNeeded(builder, baseUrl);
+        HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 
         HttpResponse<java.io.InputStream> rawResponse = client.send(request,
                 HttpResponse.BodyHandlers.ofInputStream());

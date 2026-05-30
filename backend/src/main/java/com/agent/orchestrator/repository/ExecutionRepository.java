@@ -146,6 +146,17 @@ public class ExecutionRepository {
         }
     }
 
+    /** Returns the last N completed runs for a schema (ordered by most recent first). */
+    public List<ExecutionRun> getCompletedRuns(String schemaId, int limit) {
+        try {
+            return runRepo.findCompletedBySchemaId(schemaId, Math.min(limit, 10))
+                    .stream().map(this::toPocoRun).toList();
+        } catch (Exception e) {
+            log.error("Error reading completed runs for schema {}: {}", schemaId, e.getMessage());
+            return List.of();
+        }
+    }
+
     public ExecutionRun getRunById(String runId) {
         try {
             return runRepo.findById(runId).map(this::toPocoRun).orElse(null);

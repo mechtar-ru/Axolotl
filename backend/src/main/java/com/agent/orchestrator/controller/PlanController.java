@@ -18,6 +18,28 @@ public class PlanController {
         this.planService = planService;
     }
 
+    // === Session Goal ===
+
+    @GetMapping("/session-goal")
+    public ResponseEntity<Map<String, Object>> getSessionGoal(
+            @RequestParam(defaultValue = "default") String workspaceId) {
+        String goal = planService.getSessionGoal(workspaceId);
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("sessionGoal", goal != null ? goal : "");
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/session-goal")
+    public ResponseEntity<Map<String, Object>> setSessionGoal(
+            @RequestParam(defaultValue = "default") String workspaceId,
+            @RequestBody Map<String, String> body) {
+        String goal = body.get("sessionGoal");
+        planService.setSessionGoal(workspaceId, goal);
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+        response.put("status", "ok");
+        return ResponseEntity.ok(response);
+    }
+
     // === Read plan ===
 
     @GetMapping

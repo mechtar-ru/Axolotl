@@ -5,6 +5,7 @@ import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useCanvasStore } from '@/stores/useCanvasStore'
 import { schemaApi } from '@/services/api'
 import type { FlowNode, FlowEdge } from '@/types'
 import BlockPalette from '@/components/studio/BlockPalette.vue'
@@ -26,6 +27,7 @@ const props = defineProps<{
 }>()
 
 const schemaStore = useSchemaStore()
+const canvasStore = useCanvasStore()
 
 // Register custom node types for VueFlow
 // markRaw prevents Vue from wrapping component defs in reactive proxies,
@@ -112,20 +114,8 @@ async function loadFullSchema() {
 
 onMounted(loadFullSchema)
 
-// Keyboard shortcut: Ctrl+Z undo, Ctrl+Shift+Z redo
-function onKeyDownHandler(event: KeyboardEvent) {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
-    event.preventDefault()
-    if (event.shiftKey) {
-      undoRedo.redo()
-    } else {
-      undoRedo.undo()
-    }
-  }
-}
-
 // Watch for schema updates (e.g. after save) — prevent re-entrant sync loops
-watch(() => schemaStore.currentSchema, (schema) => {
+watch(() => canvasStore.currentSchema, (schema) => {
   if (syncing) return
   if (!schema || schema.id !== props.appId) return
   if (!schema.nodes?.length) return
@@ -141,25 +131,18 @@ watch(() => schemaStore.currentSchema, (schema) => {
   })
 }, { deep: true, immediate: true })
 
-// Debounced watch on nodes/edges for undo capture (drag moves, deletions)
-let debounceTimer: ReturnType<typeof setTimeout> | null = null
-let lastCaptureKey = ''
-watch([nodes, edges], ([newNodes, newEdges], [oldNodes, oldEdges]) => {
+// Debounced undo capture on nodes/edges changes (drag, delete, resize)
+// Composable internally debounces to 500ms
+watch([nodes, edges], () => {
   if (!flowReady.value) return
+  undoRedo.capture()
+}, { deep: true })
 
-  // Capture old state (pre-change) once, debounced
-  if (oldNodes && oldEdges) {
-    const key = `${oldNodes.length}:${oldEdges.length}`
-    if (key !== lastCaptureKey || oldNodes.length === 0) {
-      undoRedo.capture()
-      lastCaptureKey = key
-    }
-  }
-
-  if (debounceTimer) clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    syncFlowToStore()
-  }, 500)
+// Separate 500ms debounce for store sync
+let syncTimer: ReturnType<typeof setTimeout> | null = null
+watch([nodes, edges], () => {
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => syncFlowToStore(), 500)
 }, { deep: true })
 
 // Handle drag and drop from BlockPalette
@@ -232,8 +215,8 @@ function onAddNode() {
 }
 
 function onRunSchema() {
-  if (schemaStore.currentSchema) {
-    schemaStore.executeSchema(schemaStore.currentSchema.id)
+  if (canvasStore.currentSchema) {
+    canvasStore.executeSchema(canvasStore.currentSchema.id)
   }
 }
 
@@ -245,7 +228,7 @@ function onQuickStart() {
 
 // Sync VueFlow nodes + edges back to schemaStore so they persist to backend
 function syncFlowToStore() {
-  if (!schemaStore.currentSchema) return
+  if (!canvasStore.currentSchema) return
 
   syncing = true
 
@@ -272,8 +255,8 @@ function syncFlowToStore() {
     type: 'data'
   }))
 
-  schemaStore.markDirty({
-    ...schemaStore.currentSchema,
+  canvasStore.markDirty({
+    ...canvasStore.currentSchema,
     nodes: updatedNodes,
     edges: updatedEdges
   })
@@ -307,7 +290,7 @@ onConnect((connection) => {
     </div>
     
     <!-- Canvas -->
-    <div class="canvas-wrapper" tabindex="0" @keydown="onKeyDownHandler">
+    <div class="canvas-wrapper">
       <VueFlow
         v-if="flowReady"
         id="blueprint-flow"

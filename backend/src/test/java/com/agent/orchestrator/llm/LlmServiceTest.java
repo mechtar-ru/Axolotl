@@ -150,4 +150,57 @@ class LlmServiceTest {
         List<String> models = llmService.listModels("unknown");
         assertTrue(models.isEmpty());
     }
+
+    // ─── Model fallback chain tests ───
+
+    @Test
+    void chat_fallsBackToAlternateModelWhenPrimaryFails() {
+        when(ollama.chat(any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("429 Too Many Requests"))
+                .thenReturn(textOnly("fallback-ok"));
+        Map<String, Object> config = Map.of("fallbackModels", List.of("ollama/mistral"));
+        String result = llmService.chat("ollama/llama", null, "test", config).text();
+        assertEquals("fallback-ok", result);
+        verify(ollama, times(2)).chat(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void chat_throwsWhenAllModelsExhausted() {
+        when(ollama.chat(any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("503 Service Unavailable"));
+        Map<String, Object> config = Map.of("fallbackModels", List.of("ollama/mistral"));
+        assertThrows(RuntimeException.class,
+                () -> llmService.chat("ollama/llama", null, "test", config));
+        verify(ollama, times(2)).chat(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void streamingChat_fallsBackOnTransientError() {
+        when(ollama.streamingChat(any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("rate limit exceeded"))
+                .thenReturn(textOnly("stream-fallback-ok"));
+        Map<String, Object> config = Map.of("fallbackModels", List.of("ollama/mistral"));
+        String result = llmService.streamingChat("ollama/llama", null, "test", config, t -> {}).text();
+        assertEquals("stream-fallback-ok", result);
+    }
+
+    @Test
+    void buildModelChain_noFallbacks_returnsPrimaryOnly() {
+        List<String> chain = llmService.buildModelChain("gpt-4o", null);
+        assertEquals(List.of("gpt-4o"), chain);
+    }
+
+    @Test
+    void buildModelChain_withFallbacks_returnsFullChain() {
+        Map<String, Object> config = Map.of("fallbackModels", List.of("deepseek-chat", "claude-sonnet-4"));
+        List<String> chain = llmService.buildModelChain("gpt-4o", config);
+        assertEquals(List.of("gpt-4o", "deepseek-chat", "claude-sonnet-4"), chain);
+    }
+
+    @Test
+    void buildModelChain_deduplicatesFallbacks() {
+        Map<String, Object> config = Map.of("fallbackModels", List.of("gpt-4o", "deepseek-chat"));
+        List<String> chain = llmService.buildModelChain("gpt-4o", config);
+        assertEquals(List.of("gpt-4o", "deepseek-chat"), chain);
+    }
 }

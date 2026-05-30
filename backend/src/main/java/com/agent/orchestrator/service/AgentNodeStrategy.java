@@ -107,7 +107,7 @@ public class AgentNodeStrategy {
         if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
             try {
                 String projectContext = projectContextBuilder.buildContext(
-                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId());
+                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
                 if (!projectContext.isEmpty()) {
                     systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "")
                             + "=== Project Context ===\n" + projectContext;
@@ -198,7 +198,7 @@ public class AgentNodeStrategy {
         if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
             try {
                 String projectContext = projectContextBuilder.buildContext(
-                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId());
+                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
                 if (!projectContext.isEmpty()) {
                     systemPrompt += "\n\n=== Project Context ===\n" + projectContext;
                 }
@@ -312,6 +312,24 @@ public class AgentNodeStrategy {
 
         // Append file changes summary
         Map<String, String> changes = stateManager.getFileChanges(schemaId, node.getId());
+        int actualFileCount = changes.size();
+
+        // Compare against expectedFileCount from config
+        Map<String, Object> agentConfig = node.getData() != null ? node.getData().getConfig() : null;
+        if (agentConfig != null && agentConfig.get("expectedFileCount") instanceof Number) {
+            int expected = ((Number) agentConfig.get("expectedFileCount")).intValue();
+            if (expected > 0 && actualFileCount < expected) {
+                String warning = String.format(
+                        "\n\n[WARNING] Expected at least %d file(s), but created only %d file(s).",
+                        expected, actualFileCount);
+                finalResponse += warning;
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warning",
+                            "Expected " + expected + " file(s), created " + actualFileCount, node.getId());
+                }
+            }
+        }
+
         if (!changes.isEmpty()) {
             StringBuilder changeSummary = new StringBuilder("\n\n[FILE CHANGES]\n");
             for (var entry : changes.entrySet()) {

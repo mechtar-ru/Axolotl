@@ -203,4 +203,38 @@ class VerifierNodeStrategyTest {
         assertNotNull(result);
         verify(agentStrategy).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"));
     }
+
+    @Test
+    void executeVerifierNode_detectsZeroFileWrites() {
+        when(schemaRepository.findById("schema-1")).thenReturn(schema);
+        when(utilityService.collectPredecessorResults(schema, "v1")).thenReturn(Map.of("source1", "def foo(): pass"));
+        when(stateManager.getNodeResults()).thenReturn(nodeResults);
+        when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
+        when(stateManager.getFileChanges(eq("schema-1"), eq("source1"))).thenReturn(null);
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+                .thenReturn("{\"status\": \"PASS\", \"checks\": [], \"summary\": \"OK\"}");
+
+        String result = strategy.executeVerifierNode(node, "schema-1", "test-model");
+
+        assertNotNull(result);
+        assertTrue(result.contains("PASS") || result.contains("\"status\""));
+        verify(stateManager).getFileChanges(eq("schema-1"), eq("source1"));
+    }
+
+    @Test
+    void executeVerifierNode_withFileWrites_skipsZeroFileCheck() {
+        when(schemaRepository.findById("schema-1")).thenReturn(schema);
+        when(utilityService.collectPredecessorResults(schema, "v1")).thenReturn(Map.of("source1", "def foo(): return 42"));
+        when(stateManager.getNodeResults()).thenReturn(nodeResults);
+        when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
+        when(stateManager.getFileChanges(eq("schema-1"), eq("source1"))).thenReturn(Map.of("file1.py", "created"));
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+                .thenReturn("{\"status\": \"PASS\", \"checks\": [], \"summary\": \"All good\"}");
+
+        String result = strategy.executeVerifierNode(node, "schema-1", "test-model");
+
+        assertNotNull(result);
+        assertTrue(result.contains("PASS") || result.contains("\"status\""));
+        verify(stateManager).getFileChanges(eq("schema-1"), eq("source1"));
+    }
 }

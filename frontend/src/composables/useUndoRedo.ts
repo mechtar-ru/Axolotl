@@ -1,4 +1,30 @@
-import { ref, computed, type Ref } from 'vue'
+import { ref, computed, onMounted, onUnmounted, type Ref } from 'vue'
+
+/**
+ * Selective clone — only the fields needed for undo/restore.
+ * Avoids cloning VueFlow internal state (reactive proxies, _marker, __vnode).
+ */
+function snapshotNodes(nodes: any[]): any[] {
+  return nodes.map(n => ({
+    id: n.id,
+    type: n.type,
+    position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
+    data: JSON.parse(JSON.stringify(n.data ?? {})),
+    selected: !!n.selected,
+  }))
+}
+
+function snapshotEdges(edges: any[]): any[] {
+  return edges.map(e => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+    sourceHandle: e.sourceHandle,
+    targetHandle: e.targetHandle,
+    type: e.type,
+    selected: !!e.selected,
+  }))
+}
 
 export function useUndoRedo(
   setNodes: (nodes: any[]) => void,
@@ -10,49 +36,68 @@ export function useUndoRedo(
   const future = ref<{ nodes: any[]; edges: any[] }[]>([])
   const maxHistory = 50
   let skipCapture = false
+  let captureTimer: ReturnType<typeof setTimeout> | null = null
 
   const canUndo = computed(() => past.value.length > 0)
   const canRedo = computed(() => future.value.length > 0)
 
-  function clone(val: any): any {
-    return JSON.parse(JSON.stringify(val))
-  }
-
   function capture() {
     if (skipCapture) return
-    past.value.push({
-      nodes: clone(nodesRef.value),
-      edges: clone(edgesRef.value)
-    })
-    if (past.value.length > maxHistory) {
-      past.value.shift()
+    if (captureTimer) {
+      clearTimeout(captureTimer)
     }
-    future.value = []
+    captureTimer = setTimeout(() => {
+      past.value.push({
+        nodes: snapshotNodes(nodesRef.value),
+        edges: snapshotEdges(edgesRef.value),
+      })
+      if (past.value.length > maxHistory) {
+        past.value.shift()
+      }
+      future.value = []
+      captureTimer = null
+    }, 500)
+  }
+
+  function flushCapture() {
+    if (captureTimer) {
+      clearTimeout(captureTimer)
+      captureTimer = null
+      past.value.push({
+        nodes: snapshotNodes(nodesRef.value),
+        edges: snapshotEdges(edgesRef.value),
+      })
+      if (past.value.length > maxHistory) {
+        past.value.shift()
+      }
+      future.value = []
+    }
   }
 
   function undo() {
+    flushCapture()
     if (!canUndo.value) return
     future.value.push({
-      nodes: clone(nodesRef.value),
-      edges: clone(edgesRef.value)
+      nodes: snapshotNodes(nodesRef.value),
+      edges: snapshotEdges(edgesRef.value),
     })
     const prev = past.value.pop()!
     skipCapture = true
-    setNodes(clone(prev.nodes))
-    setEdges(clone(prev.edges))
+    setNodes(prev.nodes)
+    setEdges(prev.edges)
     skipCapture = false
   }
 
   function redo() {
     if (!canRedo.value) return
     past.value.push({
-      nodes: clone(nodesRef.value),
-      edges: clone(edgesRef.value)
+      nodes: snapshotNodes(nodesRef.value),
+      edges: snapshotEdges(edgesRef.value),
     })
     const next = future.value.pop()!
     skipCapture = true
-    setNodes(clone(next.nodes))
-    setEdges(clone(next.edges))
+    setNodes(next.nodes)
+    setEdges(next.edges)
     skipCapture = false
   }
 
@@ -60,7 +105,43 @@ export function useUndoRedo(
     past.value = []
     future.value = []
     skipCapture = false
+    if (captureTimer) {
+      clearTimeout(captureTimer)
+      captureTimer = null
+    }
   }
 
-  return { canUndo, canRedo, undo, redo, capture, reset }
+  // ─── Keyboard Handler ────────────────────────────────────────
+  function onKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      if (e.shiftKey) {
+        // Ctrl+Shift+Z = redo
+        e.preventDefault()
+        redo()
+      } else {
+        // Ctrl+Z = undo
+        e.preventDefault()
+        undo()
+      }
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+      // Ctrl+Y = redo (Windows alternate)
+      e.preventDefault()
+      redo()
+    }
+  }
+
+  onMounted(() => {
+    window.addEventListener('keydown', onKeydown)
+  })
+
+  onUnmounted(() => {
+    window.removeEventListener('keydown', onKeydown)
+    if (captureTimer) {
+      clearTimeout(captureTimer)
+      captureTimer = null
+    }
+  })
+
+  return { canUndo, canRedo, undo, redo, capture, flushCapture, reset }
 }

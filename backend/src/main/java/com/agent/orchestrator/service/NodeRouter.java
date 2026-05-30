@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.net.SocketTimeoutException;
 
 /**
  * Routes node execution to the appropriate handler based on node type.
@@ -110,85 +111,108 @@ public class NodeRouter {
             String result = "";
             String nodeType = node.getType();
 
-            switch (nodeType) {
-                case "agent":
-                    if (mode == ExecutionMode.DRY_RUN) {
-                        result = nodeExecutor.simulateAgentNode(node, schemaId);
-                    } else if (mode == ExecutionMode.ANALYZE) {
-                        result = nodeExecutor.analyzeAgentNode(node, schemaId);
-                    } else {
-                        result = nodeExecutor.executeAgentNode(node, schemaId, resolvedModel);
+            // Read autoRetryCount from node config for transient error resilience
+            int autoRetry = getAutoRetryCount(node);
+            boolean transientOnly = true;
+
+            for (int attempt = 1; attempt <= Math.max(1, autoRetry + 1); attempt++) {
+                try {
+                    switch (nodeType) {
+                        case "agent":
+                            if (mode == ExecutionMode.DRY_RUN) {
+                                result = nodeExecutor.simulateAgentNode(node, schemaId);
+                            } else if (mode == ExecutionMode.ANALYZE) {
+                                result = nodeExecutor.analyzeAgentNode(node, schemaId);
+                            } else {
+                                result = nodeExecutor.executeAgentNode(node, schemaId, resolvedModel);
+                            }
+                            break;
+
+                        case "output":
+                            result = utilityService.executeOutputNode(node, schemaId, mode);
+                            break;
+
+                        case "command":
+                            result = utilityService.executeCommandNode(node, schemaId);
+                            break;
+
+                        case "filewrite":
+                            result = utilityService.executeFileWriteNode(node, schemaId);
+                            break;
+
+                        case "source":
+                            result = utilityService.handleSourceNode(node, schemaId);
+                            break;
+
+                        case "condition":
+                            result = handleConditionNode(node, schemaId);
+                            break;
+
+                        case "transform":
+                            result = handleTransformNode(node, schemaId);
+                            break;
+
+                        case "loop":
+                            result = handleLoopNode(node, schemaId, cancelFlag);
+                            break;
+
+                        case "memory":
+                            result = handleMemoryNode(node, schemaId);
+                            break;
+
+                        case "guardrail":
+                            result = handleGuardrailNode(node, schemaId);
+                            break;
+
+                        case "verifier":
+                            result = nodeExecutor.executeVerifierNode(node, schemaId, resolvedModel);
+                            break;
+
+                        case "review":
+                            result = nodeExecutor.executeReviewNode(node, schemaId, resolvedModel);
+                            break;
+
+                        case "human":
+                            result = handleHumanNode(node, schemaId, cancelFlag);
+                            break;
+
+                        case "fallback":
+                            result = handleFallbackNode(node, schemaId);
+                            break;
+
+                        case "subagent":
+                            result = utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
+                            break;
+
+                        case "schemabuilder":
+                            result = nodeExecutor.executeSchemaBuilderNode(node, schemaId, resolvedModel);
+                            break;
+
+                        case "draft":
+                            result = nodeExecutor.executeDraftNode(node, schemaId, resolvedModel);
+                            break;
+
+                        default:
+                            result = "Неизвестный тип узла: " + nodeType;
+                            log.warn("Unknown node type: {}", nodeType);
+                            break;
                     }
+                    // Success — exit retry loop
                     break;
-
-                case "output":
-                    result = utilityService.executeOutputNode(node, schemaId, mode);
-                    break;
-
-                case "command":
-                    result = utilityService.executeCommandNode(node, schemaId);
-                    break;
-
-                case "filewrite":
-                    result = utilityService.executeFileWriteNode(node, schemaId);
-                    break;
-
-                case "source":
-                    result = utilityService.handleSourceNode(node, schemaId);
-                    break;
-
-                case "condition":
-                    result = handleConditionNode(node, schemaId);
-                    break;
-
-                case "transform":
-                    result = handleTransformNode(node, schemaId);
-                    break;
-
-                case "loop":
-                    result = handleLoopNode(node, schemaId, cancelFlag);
-                    break;
-
-                case "memory":
-                    result = handleMemoryNode(node, schemaId);
-                    break;
-
-                case "guardrail":
-                    result = handleGuardrailNode(node, schemaId);
-                    break;
-
-                case "verifier":
-                    result = nodeExecutor.executeVerifierNode(node, schemaId, resolvedModel);
-                    break;
-
-                case "review":
-                    result = nodeExecutor.executeReviewNode(node, schemaId, resolvedModel);
-                    break;
-
-                case "human":
-                    result = handleHumanNode(node, schemaId, cancelFlag);
-                    break;
-
-                case "fallback":
-                    result = handleFallbackNode(node, schemaId);
-                    break;
-
-                case "subagent":
-                    result = utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
-                    break;
-
-                case "schemabuilder":
-                    result = nodeExecutor.executeSchemaBuilderNode(node, schemaId, resolvedModel);
-                    break;
-
-                case "draft":
-                    result = nodeExecutor.executeDraftNode(node, schemaId, resolvedModel);
-                    break;
-
-                default:
-                    result = "Неизвестный тип узла: " + nodeType;
-                    log.warn("Unknown node type: {}", nodeType);
-                    break;
+                } catch (Exception execEx) {
+                    if (attempt <= autoRetry && isTransientError(execEx)) {
+                        int waitMs = 5000 * attempt;
+                        log.warn("Transient error on attempt {}/{} for node {}: {}. Retrying in {}ms",
+                                attempt, autoRetry, node.getId(), execEx.getMessage(), waitMs);
+                        if (webSocketHandler != null) {
+                            webSocketHandler.sendLog(schemaId, "warning",
+                                    "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
+                        }
+                        try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    } else {
+                        throw execEx; // not transient or retries exhausted — propagate to outer catch
+                    }
+                }
             }
 
             // Post-dispatch
@@ -257,6 +281,46 @@ public class NodeRouter {
      * Estimate tool call count from agent result text.
      * Counts occurrences of "tool_calls" JSON keys or named tool invocations.
      */
+    /**
+     * Read autoRetryCount from node config (default 0 — no automatic retry).
+     */
+    int getAutoRetryCount(Node node) {
+        if (node.getData() == null || node.getData().getConfig() == null) return 0;
+        Object val = node.getData().getConfig().get("autoRetryCount");
+        if (val instanceof Number) {
+            int n = ((Number) val).intValue();
+            return Math.max(0, Math.min(n, 5)); // cap at 5
+        }
+        return 0;
+    }
+
+    /**
+     * Detect transient errors that are safe to retry: HTTP 429/502/503, socket timeouts,
+     * and common rate-limit / temporary-unavailability message patterns.
+     */
+    boolean isTransientError(Exception e) {
+        String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+        if (msg.isEmpty()) return false;
+
+        // HTTP status codes
+        if (msg.contains("429") || msg.contains("502") || msg.contains("503")) return true;
+
+        // Timeout errors
+        if (e instanceof SocketTimeoutException) return true;
+        if (msg.contains("timeout") || msg.contains("timed out")) return true;
+
+        // Common transient message patterns
+        if (msg.contains("rate limit") || msg.contains("rate_limit")
+                || msg.contains("too many requests")
+                || msg.contains("service unavailable")
+                || msg.contains("temporarily")
+                || msg.contains("try again later")
+                || msg.contains("server error")
+                || msg.contains("internal server error")) return true;
+
+        return false;
+    }
+
     private int estimateToolCalls(String result) {
         if (result == null || result.isBlank()) return 0;
         int count = 0;

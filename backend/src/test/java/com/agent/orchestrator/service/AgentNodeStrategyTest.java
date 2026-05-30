@@ -275,4 +275,87 @@ class AgentNodeStrategyTest {
         assertNotNull(result);
         verify(utilityService).buildToolDefinitions(anyList());
     }
+
+    @Test
+    void executeToolAgentNode_withExpectedFileCount_warnsWhenTooFew() {
+        Map<String, Object> cfg = new ConcurrentHashMap<>();
+        cfg.put("expectedFileCount", 3);
+        toolNode.getData().setConfig(cfg);
+        when(schemaRepository.findById("schema-1")).thenReturn(schema);
+        when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("resolved-model");
+        when(utilityService.collectPredecessorResults(schema, "n2")).thenReturn(Map.of());
+        when(utilityService.buildContextBlock(Map.of())).thenReturn("");
+        when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
+        when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of("f1.py", "created"));
+        when(memPalaceClient.isEnabled()).thenReturn(false);
+
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+
+        assertNotNull(result);
+        assertTrue(result.contains("Expected at least 3 file(s)"));
+        assertTrue(result.contains("[WARNING]"));
+        verify(webSocketHandler).sendLog(eq("schema-1"), eq("warning"),
+                eq("Expected 3 file(s), created 1"), eq("n2"));
+    }
+
+    @Test
+    void executeToolAgentNode_withExpectedFileCount_skipsWhenEnough() {
+        Map<String, Object> cfg = new ConcurrentHashMap<>();
+        cfg.put("expectedFileCount", 2);
+        toolNode.getData().setConfig(cfg);
+        when(schemaRepository.findById("schema-1")).thenReturn(schema);
+        when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("resolved-model");
+        when(utilityService.collectPredecessorResults(schema, "n2")).thenReturn(Map.of());
+        when(utilityService.buildContextBlock(Map.of())).thenReturn("");
+        when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
+        when(stateManager.getFileChanges(eq("schema-1"), eq("n2")))
+                .thenReturn(Map.of("f1.py", "created", "f2.py", "created"));
+        when(memPalaceClient.isEnabled()).thenReturn(false);
+
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+
+        assertNotNull(result);
+        assertFalse(result.contains("[WARNING]"));
+    }
+
+    @Test
+    void executeToolAgentNode_withoutExpectedFileCount_skipsCheck() {
+        // expectedFileCount not set in config
+        when(schemaRepository.findById("schema-1")).thenReturn(schema);
+        when(utilityService.resolveModel(anyString(), isNull(), isNull(), isNull())).thenReturn("resolved-model");
+        when(utilityService.collectPredecessorResults(schema, "n2")).thenReturn(Map.of());
+        when(utilityService.buildContextBlock(Map.of())).thenReturn("");
+        when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
+        when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of());
+        when(memPalaceClient.isEnabled()).thenReturn(false);
+
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+
+        assertNotNull(result);
+        assertFalse(result.contains("[WARNING]"));
+    }
 }

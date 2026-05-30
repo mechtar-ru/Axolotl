@@ -133,6 +133,31 @@ public class VerifierNodeStrategy {
 
         // Steps 2-6: Run checks with optional rewrite loop
         List<Map<String, Object>> allCheckResults = new ArrayList<>();
+
+        // Step 2a: Check that upstream agent made at least one file_write call
+        // If predecessor results exist but zero files were written, add a pre-built check
+        int fileWriteCount = 0;
+        Map<String, Object> noFileCheck = new HashMap<>();
+        if (!predResults.isEmpty()) {
+            for (String predNodeId : predResults.keySet()) {
+                Map<String, String> changes = stateManager.getFileChanges(schemaId, predNodeId);
+                if (changes != null) {
+                    fileWriteCount += changes.size();
+                }
+            }
+        }
+        if (!predResults.isEmpty() && fileWriteCount == 0 && !inputContent.isBlank()) {
+            noFileCheck.put("name", "file_write_calls");
+            noFileCheck.put("passed", false);
+            noFileCheck.put("error", "Upstream agent made 0 file_write calls — no files were generated");
+            noFileCheck.put("fileCount", 0);
+            allCheckResults.add(noFileCheck);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "warning",
+                        "Zero file_write calls detected from upstream agent — no files generated", node.getId());
+            }
+        }
+
         int rewriteRetries = 0;
         String currentContent = inputContent;
         String currentResult = "";

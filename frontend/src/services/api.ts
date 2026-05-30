@@ -481,3 +481,15 @@ export const historyApi = {
     return response.data;
   },
 };
+
+/** Plan workspace session goal API */
+export const planApi = {
+  async getSessionGoal(workspaceId: string = 'default'): Promise<string> {
+    const response = await api.get('/plan/session-goal', { params: { workspaceId } });
+    return response.data.sessionGoal || '';
+  },
+
+  async setSessionGoal(sessionGoal: string, workspaceId: string = 'default'): Promise<void> {
+    await api.put('/plan/session-goal', { sessionGoal }, { params: { workspaceId } });
+  },
+};

@@ -33,6 +33,24 @@ vi.mock('@/stores/schemaStore', () => ({
   })),
 }))
 
+// Mock the canvas store
+vi.mock('@/stores/useCanvasStore', () => ({
+  useCanvasStore: vi.fn(() => ({
+    currentSchema: ref({
+      id: 'test-1',
+      name: 'Test Schema',
+      description: 'A test schema',
+      targetPath: '/Users/test/project',
+      defaultModel: 'gpt-4',
+      nodes: [],
+      edges: [],
+    }),
+    markDirty: vi.fn(),
+    updateSchema: vi.fn(),
+  })),
+}))
+
+
 import SchemaPropertiesPanel from '../SchemaPropertiesPanel.vue'
 
 describe('SchemaPropertiesPanel', () => {

@@ -2,8 +2,11 @@
 import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
+import { useCanvasStore } from '@/stores/useCanvasStore'
+import { usePipelineStore } from '@/stores/usePipelineStore'
+import { useReviewStore } from '@/stores/useReviewStore'
 import { useAuthStore } from '@/stores/authStore'
-import { schemaApi } from '@/services/api'
+import { schemaApi, planApi } from '@/services/api'
 import type { WorkflowSchema } from '@/types'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { provideExecutionState, createExecutionState } from '@/composables/useExecutionState'
@@ -17,7 +20,7 @@ import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
 import DepsInstallDialog from '@/components/studio/DepsInstallDialog.vue'
 import DiffReviewDialog from '@/components/studio/DiffReviewDialog.vue'
 import PipelinePanel from '@/components/studio/PipelinePanel.vue'
-import type { ReviewData, ReviewFinding } from '@/stores/schemaStore'
+import type { ReviewData, ReviewFinding } from '@/stores/useReviewStore'
 import { useToast } from '@/composables/useToast'
 
 type StudioMode = 'blueprint' | 'timeline'
@@ -25,6 +28,9 @@ type StudioMode = 'blueprint' | 'timeline'
 const route = useRoute()
 const router = useRouter()
 const schemaStore = useSchemaStore()
+const canvasStore = useCanvasStore()
+const pipelineStore = usePipelineStore()
+const reviewStore = useReviewStore()
 const authStore = useAuthStore()
 const toast = useToast()
 
@@ -39,11 +45,14 @@ let isActive = true
 
 // App state
 const app = computed(() => {
-  return schemaStore.schemas.find(s => s.id === appId.value) || schemaStore.currentSchema
+  return schemaStore.schemas.find(s => s.id === appId.value) || canvasStore.currentSchema
 })
 
   const isRunning = ref(false)
-  const executionError = ref<string | null>(null)
+const executionError = ref<string | null>(null)
+const sessionGoal = ref('')
+const sessionGoalOpen = ref(false)
+let sessionGoalTimer: ReturnType<typeof setTimeout> | null = null
   // Sync execState.isExecuting alongside isRunning so TimelineView can auto-refresh
   function setIsExecuting(val: boolean) {
     isRunning.value = val
@@ -88,7 +97,7 @@ async function checkFailedRun() {
 async function handleRetry() {
   if (isRunning.value) return
   try {
-    await schemaStore.retryPipeline(appId.value)
+    await pipelineStore.retryPipeline(appId.value)
     await startExecution(true)
   } catch (e) {
     toast.error('Failed to retry: ' + ((e as Error).message || e))
@@ -214,7 +223,7 @@ provide('executionProgress', executionProgress)
       try {
         const schema = await schemaApi.getSchema(schemaId)
         if (schema) {
-          schemaStore.updateCurrentSchema(schema)
+          canvasStore.currentSchema =(schema)
         }
         // Re-query execution runs to get current status
         const runs = await schemaApi.getRuns(schemaId)
@@ -235,7 +244,7 @@ provide('executionProgress', executionProgress)
 
   if (!skipSave) {
     try {
-      await schemaStore.flushSave()
+      await canvasStore.flushSave()
     } catch (e) {
       toast.error('Failed to save: ' + ((e as Error).message || e))
     }
@@ -337,7 +346,7 @@ function parseFindings(findings: any): ReviewFinding[] {
 async function handleReviewApprove() {
   showReviewDialog.value = false
   try {
-    await schemaStore.approveReview(currentExecutionId.value, reviewNodeId.value)
+    await reviewStore.approveReview(currentExecutionId.value, reviewNodeId.value)
   } catch (e) {
     toast.error('Failed to approve review: ' + ((e as Error).message || e))
     executionError.value = 'Failed to approve review — execution may still be paused'
@@ -347,7 +356,7 @@ async function handleReviewApprove() {
 async function handleReviewReject() {
   showReviewDialog.value = false
   try {
-    await schemaStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
+    await reviewStore.rejectReview(currentExecutionId.value, reviewNodeId.value)
   } catch (e) {
     toast.error('Failed to reject review: ' + ((e as Error).message || e))
     executionError.value = 'Failed to reject review'
@@ -395,10 +404,11 @@ onMounted(async () => {
   // Set current schema
   const found = schemaStore.schemas.find(s => s.id === appId.value)
   if (found) {
-    schemaStore.currentSchema = found
+    canvasStore.currentSchema = found
     document.title = `${found.name} - Axolotl Studio`
   }
   checkFailedRun()
+  loadSessionGoal()
 })
 
 // Watch route param changes — needed when navigating between schemas
@@ -406,14 +416,14 @@ onMounted(async () => {
 watch(() => route.params.id, (newId) => {
   if (newId && newId !== appId.value) {
     try {
-      schemaStore.flushSave()
+      canvasStore.flushSave()
     } catch (e) {
       toast.error('Failed to save: ' + ((e as Error).message || e))
     }
     appId.value = newId as string
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
-      schemaStore.currentSchema = found
+      canvasStore.currentSchema = found
       document.title = `${found.name} - Axolotl Studio`
     }
   }
@@ -448,7 +458,7 @@ onUnmounted(() => {
 // Flush pending saves + disconnect WebSocket when navigating away
 onDeactivated(() => {
   try {
-    schemaStore.flushSave()  // ensure dirty edits reach backend
+    canvasStore.flushSave()  // ensure dirty edits reach backend
   } catch (e) {
     toast.error('Failed to save: ' + ((e as Error).message || e))
   }
@@ -484,21 +494,21 @@ onActivated(async () => {
       } else {
         schemaStore.schemas.push(fresh)
       }
-      schemaStore.currentSchema = fresh
+      canvasStore.currentSchema = fresh
       document.title = `${fresh.name} - Axolotl Studio`
     }
   } catch {
     // Fallback: use cached data
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
-      schemaStore.currentSchema = found
+      canvasStore.currentSchema = found
       document.title = `${found.name} - Axolotl Studio`
     } else {
       // Schema not in cached store — try reloading from backend
       await schemaStore.loadSchemas()
       const reloaded = schemaStore.schemas.find(s => s.id === appId.value)
       if (reloaded) {
-        schemaStore.currentSchema = reloaded
+        canvasStore.currentSchema = reloaded
         document.title = `${reloaded.name} - Axolotl Studio`
       }
     }
@@ -528,6 +538,25 @@ onActivated(async () => {
     // Not critical — ResumeBanner will show independently, or no active run exists
   }
 })
+
+// Session goal
+async function loadSessionGoal() {
+  if (!appId.value) return
+  try {
+    sessionGoal.value = await planApi.getSessionGoal()
+  } catch {
+    // Not critical
+  }
+}
+
+function onSessionGoalInput() {
+  if (sessionGoalTimer) clearTimeout(sessionGoalTimer)
+  sessionGoalTimer = setTimeout(() => {
+    if (appId.value) {
+      planApi.setSessionGoal(sessionGoal.value).catch(() => {})
+    }
+  }, 800)
+}
 
 // Navigate back to dashboard
 function goToDashboard() {
@@ -559,6 +588,30 @@ function goToDashboard() {
       @restart="handleRestart"
       @dismiss="handleDismiss"
     />
+    
+    <div class="session-goal-bar">
+      <button class="session-goal-toggle" @click="sessionGoalOpen = !sessionGoalOpen">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+        </svg>
+        Session Goal
+        <svg
+          width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          :class="['chevron', { open: sessionGoalOpen }]"
+        >
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      <div v-if="sessionGoalOpen" class="session-goal-body">
+        <textarea
+          v-model="sessionGoal"
+          class="session-goal-input"
+          placeholder="Describe what you want to achieve in this session..."
+          rows="3"
+          @input="onSessionGoalInput"
+        />
+      </div>
+    </div>
     
     <div class="studio-toolbar">
       <button
@@ -656,6 +709,59 @@ function goToDashboard() {
 </template>
 
 <style scoped>
+.session-goal-bar {
+  border-bottom: 1px solid var(--color-border, #e2e8f0);
+  background: var(--color-surface, #f8fafc);
+}
+
+.session-goal-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--space-3, 12px);
+  width: 100%;
+  font-size: var(--text-sm, 13px);
+  color: var(--color-muted, #64748b);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.session-goal-toggle:hover {
+  background: var(--color-hover, #f1f5f9);
+}
+
+.session-goal-toggle .chevron {
+  margin-left: auto;
+  transition: transform 0.2s;
+}
+.session-goal-toggle .chevron.open {
+  transform: rotate(180deg);
+}
+
+.session-goal-body {
+  border-top: 1px solid var(--color-border, #e2e8f0);
+}
+
+.session-goal-input {
+  display: block;
+  width: 100%;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: var(--text-sm, 13px);
+  line-height: 1.5;
+  color: var(--color-text, #1e293b);
+  background: var(--color-bg, #ffffff);
+  outline: none;
+}
+.session-goal-input:focus {
+  background: var(--color-surface, #f8fafc);
+}
+.session-goal-input::placeholder {
+  color: var(--color-muted, #94a3b8);
+}
+
 .studio {
   display: flex;
   flex-direction: column;

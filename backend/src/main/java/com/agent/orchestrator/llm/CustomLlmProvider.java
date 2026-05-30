@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
@@ -25,6 +26,8 @@ import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 public class CustomLlmProvider implements LlmProvider {
     private static final Logger log = LoggerFactory.getLogger(CustomLlmProvider.class);
     private static final int TIMEOUT_SECONDS = 3600;
+    private static final String OPENROUTER_REFERER = "https://axolotl.app";
+    private static final String OPENROUTER_TITLE = "Axolotl";
 
     private final CustomLlmEndpointRepository endpointRepository;
     private final ObjectMapper objectMapper;
@@ -126,12 +129,24 @@ public class CustomLlmProvider implements LlmProvider {
         }
     }
 
+    private static final int MAX_RATE_LIMIT_RETRIES = 3;
+
     /**
      * Raw HTTP fallback for api-key auth and error recovery (supports reasoning extraction).
+     * Delegates to retry-capable implementation.
      */
-    @SuppressWarnings("unchecked")
     private LlmResponse sendRawHttpRequest(CustomLlmEndpoint endpoint, String systemPrompt,
                                             String userPrompt, LlmUsage usage) {
+        return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, 0);
+    }
+
+    /**
+     * Raw HTTP with rate-limit retry (max {@link #MAX_RATE_LIMIT_RETRIES} attempts).
+     */
+    @SuppressWarnings("unchecked")
+    private LlmResponse sendRawHttpRequestWithRetry(CustomLlmEndpoint endpoint, String systemPrompt,
+                                                     String userPrompt, LlmUsage usage,
+                                                     int attempt) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
@@ -157,8 +172,35 @@ public class CustomLlmProvider implements LlmProvider {
                 builder.header("X-API-Key", endpoint.getApiKey());
             }
 
+            // OpenRouter requires HTTP-Referer and X-Title headers
+            addOpenRouterHeadersIfNeeded(builder, endpoint.getBaseUrl());
+
             HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 429) {
+                if (attempt >= MAX_RATE_LIMIT_RETRIES) {
+                    log.error("Rate limited after {} attempts, giving up", attempt);
+                    return textOnly("Error: Rate limited after " + MAX_RATE_LIMIT_RETRIES + " retries");
+                }
+                String retryAfter = response.headers().firstValue("Retry-After").orElse("30");
+                int waitSeconds;
+                try {
+                    waitSeconds = Integer.parseInt(retryAfter);
+                } catch (NumberFormatException e) {
+                    waitSeconds = 30;
+                }
+                waitSeconds = Math.min(waitSeconds, 60); // cap at 60s
+                log.warn("Rate limited (attempt {}/{}), waiting {}s before retry",
+                        attempt + 1, MAX_RATE_LIMIT_RETRIES, waitSeconds);
+                try {
+                    Thread.sleep(waitSeconds * 1000L);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return textOnly("Error: Interrupted during rate-limit wait");
+                }
+                return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt + 1);
+            }
 
             if (response.statusCode() == 200) {
                 return OpenAiChatClient.parseResponse(response.body(), usage);
@@ -168,7 +210,14 @@ public class CustomLlmProvider implements LlmProvider {
                 return textOnly(error);
             }
         } catch (Exception e) {
-            log.error("Custom LLM request failed", e);
+            if (attempt < MAX_RATE_LIMIT_RETRIES) {
+                log.warn("Custom LLM request failed (attempt {}), retrying: {}", attempt + 1, e.getMessage());
+                try { Thread.sleep(1000L * (attempt + 1)); } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                }
+                return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt + 1);
+            }
+            log.error("Custom LLM request failed after {} attempts", attempt, e);
             return textOnly("Error: " + e.getMessage());
         }
     }
@@ -204,6 +253,9 @@ public class CustomLlmProvider implements LlmProvider {
             } else if ("api-key".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
                 builder.header("X-API-Key", endpoint.getApiKey());
             }
+
+            // OpenRouter requires HTTP-Referer and X-Title headers
+            addOpenRouterHeadersIfNeeded(builder, endpoint.getBaseUrl());
 
             HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 
@@ -288,6 +340,9 @@ public class CustomLlmProvider implements LlmProvider {
                 builder.header("X-API-Key", endpoint.getApiKey());
             }
 
+            // OpenRouter requires HTTP-Referer and X-Title headers
+            addOpenRouterHeadersIfNeeded(builder, endpoint.getBaseUrl());
+
             HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
@@ -295,6 +350,16 @@ public class CustomLlmProvider implements LlmProvider {
         } catch (Exception e) {
             log.error("Connection test failed", e);
             return false;
+        }
+    }
+
+    /**
+     * If the baseUrl contains "openrouter.ai", add the required HTTP-Referer and X-Title headers.
+     */
+    private static void addOpenRouterHeadersIfNeeded(HttpRequest.Builder builder, String baseUrl) {
+        if (baseUrl != null && baseUrl.contains("openrouter.ai")) {
+            builder.header("HTTP-Referer", OPENROUTER_REFERER);
+            builder.header("X-Title", OPENROUTER_TITLE);
         }
     }
 

@@ -28,6 +28,21 @@ vi.mock('@/stores/schemaStore', () => ({
   })),
 }))
 
+// Mock the canvas store
+vi.mock('@/stores/useCanvasStore', () => ({
+  useCanvasStore: vi.fn(() => ({
+    currentSchema: {
+      id: 'test-1',
+      name: 'Test Schema',
+      nodes: [],
+      edges: [],
+      targetPath: '/Users/test/project',
+    },
+    markDirty: vi.fn(),
+    updateSchema: vi.fn(),
+  })),
+}))
+
 // Mock VueFlow with a source node so the Input Type dropdown renders
 vi.mock('@vue-flow/core', () => ({
   useVueFlow: vi.fn(() => ({
