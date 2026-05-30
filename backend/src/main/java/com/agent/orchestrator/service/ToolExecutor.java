@@ -783,6 +783,7 @@ public class ToolExecutor {
                         "brew install flutter");
                 checkAndroidSdk(details, missing);
                 checkXcode(details, missing);
+                checkCocoaPods(details, missing);
                 break;
             case PYTHON:
                 checkSdk(details, missing, "python3", "Python 3",
@@ -954,10 +955,62 @@ public class ToolExecutor {
         String androidHome = System.getenv("ANDROID_HOME");
         if (androidHome != null && !androidHome.isBlank()) {
             details.append("[Android SDK] ✅ ").append(androidHome).append("\n");
-        } else {
-            details.append("[Android SDK] ❌ ANDROID_HOME not set\n");
-            missing.add("Android SDK — install via: flutter config --android-sdk /path/to/sdk");
+            // Also check that the SDK path actually has content
+            var sdkDir = java.nio.file.Path.of(androidHome);
+            if (!java.nio.file.Files.exists(sdkDir.resolve("platforms"))
+                    && !java.nio.file.Files.exists(sdkDir.resolve("cmdline-tools"))
+                    && !java.nio.file.Files.exists(sdkDir.resolve("tools"))) {
+                details.append("  ⚠️  ANDROID_HOME set but SDK not fully installed (no platforms/ directory)\n");
+                missing.add("Android SDK components — run: sdkmanager \"platform-tools\" \"platforms;android-33\"");
+            }
+            return;
         }
+
+        // Scan common Android SDK install paths
+        String[] commonPaths = {
+            System.getProperty("user.home") + "/Library/Android/sdk",
+            System.getProperty("user.home") + "/Android/Sdk",
+            "/usr/local/share/android-sdk",
+            "/opt/android-sdk"
+        };
+        for (String p : commonPaths) {
+            var dir = java.nio.file.Path.of(p);
+            if (java.nio.file.Files.exists(dir.resolve("platforms"))
+                    || java.nio.file.Files.exists(dir.resolve("cmdline-tools"))
+                    || java.nio.file.Files.exists(dir.resolve("tools"))) {
+                details.append("[Android SDK] ⚠️  Found at ").append(p)
+                       .append(" but ANDROID_HOME not set\n");
+                missing.add("ANDROID_HOME not set — add to ~/.zshrc: export ANDROID_HOME=\"" + p + "\"");
+                return;
+            }
+        }
+
+        // Try flutter config --machine to find the SDK path
+        try {
+            var fcProc = new ProcessBuilder("flutter", "config", "--machine")
+                .redirectErrorStream(true).start();
+            if (fcProc.waitFor(10, TimeUnit.SECONDS) && fcProc.exitValue() == 0) {
+                String fcOut = new String(fcProc.getInputStream().readAllBytes()).trim();
+                // Parse JSON: {"android-sdk": "/path/..."}
+                if (fcOut.contains("android-sdk")) {
+                    int idx = fcOut.indexOf("android-sdk");
+                    int valStart = fcOut.indexOf('"', idx + 13) + 1;
+                    int valEnd = fcOut.indexOf('"', valStart);
+                    if (valStart > 0 && valEnd > valStart) {
+                        String flutterSdk = fcOut.substring(valStart, valEnd);
+                        details.append("[Android SDK] ⚠️  Flutter knows about ").append(flutterSdk)
+                               .append(" but ANDROID_HOME not set\n");
+                        missing.add("ANDROID_HOME not set — add to ~/.zshrc: export ANDROID_HOME=\"" + flutterSdk + "\"");
+                        return;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // flutter config failed — continue to fallback
+        }
+
+        details.append("[Android SDK] ❌ Not found\n");
+        missing.add("Android SDK — install Android Studio, then run: flutter config --android-sdk ~/Library/Android/sdk");
     }
 
     private void checkXcode(StringBuilder details, java.util.ArrayList<String> missing) {
@@ -967,15 +1020,66 @@ public class ToolExecutor {
             var proc = new ProcessBuilder("xcode-select", "-p")
                 .redirectErrorStream(true).start();
             proc.waitFor(5, TimeUnit.SECONDS);
+
+            java.nio.file.Path xcodePath = java.nio.file.Path.of("/Applications/Xcode.app");
+            boolean hasFullXcode = java.nio.file.Files.isDirectory(xcodePath);
+
             if (proc.exitValue() == 0) {
                 String xp = new String(proc.getInputStream().readAllBytes()).trim();
-                details.append("✅ ").append(xp).append("\n");
+                if (xp.contains("CommandLineTools")) {
+                    details.append("⚠️  CLI tools only (").append(xp).append(")\n");
+                    if (hasFullXcode) {
+                        details.append("  → Full Xcode.app found! Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer\n");
+                        missing.add("Xcode not active — run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
+                    } else {
+                        details.append("  → Full Xcode.app missing. Install from Mac App Store:\n");
+                        details.append("    https://apps.apple.com/app/xcode/id497799835\n");
+                        missing.add("Full Xcode.app required — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
+                    }
+                } else {
+                    String ver = "?";
+                    try {
+                        var vProc = new ProcessBuilder("xcodebuild", "-version")
+                            .redirectErrorStream(true).start();
+                        if (vProc.waitFor(5, TimeUnit.SECONDS) && vProc.exitValue() == 0) {
+                            ver = new String(vProc.getInputStream().readAllBytes()).trim().lines().findFirst().orElse("?");
+                        }
+                    } catch (Exception ignored) {}
+                    details.append("✅ ").append(xp).append(" (v").append(ver).append(")\n");
+                }
             } else {
-                details.append("❌ Not found\n");
-                missing.add("Xcode — install via: xcode-select --install");
+                if (hasFullXcode) {
+                    details.append("⚠️  Xcode.app found but not activated\n");
+                    details.append("  → Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer\n");
+                    missing.add("Xcode not activated — run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
+                } else {
+                    details.append("❌ Not found\n");
+                    missing.add("Xcode — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
+                }
             }
         } catch (Exception e) {
             details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
+            missing.add("Xcode — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
+        }
+    }
+
+    private void checkCocoaPods(StringBuilder details, java.util.ArrayList<String> missing) {
+        if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) return;
+        details.append("[CocoaPods] ");
+        try {
+            var proc = new ProcessBuilder("which", "pod")
+                .redirectErrorStream(true).start();
+            proc.waitFor(5, TimeUnit.SECONDS);
+            if (proc.exitValue() == 0) {
+                String path = new String(proc.getInputStream().readAllBytes()).trim();
+                details.append("✅ ").append(path).append("\n");
+            } else {
+                details.append("❌ Not found\n");
+                missing.add("CocoaPods — install via: sudo gem install cocoapods");
+            }
+        } catch (Exception e) {
+            details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
+            missing.add("CocoaPods — install via: sudo gem install cocoapods");
         }
     }
 }

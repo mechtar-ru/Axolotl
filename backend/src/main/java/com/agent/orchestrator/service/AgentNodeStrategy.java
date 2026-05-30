@@ -345,57 +345,94 @@ public class AgentNodeStrategy {
         boolean autoBuild = config != null && Boolean.TRUE.equals(config.get("autoBuildCheck"));
         if (autoBuild && currentSchema != null && currentSchema.getTargetPath() != null
                 && !currentSchema.getTargetPath().isBlank()) {
-            try {
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Auto build check enabled — verifying build...", node.getId());
-                }
-                String targetPath = currentSchema.getTargetPath();
-                String ptStr = currentSchema.getProjectType();
-                com.agent.orchestrator.model.ProjectType pt = com.agent.orchestrator.model.ProjectType.fromString(ptStr);
-                var buildCmd = pt.getBuildCommand();
-                var sdkCheck = buildCmd.getFirst(); // e.g. "flutter", "npm", "python3", "go", "cargo"
-                var proc = new ProcessBuilder("which", sdkCheck)
-                        .redirectErrorStream(true).start();
-                proc.waitFor(5, TimeUnit.SECONDS);
-                if (proc.exitValue() != 0) {
-                    String buildMsg = "\n\n[BUILD CHECK] " + sdkCheck + " not found. Required for " + pt.getDisplayName() + " projects.";
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "warning", buildMsg, node.getId());
-                    }
-                    return finalResponse + buildMsg;
-                }
-
-                // Run the build command
-                ProcessBuilder buildPb = new ProcessBuilder(buildCmd);
-                buildPb.directory(new java.io.File(targetPath));
-                buildPb.redirectErrorStream(true);
-                Process buildProc = buildPb.start();
-                boolean finished = buildProc.waitFor(300, TimeUnit.SECONDS);
-                String buildOutput = new String(buildProc.getInputStream().readAllBytes());
-                if (finished && buildProc.exitValue() == 0) {
-                    String successMsg = "\n\n[BUILD CHECK] ✅ " + pt.getDisplayName() + " build succeeded";
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "success", successMsg, node.getId());
-                    }
-                    return finalResponse + successMsg;
-                } else {
-                    String failMsg = "\n\n[BUILD CHECK] ❌ Build failed:\n" + buildOutput;
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "error", failMsg, node.getId());
-                    }
-                    return finalResponse + failMsg;
-                }
-            } catch (Exception e) {
-                String errorMsg = "\n\n[BUILD CHECK] Error: " + e.getMessage();
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "error", errorMsg, node.getId());
-                }
-                return finalResponse + errorMsg;
-            }
+            finalResponse += buildAndReport(currentSchema, schemaId, node.getId());
         }
 
         return finalResponse;
+    }
+
+    /**
+     * Run build checks for the project after agent completes.
+     * For Flutter: runs main build + iOS build (macOS only).
+     */
+    private String buildAndReport(WorkflowSchema currentSchema, String schemaId, String nodeId) {
+        String targetPath = currentSchema.getTargetPath();
+        String ptStr = currentSchema.getProjectType();
+        com.agent.orchestrator.model.ProjectType pt = com.agent.orchestrator.model.ProjectType.fromString(ptStr);
+        var buildCmd = pt.getBuildCommand();
+        var sdkCheck = buildCmd.getFirst(); // e.g. "flutter", "npm", "python3", "go", "cargo"
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info",
+                    "Auto build check enabled — verifying build...", nodeId);
+        }
+
+        var results = new java.util.ArrayList<String>();
+
+        try {
+            // Check SDK binary exists
+            var whichProc = new ProcessBuilder("which", sdkCheck)
+                    .redirectErrorStream(true).start();
+            if (!whichProc.waitFor(5, TimeUnit.SECONDS) || whichProc.exitValue() != 0) {
+                return "\n\n[BUILD CHECK] " + sdkCheck + " not found. Required for " + pt.getDisplayName() + " projects.";
+            }
+
+            // Run the main build command
+            ProcessBuilder buildPb = new ProcessBuilder(buildCmd);
+            buildPb.directory(new java.io.File(targetPath));
+            buildPb.redirectErrorStream(true);
+            Process buildProc = buildPb.start();
+            boolean finished = buildProc.waitFor(300, TimeUnit.SECONDS);
+            if (finished && buildProc.exitValue() == 0) {
+                results.add("✅ " + pt.getDisplayName() + " build succeeded");
+            } else {
+                String out = finished
+                    ? new String(buildProc.getInputStream().readAllBytes())
+                    : "(timed out)";
+                results.add("❌ " + pt.getDisplayName() + " build failed");
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "error",
+                            "Main build failed:\n" + out, nodeId);
+                }
+            }
+
+            // For Flutter on macOS, also try iOS build (non-blocking)
+            if (pt == com.agent.orchestrator.model.ProjectType.FLUTTER
+                    && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+                try {
+                    var xcSelect = new ProcessBuilder("xcode-select", "-p")
+                        .redirectErrorStream(true).start();
+                    if (xcSelect.waitFor(5, TimeUnit.SECONDS) && xcSelect.exitValue() == 0) {
+                        var iosCmd = java.util.List.of("flutter", "build", "ios", "--no-codesign", "--debug");
+                        var iosPb = new ProcessBuilder(iosCmd)
+                            .directory(new java.io.File(targetPath))
+                            .redirectErrorStream(true);
+                        Process iosProc = iosPb.start();
+                        boolean iosDone = iosProc.waitFor(300, TimeUnit.SECONDS);
+                        if (iosDone && iosProc.exitValue() == 0) {
+                            results.add("✅ iOS build succeeded");
+                        } else {
+                            results.add("⚠️ iOS build: " + (iosDone ? "failed" : "timed out"));
+                        }
+                    } else {
+                        results.add("⚠️ iOS build: Xcode not found (skip)");
+                    }
+                } catch (Exception e) {
+                    results.add("⚠️ iOS build: " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "error", "Build check error: " + e.getMessage(), nodeId);
+            }
+            return "\n\n[BUILD CHECK] Error: " + e.getMessage();
+        }
+
+        var report = new StringBuilder("\n\n[BUILD CHECK RESULTS]\n");
+        for (String r : results) {
+            report.append("  ").append(r).append("\n");
+        }
+        return report.toString();
     }
 
     public String simulateAgentNode(Node node, String schemaId) {

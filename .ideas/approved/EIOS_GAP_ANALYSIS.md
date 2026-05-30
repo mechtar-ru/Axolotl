@@ -59,20 +59,22 @@ calls, producing text output but no code on disk.
 ## 3. iOS Build Chain
 
 ### Current State
-- `build_app` tool checks Xcode availability via `xcode-select -p`
-- Install command runs `xcode-select --install` (CLI tools only, ~130MB)
-- Fleet SDK build command is `["flutter", "build", "apk", "--debug"]` — no iOS
-- `checkXcode()` already implemented in ToolExecutor.java:864–881
+- `build_app` tool runs: `flutter build apk --debug`, `flutter build appbundle --debug`,
+  and `flutter build ios --no-codesign --debug` (macOS + Xcode permitting)
+- `checkXcode()` now differentiates full Xcode.app vs CLI tools vs not found
+- `checkAndroidSdk()` now scans common paths AND checks `flutter config --machine`
+- CocoaPods validation added via `checkCocoaPods()`
+- `autoBuildCheck` in `AgentNodeStrategy` now also runs `flutter build ios --no-codesign`
 
 ### Gaps
-| # | Gap | Effort | Priority |
-|---|-----|--------|----------|
-| 3a | Need full Xcode.app (~8GB from App Store) for iOS builds | Manual | Critical |
-| 3b | `flutter build ios` needs CocoaPods (`sudo gem install cocoapods`) | 0.5 day | High |
-| 3c | iOS code signing certs — need Apple Developer account | Manual | High |
-| 3d | No `flutter build ios` in build commands or autoBuildCheck | 1 day | Medium |
-| 3e | No IPA generation step | 1 day | Low |
-| 3f | No `flutter build appbundle` for Android Play Store | 0.5 day | Medium |
+| # | Gap | Effort | Priority | Status |
+|---|-----|--------|----------|--------|
+| 3a | Need full Xcode.app (~8GB from App Store) for iOS builds | Manual | Critical | ⚠️ **Manual** — `checkXcode()` detects and prompts |
+| 3b | `flutter build ios` needs CocoaPods | 0.5 day | High | ✅ `checkCocoaPods()` checks + prompts |
+| 3c | iOS code signing certs — need Apple Developer account | Manual | High | ❌ Not automated — manual setup |
+| 3d | `flutter build ios` in build / autoBuildCheck | 1 day | Medium | ✅ Done in both `build_app` and `AgentNodeStrategy` |
+| 3e | No IPA generation step | 1 day | Low | ❌ Not implemented |
+| 3f | `flutter build appbundle` for Play Store | 0.5 day | Medium | ✅ Done in `build_app` |
 
 **Install command fix applied**: Xcode install now opens App Store page and gives
 download link in addition to CLI tools (AgentController.java:349–353).
@@ -157,15 +159,18 @@ download link in addition to CLI tools (AgentController.java:349–353).
 
 | Rank | Item | Blocking | Can user work around? |
 |------|------|----------|-----------------------|
-| P0 | Tool-calling model (Nemotron-3 via OpenRouter) | No code generation at all | Yes — configure OpenRouter endpoint in Settings |
-| P1 | Missing OpenRouter headers (HTTP-Referer, X-Title) | OpenRouter may reject requests | Partially — some models work without headers |
-| P2 | Full Xcode.app not installed | No iOS build | Yes — install manually from App Store |
-| P3 | No fallback when primary model fails | Pipeline fails completely | Yes — retry with different model |
-| P4 | No tool-call verification (zero-file completion) | Silent failures | No — pipeline completes with empty output |
-| P5 | No cross-session context injection | Must re-read design doc every run | No — each run starts blank |
-| P6 | No iOS build command | No iOS output | Yes — APK only for testing |
-| P7 | No appbundle build | No Play Store release | Yes — APK sideload works |
-| P8 | Stub detection not auto-enabled | Poor quality passes silently | No — must manually enable Verifier |
+| Rank | Item | Blocking | Status |
+|------|------|----------|--------|
+| P0 | Tool-calling model (Nemotron-3 via OpenRouter) | No code generation at all | ✅ CustomLlmProvider headers + rate-limit retry fixed |
+| P1 | Model fallback chain | Primary model failure kills run | ✅ LlmService.buildModelChain() with fallback |
+| P2 | Full Xcode.app not installed | No iOS build | ⚠️ Detected, App Store link shown — manual install |
+| P3 | File_write aliases | Some models use wrong tool name | ✅ write_file / create_file / save_file aliases |
+| P4 | Cross-session context | Each run starts blank | ✅ ProjectContextBuilder loads past runs |
+| P5 | Zero-tool-call detection | Silent failures | ✅ File count check in AgentNodeStrategy |
+| P6 | Stub detection | Low-quality code passes | ✅ VerifierNodeStrategy detects stubs |
+| P7 | iOS build in autoBuildCheck | No iOS output | ✅ Both build_app and AgentNodeStrategy |
+| P8 | AAB for Play Store | No appbundle | ✅ build_app builds AAB too |
+| P9 | CocoaPods check | iOS build fails silently | ✅ checkCocoaPods() added |
 
 ---
 
@@ -192,9 +197,13 @@ API Key:         <your-openrouter-key>
 
 ---
 
-## `release/0.4.0` Fixes Applied in This Session
+## `release/0.4.0` Fixes Applied
 
 | Fix | File | What Changed |
 |-----|------|-------------|
-| Xcode install opens App Store | `AgentController.java:349-353` | `buildInstallCommand()` now opens App Store + gives download links |
-| Deps dialog gets executionId | `StudioView.vue:196-203` | `onDepsNeeded` sets `currentExecutionId` from `data.schemaId` if empty |
+| Xcode install opens App Store | `AgentController.java:349-353` | `buildInstallCommand()` opens App Store + links |
+| Deps dialog gets executionId | `StudioView.vue:196-203` | `onDepsNeeded` sets `currentExecutionId` from `data.schemaId` |
+| **checkAndroidSdk** scans common paths | `ToolExecutor.java` | Scans 4 common SDK paths + `flutter config --machine` |
+| **checkXcode** full vs CLI tools | `ToolExecutor.java` | Detects Xcode.app vs CLI tools vs missing |
+| **checkCocoaPods** added | `ToolExecutor.java` | Checks for `pod` binary on macOS |
+| **autoBuildCheck** runs iOS build | `AgentNodeStrategy.java` | New `buildAndReport()` method — runs main build + `flutter build ios --no-codesign` |
