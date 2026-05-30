@@ -81,12 +81,10 @@ public class CustomLlmProvider implements LlmProvider {
     @Override
     public LlmResponse chat(String modelHint, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
-        List<CustomLlmEndpoint> endpoints = endpointRepository.findEnabled();
-        if (endpoints.isEmpty()) {
-            return textOnly("Error: No custom LLM endpoints configured");
+        CustomLlmEndpoint endpoint = resolveEndpoint(modelHint);
+        if (endpoint == null) {
+            return textOnly("Error: No custom LLM endpoint found for model: " + modelHint);
         }
-
-        CustomLlmEndpoint endpoint = endpoints.get(0);
         endpoint.setLastUsedAt(Instant.now());
         endpointRepository.save(endpoint);
 
@@ -96,17 +94,52 @@ public class CustomLlmProvider implements LlmProvider {
     @Override
     public LlmResponse streamingChat(String modelHint, String systemPrompt, String userPrompt,
                                  Map<String, Object> config, Consumer<String> tokenConsumer) {
-        List<CustomLlmEndpoint> endpoints = endpointRepository.findEnabled();
-        if (endpoints.isEmpty()) {
-            tokenConsumer.accept("Error: No custom LLM endpoints configured");
-            return textOnly("Error: No custom LLM endpoints configured");
+        CustomLlmEndpoint endpoint = resolveEndpoint(modelHint);
+        if (endpoint == null) {
+            tokenConsumer.accept("Error: No custom LLM endpoint found for model: " + modelHint);
+            return textOnly("Error: No custom LLM endpoint found for model: " + modelHint);
         }
-
-        CustomLlmEndpoint endpoint = endpoints.get(0);
         endpoint.setLastUsedAt(Instant.now());
         endpointRepository.save(endpoint);
 
         return streamingChatWithOpenAiClient(endpoint, systemPrompt, userPrompt, tokenConsumer);
+    }
+
+    /**
+     * Resolve the custom endpoint from a model hint.
+     * Model hint format: "endpointName:actualModel" (e.g. "openrouter:nvidia/nemotron-3-...").
+     * Also supports "@cf/endpointName" legacy format.
+     * Falls back to the first enabled endpoint if no match.
+     */
+    private CustomLlmEndpoint resolveEndpoint(String modelHint) {
+        List<CustomLlmEndpoint> endpoints = endpointRepository.findEnabled();
+        if (endpoints.isEmpty()) return null;
+
+        if (modelHint != null && !modelHint.isBlank()) {
+            String prefix = null;
+
+            // Try "endpointName:model" format
+            int colon = modelHint.indexOf(':');
+            if (colon > 0) {
+                prefix = modelHint.substring(0, colon).toLowerCase();
+            }
+
+            // Try "@cf/endpointName" legacy format
+            if (prefix == null && modelHint.toLowerCase().startsWith("@cf/")) {
+                prefix = modelHint.substring(4).toLowerCase(); // drop "@cf/"
+            }
+
+            if (prefix != null) {
+                for (CustomLlmEndpoint ep : endpoints) {
+                    if (ep.getName().equalsIgnoreCase(prefix)) {
+                        return ep;
+                    }
+                }
+            }
+        }
+
+        // Fallback: first enabled endpoint
+        return endpoints.get(0);
     }
 
     /**
