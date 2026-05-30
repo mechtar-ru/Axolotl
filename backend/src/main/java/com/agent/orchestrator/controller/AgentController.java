@@ -347,7 +347,11 @@ public class AgentController {
             return "echo 'Android SDK requires manual setup. Install Android Studio from https://developer.android.com/studio'";
         }
         if (dep.toLowerCase().contains("xcode")) {
-            return "xcode-select --install 2>/dev/null || echo 'Xcode CLI tools already installed or unavailable'";
+            return "xcode-select -p >/dev/null 2>&1 && echo 'Xcode.app already installed' || "
+                 + "(xcode-select --install 2>/dev/null; "
+                 + "open 'https://apps.apple.com/app/xcode/id497799835' 2>/dev/null; "
+                 + "echo 'Xcode may take 10+ minutes to download via App Store. "
+                 + "Install full Xcode.app from https://developer.apple.com/xcode/')";
         }
         if (dep.toLowerCase().contains("cocoapods") || dep.toLowerCase().contains("pod")) {
             return "sudo gem install cocoapods 2>/dev/null || brew install cocoapods";

@@ -197,6 +197,9 @@ provide('executionProgress', executionProgress)
       if (!isActive) return
       depsMissing.value = data.missing
       depsProjectPath.value = data.projectPath
+      if (data.schemaId && !currentExecutionId.value) {
+        currentExecutionId.value = data.schemaId
+      }
       showDepsDialog.value = true
     },
     onDiffsNeeded: (data) => {

@@ -70,7 +70,16 @@ public class ToolExecutor {
             """, ToolCategory.FILE_SYSTEM));
 
         registerTool(new Tool("bash", "Bash", "Execute a bash command", """
-            {"type":"object","properties":{"command":{"type":"string","description":"Command to execute"},"cwd":{"type":"string","description":"Working directory"},"timeout":{"type":"number","description":"Timeout in seconds"}},"required":["command"]}
+            {"type":"object","properties":{"command":{"type":"string","description":"The bash command to execute"},"cwd":{"type":"string","description":"Working directory (optional)"},"timeout":{"type":"integer","description":"Timeout in seconds (default 30)"}},"required":["command"]}
+            """, ToolCategory.EXECUTION));
+        registerTool(new Tool("execute_command", "Execute Command", "Execute a bash command (alias for bash)", """
+            {"type":"object","properties":{"command":{"type":"string","description":"The command to execute"},"cwd":{"type":"string","description":"Working directory (optional)"},"timeout":{"type":"integer","description":"Timeout in seconds (default 30)"}},"required":["command"]}
+            """, ToolCategory.EXECUTION));
+        registerTool(new Tool("run_command", "Run Command", "Execute a bash command (alias for bash)", """
+            {"type":"object","properties":{"command":{"type":"string","description":"The command to execute"},"cwd":{"type":"string","description":"Working directory (optional)"},"timeout":{"type":"integer","description":"Timeout in seconds (default 30)"}},"required":["command"]}
+            """, ToolCategory.EXECUTION));
+        registerTool(new Tool("exec_command", "Exec Command", "Execute a bash command (alias for bash)", """
+            {"type":"object","properties":{"command":{"type":"string","description":"The command to execute"},"cwd":{"type":"string","description":"Working directory (optional)"},"timeout":{"type":"integer","description":"Timeout in seconds (default 30)"}},"required":["command"]}
             """, ToolCategory.EXECUTION));
 
         registerTool(new Tool("memory_read", "Memory Read", "Query from memory store", """
@@ -125,6 +134,9 @@ public class ToolExecutor {
         handlers.put("file_write", this::handleFileWrite);
         handlers.put("directory_read", this::handleDirectoryRead);
         handlers.put("bash", this::handleBash);
+        handlers.put("execute_command", this::handleBash);
+        handlers.put("run_command", this::handleBash);
+        handlers.put("exec_command", this::handleBash);
         handlers.put("memory_read", this::handleMemoryRead);
         handlers.put("memory_write", this::handleMemoryWrite);
         handlers.put("web_search", this::handleWebSearch);
@@ -210,6 +222,8 @@ public class ToolExecutor {
 
     private ToolResult handleFileRead(Map<String, Object> params, ToolPermission permission) {
         String path = (String) params.get("path");
+        if (path == null) path = (String) params.get("file_path");
+        if (path == null) path = (String) params.get("filePath");
         if (path == null) return ToolResult.error("Missing path parameter");
 
         try {
@@ -222,7 +236,12 @@ public class ToolExecutor {
 
     private ToolResult handleFileWrite(Map<String, Object> params, ToolPermission permission) {
         String path = (String) params.get("path");
+        if (path == null) path = (String) params.get("file_path");
+        if (path == null) path = (String) params.get("filePath");
         String content = (String) params.get("content");
+        if (content == null) content = (String) params.get("code");
+        if (content == null) content = (String) params.get("body");
+        if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
         try {
