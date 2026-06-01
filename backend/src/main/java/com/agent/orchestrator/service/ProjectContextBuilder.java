@@ -20,8 +20,8 @@ import java.util.stream.Stream;
 public class ProjectContextBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(ProjectContextBuilder.class);
-    private static final int MAX_CHARS = 4000;
-    private static final int MAX_SESSION_HISTORY = 3;
+    private static final int MAX_CHARS = 8000;
+    private static final int MAX_SESSION_HISTORY = 5;
 
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
@@ -94,11 +94,14 @@ public class ProjectContextBuilder {
             try {
                 List<ExecutionRun> completedRuns = executionRepository.getCompletedRuns(schemaId, MAX_SESSION_HISTORY);
                 if (!completedRuns.isEmpty()) {
-                    sb.append("\nPast execution run results:\n");
+                    sb.append("\nPrevious pipeline sessions:\n");
                     for (int i = 0; i < completedRuns.size(); i++) {
                         ExecutionRun run = completedRuns.get(i);
-                        sb.append("  [Run ").append(i + 1).append("] ")
+                        sb.append("  Session ").append(i + 1).append(": ")
                           .append("status=").append(run.getStatus());
+                        if (run.getMode() != null) {
+                            sb.append(", mode=").append(run.getMode());
+                        }
                         if (run.getError() != null && !run.getError().isBlank()) {
                             sb.append(", error=").append(run.getError().length() > 80
                                     ? run.getError().substring(0, 80) + "..."
@@ -106,6 +109,10 @@ public class ProjectContextBuilder {
                         }
                         if (run.getTotalTokens() > 0) {
                             sb.append(", tokens=").append(run.getTotalTokens());
+                        }
+                        // Include generated files list if available
+                        if (run.getGeneratedFiles() != null && !run.getGeneratedFiles().isEmpty()) {
+                            sb.append(", files: [").append(run.getGeneratedFiles()).append("]");
                         }
                         sb.append("\n");
                     }
@@ -115,7 +122,7 @@ public class ProjectContextBuilder {
             }
         }
 
-        // Truncate if too long (>1000 tokens ≈ 4000 chars)
+        // Truncate if too long (>2000 tokens ≈ 8000 chars)
         if (sb.length() > MAX_CHARS) {
             sb.setLength(MAX_CHARS);
             sb.append("\n[... truncated]");

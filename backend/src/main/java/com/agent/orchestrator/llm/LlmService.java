@@ -172,6 +172,17 @@ public class LlmService {
                 }
                 String strippedModel = stripProviderPrefix(m);
                 LlmResponse response = provider.chat(strippedModel, systemPrompt, userPrompt, config, usage);
+                // Validate response — "Error:" prefix or blank text means the provider returned an error text, not a real response
+                if (response == null || response.text() == null || response.text().isBlank()) {
+                    log.warn("Model {} returned empty response; trying fallback if available", m);
+                    lastException = new RuntimeException("Empty response from " + m);
+                    continue;
+                }
+                if (response.text().startsWith("Error:")) {
+                    log.warn("Model {} returned error: {}; trying fallback if available", m, response.text());
+                    lastException = new RuntimeException(response.text());
+                    continue;
+                }
                 if (m != null && !m.equals(model)) {
                     log.info("Fallback succeeded: primary={} used={}", model, m);
                 }
@@ -206,6 +217,17 @@ public class LlmService {
                 }
                 String strippedModel = stripProviderPrefix(m);
                 LlmResponse response = provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken, usage);
+                // Validate response — "Error:" prefix or blank text means the provider returned an error text
+                if (response == null || response.text() == null || response.text().isBlank()) {
+                    log.warn("Streaming model {} returned empty response; trying fallback", m);
+                    lastException = new RuntimeException("Empty response from " + m);
+                    continue;
+                }
+                if (response.text().startsWith("Error:")) {
+                    log.warn("Streaming model {} returned error: {}; trying fallback", m, response.text());
+                    lastException = new RuntimeException(response.text());
+                    continue;
+                }
                 if (m != null && !m.equals(model)) {
                     log.info("Fallback succeeded: primary={} used={}", model, m);
                 }

@@ -9,6 +9,7 @@ public class Stage {
     private String nodeType; // "source" | "review" | "agent" | "verifier" | "output" | "transform" | "custom"
     private String subagentSchemaId; // for "custom" type — delegate to another schema
     private String model;
+    private List<String> fallbackModels;
     private String systemPrompt;
     private String userPrompt;
     private Map<String, Object> config;
@@ -42,6 +43,9 @@ public class Stage {
 
     public String getModel() { return model; }
     public void setModel(String model) { this.model = model; }
+
+    public List<String> getFallbackModels() { return fallbackModels; }
+    public void setFallbackModels(List<String> fallbackModels) { this.fallbackModels = fallbackModels; }
 
     public String getSystemPrompt() { return systemPrompt; }
     public void setSystemPrompt(String systemPrompt) { this.systemPrompt = systemPrompt; }

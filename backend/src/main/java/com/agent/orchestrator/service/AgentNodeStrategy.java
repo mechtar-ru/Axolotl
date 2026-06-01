@@ -207,6 +207,16 @@ public class AgentNodeStrategy {
             }
         }
 
+        // If requireDiffReview is enabled, inject instructions to modify existing files
+        if (node.getData() != null && node.getData().getConfig() != null
+                && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
+            systemPrompt += "\n\nIMPORTANT: Diff review mode enabled.\n"
+                + "You MUST modify existing files using file_write on their current paths.\n"
+                + "Do NOT create new files unless absolutely necessary.\n"
+                + "After you finish, the pipeline will pause for human diff review.\n"
+                + "Always read the existing file content first before modifying it.\n";
+        }
+
         List<Node.Message> messages = new ArrayList<>();
         messages.add(new Node.Message("system", systemPrompt));
         messages.add(new Node.Message("user", prompt));

@@ -236,7 +236,13 @@ public class CustomLlmProvider implements LlmProvider {
             }
 
             if (response.statusCode() == 200) {
-                return OpenAiChatClient.parseResponse(response.body(), usage);
+                LlmResponse parsed = OpenAiChatClient.parseResponse(response.body(), usage);
+                // Detect empty response with HTTP 200 (e.g., OpenRouter rate limit)
+                if (parsed.text() == null || parsed.text().isBlank()) {
+                    throw new RuntimeException("Empty response from " + endpoint.getName()
+                        + " (model: " + endpoint.getModelName() + ") — possible rate limit");
+                }
+                return parsed;
             } else {
                 String error = "Custom LLM request failed: HTTP " + response.statusCode();
                 log.error("{} - {}", error, truncate(response.body(), 500));

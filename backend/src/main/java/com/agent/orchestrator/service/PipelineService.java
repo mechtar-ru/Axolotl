@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -91,6 +92,11 @@ public class PipelineService {
             data.setSystemPrompt(stage.getSystemPrompt());
             data.setUserPrompt(stage.getUserPrompt());
             data.setConfig(stage.getConfig());
+            // Copy fallbackModels from stage to node config for LlmService.buildModelChain()
+            if (stage.getFallbackModels() != null && !stage.getFallbackModels().isEmpty()) {
+                if (data.getConfig() == null) data.setConfig(new HashMap<>());
+                data.getConfig().put("fallbackModels", new ArrayList<>(stage.getFallbackModels()));
+            }
             data.setEnabledTools(stage.getEnabledTools());
             if (stage.getAgentType() != null) data.setAgentType(stage.getAgentType());
 
@@ -307,6 +313,11 @@ public class PipelineService {
             }
             java.util.concurrent.CompletableFuture.allOf(futures).join();
 
+            if (levelFailed[0]) {
+                log.warn("Pipeline level failed, stopping pipeline for schema {}", schema.getId());
+                executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
+                break;
+            }
             if (levelPaused[0]) break;
 
             completedStages += level.size();
@@ -739,6 +750,7 @@ public class PipelineService {
         copy.setName(s.getName());
         copy.setNodeType(s.getNodeType());
         copy.setModel(s.getModel());
+        copy.setFallbackModels(s.getFallbackModels() != null ? new ArrayList<>(s.getFallbackModels()) : null);
         copy.setSystemPrompt(s.getSystemPrompt());
         copy.setUserPrompt(s.getUserPrompt());
         copy.setConfig(s.getConfig() != null ? new HashMap<>(s.getConfig()) : null);

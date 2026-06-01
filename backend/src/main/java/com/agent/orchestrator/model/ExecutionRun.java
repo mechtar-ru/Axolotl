@@ -1,6 +1,7 @@
 package com.agent.orchestrator.model;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -17,6 +18,7 @@ public class ExecutionRun {
     private double estimatedCost;
     private String error;
     private String resumesFrom;  // nullable FK → parent run id
+    private List<String> generatedFiles;
     private String startedAt;
     private String updatedAt;
     private String completedAt;
@@ -47,6 +49,9 @@ public class ExecutionRun {
 
     public String getResumesFrom() { return resumesFrom; }
     public void setResumesFrom(String resumesFrom) { this.resumesFrom = resumesFrom; }
+
+    public List<String> getGeneratedFiles() { return generatedFiles; }
+    public void setGeneratedFiles(List<String> generatedFiles) { this.generatedFiles = generatedFiles; }
 
     public String getStartedAt() { return startedAt; }
     public void setStartedAt(String startedAt) { this.startedAt = startedAt; }

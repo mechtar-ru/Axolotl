@@ -316,7 +316,9 @@ public class NodeRouter {
                 || msg.contains("temporarily")
                 || msg.contains("try again later")
                 || msg.contains("server error")
-                || msg.contains("internal server error")) return true;
+                || msg.contains("internal server error")
+                // Empty response from LLM — retryable (rate limit can produce empty choices)
+                || msg.contains("no choices")) return true;
 
         return false;
     }
