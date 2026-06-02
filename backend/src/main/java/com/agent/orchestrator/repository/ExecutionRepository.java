@@ -105,6 +105,16 @@ public class ExecutionRepository {
         }
     }
 
+    public List<ExecutionRun> findByStatus(String status) {
+        try {
+            return runRepo.findByStatus(status)
+                    .stream().map(this::toPocoRun).toList();
+        } catch (Exception e) {
+            log.error("Error reading runs by status {}: {}", status, e.getMessage(), e);
+            return List.of();
+        }
+    }
+
     public ExecutionRun getLatestRunBySchemaAndStatus(String schemaId, String status) {
         try {
             return runRepo.findLatestBySchemaIdAndStatus(schemaId, status)

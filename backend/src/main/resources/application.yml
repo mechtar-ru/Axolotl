@@ -57,6 +57,8 @@ axolotl:
     batch-parallelism: ${AXOLOTL_GRAPH_BATCH_PARALLELISM:8}
     batch-size: ${AXOLOTL_GRAPH_BATCH_SIZE:20}
     codebase-path: ${AXOLOTL_GRAPH_CODEBASE_PATH:}
+  reconciler:
+    interval: 300000
 
 # OpenAPI / Swagger
 springdoc:

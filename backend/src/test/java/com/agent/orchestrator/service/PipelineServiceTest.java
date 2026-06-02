@@ -13,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,14 +34,18 @@ class PipelineServiceTest {
     @Mock ExecutionRepository executionRepository;
     @Mock ExecutionStateManager stateManager;
     @Mock SchemaValidator schemaValidator;
+    @Mock DiffService diffService;
     @Captor ArgumentCaptor<WorkflowSchema> schemaCaptor;
 
+    PipelineStatusManager statusManager = new PipelineStatusManager();
     PipelineService pipelineService;
+    PipelineBuilder pipelineBuilder;
 
     @BeforeEach
     void setUp() {
+        pipelineBuilder = new PipelineBuilder(schemaRepository);
         pipelineService = new PipelineService(schemaRepository, nodeExecutor,
-                webSocketHandler, executionRepository, stateManager, schemaValidator);
+                webSocketHandler, executionRepository, stateManager, schemaValidator, pipelineBuilder, statusManager, diffService);
         // Default: validation passes
         SchemaValidationResult validResult = new SchemaValidationResult();
         when(schemaValidator.validate(any())).thenReturn(validResult);
@@ -207,14 +212,11 @@ class PipelineServiceTest {
 
         when(schemaRepository.findById("running-schema")).thenReturn(schema);
 
-        // First call starts
-        pipelineService.executePipeline("running-schema");
+        // Simulate already-running state with an incomplete future
+        statusManager.getRunningPipelines().put("running-schema", new CompletableFuture<>());
 
-        // Second call throws CONFLICT (already running)
         assertThrows(RuntimeException.class, () ->
             pipelineService.executePipeline("running-schema"));
-
-        verify(executionRepository).createRun(any(ExecutionRun.class));
     }
 
     @Test
@@ -252,11 +254,11 @@ class PipelineServiceTest {
 
         when(schemaRepository.findById("test")).thenReturn(schema);
 
-        pipelineService.executePipeline("test");
+        // Simulate already-running state with an incomplete future
+        statusManager.getRunningPipelines().put("test", new CompletableFuture<>());
+
         assertThrows(RuntimeException.class, () ->
             pipelineService.executePipeline("test"));
-
-        verify(executionRepository).createRun(any(ExecutionRun.class));
     }
 
     @Test

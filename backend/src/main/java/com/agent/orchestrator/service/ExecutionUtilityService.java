@@ -59,15 +59,16 @@ public class ExecutionUtilityService {
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionStateManager stateManager;
     private final ExecutionRepository executionRepository;
+    private final ToolCallParser toolCallParser;
+    private final NodeCommandExecutor nodeCommandExecutor;
+    private final NodeSourceHandler nodeSourceHandler;
+    private final NodeFileWriter nodeFileWriter;
 
     @Value("${axolotl.sandbox.allowedWriteDirs:.}")
     private java.util.List<String> allowedWriteDirs;
 
     private static final int MAX_CONTEXT_CHARS = 4000;
 
-    private static final java.util.Set<String> BLOCKED_COMMAND_PATTERNS = java.util.Set.of(
-            "rm -rf /", "mkfs", "dd if=", ":(){ :|:&", "> /dev/sd", "format ", "del /f /s /q c:",
-            "shutdown", "reboot", "init 0", "init 6", "halt", "poweroff");
 
     public ExecutionUtilityService(LlmService llmService,
                                    ExecutionWebSocketHandler webSocketHandler,
@@ -76,7 +77,11 @@ public class ExecutionUtilityService {
                                    Neo4jSchemaRepository schemaRepository,
                                    ProjectContextBuilder projectContextBuilder,
                                    ExecutionStateManager stateManager,
-                                   ExecutionRepository executionRepository) {
+                                   ExecutionRepository executionRepository,
+                                   ToolCallParser toolCallParser,
+                                   NodeCommandExecutor nodeCommandExecutor,
+                                   NodeSourceHandler nodeSourceHandler,
+                                   NodeFileWriter nodeFileWriter) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -85,6 +90,10 @@ public class ExecutionUtilityService {
         this.projectContextBuilder = projectContextBuilder;
         this.stateManager = stateManager;
         this.executionRepository = executionRepository;
+        this.toolCallParser = toolCallParser;
+        this.nodeCommandExecutor = nodeCommandExecutor;
+        this.nodeSourceHandler = nodeSourceHandler;
+        this.nodeFileWriter = nodeFileWriter;
     }
 
     // ────────────────────────── model resolution ──────────────────────────
@@ -188,43 +197,7 @@ public class ExecutionUtilityService {
     }
 
     private String resolveSourceData(WorkflowSchema schema) {
-        if (schema == null || schema.getNodes() == null) return "";
-        for (Node n : schema.getNodes()) {
-            if ("source".equals(n.getType()) && n.getData() != null) {
-                log.info("resolveSourceData: source node id={}, name={}, hasSourceData={}, hasConfig={}, hasResult={}",
-                        n.getId(), n.getName(),
-                        n.getData().getSourceData() != null && !n.getData().getSourceData().isEmpty(),
-                        n.getData().getConfig() != null,
-                        n.getData().getResult() != null && !n.getData().getResult().isEmpty());
-
-                String sd = n.getData().getSourceData();
-                if (sd == null || sd.isEmpty()) {
-                    Object cfgSd = n.getData().getConfig() != null
-                            ? n.getData().getConfig().get("sourceData") : null;
-                    if (cfgSd instanceof String) sd = (String) cfgSd;
-                }
-                if (sd != null && !sd.isEmpty()) return sd;
-
-                // Check stateManager (populated by NodeRouter during pipeline execution)
-                if (stateManager != null && schema.getId() != null) {
-                    Map<String, String> nodeResults = stateManager.getNodeResults().get(schema.getId());
-                    if (nodeResults != null) {
-                        String cachedResult = nodeResults.get(n.getId());
-                        log.info("resolveSourceData: stateManager keys={}, cachedResult for '{}' present={}",
-                                nodeResults.keySet(), n.getId(), cachedResult != null && !cachedResult.isEmpty());
-                        if (cachedResult != null && !cachedResult.isEmpty()) return cachedResult;
-                    } else {
-                        log.info("resolveSourceData: no nodeResults for schema {}", schema.getId());
-                    }
-                }
-
-                if (n.getData().getResult() != null && !n.getData().getResult().isEmpty()) {
-                    return n.getData().getResult();
-                }
-            }
-        }
-        log.info("resolveSourceData: no source node found or all sources empty");
-        return "";
+        return nodeSourceHandler.resolveSourceData(schema);
     }
 
     // ────────────────────────── context building ──────────────────────────
@@ -355,210 +328,7 @@ public class ExecutionUtilityService {
     }
 
     public List<Map<String, Object>> parseToolCalls(String response) {
-        List<Map<String, Object>> calls = new ArrayList<>();
-        if (response == null || !response.contains("tool_calls")) {
-            return calls;
-        }
-
-        try {
-            String json = response;
-            if (json.contains("```")) {
-                json = json.replaceAll("```json\\s*", "");
-                json = json.replaceAll("```\\s*", "");
-                json = json.trim();
-            }
-
-            int toolCallsIdx = json.indexOf("\"tool_calls\"");
-            if (toolCallsIdx < 0) {
-                toolCallsIdx = json.indexOf("tool_calls");
-            }
-            if (toolCallsIdx < 0) return calls;
-
-            int arrayStart = json.indexOf("[", toolCallsIdx);
-            if (arrayStart < 0) return calls;
-
-            int arrayEnd = findMatchingBracket(json, arrayStart);
-            if (arrayEnd < 0) return calls;
-
-            String toolsJson = json.substring(arrayStart, arrayEnd + 1);
-
-            ObjectMapper mapper = new ObjectMapper();
-            try {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> parsed = mapper.readValue(toolsJson, List.class);
-                calls.addAll(parsed);
-                return calls;
-            } catch (Exception e) {
-                log.debug("Strict JSON parse failed: {}", e.getMessage());
-            }
-
-            try {
-                ObjectMapper lenientMapper = new ObjectMapper()
-                        .configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true)
-                        .configure(JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, true)
-                        .configure(JsonParser.Feature.ALLOW_TRAILING_COMMA, true);
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> parsed = lenientMapper.readValue(toolsJson, List.class);
-                calls.addAll(parsed);
-                return calls;
-            } catch (Exception e) {
-                log.debug("Lenient JSON parse failed: {}", e.getMessage());
-            }
-
-            ObjectMapper lenientMapper = new ObjectMapper()
-                    .configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true)
-                    .configure(JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, true)
-                    .configure(JsonParser.Feature.ALLOW_TRAILING_COMMA, true);
-
-            List<String> toolCallObjects = extractTopLevelObjects(toolsJson);
-            for (String obj : toolCallObjects) {
-                try {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> parsed = lenientMapper.readValue(obj, Map.class);
-                    calls.add(parsed);
-                } catch (Exception e) {
-                    log.debug("Failed to parse individual tool call, trying regex fallback: {}", e.getMessage());
-                    Map<String, Object> fallbackCall = extractToolCallWithRegex(obj);
-                    if (fallbackCall != null && fallbackCall.get("name") != null) {
-                        fallbackCall.putIfAbsent("id", "call_" + calls.size());
-                        calls.add(fallbackCall);
-                    }
-                }
-            }
-
-            if (calls.isEmpty()) {
-                String diag = toolsJson.length() > 200 ? toolsJson.substring(0, 200) + "..." : toolsJson;
-                log.warn("All tool call parsing fallbacks exhausted. Response snippet: {}", diag);
-            }
-
-        } catch (Exception e) {
-            log.warn("Failed to parse tool calls: {}", e.getMessage());
-        }
-        return calls;
-    }
-
-    private int findMatchingBracket(String json, int startIdx) {
-        char openBracket = json.charAt(startIdx);
-        char closeBracket = (openBracket == '[') ? ']' : '}';
-        int depth = 0;
-        boolean inString = false;
-
-        for (int i = startIdx; i < json.length(); i++) {
-            char c = json.charAt(i);
-
-            if (inString) {
-                if (c == '\\') {
-                    i++;
-                    continue;
-                }
-                if (c == '"') {
-                    inString = false;
-                }
-                continue;
-            }
-
-            if (c == '"') {
-                inString = true;
-                continue;
-            }
-
-            if (c == openBracket) {
-                depth++;
-            } else if (c == closeBracket) {
-                depth--;
-                if (depth == 0) {
-                    return i;
-                }
-            }
-        }
-        return -1;
-    }
-
-    private List<String> extractTopLevelObjects(String jsonArray) {
-        List<String> objects = new ArrayList<>();
-        int i = 0;
-        while (i < jsonArray.length()) {
-            char c = jsonArray.charAt(i);
-            if (c == '{') {
-                int end = findMatchingBracket(jsonArray, i);
-                if (end > i) {
-                    objects.add(jsonArray.substring(i, end + 1));
-                    i = end + 1;
-                } else {
-                    i++;
-                }
-            } else {
-                i++;
-            }
-        }
-        return objects;
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> extractToolCallWithRegex(String text) {
-        Map<String, Object> call = new HashMap<>();
-
-        Pattern namePat = Pattern.compile("\"name\"\\s*:\\s*\"([^\"]+)\"");
-        Matcher nameMatcher = namePat.matcher(text);
-        if (nameMatcher.find()) {
-            call.put("name", nameMatcher.group(1));
-        }
-
-        int argStart = text.indexOf("\"arguments\"");
-        if (argStart < 0) {
-            argStart = text.indexOf("arguments");
-        }
-        if (argStart > 0) {
-            int objStart = text.indexOf("{", argStart);
-            if (objStart > 0) {
-                int objEnd = findMatchingBracket(text, objStart);
-                if (objEnd > objStart) {
-                    String argsJson = text.substring(objStart, objEnd + 1);
-                    try {
-                        ObjectMapper lenientMapper = new ObjectMapper()
-                                .configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true)
-                                .configure(JsonParser.Feature.ALLOW_UNQUOTED_CONTROL_CHARS, true);
-                        Map<String, Object> args = lenientMapper.readValue(argsJson, Map.class);
-                        call.put("arguments", args);
-                    } catch (Exception e) {
-                        Map<String, Object> fallbackArgs = extractArgumentsWithRegex(argsJson);
-                        call.put("arguments", fallbackArgs);
-                    }
-                }
-            }
-        }
-
-        return call.isEmpty() ? null : call;
-    }
-
-    private Map<String, Object> extractArgumentsWithRegex(String argsJson) {
-        Map<String, Object> args = new HashMap<>();
-
-        Pattern pathPat = Pattern.compile("\"path\"\\s*:\\s*\"([^\"]+)\"");
-        Matcher pathMatcher = pathPat.matcher(argsJson);
-        if (pathMatcher.find()) {
-            args.put("path", pathMatcher.group(1));
-        }
-
-        int contentKeyStart = argsJson.indexOf("\"content\"");
-        if (contentKeyStart < 0) {
-            contentKeyStart = argsJson.indexOf("content");
-        }
-        if (contentKeyStart > 0) {
-            int colonIdx = argsJson.indexOf(":", contentKeyStart);
-            int quoteStart = argsJson.indexOf("\"", colonIdx);
-            if (quoteStart > colonIdx) {
-                int endMarker = argsJson.lastIndexOf("\"");
-                if (endMarker > quoteStart) {
-                    String content = argsJson.substring(quoteStart + 1, endMarker);
-                    content = content.replace("\\n", "\n").replace("\\t", "\t")
-                                     .replace("\\\"", "\"").replace("\\\\", "\\");
-                    args.put("content", content);
-                }
-            }
-        }
-
-        return args;
+        return toolCallParser.parse(response);
     }
 
     // ────────────────────────── tool call execution ──────────────────────────
@@ -614,186 +384,37 @@ public class ExecutionUtilityService {
     // ────────────────────────── write output ──────────────────────────
 
     public String writeOutput(String outputType, String filePath, String fileFormat, String content) {
-        if (content == null || content.isBlank()) {
-            return "Нет данных для вывода";
-        }
-        if ("file".equals(outputType) && filePath != null && !filePath.isBlank()) {
-            try {
-                Path path = Path.of(filePath);
-                Files.createDirectories(path.getParent());
-                String dataToWrite = content;
-                if ("json".equals(fileFormat)) {
-                    dataToWrite = "{\n  \"result\": " + new ObjectMapper().writeValueAsString(content) + ",\n  \"timestamp\": " + System.currentTimeMillis() + "\n}";
-                }
-                Files.writeString(path, dataToWrite);
-                return "Сохранено в файл: " + filePath;
-            } catch (Exception e) {
-                return "Ошибка записи файла: " + e.getMessage();
-            }
-        }
-        return content;
+        return nodeFileWriter.writeOutput(outputType, filePath, fileFormat, content);
     }
 
     // ────────────────────────── command sanitization ──────────────────────────
 
     public String sanitizeCommand(String command) {
-        String lower = command.toLowerCase().trim();
-        for (String blocked : BLOCKED_COMMAND_PATTERNS) {
-            if (lower.contains(blocked.toLowerCase())) {
-                throw new SecurityException("Command blocked: contains dangerous pattern '" + blocked + "'");
-            }
-        }
-        if (lower.contains("$(rm ") || lower.contains("`rm ") || lower.contains("/dev/null >")) {
-            throw new SecurityException("Command blocked: contains dangerous shell expansion");
-        }
-        return command;
+        return nodeCommandExecutor.sanitizeCommand(command);
     }
 
     // ────────────────────────── URL validation ──────────────────────────
 
     public void validateUrl(String url) {
-        try {
-            URI uri = URI.create(url);
-            String scheme = uri.getScheme();
-            if (scheme == null || (!scheme.equals("http") && !scheme.equals("https"))) {
-                throw new SecurityException("Only http/https URLs allowed");
-            }
-            String host = uri.getHost();
-            if (host == null || host.isEmpty()) {
-                throw new SecurityException("URL must have a valid host");
-            }
-            InetAddress address = InetAddress.getByName(host);
-            if (address.isLoopbackAddress() || address.isSiteLocalAddress()
-                    || address.isLinkLocalAddress() || address.isAnyLocalAddress()) {
-                throw new SecurityException("Access to internal network addresses is blocked");
-            }
-        } catch (java.net.UnknownHostException e) {
-            throw new SecurityException("Cannot resolve host: " + e.getMessage());
-        }
+        nodeSourceHandler.validateUrl(url);
     }
 
     // ────────────────────────── path sandbox ──────────────────────────
 
     public boolean isPathAllowed(String filePath) {
-        if (allowedWriteDirs == null || allowedWriteDirs.isEmpty()) return true;
-        try {
-            Path resolved = Path.of(filePath).toAbsolutePath().normalize();
-            for (String dir : allowedWriteDirs) {
-                Path allowedBase = Path.of(dir).toAbsolutePath().normalize();
-                if (resolved.startsWith(allowedBase)) return true;
-            }
-        } catch (Exception ignored) {}
-        return false;
+        return nodeFileWriter.isPathAllowed(filePath);
     }
 
     // ────────────────────────── URL fetch ──────────────────────────
 
     public String fetchUrlContent(String url) {
-        try {
-            validateUrl(url);
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .GET()
-                    .timeout(Duration.ofSeconds(30))
-                    .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                String content = response.body();
-                return content.length() > 50000 ? content.substring(0, 50000) : content;
-            }
-            return "Ошибка загрузки URL: HTTP " + response.statusCode();
-        } catch (Exception e) {
-            return "Ошибка загрузки URL: " + e.getMessage();
-        }
+        return nodeSourceHandler.fetchUrlContent(url);
     }
 
     // ────────────────────────── project context ──────────────────────────
 
     public String readProjectContext(String projectPath, Map<String, Object> config) {
-        try {
-            Path root = Path.of(projectPath);
-            if (!Files.exists(root)) {
-                return "Ошибка: путь не существует: " + projectPath;
-            }
-
-            int maxDepth = config != null && config.get("maxDepth") != null
-                    ? ((Number) config.get("maxDepth")).intValue() : 4;
-            int maxFiles = config != null && config.get("maxFiles") != null
-                    ? ((Number) config.get("maxFiles")).intValue() : 50;
-
-            Set<String> excludeDirs = Set.of(".git", "node_modules", ".idea", "target", "dist", "__pycache__", ".next", "build");
-            Set<String> includeExtensions = config != null && config.get("includeExtensions") != null
-                    ? new HashSet<>((List<String>) config.get("includeExtensions"))
-                    : Set.of(".java", ".ts", ".tsx", ".vue", ".js", ".py", ".go", ".rs", ".yaml", ".yml", ".json", ".md", ".toml", ".xml", ".properties", ".sql", ".html", ".css");
-
-            StringBuilder sb = new StringBuilder();
-            sb.append("Project: ").append(root.getFileName()).append("\n");
-            sb.append("Path: ").append(projectPath).append("\n\n");
-
-            sb.append("=== FILE TREE ===\n");
-            List<String> files = new ArrayList<>();
-            Files.walk(root, maxDepth)
-                    .filter(p -> {
-                        for (int i = 0; i < p.getNameCount(); i++) {
-                            if (excludeDirs.contains(p.getName(i).toString())) return false;
-                        }
-                        return true;
-                    })
-                    .filter(Files::isRegularFile)
-                    .filter(p -> {
-                        String name = p.getFileName().toString();
-                        int dot = name.lastIndexOf('.');
-                        return dot >= 0 && includeExtensions.contains(name.substring(dot));
-                    })
-                    .limit(maxFiles)
-                    .forEach(p -> files.add(root.relativize(p).toString()));
-
-            for (String f : files) {
-                sb.append("  ").append(f).append("\n");
-            }
-            sb.append("\n");
-
-            sb.append("=== KEY FILES ===\n");
-            List<String> priorityFiles = List.of("README.md", "CLAUDE.md", "package.json", "pom.xml", "Cargo.toml", "go.mod", "pyproject.toml");
-            for (String pf : priorityFiles) {
-                Path p = root.resolve(pf);
-                if (Files.exists(p)) {
-                    String content = Files.readString(p);
-                    sb.append("\n--- ").append(pf).append(" ---\n");
-                    sb.append(content.length() > 3000 ? content.substring(0, 3000) + "\n... (truncated)" : content);
-                    sb.append("\n");
-                }
-            }
-
-            boolean includeSources = config == null || !Boolean.FALSE.equals(config.get("includeSources"));
-            if (includeSources) {
-                sb.append("\n=== SOURCE FILES ===\n");
-                int fileCount = 0;
-                for (String f : files) {
-                    if (fileCount >= 20) break;
-                    Path p = root.resolve(f);
-                    try {
-                        String content = Files.readString(p);
-                        if (content.length() > 2000) {
-                            content = content.substring(0, 2000) + "\n... (truncated)";
-                        }
-                        sb.append("\n--- ").append(f).append(" ---\n");
-                        sb.append(content);
-                        sb.append("\n");
-                        fileCount++;
-                    } catch (Exception ignored) {}
-                }
-            }
-
-            String result = sb.toString();
-            return result.length() > 100000 ? result.substring(0, 100000) + "\n... (truncated)" : result;
-        } catch (Exception e) {
-            return "Ошибка чтения проекта: " + e.getMessage();
-        }
+        return nodeSourceHandler.readProjectContext(projectPath, config);
     }
 
     // ────────────────────────── output node handler ──────────────────────────
@@ -1095,76 +716,7 @@ public class ExecutionUtilityService {
     // ────────────────────────── command node ──────────────────────────
 
     public String executeCommandNode(Node node, String schemaId) {
-        if (webSocketHandler != null) {
-            webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 20, "Выполнение команды");
-        }
-
-        String command = node.getData() != null && node.getData().getConfig() != null
-                ? (String) node.getData().getConfig().getOrDefault("command", "") : "";
-        String workingDir = node.getData() != null && node.getData().getConfig() != null
-                ? (String) node.getData().getConfig().getOrDefault("workingDir", "") : "";
-        int timeout = node.getData() != null && node.getData().getConfig() != null
-                ? (Integer) node.getData().getConfig().getOrDefault("timeout", 60) : 60;
-
-        if (command == null || command.isBlank()) {
-            return "Ошибка: команда не указана";
-        }
-
-        try {
-            command = sanitizeCommand(command);
-        } catch (SecurityException e) {
-            if (webSocketHandler != null) {
-                webSocketHandler.sendLog(schemaId, "error", "Command blocked: " + e.getMessage(), node.getId());
-            }
-            return "Blocked: " + e.getMessage();
-        }
-
-        try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
-            if (workingDir != null && !workingDir.isBlank()) {
-                pb.directory(new java.io.File(workingDir));
-            }
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            String output;
-            try {
-                boolean finished = process.waitFor(timeout, java.util.concurrent.TimeUnit.SECONDS);
-                if (!finished) {
-                    process.destroyForcibly();
-                    return "Таймаут после " + timeout + " сек";
-                }
-                int exitCode = process.exitValue();
-                java.io.BufferedReader reader = new java.io.BufferedReader(
-                        new java.io.InputStreamReader(process.getInputStream()));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append("\n");
-                }
-                output = sb.toString();
-                node.getData().setResult(output);
-                node.getData().setConfig(Map.of("exitCode", exitCode));
-                String result = output.isEmpty() ? "(пусто)" : output;
-                if (exitCode == 0) {
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "success", "Команда выполнена (exit " + exitCode + ")", node.getId());
-                    }
-                } else {
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "error", "Команда завершена с ошибкой (exit " + exitCode + ")", node.getId());
-                    }
-                }
-                return result.trim();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                process.destroyForcibly();
-                return "Прервано: " + e.getMessage();
-            }
-        } catch (Exception e) {
-            log.error("Ошибка выполнения команды: {}", e.getMessage(), e);
-            return "Ошибка: " + e.getMessage();
-        }
+        return nodeCommandExecutor.execute(node, schemaId);
     }
 
     // ────────────────────────── file write node ──────────────────────────
@@ -1258,97 +810,7 @@ public class ExecutionUtilityService {
     // ────────────────────────── source node handling ──────────────────────────
 
     public String handleSourceNode(Node node, String schemaId) {
-        String sourceType = node.getData() != null && node.getData().getConfig() != null
-                ? (String) node.getData().getConfig().getOrDefault("sourceType", "text") : "text";
-
-        if ("memory".equals(sourceType)) {
-            String query = node.getData() != null && node.getData().getSourceData() != null
-                    && !node.getData().getSourceData().isEmpty()
-                    ? node.getData().getSourceData() : node.getName();
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Поиск в памяти");
-                webSocketHandler.sendLog(schemaId, "info", "Поиск в памяти: " + query, node.getId());
-            }
-            if (memPalaceClient.isEnabled()) {
-                var memResults = memPalaceClient.search(query, null, null, 5);
-                if (memResults.isEmpty()) {
-                    return "Ничего не найдено по запросу: " + query;
-                } else {
-                    StringBuilder sb = new StringBuilder();
-                    for (var r : memResults) sb.append("- ").append(r.get("content")).append("\n");
-                    return sb.toString().trim();
-                }
-            } else {
-                return "Память недоступна (MemPalace не подключен)";
-            }
-        } else if ("url".equals(sourceType)) {
-            String url = node.getData() != null && node.getData().getConfig() != null
-                    ? (String) node.getData().getConfig().getOrDefault("url", "") : "";
-            if (url.isEmpty()) return "URL не указан";
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Загрузка URL");
-                webSocketHandler.sendLog(schemaId, "info", "Загрузка URL: " + url, node.getId());
-            }
-            return fetchUrlContent(url);
-        } else if ("project".equals(sourceType)) {
-            String projectPath = node.getData() != null && node.getData().getConfig() != null
-                    ? (String) node.getData().getConfig().getOrDefault("projectPath", "") : "";
-            if (projectPath.isEmpty()) return "Путь к проекту не указан";
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 30, "Чтение структуры проекта");
-                webSocketHandler.sendLog(schemaId, "info", "Чтение проекта: " + projectPath, node.getId());
-            }
-            return readProjectContext(projectPath,
-                    node.getData() != null ? node.getData().getConfig() : null);
-        } else if ("file".equals(sourceType)) {
-            // Use embedded content first (uploaded via frontend FileReader)
-            String sourceData = node.getData() != null ? node.getData().getSourceData() : null;
-            if (sourceData == null || sourceData.isEmpty()) {
-                // Fallback to config.sourceData for backward compatibility
-                sourceData = node.getData() != null && node.getData().getConfig() != null
-                        ? (String) node.getData().getConfig().get("sourceData") : null;
-            }
-            if (sourceData != null && !sourceData.isEmpty()) {
-                return sourceData;
-            }
-            String filePath = node.getData() != null && node.getData().getConfig() != null
-                    ? (String) node.getData().getConfig().getOrDefault("filePath", "") : "";
-            if (filePath == null || filePath.isEmpty()) {
-                return "Файл не указан";
-            }
-            if (webSocketHandler != null) {
-                webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50, "Чтение файла");
-                webSocketHandler.sendLog(schemaId, "info", "Чтение файла: " + filePath, node.getId());
-            }
-            try {
-                Path resolved = Path.of(filePath);
-                if (!resolved.isAbsolute()) {
-                    WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
-                    if (currentSchema != null && currentSchema.getTargetPath() != null
-                            && !currentSchema.getTargetPath().isBlank()) {
-                        resolved = Path.of(currentSchema.getTargetPath(), filePath).normalize();
-                    }
-                }
-                long maxSize = 1024 * 1024; // 1MB
-                if (Files.size(resolved) > maxSize) {
-                    return "Файл слишком большой: " + resolved.getFileName();
-                }
-                return Files.readString(resolved, java.nio.charset.StandardCharsets.UTF_8);
-            } catch (java.nio.file.NoSuchFileException e) {
-                return "Файл не найден: " + filePath;
-            } catch (Exception e) {
-                log.error("Ошибка чтения файла {}: {}", filePath, e.getMessage());
-                return "Ошибка чтения файла: " + e.getMessage();
-            }
-        } else {
-            // text mode (default)
-            if (node.getData() != null && node.getData().getSourceData() != null
-                    && !node.getData().getSourceData().isEmpty()) {
-                return node.getData().getSourceData();
-            } else {
-                return "Данные из источника: " + node.getName();
-            }
-        }
+        return nodeSourceHandler.handleSourceNode(node, schemaId);
     }
 
     // ────────────────────────── Test accessors (package-private) ──────────────────────────

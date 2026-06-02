@@ -125,6 +125,10 @@ public class Node {
         private List<String> enabledTools;
         private List<ToolPermission> toolPermissions;
         private int maxToolCalls;
+        private Integer timeoutSeconds;
+
+        public Integer getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(Integer timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
 
         public String getAgentType() { return agentType; }
         public void setAgentType(String agentType) { this.agentType = agentType; }

@@ -43,7 +43,10 @@ class ExecutionUtilityServiceTest {
     @BeforeEach
     void setUp() {
         utilityService = new ExecutionUtilityService(llmService, webSocketHandler, memPalaceClient,
-                toolExecutor, schemaRepository, projectContextBuilder, stateManager, executionRepository);
+                toolExecutor, schemaRepository, projectContextBuilder, stateManager, executionRepository,
+                new ToolCallParser(), new NodeCommandExecutor(webSocketHandler),
+                new NodeSourceHandler(webSocketHandler, memPalaceClient, schemaRepository, projectContextBuilder, stateManager),
+                new NodeFileWriter());
     }
 
     // ── resolveModel ──

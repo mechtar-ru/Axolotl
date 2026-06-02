@@ -19,7 +19,11 @@ import org.springframework.stereotype.Component;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.SocketTimeoutException;
 
@@ -111,108 +115,118 @@ public class NodeRouter {
             String result = "";
             String nodeType = node.getType();
 
-            // Read autoRetryCount from node config for transient error resilience
             int autoRetry = getAutoRetryCount(node);
-            boolean transientOnly = true;
+            int timeoutSecs = getTimeoutSeconds(node);
 
-            for (int attempt = 1; attempt <= Math.max(1, autoRetry + 1); attempt++) {
-                try {
-                    switch (nodeType) {
-                        case "agent":
-                            if (mode == ExecutionMode.DRY_RUN) {
-                                result = nodeExecutor.simulateAgentNode(node, schemaId);
-                            } else if (mode == ExecutionMode.ANALYZE) {
-                                result = nodeExecutor.analyzeAgentNode(node, schemaId);
-                            } else {
-                                result = nodeExecutor.executeAgentNode(node, schemaId, resolvedModel);
+            try {
+                result = CompletableFuture.supplyAsync(() -> {
+                    for (int attempt = 1; attempt <= Math.max(1, autoRetry + 1); attempt++) {
+                        try {
+                            switch (nodeType) {
+                                case "agent":
+                                    if (mode == ExecutionMode.DRY_RUN) {
+                                        return nodeExecutor.simulateAgentNode(node, schemaId);
+                                    } else if (mode == ExecutionMode.ANALYZE) {
+                                        return nodeExecutor.analyzeAgentNode(node, schemaId);
+                                    } else {
+                                        return nodeExecutor.executeAgentNode(node, schemaId, resolvedModel);
+                                    }
+
+                                case "output":
+                                    return utilityService.executeOutputNode(node, schemaId, mode);
+
+                                case "command":
+                                    return utilityService.executeCommandNode(node, schemaId);
+
+                                case "filewrite":
+                                    return utilityService.executeFileWriteNode(node, schemaId);
+
+                                case "source":
+                                    return utilityService.handleSourceNode(node, schemaId);
+
+                                case "condition":
+                                    return handleConditionNode(node, schemaId);
+
+                                case "transform":
+                                    return handleTransformNode(node, schemaId);
+
+                                case "loop":
+                                    return handleLoopNode(node, schemaId, cancelFlag);
+
+                                case "memory":
+                                    return handleMemoryNode(node, schemaId);
+
+                                case "guardrail":
+                                    return handleGuardrailNode(node, schemaId);
+
+                                case "verifier":
+                                    return nodeExecutor.executeVerifierNode(node, schemaId, resolvedModel);
+
+                                case "review":
+                                    return nodeExecutor.executeReviewNode(node, schemaId, resolvedModel);
+
+                                case "human":
+                                    return handleHumanNode(node, schemaId, cancelFlag);
+
+                                case "fallback":
+                                    return handleFallbackNode(node, schemaId);
+
+                                case "subagent":
+                                    return utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
+
+                                case "schemabuilder":
+                                    return nodeExecutor.executeSchemaBuilderNode(node, schemaId, resolvedModel);
+
+                                case "draft":
+                                    return nodeExecutor.executeDraftNode(node, schemaId, resolvedModel);
+
+                                default:
+                                    log.warn("Unknown node type: {}", nodeType);
+                                    return "Неизвестный тип узла: " + nodeType;
                             }
-                            break;
-
-                        case "output":
-                            result = utilityService.executeOutputNode(node, schemaId, mode);
-                            break;
-
-                        case "command":
-                            result = utilityService.executeCommandNode(node, schemaId);
-                            break;
-
-                        case "filewrite":
-                            result = utilityService.executeFileWriteNode(node, schemaId);
-                            break;
-
-                        case "source":
-                            result = utilityService.handleSourceNode(node, schemaId);
-                            break;
-
-                        case "condition":
-                            result = handleConditionNode(node, schemaId);
-                            break;
-
-                        case "transform":
-                            result = handleTransformNode(node, schemaId);
-                            break;
-
-                        case "loop":
-                            result = handleLoopNode(node, schemaId, cancelFlag);
-                            break;
-
-                        case "memory":
-                            result = handleMemoryNode(node, schemaId);
-                            break;
-
-                        case "guardrail":
-                            result = handleGuardrailNode(node, schemaId);
-                            break;
-
-                        case "verifier":
-                            result = nodeExecutor.executeVerifierNode(node, schemaId, resolvedModel);
-                            break;
-
-                        case "review":
-                            result = nodeExecutor.executeReviewNode(node, schemaId, resolvedModel);
-                            break;
-
-                        case "human":
-                            result = handleHumanNode(node, schemaId, cancelFlag);
-                            break;
-
-                        case "fallback":
-                            result = handleFallbackNode(node, schemaId);
-                            break;
-
-                        case "subagent":
-                            result = utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
-                            break;
-
-                        case "schemabuilder":
-                            result = nodeExecutor.executeSchemaBuilderNode(node, schemaId, resolvedModel);
-                            break;
-
-                        case "draft":
-                            result = nodeExecutor.executeDraftNode(node, schemaId, resolvedModel);
-                            break;
-
-                        default:
-                            result = "Неизвестный тип узла: " + nodeType;
-                            log.warn("Unknown node type: {}", nodeType);
-                            break;
-                    }
-                    // Success — exit retry loop
-                    break;
-                } catch (Exception execEx) {
-                    if (attempt <= autoRetry && isTransientError(execEx)) {
-                        int waitMs = 5000 * attempt;
-                        log.warn("Transient error on attempt {}/{} for node {}: {}. Retrying in {}ms",
-                                attempt, autoRetry, node.getId(), execEx.getMessage(), waitMs);
-                        if (webSocketHandler != null) {
-                            webSocketHandler.sendLog(schemaId, "warning",
-                                    "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
+                        } catch (Exception execEx) {
+                            if (attempt <= autoRetry && isTransientError(execEx)) {
+                                int waitMs = 5000 * attempt;
+                                log.warn("Transient error on attempt {}/{} for node {}: {}. Retrying in {}ms",
+                                        attempt, autoRetry, node.getId(), execEx.getMessage(), waitMs);
+                                if (webSocketHandler != null) {
+                                    webSocketHandler.sendLog(schemaId, "warning",
+                                            "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
+                                }
+                                try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                            } else {
+                                throw new RuntimeException(execEx);
+                            }
                         }
-                        try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                    } else {
-                        throw execEx; // not transient or retries exhausted — propagate to outer catch
+                    }
+                    return "";
+                }).get(timeoutSecs, TimeUnit.SECONDS);
+            } catch (TimeoutException te) {
+                String msg = "Node execution timed out after " + timeoutSecs + "s";
+                log.error("Timeout ({}s) executing node {}: {}", timeoutSecs, node.getId(), node.getName());
+                node.setStatus(Node.NodeStatus.FAILED);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendError(schemaId, node.getId(), msg,
+                        com.agent.orchestrator.websocket.ExecutionWebSocketHandler.ErrorCategory.TIMEOUT);
+                webSocketHandler.sendLog(schemaId, "error",
+                        "Timeout: " + node.getName() + " exceeded " + timeoutSecs + "s", node.getId(),
+                        com.agent.orchestrator.websocket.ExecutionWebSocketHandler.ErrorCategory.TIMEOUT);
+            }
+                if (nodeExecutionId != null) {
+                    try {
+                        executionRepository.updateNodeExecution(
+                                nodeExecutionId, "failed", null, 0L, 0L, 0, "Timeout: " + timeoutSecs + "s");
+                    } catch (Exception ex) {
+                        log.debug("Failed to persist timeout error: {}", ex.getMessage());
                     }
                 }
+                return;
+            } catch (ExecutionException ee) {
+                Throwable cause = ee.getCause();
+                if (cause instanceof Exception) {
+                    throw (Exception) cause;
+                }
+                throw new RuntimeException(cause);
             }
 
             // Post-dispatch
@@ -259,7 +273,8 @@ public class NodeRouter {
             log.error("Ошибка выполнения узла {}: {}", node.getId(), e.getMessage(), e);
             node.setStatus(Node.NodeStatus.FAILED);
             if (webSocketHandler != null) {
-                webSocketHandler.sendError(schemaId, node.getId(), e.getMessage());
+                webSocketHandler.sendError(schemaId, node.getId(), e.getMessage(),
+                        com.agent.orchestrator.websocket.ExecutionWebSocketHandler.ErrorCategory.fromException(e));
             }
             // Persist error to Neo4j
             if (nodeExecutionId != null) {
@@ -292,6 +307,23 @@ public class NodeRouter {
             return Math.max(0, Math.min(n, 5)); // cap at 5
         }
         return 0;
+    }
+
+    /**
+     * Read timeoutSeconds from node config (default 60).
+     */
+    int getTimeoutSeconds(Node node) {
+        if (node.getData() == null) return 60;
+        if (node.getData().getTimeoutSeconds() != null) {
+            return Math.max(1, node.getData().getTimeoutSeconds());
+        }
+        if (node.getData().getConfig() != null) {
+            Object val = node.getData().getConfig().get("timeoutSeconds");
+            if (val instanceof Number) {
+                return Math.max(1, ((Number) val).intValue());
+            }
+        }
+        return 60;
     }
 
     /**

@@ -21,6 +21,43 @@ import java.util.concurrent.locks.ReentrantLock;
 public class ExecutionWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionWebSocketHandler.class);
+
+    // ── Error categories ──
+
+    public enum ErrorCategory {
+        NONE(""),
+        TIMEOUT("timeout"),
+        LLM_ERROR("llm_error"),
+        TOOL_ERROR("tool_error"),
+        VALIDATION_ERROR("validation_error"),
+        INTERNAL_ERROR("internal_error"),
+        AUTH_ERROR("auth_error"),
+        PERMISSION_ERROR("permission_error");
+
+        private final String code;
+
+        ErrorCategory(String code) { this.code = code; }
+
+        public String getCode() { return code; }
+
+        public static ErrorCategory fromException(Exception e) {
+            String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
+            if (msg.contains("timeout") || msg.contains("timed out")) return TIMEOUT;
+            if (msg.contains("rate limit") || msg.contains("429") || msg.contains("502") || msg.contains("503")) return LLM_ERROR;
+            if (msg.contains("permission") || msg.contains("denied") || msg.contains("blocked")) return PERMISSION_ERROR;
+            if (msg.contains("validation") || msg.contains("invalid")) return VALIDATION_ERROR;
+            return INTERNAL_ERROR;
+        }
+
+        public static ErrorCategory fromToolResult(boolean success, String errorMessage) {
+            if (success) return NONE;
+            if (errorMessage == null) return TOOL_ERROR;
+            String msg = errorMessage.toLowerCase();
+            if (msg.contains("permission") || msg.contains("blocked") || msg.contains("not in allowed")) return PERMISSION_ERROR;
+            if (msg.contains("timeout")) return TIMEOUT;
+            return TOOL_ERROR;
+        }
+    }
     private static final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -146,11 +183,16 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
     }
 
     public void sendError(String schemaId, String nodeId, String error) {
+        sendError(schemaId, nodeId, error, ErrorCategory.INTERNAL_ERROR);
+    }
+
+    public void sendError(String schemaId, String nodeId, String error, ErrorCategory category) {
         Map<String, Object> msg = baseMsg("error", schemaId);
         msg.put("nodeId", nodeId);
         msg.put("error", error);
+        msg.put("errorCategory", category.getCode());
         sendMessage(schemaId, toJson(msg));
-        log.error("Ошибка [{}/{}]: {}", schemaId, nodeId, error);
+        log.error("Ошибка [{}/{}] [{}]: {}", schemaId, nodeId, category.getCode(), error);
     }
 
     public void sendComplete(String schemaId, long totalTime, int nodesCompleted) {
@@ -183,13 +225,19 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
     }
 
     public void sendLog(String schemaId, String level, String message, String nodeId) {
+        sendLog(schemaId, level, message, nodeId, ErrorCategory.NONE);
+    }
+
+    public void sendLog(String schemaId, String level, String message, String nodeId, ErrorCategory category) {
         Map<String, Object> msg = baseMsg("log", schemaId);
         msg.put("level", level);
         msg.put("message", message);
         msg.put("nodeId", nodeId != null ? nodeId : "");
         msg.put("timestamp", System.currentTimeMillis());
+        msg.put("errorCategory", category.getCode());
         sendMessage(schemaId, toJson(msg));
-        log.debug("Лог [{}][{}]: {}{}", schemaId, level, message, nodeId != null ? " (узел: " + nodeId + ")" : "");
+        log.debug("Лог [{}][{}] [{}]: {}{}", schemaId, level, category.getCode(), message,
+                nodeId != null ? " (узел: " + nodeId + ")" : "");
     }
 
     public void sendNodeTime(String schemaId, String nodeId, long durationMs) {

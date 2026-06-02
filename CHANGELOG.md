@@ -5,6 +5,20 @@ All notable changes to Axolotl are documented in this file.
 Format: [Keep a Changelog](https://keepachangelog.com/)  
 Versioning: SemVer via git tags.
 
+## [Unreleased]
+
+### Added
+
+- **Pipeline service decomposition**: Extracted `PipelineBuilder`, `PipelineStatusManager`, `DiffService` from `PipelineService`. PipelineBuilder owns stage creation from nodes/edges. PipelineStatusManager owns 4 in-memory pipeline state maps. DiffService provides `computeSimpleDiff()` and `computeDiffPayloads()`.
+- **Execution utility decomposition**: Extracted `ToolCallParser` (4-layer tool call parsing), `NodeCommandExecutor` (bash/grep), `NodeSourceHandler` (text/file/URL/project source resolution), `NodeFileWriter` (sandbox-aware file writes) from `ExecutionUtilityService`.
+- **Execution state reconciler**: `@PostConstruct` + `@Scheduled(fixedRate=300000)` marks orphaned "running" `ExecutionRun` nodes as `RECONCILED_FAILED` with cascading `NodeExecution` cleanup.
+- **Error categories**: `ErrorCategory` enum with `fromException()`/`fromToolResult()` mappers and overloaded `sendError()`/`sendLog()` in `ExecutionWebSocketHandler` for structured error classification.
+- **Per-node execution timeout**: Retry loop in `NodeRouter` wrapped in `CompletableFuture.supplyAsync().get(timeoutSecs, SECONDS)` reading `NodeData.timeoutSeconds` config (default 60s).
+
+### Removed
+
+- **Dead code**: Removed `transientOnly` skip-logic from `shouldSkipNode()` and callers — feature never used, added only complexity.
+
 ## [v0.4.0] - 2026-05-28
 
 ### Added

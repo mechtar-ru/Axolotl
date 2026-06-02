@@ -30,12 +30,11 @@ public class PipelineService {
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
     private final SchemaValidator schemaValidator;
+    private final PipelineBuilder pipelineBuilder;
+    private final PipelineStatusManager statusManager;
+    private final DiffService diffService;
     private final ExecutorService pipelineExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
-    private final ConcurrentHashMap<String, CompletableFuture<?>> runningPipelines = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** Per-stage timeout — 20 minutes default. Stages exceeding this are failed. */
@@ -48,105 +47,27 @@ public class PipelineService {
                            ExecutionWebSocketHandler webSocketHandler,
                            ExecutionRepository executionRepository,
                            ExecutionStateManager stateManager,
-                           SchemaValidator schemaValidator) {
+                           SchemaValidator schemaValidator,
+                           PipelineBuilder pipelineBuilder,
+                           PipelineStatusManager statusManager,
+                           DiffService diffService) {
         this.schemaRepository = schemaRepository;
         this.nodeExecutor = nodeExecutor;
         this.webSocketHandler = webSocketHandler;
         this.executionRepository = executionRepository;
         this.stateManager = stateManager;
         this.schemaValidator = schemaValidator;
+        this.pipelineBuilder = pipelineBuilder;
+        this.statusManager = statusManager;
+        this.diffService = diffService;
     }
 
     private void clearStaleApprovals(String schemaId) {
-        if (stateManager == null) return;
-        Map<String, String> nodeResults = stateManager.getNodeResults().get(schemaId);
-        if (nodeResults == null) return;
-        nodeResults.keySet().removeIf(k -> k.endsWith(":approved"));
+        statusManager.clearStaleApprovals(schemaId, stateManager != null ? stateManager.getNodeResults() : null);
     }
 
     public WorkflowSchema buildPipelineNodes(String schemaId) {
-        WorkflowSchema schema = schemaRepository.findById(schemaId);
-        if (schema == null) {
-            throw new RuntimeException("Schema not found: " + schemaId);
-        }
-        if (schema.getPipeline() == null || schema.getPipeline().getStages() == null) {
-            throw new RuntimeException("Schema has no pipeline definition");
-        }
-
-        List<Node> nodes = new ArrayList<>();
-        List<Edge> edges = new ArrayList<>();
-        Map<String, String> stageToNode = new HashMap<>();
-
-        int i = 0;
-        for (Stage stage : schema.getPipeline().getStages()) {
-            String nodeId = stage.getId() != null ? stage.getId() : "stage-" + UUID.randomUUID().toString().substring(0, 8);
-
-            Node node = new Node();
-            node.setId(nodeId);
-            node.setType(stage.getNodeType() != null ? stage.getNodeType() : "agent");
-            node.setName(stage.getName() != null ? stage.getName() : "Stage " + (i + 1));
-            node.setStatus(Node.NodeStatus.IDLE);
-
-            Node.NodeData data = new Node.NodeData();
-            data.setModel(stage.getModel());
-            data.setSystemPrompt(stage.getSystemPrompt());
-            data.setUserPrompt(stage.getUserPrompt());
-            data.setConfig(stage.getConfig());
-            // Copy fallbackModels from stage to node config for LlmService.buildModelChain()
-            if (stage.getFallbackModels() != null && !stage.getFallbackModels().isEmpty()) {
-                if (data.getConfig() == null) data.setConfig(new HashMap<>());
-                data.getConfig().put("fallbackModels", new ArrayList<>(stage.getFallbackModels()));
-            }
-            data.setEnabledTools(stage.getEnabledTools());
-            if (stage.getAgentType() != null) data.setAgentType(stage.getAgentType());
-
-            if (stage.getSubagentSchemaId() != null) {
-                if (data.getConfig() == null) data.setConfig(new HashMap<>());
-                data.getConfig().put("subagentSchemaId", stage.getSubagentSchemaId());
-            }
-            if (stage.getLoopCondition() != null) {
-                data.setLoopCondition(stage.getLoopCondition());
-                data.setMaxIterations(stage.getMaxIterations());
-            }
-
-            node.setData(data);
-
-            Node.Position pos = new Node.Position();
-            pos.setX(stage.getPositionX() != 0 ? stage.getPositionX() : 100 + (i * 300));
-            pos.setY(stage.getPositionY() != 0 ? stage.getPositionY() : 200);
-            node.setPosition(pos);
-
-            node.setInputPorts(List.of("in"));
-            node.setOutputPorts(List.of("out"));
-
-            nodes.add(node);
-            stageToNode.put(stage.getId(), nodeId);
-            i++;
-        }
-
-        for (Stage stage : schema.getPipeline().getStages()) {
-            if (stage.getDependencies() != null) {
-                String targetId = stageToNode.get(stage.getId());
-                for (String depId : stage.getDependencies()) {
-                    String sourceId = stageToNode.get(depId);
-                    if (sourceId != null && targetId != null) {
-                        Edge edge = new Edge();
-                        edge.setId("e-" + sourceId + "-" + targetId);
-                        edge.setSource(sourceId);
-                        edge.setTarget(targetId);
-                        edge.setSourcePort("out");
-                        edge.setTargetPort("in");
-                        edges.add(edge);
-                    }
-                }
-            }
-        }
-
-        schema.setNodes(nodes);
-        schema.setEdges(edges);
-        schemaRepository.save(schema);
-        log.info("Built {} nodes and {} edges from pipeline for schema {}", nodes.size(), edges.size(), schemaId);
-        return schema;
+        return pipelineBuilder.buildNodes(schemaId);
     }
 
     @Transactional
@@ -165,7 +86,7 @@ public class PipelineService {
             throw new SchemaValidationException(validation);
         }
 
-        CompletableFuture<?> existing = runningPipelines.get(schemaId);
+        CompletableFuture<?> existing = statusManager.getRunningPipelines().get(schemaId);
         if (existing != null && !existing.isDone()) {
             log.warn("Pipeline already running: {}", schemaId);
             throw new RuntimeException("Pipeline '" + schemaId + "' is already running");
@@ -183,8 +104,8 @@ public class PipelineService {
         executionRepository.createRun(run);
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        cancelFlags.put(schemaId, cancelFlag);
-        stageResults.put(schemaId, new ConcurrentHashMap<>());
+        statusManager.getCancelFlags().put(schemaId, cancelFlag);
+        statusManager.getStageResults().put(schemaId, new ConcurrentHashMap<>());
         clearStaleApprovals(schemaId);
 
         if (webSocketHandler != null) {
@@ -202,7 +123,7 @@ public class PipelineService {
      */
     @Transactional
     public void executeDerivedStages(String schemaId, WorkflowSchema schema, List<Stage> stages) {
-        CompletableFuture<?> existing = runningPipelines.get(schemaId);
+        CompletableFuture<?> existing = statusManager.getRunningPipelines().get(schemaId);
         if (existing != null && !existing.isDone()) {
             log.warn("Pipeline already running: {}", schemaId);
             throw new RuntimeException("Pipeline '" + schemaId + "' is already running");
@@ -226,8 +147,8 @@ public class PipelineService {
         executionRepository.createRun(run);
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        cancelFlags.put(schemaId, cancelFlag);
-        stageResults.put(schemaId, new ConcurrentHashMap<>());
+        statusManager.getCancelFlags().put(schemaId, cancelFlag);
+        statusManager.getStageResults().put(schemaId, new ConcurrentHashMap<>());
         clearStaleApprovals(schemaId);
 
         if (webSocketHandler != null) {
@@ -246,11 +167,11 @@ public class PipelineService {
                                        String runId, AtomicBoolean cancelFlag) {
         CompletableFuture<?> future = CompletableFuture.runAsync(
                 () -> runStages(stages, schema, runId, cancelFlag), pipelineExecutor);
-        runningPipelines.put(schemaId, future);
+        statusManager.getRunningPipelines().put(schemaId, future);
 
         future.whenComplete((result, ex) -> {
-            runningPipelines.remove(schemaId);
-            cancelFlags.remove(schemaId);
+            statusManager.getRunningPipelines().remove(schemaId);
+            statusManager.getCancelFlags().remove(schemaId);
             if (ex != null) {
                 if (ex instanceof CancellationException || ex.getCause() instanceof CancellationException) {
                     log.info("Execution cancelled for schema {}", schemaId);
@@ -328,7 +249,7 @@ public class PipelineService {
             }
         }
 
-        boolean isPaused = pipelineResumeState.containsKey(schema.getId());
+        boolean isPaused = statusManager.getPipelineResumeState().containsKey(schema.getId());
 
         if (webSocketHandler != null) {
             if (cancelFlag.get() && !isPaused) {
@@ -431,8 +352,8 @@ public class PipelineService {
         }
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        cancelFlags.put(schemaId, cancelFlag);
-        stageResults.put(schemaId, new ConcurrentHashMap<>());
+        statusManager.getCancelFlags().put(schemaId, cancelFlag);
+        statusManager.getStageResults().put(schemaId, new ConcurrentHashMap<>());
 
         // Re-run stages from first failed onwards — same logic as inner loop of runPipelineStages
         Map<String, Node> nodeMap = new HashMap<>();
@@ -483,7 +404,7 @@ public class PipelineService {
             for (String completedId : completedBefore) {
                 String output = failedRun.getStageOutputs().get(completedId);
                 if (output != null) {
-                    stageResults.get(schemaId).put(completedId, output);
+                    statusManager.getStageResults().get(schemaId).put(completedId, output);
                 }
             }
         }
@@ -502,8 +423,8 @@ public class PipelineService {
                 retryStageIndex++;
                 if (result == StageRunResult.FAILED) {
                     executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
-                    cancelFlags.remove(schemaId);
-                    stageResults.remove(schemaId);
+                    statusManager.getCancelFlags().remove(schemaId);
+                    statusManager.getStageResults().remove(schemaId);
                     return;
                 }
                 // PAUSED with skipApprovalCheck=true: the stage was force-completed.
@@ -527,8 +448,8 @@ public class PipelineService {
             }
         }
 
-        cancelFlags.remove(schemaId);
-        stageResults.remove(schemaId);
+        statusManager.getCancelFlags().remove(schemaId);
+        statusManager.getStageResults().remove(schemaId);
     }
 
     public void resumePipeline(String schemaId) {
@@ -541,7 +462,7 @@ public class PipelineService {
             throw new RuntimeException("Schema not found: " + schemaId);
         }
 
-        Integer resumeIndex = pipelineResumeState.remove(schemaId);
+        Integer resumeIndex = statusManager.getPipelineResumeState().remove(schemaId);
         ExecutionRun run = null;
 
         if (runId != null) {
@@ -646,15 +567,15 @@ public class PipelineService {
         int initialCompleted = resumeIndex;
 
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        cancelFlags.put(schemaId, cancelFlag);
-        stageResults.put(schemaId, new ConcurrentHashMap<>());
+        statusManager.getCancelFlags().put(schemaId, cancelFlag);
+        statusManager.getStageResults().put(schemaId, new ConcurrentHashMap<>());
 
         // Pre-populate stageResults with completed stages' outputs (from the initial run that paused)
         if (run.getStageOutputs() != null) {
             for (String completedId : completedStageIds) {
                 String output = run.getStageOutputs().get(completedId);
                 if (output != null) {
-                    stageResults.get(schemaId).put(completedId, output);
+                    statusManager.getStageResults().get(schemaId).put(completedId, output);
                 }
             }
         }
@@ -802,24 +723,20 @@ public class PipelineService {
     }
 
     public void cancelPipeline(String schemaId) {
-        AtomicBoolean flag = cancelFlags.get(schemaId);
-        if (flag != null) flag.set(true);
-        CompletableFuture<?> future = runningPipelines.get(schemaId);
-        if (future != null) future.cancel(true);
+        statusManager.cancelPipeline(schemaId);
     }
 
     public Map<String, String> getStageResults(String schemaId) {
-        return stageResults.getOrDefault(schemaId, new ConcurrentHashMap<>());
+        return statusManager.getStageResults(schemaId);
     }
 
     public boolean isPipelineRunning(String schemaId) {
-        CompletableFuture<?> future = runningPipelines.get(schemaId);
-        return future != null && !future.isDone();
+        return statusManager.isPipelineRunning(schemaId);
     }
 
     /**
      * Resolve input mappings for a stage by pulling output fields from upstream stages
-     * stored in stageResults. Handles both "sourceStageId.fieldName" (JSON field extraction)
+     * stored in statusManager.getStageResults(). Handles both "sourceStageId.fieldName" (JSON field extraction)
      * and "sourceStageId" (entire result as value) patterns.
      * Operates on a defensive copy of the config to avoid mutating schema nodes in-place.
      */
@@ -832,7 +749,7 @@ public class PipelineService {
         if (data.getConfig() != null) config.putAll(data.getConfig());
         data.setConfig(config);
 
-        Map<String, String> results = stageResults.get(schemaId);
+        Map<String, String> results = statusManager.getStageResults().get(schemaId);
         if (results == null) return;
 
         for (Map.Entry<String, String> entry : mapping.entrySet()) {
@@ -879,7 +796,7 @@ public class PipelineService {
      * paused pipelines survive server restarts.
      */
     private void persistResumeState(String schemaId, String runId, int resumeIndex) {
-        pipelineResumeState.put(schemaId, resumeIndex);
+        statusManager.getPipelineResumeState().put(schemaId, resumeIndex);
         executionRepository.updateRunResumeIndexOnly(runId, resumeIndex);
     }
 
@@ -985,15 +902,7 @@ public class PipelineService {
             if (executedNode != null && "agent".equals(executedNode.getType())) {
                 List<ExecutionStateManager.PendingDiff> pendingDiffs = stateManager.getPendingDiffs(schemaId, executedNode.getId());
                 if (!pendingDiffs.isEmpty()) {
-                    List<Map<String, Object>> diffPayloads = new ArrayList<>();
-                    for (ExecutionStateManager.PendingDiff pd : pendingDiffs) {
-                        Map<String, Object> d = new HashMap<>();
-                        d.put("filePath", pd.filePath);
-                        d.put("diff", computeSimpleDiff(pd.originalContent, pd.newContent));
-                        d.put("originalLength", pd.originalContent.length());
-                        d.put("newLength", pd.newContent.length());
-                        diffPayloads.add(d);
-                    }
+                    List<Map<String, Object>> diffPayloads = diffService.computeDiffPayloads(pendingDiffs);
 
                     // Store runId and nodeId for approve/reject
                     String diffKey = schemaId + ":" + executedNode.getId();
@@ -1048,7 +957,7 @@ public class PipelineService {
         String result = executed.getData() != null && executed.getData().getResult() != null
                 ? executed.getData().getResult() : "";
 
-        stageResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+        statusManager.getStageResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                 .put(stageNodeId, result);
 
         if (result != null && !result.isEmpty()) {
@@ -1315,51 +1224,6 @@ public class PipelineService {
             }
         }
         return null;
-    }
-
-    private static String computeSimpleDiff(String oldText, String newText) {
-        if (oldText.equals(newText)) return "(no changes)";
-        String[] oldLines = oldText.split("\n", -1);
-        String[] newLines = newText.split("\n", -1);
-        StringBuilder sb = new StringBuilder();
-        int maxContext = 3;
-
-        // Find the differing range
-        int start = 0;
-        while (start < oldLines.length && start < newLines.length
-                && oldLines[start].equals(newLines[start])) {
-            start++;
-        }
-        int oldEnd = oldLines.length - 1;
-        int newEnd = newLines.length - 1;
-        while (oldEnd >= start && newEnd >= start
-                && oldLines[oldEnd].equals(newLines[newEnd])) {
-            oldEnd--;
-            newEnd--;
-        }
-
-        // Context before changes
-        int ctxStart = Math.max(0, start - maxContext);
-        for (int i = ctxStart; i < start; i++) {
-            sb.append("  ").append(oldLines[i]).append("\n");
-        }
-
-        // Removed lines
-        for (int i = start; i <= oldEnd; i++) {
-            sb.append("- ").append(oldLines[i]).append("\n");
-        }
-        // Added lines
-        for (int i = start; i <= newEnd; i++) {
-            sb.append("+ ").append(newLines[i]).append("\n");
-        }
-
-        // Context after changes
-        int ctxEnd = Math.min(newLines.length - 1, oldEnd + maxContext);
-        for (int i = Math.max(oldEnd, newEnd) + 1; i <= ctxEnd && i < newLines.length; i++) {
-            sb.append("  ").append(newLines[i]).append("\n");
-        }
-
-        return sb.toString();
     }
 
     /**

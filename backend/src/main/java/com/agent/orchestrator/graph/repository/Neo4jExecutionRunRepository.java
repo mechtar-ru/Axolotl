@@ -18,6 +18,12 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {schemaId: $schemaId, status: $status})
         RETURN r ORDER BY r.startedAt DESC LIMIT 1
         """)
+    List<GraphExecutionRun> findByStatus(@Param("status") String status);
+
+    @Query("""
+        MATCH (r:ExecutionRun {schemaId: $schemaId, status: $status})
+        RETURN r ORDER BY r.startedAt DESC LIMIT 1
+        """)
     Optional<GraphExecutionRun> findLatestBySchemaIdAndStatus(
         @Param("schemaId") String schemaId,
         @Param("status") String status

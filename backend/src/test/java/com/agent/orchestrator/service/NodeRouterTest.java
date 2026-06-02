@@ -189,6 +189,39 @@ class NodeRouterTest {
         assertFalse(nodeRouter.isTransientError(e));
     }
 
+    // ─── getTimeoutSeconds ───
+
+    @Test
+    void getTimeoutSeconds_noConfig_returnsDefault() {
+        Node node = createNodeWithConfig(null);
+        assertEquals(60, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    @Test
+    void getTimeoutSeconds_emptyConfig_returnsDefault() {
+        Node node = createNodeWithConfig(Map.of());
+        assertEquals(60, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    @Test
+    void getTimeoutSeconds_returnsConfiguredValue() {
+        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 120));
+        assertEquals(120, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    @Test
+    void getTimeoutSeconds_minCapsAtOne() {
+        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 0));
+        assertEquals(1, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    @Test
+    void getTimeoutSeconds_nodeDataFieldTakesPrecedence() {
+        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 30));
+        node.getData().setTimeoutSeconds(120);
+        assertEquals(120, nodeRouter.getTimeoutSeconds(node));
+    }
+
     // ─── helpers ───
 
     private Node createNodeWithConfig(Map<String, Object> config) {
