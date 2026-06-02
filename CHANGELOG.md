@@ -9,6 +9,7 @@ Versioning: SemVer via git tags.
 
 ### Added
 
+- **Flutter/Dart project support**: Added `.dart` to default source extensions in `NodeSourceHandler.readProjectContext()`, enabling Flutter projects to be loaded by source nodes without explicit extension configuration.
 - **Pipeline service decomposition**: Extracted `PipelineBuilder`, `PipelineStatusManager`, `DiffService` from `PipelineService`. PipelineBuilder owns stage creation from nodes/edges. PipelineStatusManager owns 4 in-memory pipeline state maps. DiffService provides `computeSimpleDiff()` and `computeDiffPayloads()`.
 - **Execution utility decomposition**: Extracted `ToolCallParser` (4-layer tool call parsing), `NodeCommandExecutor` (bash/grep), `NodeSourceHandler` (text/file/URL/project source resolution), `NodeFileWriter` (sandbox-aware file writes) from `ExecutionUtilityService`.
 - **Execution state reconciler**: `@PostConstruct` + `@Scheduled(fixedRate=300000)` marks orphaned "running" `ExecutionRun` nodes as `RECONCILED_FAILED` with cascading `NodeExecution` cleanup.

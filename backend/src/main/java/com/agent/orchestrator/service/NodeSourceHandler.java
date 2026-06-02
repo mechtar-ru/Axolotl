@@ -236,7 +236,8 @@ public class NodeSourceHandler {
             Set<String> excludeDirs = Set.of(".git", "node_modules", ".idea", "target", "dist", "__pycache__", ".next", "build");
             Set<String> includeExtensions = config != null && config.get("includeExtensions") != null
                     ? new HashSet<>((List<String>) config.get("includeExtensions"))
-                    : Set.of(".java", ".ts", ".tsx", ".vue", ".js", ".py", ".go", ".rs", ".yaml", ".yml", ".json", ".md", ".toml", ".xml", ".properties", ".sql", ".html", ".css");
+                    // .dart included for Flutter/Dart project support (code review, build validation)
+                    : Set.of(".dart", ".java", ".ts", ".tsx", ".vue", ".js", ".py", ".go", ".rs", ".yaml", ".yml", ".json", ".md", ".toml", ".xml", ".properties", ".sql", ".html", ".css");
 
             StringBuilder sb = new StringBuilder();
             sb.append("Project: ").append(root.getFileName()).append("\n");
