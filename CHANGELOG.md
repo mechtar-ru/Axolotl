@@ -16,6 +16,15 @@ Versioning: SemVer via git tags.
 - **Error categories**: `ErrorCategory` enum with `fromException()`/`fromToolResult()` mappers and overloaded `sendError()`/`sendLog()` in `ExecutionWebSocketHandler` for structured error classification.
 - **Per-node execution timeout**: Retry loop in `NodeRouter` wrapped in `CompletableFuture.supplyAsync().get(timeoutSecs, SECONDS)` reading `NodeData.timeoutSeconds` config (default 60s).
 
+### Fixed
+
+- **ToolCall parsing in OpenAI-compatible providers**: `OpenAiChatClient.parseResponse()` now handles `content=null` (when `tool_calls` are present in the API response) and extracts structured `tool_calls` JSON into the response text for downstream `ToolCallParser` processing. Previously crashed with NPE on null content.
+- **Output node file path resolution**: `ExecutionUtilityService.executeOutputNode()` resolves relative `filePath` against the schema's `targetPath`, so output files (e.g., `review.md`) are written inside the project directory instead of the backend's working directory.
+- **Output node null parent directory**: `NodeFileWriter.writeOutput()` checks `path.getParent()` for null before calling `Files.createDirectories()`, fixing NPE when the output path is a bare filename without a parent directory.
+- **`build_app` dependency checks for APK-only builds**: `ToolExecutor.handleBuildApp()` skips Xcode and CocoaPods checks for non-iOS build modes (debug/APK). Xcode and CocoaPods are only required for iOS builds; APK builds now proceed without them.
+- **`build_app` Android SDK detection**: `checkAndroidSdk()` reports missing `ANDROID_HOME` as a warning instead of a blocker when the SDK is found via common path scan or `flutter config --machine`. Flutter can find the SDK through its own config, so ANDROID_HOME is not required for `flutter build apk`.
+- **`build_app` checkXcode/checkCocoaPods null safety**: Both methods now accept `null` for the `missing` list (warn-only mode), preventing NPE when called from APK-only build paths.
+
 ### Removed
 
 - **Dead code**: Removed `transientOnly` skip-logic from `shouldSkipNode()` and callers — feature never used, added only complexity.

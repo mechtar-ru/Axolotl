@@ -244,8 +244,24 @@ public final class OpenAiChatClient {
         }
 
         JsonNode message = choice.path("message");
-        String text = message.path("content").asText();
+        // content may be null when tool_calls are present — treat as empty text
+        String text = message.has("content") && !message.path("content").isNull()
+                ? message.path("content").asText()
+                : "";
         String reasoning = message.path("reasoning_content").asText(null);
+
+        // Extract tool_calls if present (OpenAI-compatible structured format)
+        JsonNode toolCallsNode = message.path("tool_calls");
+        if (!toolCallsNode.isMissingNode() && toolCallsNode.isArray() && toolCallsNode.size() > 0) {
+            // Serialize tool_calls to JSON text so ToolCallParser can process them
+            try {
+                String toolCallsJson = MAPPER.writeValueAsString(toolCallsNode);
+                text = (text != null && !text.isBlank() ? text + "\n" : "") + toolCallsJson;
+                log.debug("Extracted {} tool_calls from response, appended to text", toolCallsNode.size());
+            } catch (Exception e) {
+                log.warn("Failed to serialize tool_calls: {}", e.getMessage());
+            }
+        }
 
         int tokens = !usageNode.isMissingNode() ? usageNode.path("total_tokens").asInt(0) : 0;
         log.info("OpenAI response ({} tokens): {}", tokens, truncate(text, 100));

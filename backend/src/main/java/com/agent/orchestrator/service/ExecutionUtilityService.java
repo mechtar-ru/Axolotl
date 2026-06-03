@@ -461,6 +461,21 @@ public class ExecutionUtilityService {
 
         String filePath = config.getOrDefault("filePath", "") instanceof String
                 ? (String) config.get("filePath") : "";
+        // Resolve relative file paths against schema targetPath
+        if (filePath != null && !filePath.isBlank() && !filePath.startsWith("/")) {
+            String targetPath = null;
+            try {
+                var schema = schemaRepository.findById(schemaId);
+                if (schema != null) {
+                    targetPath = schema.getTargetPath();
+                }
+            } catch (Exception e) {
+                log.warn("Could not resolve targetPath for schema {}: {}", schemaId, e.getMessage());
+            }
+            if (targetPath != null && !targetPath.isBlank()) {
+                filePath = targetPath.endsWith("/") ? targetPath + filePath : targetPath + "/" + filePath;
+            }
+        }
         String fileFormat = config.getOrDefault("fileFormat", "text") instanceof String
                 ? (String) config.get("fileFormat") : "text";
         String result = writeOutput(outputType, filePath, fileFormat, input);

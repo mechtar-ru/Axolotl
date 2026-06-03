@@ -776,14 +776,27 @@ public class ToolExecutor {
         details.append("Project: ").append(projectPath).append(" (").append(projectType.getDisplayName()).append(")\n");
         details.append("Detected via: ").append(manifest).append("\n");
 
+        // Determine build mode early to skip iOS-only checks for APK builds
+        Object buildModeObj = params.getOrDefault("buildMode", "debug");
+        String buildMode = buildModeObj instanceof String ? (String) buildModeObj : "debug";
+        boolean needsIosTools = buildMode.toLowerCase().contains("ios")
+                || buildMode.toLowerCase().contains("appbundle")
+                || buildMode.toLowerCase().contains("release");
+
         // Check SDK availability per project type
         switch (projectType) {
             case FLUTTER:
                 checkSdk(details, missing, "flutter", "Flutter SDK",
                         "brew install flutter");
                 checkAndroidSdk(details, missing);
-                checkXcode(details, missing);
-                checkCocoaPods(details, missing);
+                // Xcode and CocoaPods only needed for iOS builds
+                if (needsIosTools) {
+                    checkXcode(details, missing);
+                    checkCocoaPods(details, missing);
+                } else {
+                    checkXcode(details, null);  // warn only, not a blocker
+                    checkCocoaPods(details, null);
+                }
                 break;
             case PYTHON:
                 checkSdk(details, missing, "python3", "Python 3",
@@ -818,8 +831,7 @@ public class ToolExecutor {
         }
 
         // All deps present — run build
-        Object buildModeObj = params.getOrDefault("buildMode", "debug");
-        String buildMode = buildModeObj instanceof String ? (String) buildModeObj : "debug";
+        // (buildMode already resolved above for iOS tool checks)
         var buildResults = new java.util.ArrayList<String>();
         var buildErrors = new java.util.ArrayList<String>();
 
@@ -978,9 +990,9 @@ public class ToolExecutor {
             if (java.nio.file.Files.exists(dir.resolve("platforms"))
                     || java.nio.file.Files.exists(dir.resolve("cmdline-tools"))
                     || java.nio.file.Files.exists(dir.resolve("tools"))) {
-                details.append("[Android SDK] ⚠️  Found at ").append(p)
-                       .append(" but ANDROID_HOME not set\n");
-                missing.add("ANDROID_HOME not set — add to ~/.zshrc: export ANDROID_HOME=\"" + p + "\"");
+                details.append("[Android SDK] ✅ Found at ").append(p)
+                       .append(" (export ANDROID_HOME=\"" + p + "\" for tools that need it)\n");
+                // Warning only — Flutter build works via its own config
                 return;
             }
         }
@@ -998,9 +1010,9 @@ public class ToolExecutor {
                     int valEnd = fcOut.indexOf('"', valStart);
                     if (valStart > 0 && valEnd > valStart) {
                         String flutterSdk = fcOut.substring(valStart, valEnd);
-                        details.append("[Android SDK] ⚠️  Flutter knows about ").append(flutterSdk)
-                               .append(" but ANDROID_HOME not set\n");
-                        missing.add("ANDROID_HOME not set — add to ~/.zshrc: export ANDROID_HOME=\"" + flutterSdk + "\"");
+                        details.append("[Android SDK] ⚠️  Flutter knows ").append(flutterSdk)
+                               .append(" but ANDROID_HOME not set (warning, flutter build works)\n");
+                        // Warning only — Flutter finds the SDK via its own config
                         return;
                     }
                 }
@@ -1030,11 +1042,11 @@ public class ToolExecutor {
                     details.append("⚠️  CLI tools only (").append(xp).append(")\n");
                     if (hasFullXcode) {
                         details.append("  → Full Xcode.app found! Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer\n");
-                        missing.add("Xcode not active — run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
+                        if (missing != null) missing.add("Xcode not active — run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
                     } else {
                         details.append("  → Full Xcode.app missing. Install from Mac App Store:\n");
                         details.append("    https://apps.apple.com/app/xcode/id497799835\n");
-                        missing.add("Full Xcode.app required — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
+                        if (missing != null) missing.add("Full Xcode.app required — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
                     }
                 } else {
                     String ver = "?";
@@ -1051,15 +1063,15 @@ public class ToolExecutor {
                 if (hasFullXcode) {
                     details.append("⚠️  Xcode.app found but not activated\n");
                     details.append("  → Run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer\n");
-                    missing.add("Xcode not activated — run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
+                    if (missing != null) missing.add("Xcode not activated — run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer");
                 } else {
                     details.append("❌ Not found\n");
-                    missing.add("Xcode — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
+                    if (missing != null) missing.add("Xcode — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
                 }
             }
         } catch (Exception e) {
             details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
-            missing.add("Xcode — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
+            if (missing != null) missing.add("Xcode — install from Mac App Store: https://apps.apple.com/app/xcode/id497799835");
         }
     }
 
@@ -1074,12 +1086,12 @@ public class ToolExecutor {
                 String path = new String(proc.getInputStream().readAllBytes()).trim();
                 details.append("✅ ").append(path).append("\n");
             } else {
-                details.append("❌ Not found\n");
-                missing.add("CocoaPods — install via: sudo gem install cocoapods");
+                details.append("❌ Not found (only needed for iOS builds)\n");
+                if (missing != null) missing.add("CocoaPods — install via: sudo gem install cocoapods");
             }
         } catch (Exception e) {
             details.append("❌ Check failed: ").append(e.getMessage()).append("\n");
-            missing.add("CocoaPods — install via: sudo gem install cocoapods");
+            if (missing != null) missing.add("CocoaPods — install via: sudo gem install cocoapods");
         }
     }
 }

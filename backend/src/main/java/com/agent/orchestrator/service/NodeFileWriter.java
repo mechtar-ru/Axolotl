@@ -25,7 +25,10 @@ public class NodeFileWriter {
         if ("file".equals(outputType) && filePath != null && !filePath.isBlank()) {
             try {
                 Path path = Path.of(filePath);
-                Files.createDirectories(path.getParent());
+                Path parent = path.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
                 String dataToWrite = content;
                 if ("json".equals(fileFormat)) {
                     dataToWrite = "{\n  \"result\": " + new ObjectMapper().writeValueAsString(content) + ",\n  \"timestamp\": " + System.currentTimeMillis() + "\n}";
