@@ -139,7 +139,7 @@ function trackRecent(id: string) {
   saveRecentIds(recentAppIds.value)
 }
 
-const allAppsCollapsed = ref(true)
+const allAppsCollapsed = ref(false)
 
 // Display / filtering / sorting options
 const sortMode = ref<'updated' | 'name' | 'lastRun'>('updated')
@@ -480,15 +480,18 @@ function clearSelection() {
   selectedForDelete.value = new Set()
 }
 
-async function batchDeleteSelected() {
-  if (selectedForDelete.value.size === 0) return
-  const confirmed = window.confirm(`Delete ${selectedForDelete.value.size} selected schemas?`)
-  if (!confirmed) return
+const showBatchDeleteModal = ref(false)
 
+function batchDeleteSelected() {
+  if (selectedForDelete.value.size === 0) return
+  showBatchDeleteModal.value = true
+}
+
+async function confirmBatchDelete() {
+  showBatchDeleteModal.value = false
   isDeleting.value = true
   try {
     await schemaApi.batchDeleteSchemas(Array.from(selectedForDelete.value))
-    // Remove from local store
     schemaStore.schemas = schemaStore.schemas.filter(s => !selectedForDelete.value.has(s.id))
     selectedForDelete.value = new Set()
     await loadGroups()
@@ -498,6 +501,35 @@ async function batchDeleteSelected() {
   } finally {
     isDeleting.value = false
   }
+}
+
+// ── Drag-n-drop between groups ──
+const dragSchemaId = ref<string | null>(null)
+
+function onDragStart(e: DragEvent, schemaId: string) {
+  dragSchemaId.value = schemaId
+  e.dataTransfer?.setData('text/plain', schemaId)
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+}
+
+async function onDrop(e: DragEvent, targetGroup: string) {
+  e.preventDefault()
+  const schemaId = e.dataTransfer?.getData('text/plain')
+  if (!schemaId) return
+  const currentSchema = visibleApps.value.find(a => a.id === schemaId)
+  if (!currentSchema) return
+  const currentGroup = currentSchema.projectGroup || ''
+  if (currentGroup === targetGroup) {
+    dragSchemaId.value = null
+    return
+  }
+  try {
+    await schemaApi.updateSchema(schemaId, { projectGroup: targetGroup || null } as any)
+    await loadGroups()
+  } catch (e) {
+    console.error('Failed to move schema:', e)
+  }
+  dragSchemaId.value = null
 }
 
 // schemas in a given group, filtered by search
@@ -620,7 +652,7 @@ async function onImportFile(event: Event) {
           <button class="control-btn" :class="{ active: !showTests }" @click="showTests = false; clearSelection()" title="Hide tests">
             Apps
           </button>
-          <button class="control-btn" :class="{ active: showTests }" @click="showTests = true; clearSelection()" title="Show tests">
+          <button v-if="testSchemas.length > 0" class="control-btn" :class="{ active: showTests }" @click="showTests = true; clearSelection()" title="Show tests">
             {{ testSchemas.length }} tests
           </button>
           <button v-if="showTests && testSchemas.length > 0" class="control-btn danger" @click="selectAllTests(); batchDeleteSelected()" :disabled="isDeleting">
@@ -697,14 +729,16 @@ async function onImportFile(event: Event) {
               </div>
               <span class="subsection-count">{{ (schemaGroups[group] || []).length }}</span>
             </div>
-            <div v-show="groupExpanded[group] !== false" class="apps-grid">
+            <div v-show="groupExpanded[group] !== false" class="apps-grid" @dragover.prevent @drop="onDrop($event, group)">
               <AppCard
                 v-for="app in groupSchemas(group)"
                 :key="app.id"
                 :app="app"
+                draggable="true"
                 @click="openApp(app.id)"
                 @delete="promptDeleteApp(app)"
                 @set-group="openGroupDialog(app)"
+                @dragstart="onDragStart($event, app.id)"
               />
             </div>
           </div>
@@ -798,6 +832,17 @@ async function onImportFile(event: Event) {
       <div class="modal-actions">
         <button class="btn-secondary" @click="showDeleteModal = false">Cancel</button>
         <button class="btn-danger" @click="confirmDeleteApp">Delete</button>
+      </div>
+    </AppModal>
+
+    <!-- Batch Delete Confirmation Modal -->
+    <AppModal v-model="showBatchDeleteModal" title="Delete Schemas">
+      <p>Delete {{ selectedForDelete.size }} schemas? This cannot be undone.</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" @click="showBatchDeleteModal = false">Cancel</button>
+        <button class="btn-danger" @click="confirmBatchDelete" :disabled="isDeleting">
+          {{ isDeleting ? 'Deleting...' : 'Delete' }}
+        </button>
       </div>
     </AppModal>
 

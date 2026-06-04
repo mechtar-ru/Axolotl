@@ -134,7 +134,7 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
       <span v-if="app.updatedAt" class="app-date">Updated {{ formatDate(app.updatedAt) }}</span>
       <span v-else-if="app.createdAt" class="app-date">Created {{ formatDate(app.createdAt) }}</span>
       <div class="card-actions">
-        <button class="action-btn" @click.stop="emit('setGroup')" title="Set project group">
+        <button class="action-btn group-btn" @click.stop="emit('setGroup')" title="Set project group">
           <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
             <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10-1a1 1 0 00-1 1v6a1 1 0 001 1h3a1 1 0 001-1v-6a1 1 0 00-1-1h-3z"/>
           </svg>
@@ -281,7 +281,7 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   padding: 4px;
   border-radius: 4px;
   line-height: 1;
@@ -294,12 +294,9 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
 .delete-btn:hover {
   color: var(--danger);
 }
-
-
-.app-card:hover .delete-btn {
-  display: inline-flex;
+.group-btn:hover {
+  color: var(--accent);
 }
-
 .delete-btn:hover {
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
