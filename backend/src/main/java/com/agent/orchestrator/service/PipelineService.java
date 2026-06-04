@@ -181,6 +181,17 @@ public class PipelineService {
                     executionRepository.updateRunStatus(runId, "failed", ex.getMessage());
                 }
             }
+            // Update lastRunAt on the schema after execution completes (any terminal state)
+            try {
+                WorkflowSchema s = schemaRepository.findById(schemaId);
+                if (s != null) {
+                    s.setLastRunAt(Instant.now().toString());
+                    schemaRepository.save(s);
+                    log.debug("Updated lastRunAt for schema: {}", schemaId);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to update lastRunAt for schema {}: {}", schemaId, e.getMessage());
+            }
         });
     }
 

@@ -30,6 +30,7 @@ public class WorkflowSchema {
     private String projectType; // "FLUTTER" | "PYTHON" | "WEB" | "GO" | "RUST", null => FLUTTER
     private String projectGroup; // nullable, for UI grouping (e.g. "EIOS", "Бережно")
     private boolean autoApproveDrafts;
+    private String lastRunAt; // ISO-8601 timestamp of last pipeline run
 
     public boolean isAutoApproveDrafts() { return autoApproveDrafts; }
     public void setAutoApproveDrafts(boolean autoApproveDrafts) { this.autoApproveDrafts = autoApproveDrafts; }
@@ -42,6 +43,9 @@ public class WorkflowSchema {
 
     public String getProjectGroup() { return projectGroup; }
     public void setProjectGroup(String projectGroup) { this.projectGroup = projectGroup; }
+
+    public String getLastRunAt() { return lastRunAt; }
+    public void setLastRunAt(String lastRunAt) { this.lastRunAt = lastRunAt; }
 
     // Геттеры и сеттеры
     public String getId() { return id; }

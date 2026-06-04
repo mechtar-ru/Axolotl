@@ -129,6 +129,22 @@ public class SchemaService {
         ));
     }
 
+    public List<WorkflowSchema> getRecentSchemas(String userId, int limit) {
+        List<WorkflowSchema> all = getSchemasByUserId(userId);
+        return all.stream()
+            .sorted((a, b) -> {
+                // Sort by updatedAt desc, then lastRunAt desc
+                String aDate = a.getLastRunAt() != null ? a.getLastRunAt() : a.getUpdatedAt();
+                String bDate = b.getLastRunAt() != null ? b.getLastRunAt() : b.getUpdatedAt();
+                if (aDate == null && bDate == null) return 0;
+                if (aDate == null) return 1;
+                if (bDate == null) return -1;
+                return bDate.compareTo(aDate);
+            })
+            .limit(limit)
+            .collect(Collectors.toList());
+    }
+
     public WorkflowSchema getSchema(String id) {
         return sanitizeSchema(schemaRepository.findById(id));
     }
@@ -219,6 +235,32 @@ public class SchemaService {
         cancelExecution(id);
         schemaRepository.delete(id);
         log.info("Удалена схема: {}", id);
+    }
+
+    public void batchDeleteSchemas(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalArgumentException("Schema IDs list is required");
+        }
+        for (String id : ids) {
+            if (id != null && !id.isBlank()) {
+                try {
+                    cancelExecution(id);
+                    schemaRepository.delete(id);
+                    log.info("Batch delete: схема {} удалена", id);
+                } catch (Exception e) {
+                    log.warn("Batch delete: не удалось удалить {}: {}", id, e.getMessage());
+                }
+            }
+        }
+    }
+
+    public void updateLastRunAt(String schemaId) {
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        if (schema != null) {
+            schema.setLastRunAt(Instant.now().toString());
+            schemaRepository.save(schema);
+            log.debug("Updated lastRunAt for schema: {}", schemaId);
+        }
     }
 
     // ────────────────────────── Export / Import ──────────────────────────
@@ -984,6 +1026,15 @@ public class SchemaService {
 
     List<List<Node>> getExecutionLevelsPublic(WorkflowSchema schema) { return getExecutionLevels(schema); }
     Set<String> computeSkippedNodesPublic(WorkflowSchema schema) { return computeSkippedNodes(schema, nodeExecutor.getConditionResults()); }
+
+    public static boolean isTestSchema(WorkflowSchema schema) {
+        if (schema == null || schema.getName() == null) return false;
+        String name = schema.getName().toLowerCase();
+        return name.startsWith("test-") || name.startsWith("pw-review") || name.startsWith("debug-")
+            || name.startsWith("check-") || name.startsWith("premortem-") || name.startsWith("pipeline-")
+            || name.startsWith("final-") || name.startsWith("valid-")
+            || name.contains("-debug") || name.contains("-test");
+    }
 
     private WorkflowSchema sanitizeSchema(WorkflowSchema schema) {
         if (schema == null) return null;

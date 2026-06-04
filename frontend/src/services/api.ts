@@ -214,6 +214,20 @@ export const schemaApi = {
     const response = await api.post(`/schemas/${schemaId}/cleanup-runs`);
     return response.data;
   },
+
+  async batchDeleteSchemas(ids: string[]): Promise<void> {
+    await api.post('/schemas/batch-delete', { ids })
+  },
+
+  async getTestSchemas(): Promise<WorkflowSchema[]> {
+    const response = await api.get('/schemas/test-schemas')
+    return response.data
+  },
+
+  async getRecentSchemas(limit = 10): Promise<WorkflowSchema[]> {
+    const response = await api.get('/schemas/recent', { params: { limit } })
+    return response.data
+  },
 };
 
 export interface AppInfo {

@@ -26,7 +26,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,6 +126,37 @@ public class AgentController {
     @DeleteMapping("/schemas/{id}")
     public void deleteSchema(@PathVariable String id) {
         schemaService.deleteSchema(id);
+    }
+
+    @PostMapping("/schemas/batch-delete")
+    public void batchDeleteSchemas(@RequestBody Map<String, List<String>> body) {
+        List<String> ids = body.get("ids");
+        if (ids == null || ids.isEmpty()) {
+            throw new IllegalArgumentException("ids list is required");
+        }
+        String userId = getCurrentUserId();
+        // Verify user owns all schemas
+        List<WorkflowSchema> allSchemas = schemaService.getSchemasByUserId(userId);
+        Set<String> userSchemaIds = allSchemas.stream().map(WorkflowSchema::getId).collect(Collectors.toSet());
+        for (String id : ids) {
+            if (!userSchemaIds.contains(id)) {
+                throw new SecurityException("Schema " + id + " does not belong to user");
+            }
+        }
+        schemaService.batchDeleteSchemas(ids);
+    }
+
+    @GetMapping("/schemas/test-schemas")
+    public List<WorkflowSchema> getTestSchemas() {
+        String userId = getCurrentUserId();
+        List<WorkflowSchema> all = schemaService.getSchemasByUserId(userId);
+        return all.stream().filter(SchemaService::isTestSchema).collect(Collectors.toList());
+    }
+
+    @GetMapping("/schemas/recent")
+    public List<WorkflowSchema> getRecentSchemas(@RequestParam(defaultValue = "10") int limit) {
+        String userId = getCurrentUserId();
+        return schemaService.getRecentSchemas(userId, limit);
     }
 
     @GetMapping("/schemas/{id}/export")

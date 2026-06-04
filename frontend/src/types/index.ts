@@ -103,6 +103,7 @@ export interface WorkflowSchema {
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;
+  lastRunAt?: string;
   appType?: string;
   targetPath?: string;
   targetPathConflictAction?: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH';

@@ -141,6 +141,66 @@ function trackRecent(id: string) {
 
 const allAppsCollapsed = ref(true)
 
+// Display / filtering / sorting options
+const sortMode = ref<'updated' | 'name' | 'lastRun'>('updated')
+const filterType = ref<string>('ALL')
+const showTests = ref(false)
+
+// Batch delete
+const selectedForDelete = ref<Set<string>>(new Set())
+const isDeleting = ref(false)
+
+// Test schemas list
+const testSchemas = ref<WorkflowSchema[]>([])
+async function loadTestSchemas() {
+  try {
+    testSchemas.value = await schemaApi.getTestSchemas()
+  } catch (e) {
+    console.error('Failed to load test schemas:', e)
+  }
+}
+
+// Type filter options
+const appTypes = computed(() => {
+  const types = new Set(visibleApps.value.map(a => a.appType || 'CUSTOM'))
+  return ['ALL', ...Array.from(types).sort()]
+})
+
+// Filtered + sorted apps
+const sortedFilteredApps = computed(() => {
+  let apps = visibleApps.value
+
+  // Filter by type
+  if (filterType.value !== 'ALL') {
+    apps = apps.filter(a => (a.appType || 'CUSTOM') === filterType.value)
+  }
+
+  // Filter test schemas
+  if (!showTests.value) {
+    const testNames = new Set(testSchemas.value.map(s => s.id))
+    apps = apps.filter(a => !testNames.has(a.id))
+  }
+
+  // Sort
+  const sorted = [...apps]
+  switch (sortMode.value) {
+    case 'updated':
+      sorted.sort(byUpdatedAtDesc)
+      break
+    case 'name':
+      sorted.sort((a, b) => a.name.localeCompare(b.name))
+      break
+    case 'lastRun':
+      sorted.sort((a, b) => {
+        const aDate = a.lastRunAt || a.updatedAt || ''
+        const bDate = b.lastRunAt || b.updatedAt || ''
+        return bDate.localeCompare(aDate)
+      })
+      break
+  }
+  return sorted
+})
+
 // Sort helper: updatedAt desc, fallback to createdAt
 function byUpdatedAtDesc(a: any, b: any): number {
   const aDate = a.updatedAt || a.createdAt || ''
@@ -381,13 +441,64 @@ async function loadGroups() {
   }
 }
 
+const groupSortMode = ref<'alpha' | 'recency'>('alpha')
+
 const sortedGroupNames = computed(() => {
-  return Object.keys(schemaGroups.value).sort((a, b) => {
-    if (a === '') return 1   // "Other" at end
-    if (b === '') return -1
-    return a.localeCompare(b)
-  })
+  const groups = Object.keys(schemaGroups.value)
+  const emptyIdx = groups.indexOf('')
+  const named = groups.filter(g => g !== '')
+
+  let sorted: string[]
+  if (groupSortMode.value === 'recency') {
+    // Sort groups by most recent app in each group
+    sorted = [...named].sort((a, b) => {
+      const groupA = schemaGroups.value[a] || []
+      const groupB = schemaGroups.value[b] || []
+      const aLatest = Math.max(
+        ...groupA.map(s => new Date(s.updatedAt || s.createdAt || 0).getTime())
+      )
+      const bLatest = Math.max(
+        ...groupB.map(s => new Date(s.updatedAt || s.createdAt || 0).getTime())
+      )
+      return bLatest - aLatest
+    })
+  } else {
+    sorted = [...named].sort((a, b) => a.localeCompare(b))
+  }
+
+  if (emptyIdx >= 0) {
+    sorted.push('')
+  }
+  return sorted
 })
+
+function selectAllTests() {
+  selectedForDelete.value = new Set(testSchemas.value.map(s => s.id))
+}
+
+function clearSelection() {
+  selectedForDelete.value = new Set()
+}
+
+async function batchDeleteSelected() {
+  if (selectedForDelete.value.size === 0) return
+  const confirmed = window.confirm(`Delete ${selectedForDelete.value.size} selected schemas?`)
+  if (!confirmed) return
+
+  isDeleting.value = true
+  try {
+    await schemaApi.batchDeleteSchemas(Array.from(selectedForDelete.value))
+    // Remove from local store
+    schemaStore.schemas = schemaStore.schemas.filter(s => !selectedForDelete.value.has(s.id))
+    selectedForDelete.value = new Set()
+    await loadGroups()
+    await loadTestSchemas()
+  } catch (e) {
+    console.error('Batch delete failed:', e)
+  } finally {
+    isDeleting.value = false
+  }
+}
 
 // schemas in a given group, filtered by search
 function groupSchemas(group: string) {
@@ -487,12 +598,35 @@ async function onImportFile(event: Event) {
 
     <!-- My Apps Grid -->
     <section class="apps-section">
-      <div class="apps-section-header">
-        <div class="apps-section-title">
-          <h2>My Apps</h2>
-          <span class="apps-count">{{ visibleApps.length }}</span>
+      <div class="apps-header">
+        <h2>My Apps</h2>
+        <span class="app-count">{{ sortedFilteredApps.length }} apps</span>
+      </div>
+      <div class="apps-controls">
+        <div class="control-group">
+          <select v-model="sortMode" class="control-select" title="Sort order">
+            <option value="updated">Last Updated</option>
+            <option value="name">Name A-Z</option>
+            <option value="lastRun">Last Run</option>
+          </select>
+          <select v-model="filterType" class="control-select" title="Filter by type">
+            <option value="ALL">All Types</option>
+            <template v-for="t in appTypes" :key="t">
+              <option v-if="t !== 'ALL'" :value="t">{{ t }}</option>
+            </template>
+          </select>
         </div>
-        <span class="sort-indicator">Last Updated</span>
+        <div class="control-group">
+          <button class="control-btn" :class="{ active: !showTests }" @click="showTests = false; clearSelection()" title="Hide tests">
+            Apps
+          </button>
+          <button class="control-btn" :class="{ active: showTests }" @click="showTests = true; clearSelection()" title="Show tests">
+            {{ testSchemas.length }} tests
+          </button>
+          <button v-if="showTests && testSchemas.length > 0" class="control-btn danger" @click="selectAllTests(); batchDeleteSelected()" :disabled="isDeleting">
+            {{ isDeleting ? 'Deleting...' : 'Delete all' }}
+          </button>
+        </div>
       </div>
       <div v-if="schemaStore.schemas.length === 0" class="empty-state">
         <p>No apps yet. Create your first app!</p>
@@ -516,26 +650,33 @@ async function onImportFile(event: Event) {
         </template>
         <!-- Normal view: sections -->
         <template v-else>
-          <!-- Recent Apps (always expanded, max 5) -->
-          <div v-if="recentApps.length > 0" class="apps-subsection">
+          <div class="apps-subsection">
             <div class="subsection-header" @click="allAppsCollapsed = !allAppsCollapsed">
               <div class="subsection-title">
                 <svg class="chevron" :class="{ rotated: !allAppsCollapsed }" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-                  <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
+                  <path d="M7 7l5 5-5 5" stroke="currentColor" stroke-width="2" fill="none"/>
                 </svg>
                 <h3>Recent</h3>
               </div>
-              <span class="subsection-count">{{ recentApps.length }}</span>
+              <span class="subsection-count">{{ Math.min(5, sortedFilteredApps.length) }}</span>
             </div>
             <div v-show="!allAppsCollapsed" class="apps-grid">
               <AppCard
-                v-for="app in recentApps"
+                v-for="app in sortedFilteredApps.slice(0, 5)"
                 :key="app.id"
                 :app="app"
                 @click="openApp(app.id)"
                 @delete="promptDeleteApp(app)"
+                @set-group="openGroupDialog(app)"
               />
             </div>
+          </div>
+          <div class="subsection-header-row">
+            <h3>Groups</h3>
+            <select v-model="groupSortMode" class="control-select small" title="Sort groups">
+              <option value="alpha">A-Z</option>
+              <option value="recency">Recent</option>
+            </select>
           </div>
           <!-- Project Groups -->
           <div
@@ -1000,4 +1141,65 @@ select.input {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+
+/* New controls for apps filtering/sorting */
+.apps-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.apps-header h2 { margin: 0; }
+.app-count {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.apps-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.control-group {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+.control-select {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.control-select.small { padding: 2px 6px; font-size: 0.75rem; }
+.control-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.control-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.control-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+.control-btn.danger { border-color: var(--danger); color: var(--danger); }
+.control-btn.danger:hover { background: var(--danger); color: white; }
+.control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.subsection-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+.subsection-header-row h3 { margin: 0; }
 </style>

@@ -27,6 +27,9 @@ public class GraphWorkflowSchema {
     @Property("updatedAt")
     private String updatedAt;
 
+    @Property("lastRunAt")
+    private String lastRunAt;
+
     public GraphWorkflowSchema() {}
 
     public String getId() { return id; }
@@ -43,4 +46,6 @@ public class GraphWorkflowSchema {
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
     public String getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
+    public String getLastRunAt() { return lastRunAt; }
+    public void setLastRunAt(String lastRunAt) { this.lastRunAt = lastRunAt; }
 }
