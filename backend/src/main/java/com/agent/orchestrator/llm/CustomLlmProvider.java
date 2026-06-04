@@ -88,7 +88,9 @@ public class CustomLlmProvider implements LlmProvider {
         endpoint.setLastUsedAt(Instant.now());
         endpointRepository.save(endpoint);
 
-        return chatWithOpenAiClient(endpoint, systemPrompt, userPrompt, usage);
+        // Extract structured tools from config if present (passed from AgentNodeStrategy)
+        List<Map<String, Object>> tools = extractToolsFromConfig(config);
+        return chatWithOpenAiClient(endpoint, systemPrompt, userPrompt, usage, tools);
     }
 
     @Override
@@ -102,7 +104,8 @@ public class CustomLlmProvider implements LlmProvider {
         endpoint.setLastUsedAt(Instant.now());
         endpointRepository.save(endpoint);
 
-        return streamingChatWithOpenAiClient(endpoint, systemPrompt, userPrompt, tokenConsumer);
+        List<Map<String, Object>> tools = extractToolsFromConfig(config);
+        return streamingChatWithOpenAiClient(endpoint, systemPrompt, userPrompt, tokenConsumer, tools);
     }
 
     /**
@@ -143,22 +146,52 @@ public class CustomLlmProvider implements LlmProvider {
     }
 
     /**
+     * Extract structured tools from config map (passed from AgentNodeStrategy via LlmService).
+     * Config key "_tools" contains List<Map<String,Object>> with tool definitions.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractToolsFromConfig(Map<String, Object> config) {
+        if (config == null) return null;
+        Object raw = config.get("_tools");
+        if (raw instanceof List) {
+            List<Map<String, Object>> tools = new ArrayList<>();
+            for (Object item : (List<Object>) raw) {
+                if (item instanceof Map) {
+                    tools.add(OpenAiChatClient.toolToOpenAiFormat((Map<String, Object>) item));
+                }
+            }
+            return tools.isEmpty() ? null : tools;
+        }
+        return null;
+    }
+
+    /**
      * Non-streaming chat via OpenAiChatClient (supports reasoning extraction).
      */
     private LlmResponse chatWithOpenAiClient(CustomLlmEndpoint endpoint, String systemPrompt,
                                               String userPrompt, LlmUsage usage) {
+        return chatWithOpenAiClient(endpoint, systemPrompt, userPrompt, usage, null);
+    }
+
+    /**
+     * Non-streaming chat via OpenAiChatClient with optional structured tools.
+     */
+    private LlmResponse chatWithOpenAiClient(CustomLlmEndpoint endpoint, String systemPrompt,
+                                              String userPrompt, LlmUsage usage,
+                                              List<Map<String, Object>> tools) {
         try {
             if ("bearer".equals(endpoint.getAuthType()) || endpoint.getAuthType() == null) {
                 String key = endpoint.getApiKey() != null ? endpoint.getApiKey() : "";
                 String model = endpoint.getModelName() != null ? endpoint.getModelName() : "default";
                 return OpenAiChatClient.chat(key, endpoint.getBaseUrl(), model,
-                        systemPrompt, userPrompt, usage, TIMEOUT_SECONDS);
+                        systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
+                        HttpClient.Version.HTTP_1_1, tools);
             } else {
-                return sendRawHttpRequest(endpoint, systemPrompt, userPrompt, usage);
+                return sendRawHttpRequest(endpoint, systemPrompt, userPrompt, usage, tools);
             }
         } catch (Exception e) {
             log.error("Custom LLM chat error, falling back to raw HTTP", e);
-            return sendRawHttpRequest(endpoint, systemPrompt, userPrompt, usage);
+            return sendRawHttpRequest(endpoint, systemPrompt, userPrompt, usage, tools);
         }
     }
 
@@ -170,7 +203,13 @@ public class CustomLlmProvider implements LlmProvider {
      */
     private LlmResponse sendRawHttpRequest(CustomLlmEndpoint endpoint, String systemPrompt,
                                             String userPrompt, LlmUsage usage) {
-        return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, 0);
+        return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, 0, null);
+    }
+
+    private LlmResponse sendRawHttpRequest(CustomLlmEndpoint endpoint, String systemPrompt,
+                                            String userPrompt, LlmUsage usage,
+                                            List<Map<String, Object>> tools) {
+        return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, 0, tools);
     }
 
     /**
@@ -180,6 +219,14 @@ public class CustomLlmProvider implements LlmProvider {
     private LlmResponse sendRawHttpRequestWithRetry(CustomLlmEndpoint endpoint, String systemPrompt,
                                                      String userPrompt, LlmUsage usage,
                                                      int attempt) {
+        return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private LlmResponse sendRawHttpRequestWithRetry(CustomLlmEndpoint endpoint, String systemPrompt,
+                                                     String userPrompt, LlmUsage usage,
+                                                     int attempt,
+                                                     List<Map<String, Object>> tools) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
@@ -191,6 +238,11 @@ public class CustomLlmProvider implements LlmProvider {
             messages.add(Map.of("role", "user", "content", userPrompt));
             requestBody.put("messages", messages);
             requestBody.put("stream", false);
+
+            // Add structured tools if provided
+            if (tools != null && !tools.isEmpty()) {
+                requestBody.put("tools", tools);
+            }
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 
@@ -232,7 +284,7 @@ public class CustomLlmProvider implements LlmProvider {
                     Thread.currentThread().interrupt();
                     return textOnly("Error: Interrupted during rate-limit wait");
                 }
-                return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt + 1);
+                return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt + 1, tools);
             }
 
             if (response.statusCode() == 200) {
@@ -254,7 +306,7 @@ public class CustomLlmProvider implements LlmProvider {
                 try { Thread.sleep(1000L * (attempt + 1)); } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }
-                return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt + 1);
+                return sendRawHttpRequestWithRetry(endpoint, systemPrompt, userPrompt, usage, attempt + 1, tools);
             }
             log.error("Custom LLM request failed after {} attempts", attempt, e);
             return textOnly("Error: " + e.getMessage());
@@ -268,6 +320,14 @@ public class CustomLlmProvider implements LlmProvider {
     private LlmResponse streamingChatWithOpenAiClient(CustomLlmEndpoint endpoint,
                                                        String systemPrompt, String userPrompt,
                                                        Consumer<String> tokenConsumer) {
+        return streamingChatWithOpenAiClient(endpoint, systemPrompt, userPrompt, tokenConsumer, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private LlmResponse streamingChatWithOpenAiClient(CustomLlmEndpoint endpoint,
+                                                       String systemPrompt, String userPrompt,
+                                                       Consumer<String> tokenConsumer,
+                                                       List<Map<String, Object>> tools) {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
@@ -279,6 +339,10 @@ public class CustomLlmProvider implements LlmProvider {
             messages.add(Map.of("role", "user", "content", userPrompt));
             requestBody.put("messages", messages);
             requestBody.put("stream", true);
+
+            if (tools != null && !tools.isEmpty()) {
+                requestBody.put("tools", tools);
+            }
 
             String jsonBody = objectMapper.writeValueAsString(requestBody);
 

@@ -221,6 +221,26 @@ public class AgentNodeStrategy {
         messages.add(new Node.Message("system", systemPrompt));
         messages.add(new Node.Message("user", prompt));
 
+        // Build structured tools for LLM API request body
+        Map<String, Object> chatConfig = null;
+        if (enabledTools != null && !enabledTools.isEmpty()) {
+            List<Map<String, Object>> structuredToolDefs = new ArrayList<>();
+            for (String toolName : enabledTools) {
+                com.agent.orchestrator.model.Tool toolDef = toolExecutor.getTool(toolName);
+                if (toolDef != null) {
+                    Map<String, Object> def = new HashMap<>();
+                    def.put("name", toolDef.getName());
+                    def.put("description", toolDef.getDescription());
+                    def.put("input_schema", toolDef.getInputSchema());
+                    structuredToolDefs.add(def);
+                }
+            }
+            if (!structuredToolDefs.isEmpty()) {
+                chatConfig = new HashMap<>();
+                chatConfig.put("_tools", structuredToolDefs);
+            }
+        }
+
         StringBuilder fullResponse = new StringBuilder();
         int toolCallCount = 0;
         int iterationCount = 0;
@@ -240,7 +260,7 @@ public class AgentNodeStrategy {
 
             LlmUsage iterUsage = new LlmUsage();
             LlmResponse iterResp = llmService.chat(model, null,
-                    utilityService.buildMessagesForToolCall(messages), null, iterUsage);
+                    utilityService.buildMessagesForToolCall(messages), chatConfig, iterUsage);
             lastResponse = iterResp.text();
             if (iterResp.reasoning() != null) {
                 reasoningCapture.capture(node.getId(), iterResp.reasoning());
