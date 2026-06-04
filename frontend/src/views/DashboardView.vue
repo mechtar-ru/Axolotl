@@ -556,7 +556,7 @@ async function onImportFile(event: Event) {
               </div>
               <span class="subsection-count">{{ (schemaGroups[group] || []).length }}</span>
             </div>
-            <div v-show="groupExpanded[group]" class="apps-grid">
+            <div v-show="groupExpanded[group] !== false" class="apps-grid">
               <AppCard
                 v-for="app in groupSchemas(group)"
                 :key="app.id"

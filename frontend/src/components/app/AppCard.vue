@@ -65,7 +65,12 @@ function getAppTypeLabel(type?: string): string {
   return labels[type || 'CUSTOM'] || type || 'CUSTOM'
 }
 
-function handleClick() {
+function handleClick(e: MouseEvent) {
+  // Vue 3 processes all VNode handlers synchronously, so @click.stop
+  // on children doesn't prevent the parent's @click from firing.
+  // Guard: skip navigation when clicking action buttons.
+  const target = e.target as HTMLElement
+  if (target.closest('.card-actions')) return
   if (props.onClick) {
     props.onClick()
   } else {
@@ -128,17 +133,17 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
     <div class="app-card-footer">
       <span v-if="app.updatedAt" class="app-date">Updated {{ formatDate(app.updatedAt) }}</span>
       <span v-else-if="app.createdAt" class="app-date">Created {{ formatDate(app.createdAt) }}</span>
-      <div class="card-actions" @click.stop>
-        <div class="action-btn" @click="emit('setGroup')" title="Set project group">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" style="pointer-events: none;">
+      <div class="card-actions">
+        <button class="action-btn" @click.stop="emit('setGroup')" title="Set project group">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
             <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10-1a1 1 0 00-1 1v6a1 1 0 001 1h3a1 1 0 001-1v-6a1 1 0 00-1-1h-3z"/>
           </svg>
-        </div>
-        <div class="action-btn delete-btn" @click="handleDelete" title="Delete app">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" style="pointer-events: none;">
+        </button>
+        <button class="action-btn delete-btn" @click="handleDelete" title="Delete app">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
             <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
           </svg>
-        </div>
+        </button>
       </div>
     </div>
     <div v-if="app.isGenerated && app.targetPath" class="app-card-path" :title="app.targetPath">

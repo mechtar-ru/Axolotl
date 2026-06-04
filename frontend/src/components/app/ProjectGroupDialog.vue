@@ -35,7 +35,7 @@ async function save() {
 </script>
 
 <template>
-  <AppModal title="Project Group" @close="emit('close')">
+  <AppModal title="Project Group" :model-value="true" @close="emit('close')" @update:model-value="emit('close')">
     <p class="dialog-desc">
       Assign "{{ schema.name }}" to a project group for easier navigation.
     </p>
