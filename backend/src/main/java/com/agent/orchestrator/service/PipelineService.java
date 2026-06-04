@@ -867,13 +867,28 @@ public class PipelineService {
                 }
             };
 
+            // Determine stage timeout: node config timeoutSeconds (if set) else STAGE_TIMEOUT (20 min)
+            long stageTimeoutMs = STAGE_TIMEOUT.toMillis();
+            Node nodeForTimeout = existingNodeRef.get() != null ? existingNodeRef.get() : scratchRef.get();
+            if (nodeForTimeout != null && nodeForTimeout.getData() != null) {
+                // Priority: data.timeoutSeconds > data.config.timeoutSeconds > default 300 > STAGE_TIMEOUT
+                Integer dataTimeout = nodeForTimeout.getData().getTimeoutSeconds();
+                if (dataTimeout != null) {
+                    stageTimeoutMs = dataTimeout * 1000L;
+                } else if (nodeForTimeout.getData().getConfig() != null) {
+                    Object val = nodeForTimeout.getData().getConfig().get("timeoutSeconds");
+                    if (val instanceof Number) {
+                        stageTimeoutMs = ((Number) val).intValue() * 1000L;
+                    }
+                }
+            }
             try {
                 CompletableFuture.runAsync(executionTask, pipelineExecutor)
-                        .orTimeout(STAGE_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
+                        .orTimeout(stageTimeoutMs, TimeUnit.MILLISECONDS)
                         .join();
             } catch (CompletionException e) {
                 if (e.getCause() instanceof TimeoutException) {
-                    throw new RuntimeException("Stage timed out after " + STAGE_TIMEOUT.getSeconds() + "s: "
+                    throw new RuntimeException("Stage timed out after " + (stageTimeoutMs / 1000) + "s: "
                             + stage.getName(), e.getCause());
                 }
                 throw e;

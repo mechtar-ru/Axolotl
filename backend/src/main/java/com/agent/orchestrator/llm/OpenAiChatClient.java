@@ -70,7 +70,15 @@ public final class OpenAiChatClient {
                                    String systemPrompt, String userPrompt,
                                    LlmUsage usage, int timeoutSec,
                                    HttpClient.Version httpVersion) throws Exception {
-        String jsonBody = buildRequestBody(model, systemPrompt, userPrompt, false);
+        return chat(apiKey, baseUrl, model, systemPrompt, userPrompt, usage, timeoutSec, httpVersion, null);
+    }
+
+    public static LlmResponse chat(String apiKey, String baseUrl, String model,
+                                   String systemPrompt, String userPrompt,
+                                   LlmUsage usage, int timeoutSec,
+                                   HttpClient.Version httpVersion,
+                                   List<Map<String, Object>> tools) throws Exception {
+        String jsonBody = buildRequestBody(model, systemPrompt, userPrompt, false, tools);
 
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -130,7 +138,16 @@ public final class OpenAiChatClient {
                                              Consumer<String> onToken,
                                              int timeoutSec,
                                              HttpClient.Version httpVersion) throws Exception {
-        String jsonBody = buildRequestBody(model, systemPrompt, userPrompt, true);
+        return streamingChat(apiKey, baseUrl, model, systemPrompt, userPrompt, onToken, timeoutSec, httpVersion, null);
+    }
+
+    public static LlmResponse streamingChat(String apiKey, String baseUrl, String model,
+                                             String systemPrompt, String userPrompt,
+                                             Consumer<String> onToken,
+                                             int timeoutSec,
+                                             HttpClient.Version httpVersion,
+                                             List<Map<String, Object>> tools) throws Exception {
+        String jsonBody = buildRequestBody(model, systemPrompt, userPrompt, true, tools);
 
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -206,6 +223,42 @@ public final class OpenAiChatClient {
         return LlmResponse.textOnly(text);
     }
 
+    /**
+     * Convert a Tool definition to OpenAI tools JSON format.
+     * Input: Map with "name", "description", "input_schema" keys.
+     * Output: Map in OpenAI tools format.
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> toolToOpenAiFormat(Map<String, Object> toolDef) {
+        String name = (String) toolDef.get("name");
+        String description = (String) toolDef.get("description");
+        Object inputSchema = toolDef.get("input_schema");
+
+        Map<String, Object> function = new HashMap<>();
+        function.put("name", name != null ? name : "unknown");
+        function.put("description", description != null ? description : "");
+
+        if (inputSchema instanceof String) {
+            try {
+                function.put("parameters", MAPPER.readTree((String) inputSchema));
+            } catch (Exception e) {
+                Map<String, Object> fallback = new HashMap<>();
+                fallback.put("type", "object");
+                fallback.put("properties", new HashMap<>());
+                function.put("parameters", fallback);
+            }
+        } else if (inputSchema instanceof Map) {
+            function.put("parameters", inputSchema);
+        } else {
+            Map<String, Object> fallback = new HashMap<>();
+            fallback.put("type", "object");
+            fallback.put("properties", new HashMap<>());
+            function.put("parameters", fallback);
+        }
+
+        return Map.of("type", "function", "function", function);
+    }
+
     // ──────────────────────────────────────────────
     // Shared helpers
     // ──────────────────────────────────────────────
@@ -213,6 +266,13 @@ public final class OpenAiChatClient {
     /** Build the JSON request body. */
     private static String buildRequestBody(String model, String systemPrompt,
                                             String userPrompt, boolean stream) throws Exception {
+        return buildRequestBody(model, systemPrompt, userPrompt, stream, null);
+    }
+
+    /** Build the JSON request body with optional structured tools. */
+    static String buildRequestBody(String model, String systemPrompt,
+                                   String userPrompt, boolean stream,
+                                   List<Map<String, Object>> tools) throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
 
@@ -223,6 +283,10 @@ public final class OpenAiChatClient {
         messages.add(Map.of("role", "user", "content", userPrompt));
         body.put("messages", messages);
         body.put("stream", stream);
+
+        if (tools != null && !tools.isEmpty()) {
+            body.put("tools", tools);
+        }
 
         return MAPPER.writeValueAsString(body);
     }

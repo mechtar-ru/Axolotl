@@ -672,8 +672,36 @@ public class ToolExecutor {
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
 
+            // Compute content hash before write for verification
+            String newHash = contentHash(content);
+            String oldHash = null;
+            if (exists) {
+                try {
+                    oldHash = contentHash(java.nio.file.Files.readString(targetPath));
+                } catch (Exception e) {
+                    oldHash = "read-error";
+                }
+            }
+
             java.nio.file.Files.createDirectories(targetPath.getParent());
             java.nio.file.Files.writeString(targetPath, content);
+
+            // Verify write: re-read and compare hash
+            String writtenHash = null;
+            String verifyStatus = "";
+            try {
+                String written = java.nio.file.Files.readString(targetPath);
+                writtenHash = contentHash(written);
+                if (!newHash.equals(writtenHash)) {
+                    verifyStatus = " [WRITE MISMATCH - content hash differs from intended]";
+                } else if (exists && oldHash != null && newHash.equals(oldHash)) {
+                    verifyStatus = " [WRITE SKIPPED - content identical to existing]";
+                } else {
+                    verifyStatus = " [WRITE VERIFIED]";
+                }
+            } catch (IOException e) {
+                verifyStatus = " [WRITE VERIFY FAILED - " + e.getMessage() + "]";
+            }
 
             // Track file changes
             if (schemaId != null && nodeId != null) {
@@ -688,10 +716,10 @@ public class ToolExecutor {
 
             String validation = runPostWriteValidator(path);
             if (validation.isEmpty()) {
-                return ToolResult.ok("File written: " + path);
+                return ToolResult.ok("File written: " + path + verifyStatus);
             }
             StringBuilder sb = new StringBuilder();
-            sb.append("File written: ").append(path).append("\n");
+            sb.append("File written: ").append(path).append(verifyStatus).append("\n");
             sb.append("--- SYNTAX CHECK (").append(extensionOf(path)).append(") ---\n");
             sb.append(validation);
             return ToolResult.ok(sb.toString());
@@ -699,6 +727,18 @@ public class ToolExecutor {
             return ToolResult.error(e.getMessage());
         } catch (IOException e) {
             return ToolResult.error("Failed to write file: " + e.getMessage());
+        }
+    }
+
+    private static String contentHash(String content) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            return "hash-error";
         }
     }
 

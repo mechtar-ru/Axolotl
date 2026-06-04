@@ -252,6 +252,23 @@ public class NodeRouter {
                 node.setStatus(Node.NodeStatus.COMPLETED);
             }
 
+            // expectedToolCall verification: fail if expected tool was not called
+            String expectedTool = getExpectedToolCall(node);
+            if (expectedTool != null && result != null) {
+                int actualCalls = estimateToolCalls(result);
+                if (actualCalls == 0) {
+                    String errMsg = "Expected tool call \"" + expectedTool
+                        + "\" but agent returned only text (no tool calls)";
+                    log.error("Node {}: {}", node.getId(), errMsg);
+                    node.setStatus(Node.NodeStatus.FAILED);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendError(schemaId, node.getId(), errMsg,
+                                ExecutionWebSocketHandler.ErrorCategory.VALIDATION_ERROR);
+                    }
+                    return; // stop processing, don't persist as completed
+                }
+            }
+
             // Persist result to Neo4j with token/tool call + reasoning tracking
             if (nodeExecutionId != null) {
                 try {
@@ -297,6 +314,16 @@ public class NodeRouter {
      * Counts occurrences of "tool_calls" JSON keys or named tool invocations.
      */
     /**
+     * Read expectedToolCall from node config (optional).
+     * If set and the agent returns no tool calls, the node will fail.
+     */
+    private String getExpectedToolCall(Node node) {
+        if (node.getData() == null || node.getData().getConfig() == null) return null;
+        Object val = node.getData().getConfig().get("expectedToolCall");
+        return val instanceof String && !((String) val).isBlank() ? (String) val : null;
+    }
+
+    /**
      * Read autoRetryCount from node config (default 0 — no automatic retry).
      */
     int getAutoRetryCount(Node node) {
@@ -310,10 +337,11 @@ public class NodeRouter {
     }
 
     /**
-     * Read timeoutSeconds from node config (default 60).
+     * Read timeoutSeconds from node config (default 300).
+     * Priority: node.data.timeoutSeconds > node.data.config.timeoutSeconds > 300
      */
     int getTimeoutSeconds(Node node) {
-        if (node.getData() == null) return 60;
+        if (node.getData() == null) return 300;
         if (node.getData().getTimeoutSeconds() != null) {
             return Math.max(1, node.getData().getTimeoutSeconds());
         }
@@ -323,7 +351,7 @@ public class NodeRouter {
                 return Math.max(1, ((Number) val).intValue());
             }
         }
-        return 60;
+        return 300;
     }
 
     /**

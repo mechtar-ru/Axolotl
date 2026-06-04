@@ -194,13 +194,13 @@ class NodeRouterTest {
     @Test
     void getTimeoutSeconds_noConfig_returnsDefault() {
         Node node = createNodeWithConfig(null);
-        assertEquals(60, nodeRouter.getTimeoutSeconds(node));
+        assertEquals(300, nodeRouter.getTimeoutSeconds(node));
     }
 
     @Test
     void getTimeoutSeconds_emptyConfig_returnsDefault() {
         Node node = createNodeWithConfig(Map.of());
-        assertEquals(60, nodeRouter.getTimeoutSeconds(node));
+        assertEquals(300, nodeRouter.getTimeoutSeconds(node));
     }
 
     @Test
