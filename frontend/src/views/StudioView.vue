@@ -710,24 +710,24 @@ function goToDashboard() {
 
 <style scoped>
 .session-goal-bar {
-  border-bottom: 1px solid var(--color-border, #e2e8f0);
-  background: var(--color-surface, #f8fafc);
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
 }
 
 .session-goal-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px var(--space-3, 12px);
+  padding: 6px var(--space-3);
   width: 100%;
-  font-size: var(--text-sm, 13px);
-  color: var(--color-muted, #64748b);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
   background: none;
   border: none;
   cursor: pointer;
 }
 .session-goal-toggle:hover {
-  background: var(--color-hover, #f1f5f9);
+  background: var(--bg-hover);
 }
 
 .session-goal-toggle .chevron {
@@ -739,27 +739,27 @@ function goToDashboard() {
 }
 
 .session-goal-body {
-  border-top: 1px solid var(--color-border, #e2e8f0);
+  border-top: 1px solid var(--border-color);
 }
 
 .session-goal-input {
   display: block;
   width: 100%;
-  padding: var(--space-2, 8px) var(--space-3, 12px);
+  padding: var(--space-2) var(--space-3);
   border: none;
   resize: vertical;
   font-family: inherit;
-  font-size: var(--text-sm, 13px);
+  font-size: var(--text-sm);
   line-height: 1.5;
-  color: var(--color-text, #1e293b);
-  background: var(--color-bg, #ffffff);
+  color: var(--text-primary);
+  background: var(--bg-primary);
   outline: none;
 }
 .session-goal-input:focus {
-  background: var(--color-surface, #f8fafc);
+  background: var(--bg-secondary);
 }
 .session-goal-input::placeholder {
-  color: var(--color-muted, #94a3b8);
+  color: var(--text-muted);
 }
 
 .studio {
