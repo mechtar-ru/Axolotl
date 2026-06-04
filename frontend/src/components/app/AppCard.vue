@@ -26,6 +26,7 @@ const emit = defineEmits<{
   rename: [name: string]
   duplicate: []
   delete: []
+  setGroup: []
 }>()
 
 const router = useRouter()
@@ -127,11 +128,18 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
     <div class="app-card-footer">
       <span v-if="app.updatedAt" class="app-date">Updated {{ formatDate(app.updatedAt) }}</span>
       <span v-else-if="app.createdAt" class="app-date">Created {{ formatDate(app.createdAt) }}</span>
-      <button class="delete-btn" @click="handleDelete" title="Delete app">
-        <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
-          <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
-        </svg>
-      </button>
+      <div class="card-actions">
+        <button class="action-btn" @click.stop="emit('setGroup')" title="Set project group">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10-1a1 1 0 00-1 1v6a1 1 0 001 1h3a1 1 0 001-1v-6a1 1 0 00-1-1h-3z"/>
+          </svg>
+        </button>
+        <button class="action-btn delete-btn" @click="handleDelete" title="Delete app">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+      </div>
     </div>
     <div v-if="app.isGenerated && app.targetPath" class="app-card-path" :title="app.targetPath">
       <svg class="path-icon" viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
@@ -259,17 +267,29 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
   flex-shrink: 0;
 }
 
-.delete-btn {
-  display: none;
+.card-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.action-btn {
   background: none;
   border: none;
-  color: var(--text-muted);
   cursor: pointer;
+  color: var(--text-tertiary);
   padding: 4px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
-  line-height: 0;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
 }
+.action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.delete-btn:hover {
+  color: var(--danger);
+}
+
 
 .app-card:hover .delete-btn {
   display: inline-flex;

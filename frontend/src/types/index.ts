@@ -109,6 +109,7 @@ export interface WorkflowSchema {
   pipeline?: import('./pipeline').Pipeline;
   autoApproveDrafts?: boolean;
   projectType?: 'FLUTTER' | 'PYTHON' | 'WEB' | 'GO' | 'RUST';
+  projectGroup?: string;
 }
 
 export interface PlanningModels {

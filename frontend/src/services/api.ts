@@ -86,7 +86,12 @@ export const schemaApi = {
     const response = await api.get('/schemas');
     return response.data;
   },
-  
+
+  async getSchemaGroups(): Promise<Record<string, WorkflowSchema[]>> {
+    const response = await api.get('/schemas/groups');
+    return response.data;
+  },
+
   async getSchema(id: string): Promise<WorkflowSchema> {
     const response = await api.get(`/schemas/${id}`);
     return response.data;

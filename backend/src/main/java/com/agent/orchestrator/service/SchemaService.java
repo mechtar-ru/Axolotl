@@ -115,6 +115,20 @@ public class SchemaService {
         return schemaRepository.findAll().stream().map(this::sanitizeSchema).toList();
     }
 
+    /**
+     * Get schemas grouped by projectGroup.
+     * Returns Map projectGroup -> List<WorkflowSchema>.
+     * Schemas without a projectGroup (null or blank) appear under key "".
+     */
+    public Map<String, List<WorkflowSchema>> getSchemasGrouped(String userId) {
+        List<WorkflowSchema> all = getSchemasByUserId(userId);
+        return all.stream().collect(java.util.stream.Collectors.groupingBy(
+            s -> s.getProjectGroup() != null && !s.getProjectGroup().isBlank()
+                ? s.getProjectGroup() : "",
+            java.util.stream.Collectors.toList()
+        ));
+    }
+
     public WorkflowSchema getSchema(String id) {
         return sanitizeSchema(schemaRepository.findById(id));
     }

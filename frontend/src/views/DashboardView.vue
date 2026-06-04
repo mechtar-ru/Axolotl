@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import AppCard from '@/components/app/AppCard.vue'
 import AppModal from '@/components/ui/AppModal.vue'
+import ProjectGroupDialog from '@/components/app/ProjectGroupDialog.vue'
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
 import ProjectsFolderPrompt from '@/components/settings/ProjectsFolderPrompt.vue'
@@ -187,6 +188,7 @@ function continueDevelopment(app: any) {
 // Load apps on mount
 onMounted(async () => {
   schemaStore.loadSchemas()
+  loadGroups()
   await settingsStore.loadProjectsFolder()
   if (!settingsStore.projectsFolder) {
     showProjectsPrompt.value = true
@@ -356,6 +358,63 @@ async function createBlankApp() {
   }
 }
 
+// Project grouping
+const schemaGroups = ref<Record<string, WorkflowSchema[]>>({})
+const groupExpanded = ref<Record<string, boolean>>({})
+
+// Expand all groups by default once loaded
+watch(schemaGroups, (val) => {
+  for (const key of Object.keys(val)) {
+    if (groupExpanded.value[key] === undefined) {
+      groupExpanded.value[key] = true
+    }
+  }
+}, { immediate: false })
+const showGroupDialog = ref(false)
+const groupDialogSchema = ref<WorkflowSchema | null>(null)
+
+async function loadGroups() {
+  try {
+    schemaGroups.value = await schemaApi.getSchemaGroups()
+  } catch (e) {
+    console.error('Failed to load schema groups:', e)
+  }
+}
+
+const sortedGroupNames = computed(() => {
+  return Object.keys(schemaGroups.value).sort((a, b) => {
+    if (a === '') return 1   // "Other" at end
+    if (b === '') return -1
+    return a.localeCompare(b)
+  })
+})
+
+// schemas in a given group, filtered by search
+function groupSchemas(group: string) {
+  const all = schemaGroups.value[group] || []
+  if (!searchQuery.value.trim()) return all
+  const q = searchQuery.value.toLowerCase()
+  return all.filter(s => s.name.toLowerCase().includes(q))
+}
+
+/** schemas not in any group AND not recent */
+const otherSchemas = computed(() => {
+  if (!schemaGroups.value['']) return []
+  const recentIds = new Set(recentApps.value.map(a => a.id))
+  return schemaGroups.value[''].filter(a => !recentIds.has(a.id))
+})
+
+function openGroupDialog(app: WorkflowSchema) {
+  groupDialogSchema.value = app
+  showGroupDialog.value = true
+}
+
+async function onGroupSaved(schema: WorkflowSchema) {
+  showGroupDialog.value = false
+  groupDialogSchema.value = null
+  await loadGroups()
+}
+
 const importInput = ref<HTMLInputElement | null>(null)
 
 function triggerImport() {
@@ -478,24 +537,33 @@ async function onImportFile(event: Event) {
               />
             </div>
           </div>
-          <!-- All Apps (collapsed by default) -->
-          <div class="apps-subsection">
-            <div class="subsection-header" @click="allAppsCollapsed = !allAppsCollapsed">
+          <!-- Project Groups -->
+          <div
+            v-for="group in sortedGroupNames"
+            :key="group"
+            class="apps-subsection"
+          >
+            <div
+              class="subsection-header"
+              @click="groupExpanded[group] = !groupExpanded[group]"
+            >
               <div class="subsection-title">
-                <svg class="chevron" :class="{ rotated: !allAppsCollapsed }" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
+                <svg class="chevron" :class="{ rotated: groupExpanded[group] }" viewBox="0 0 20 20" fill="currentColor" width="16" height="16">
                   <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd"/>
                 </svg>
-                <h3>All Apps</h3>
+                <h3>{{ group || 'Other' }}</h3>
+                <span v-if="group" class="group-pill">{{ group }}</span>
               </div>
-              <span class="subsection-count">{{ otherApps.length + recentApps.length }}</span>
+              <span class="subsection-count">{{ (schemaGroups[group] || []).length }}</span>
             </div>
-            <div v-show="!allAppsCollapsed" class="apps-grid">
+            <div v-show="groupExpanded[group]" class="apps-grid">
               <AppCard
-                v-for="app in otherApps"
+                v-for="app in groupSchemas(group)"
                 :key="app.id"
                 :app="app"
                 @click="openApp(app.id)"
                 @delete="promptDeleteApp(app)"
+                @set-group="openGroupDialog(app)"
               />
             </div>
           </div>
@@ -597,6 +665,13 @@ async function onImportFile(event: Event) {
       app-id=""
       @add-to-canvas="onQuickStartCreated"
       @close="showQuickStart = false"
+    />
+
+    <ProjectGroupDialog
+      v-if="groupDialogSchema"
+      :schema="groupDialogSchema"
+      @saved="onGroupSaved"
+      @close="showGroupDialog = false; groupDialogSchema = null"
     />
 
     <ProjectsFolderPrompt
@@ -701,6 +776,16 @@ h2 {
   font-size: var(--text-xs);
   color: var(--text-muted);
   font-weight: 500;
+}
+
+.group-pill {
+  font-size: 0.7rem;
+  background: var(--accent-secondary);
+  color: var(--text-on-accent, white);
+  padding: 1px 8px;
+  border-radius: 99px;
+  margin-left: var(--space-2);
+  opacity: 0.7;
 }
 
 .apps-subsection {

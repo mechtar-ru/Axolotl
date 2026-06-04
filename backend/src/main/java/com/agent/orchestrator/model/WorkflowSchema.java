@@ -28,6 +28,7 @@ public class WorkflowSchema {
     private String planningContext;
     private Pipeline pipeline;
     private String projectType; // "FLUTTER" | "PYTHON" | "WEB" | "GO" | "RUST", null => FLUTTER
+    private String projectGroup; // nullable, for UI grouping (e.g. "EIOS", "Бережно")
     private boolean autoApproveDrafts;
 
     public boolean isAutoApproveDrafts() { return autoApproveDrafts; }
@@ -38,6 +39,9 @@ public class WorkflowSchema {
 
     public String getProjectType() { return projectType; }
     public void setProjectType(String projectType) { this.projectType = projectType; }
+
+    public String getProjectGroup() { return projectGroup; }
+    public void setProjectGroup(String projectGroup) { this.projectGroup = projectGroup; }
 
     // Геттеры и сеттеры
     public String getId() { return id; }

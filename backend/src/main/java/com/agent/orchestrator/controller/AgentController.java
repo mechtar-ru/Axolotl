@@ -96,6 +96,12 @@ public class AgentController {
         return schemaService.getSchemasByUserId(userId);
     }
 
+    @GetMapping("/schemas/groups")
+    public Map<String, List<WorkflowSchema>> getSchemaGroups() {
+        String userId = getCurrentUserId();
+        return schemaService.getSchemasGrouped(userId);
+    }
+
     @GetMapping("/schemas/{id}")
     public WorkflowSchema getSchema(@PathVariable String id) {
         return schemaService.getSchema(id);
