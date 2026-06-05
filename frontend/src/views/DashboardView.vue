@@ -541,12 +541,17 @@ async function onDrop(e: DragEvent, targetGroup: string) {
   dragSchemaId.value = null
 }
 
-// schemas in a given group, filtered by search
+// schemas in a given group, filtered by search, sorted by updatedAt desc
 function groupSchemas(group: string) {
   const all = schemaGroups.value[group] || []
-  if (!searchQuery.value.trim()) return all
-  const q = searchQuery.value.toLowerCase()
-  return all.filter(s => s.name.toLowerCase().includes(q))
+  const filtered = !searchQuery.value.trim() ? all : all.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.value.toLowerCase()),
+  )
+  return [...filtered].sort((a, b) => {
+    const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0
+    const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0
+    return bTime - aTime
+  })
 }
 
 /** schemas not in any group AND not recent */
