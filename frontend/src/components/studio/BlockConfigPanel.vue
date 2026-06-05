@@ -29,6 +29,7 @@ const model = ref('')
 const prompt = ref('')
 const selectedPersona = ref('')
 const blockType = ref('agent')
+const agentType = ref('code-agent')
 
 // Source type refs (for source/receive blocks)
 const sourceType = ref('text')
@@ -51,6 +52,9 @@ const activePanels = computed(() => {
 
 const isReview = computed(() => blockType.value === 'review')
 const isAutoMode = computed(() => reviewMode.value === 'auto' || reviewMode.value === 'hybrid')
+const isAgentBlock = computed(() =>
+  ['agent', 'planner', 'prep', 'doc-agent'].includes(blockType.value)
+)
 
 const syntaxCheck = ref(true)
 const requiredPatterns = ref<string[]>([])
@@ -185,6 +189,7 @@ watch(() => props.blockId, () => {
   blockDescription.value = (node.value.data?.description as string) || (config.description as string) || ''
   model.value = (node.value.data?.model as string) || (config.model as string) || 'local'
   prompt.value = (node.value.data?.systemPrompt as string) || (config.systemPrompt as string) || (config.prompt as string) || ''
+  agentType.value = (config.agentType as string) || 'code-agent'
   // Detect persona match
   selectedPersona.value = ''
   if (prompt.value) {
@@ -298,6 +303,7 @@ function saveConfig() {
       description: blockDescription.value,
       model: model.value,
       systemPrompt: prompt.value,
+      agentType: agentType.value,
       autoRetryCount: autoRetryCount.value,
       fallbackModels: fallbackModels.value,
     },
@@ -324,7 +330,7 @@ function saveConfig() {
   }
 
   // Agent-specific config
-  if (blockType.value === 'agent') {
+  if (isAgentBlock.value) {
     if (!node.value.data.config) node.value.data.config = {}
     if (expectedFileCount.value != null && expectedFileCount.value > 0) {
       ;(node.value.data.config as Record<string, any>).expectedFileCount = expectedFileCount.value
@@ -643,6 +649,17 @@ function handleKeydown(e: KeyboardEvent) {
         </select>
       </div>
 
+      <!-- Agent Type selector (agent-like blocks) -->
+      <div v-if="isAgentBlock" class="config-section">
+        <label class="config-label">Agent Type</label>
+        <select v-model="agentType" class="config-select" @change="saveConfig">
+          <option value="code-agent">Code Agent — implements features</option>
+          <option value="planner">Planner — creates implementation plans</option>
+          <option value="prep">Prep — pseudocode + tests</option>
+          <option value="doc-agent">Doc-Agent — updates documentation</option>
+        </select>
+      </div>
+
       <!-- Prompt (Think blocks) -->
       <div v-if="activePanels.has('systemPrompt')" class="config-section">
         <label class="config-label">Persona</label>
@@ -663,7 +680,7 @@ function handleKeydown(e: KeyboardEvent) {
       </div>
 
       <!-- Expected File Count (Agent blocks) -->
-      <div v-if="blockType === 'agent'" class="config-section">
+      <div v-if="isAgentBlock" class="config-section">
         <label class="config-label">Expected Files (optional)</label>
         <input
           v-model="expectedFileCount"

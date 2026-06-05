@@ -1108,6 +1108,225 @@ public class PipelineService {
     }
 
     /**
+     * Create a full 4-phase app-creation pipeline: Design → Plan → Implement → Document.
+     * Phases: source → review(design) → planner → review(plan) → prep → agent → verifier → doc-agent → output
+     */
+    public static Pipeline createAppPipeline(String appType, String description) {
+        Pipeline pipeline = new Pipeline();
+        pipeline.setId("app-pipeline");
+        pipeline.setName("App Creation Pipeline");
+        pipeline.setDescription("Full 4-phase app creation workflow for " + appType);
+        pipeline.setParallelStrategy("sequential");
+        pipeline.setTddEnabled(false);
+
+        List<Stage> stages = new ArrayList<>();
+
+        int yCenter = 200;
+        int xSpacing = 220;
+
+        // 1. Receive
+        Stage source = new Stage();
+        source.setId("receive-1");
+        source.setName("Receive");
+        source.setNodeType("source");
+        source.setSystemPrompt("Receive and process input for: " + description);
+        source.setPositionX(50);
+        source.setPositionY(yCenter);
+        stages.add(source);
+
+        // 2. Design Review
+        Stage designReview = new Stage();
+        designReview.setId("review-design");
+        designReview.setName("Design Review");
+        designReview.setNodeType("review");
+        designReview.setDependencies(List.of("receive-1"));
+        designReview.setSystemPrompt("Review the design document for completeness, " +
+                "identify gaps, and suggest improvements for: " + description);
+        Map<String, Object> designReviewConfig = new HashMap<>();
+        designReviewConfig.put("mode", "manual");
+        designReviewConfig.put("checks", Map.of("premortem", true, "prism", false, "postmortem", false));
+        designReview.setConfig(designReviewConfig);
+        designReview.setPositionX(50 + xSpacing);
+        designReview.setPositionY(yCenter);
+        stages.add(designReview);
+
+        // 3. Planner
+        Stage planner = new Stage();
+        planner.setId("planner-1");
+        planner.setName("Plan");
+        planner.setNodeType("agent");
+        planner.setDependencies(List.of("review-design"));
+        planner.setModel(""); // will use default model
+        planner.setSystemPrompt("You are a planner. Based on the approved design, " +
+                "create a detailed implementation plan with numbered steps and dependencies. " +
+                "Output the plan as a structured list where each step has: id, title, description, depends_on. " +
+                "Wrap the plan in ```plan ... ``` markers. Application: " + description);
+        Map<String, Object> plannerConfig = new HashMap<>();
+        plannerConfig.put("agentType", "planner");
+        planner.setConfig(plannerConfig);
+        planner.setPositionX(50 + xSpacing * 2);
+        planner.setPositionY(yCenter);
+        stages.add(planner);
+
+        // 4. Plan Review
+        Stage planReview = new Stage();
+        planReview.setId("review-plan");
+        planReview.setName("Plan Review");
+        planReview.setNodeType("review");
+        planReview.setDependencies(List.of("planner-1"));
+        planReview.setSystemPrompt("Review the implementation plan. Check for completeness, " +
+                "correct dependency ordering, and feasibility for: " + description);
+        Map<String, Object> planReviewConfig = new HashMap<>();
+        planReviewConfig.put("mode", "manual");
+        planReviewConfig.put("checks", Map.of("premortem", true, "prism", false, "postmortem", false));
+        planReview.setConfig(planReviewConfig);
+        planReview.setPositionX(50 + xSpacing * 3);
+        planReview.setPositionY(yCenter);
+        stages.add(planReview);
+
+        // 5. Prep (pseudocode + tests)
+        Stage prep = new Stage();
+        prep.setId("prep-1");
+        prep.setName("Prep");
+        prep.setNodeType("agent");
+        prep.setDependencies(List.of("review-plan"));
+        prep.setModel("");
+        prep.setSystemPrompt("You are a preparation agent for " + appType + ". " +
+                "Based on the approved plan, generate:\n" +
+                "1. Pseudocode for frontend components (plan/pseudo-frontend.md)\n" +
+                "2. Pseudocode for backend/API (plan/pseudo-backend.md)\n" +
+                "3. Test stubs based on the pseudocode API\n\n" +
+                "Write these files to disk using file_write. " +
+                "Application: " + description);
+        Map<String, Object> prepConfig = new HashMap<>();
+        prepConfig.put("agentType", "prep");
+        prepConfig.put("enabledTools", List.of("file_write", "file_read", "directory_read"));
+        prep.setConfig(prepConfig);
+        prep.setPositionX(50 + xSpacing * 4);
+        prep.setPositionY(yCenter);
+        stages.add(prep);
+
+        // 6. Agent (implementation)
+        Stage agent = new Stage();
+        agent.setId("impl-1");
+        agent.setName("Implement");
+        agent.setNodeType("agent");
+        agent.setDependencies(List.of("prep-1"));
+        agent.setModel("");
+        agent.setSystemPrompt("Implement the application " + appType + " based on the approved plan. " +
+                "Read plan steps, follow pseudocode contracts, write code files. " +
+                "Application description: " + description);
+        Map<String, Object> agentConfig = new HashMap<>();
+        agentConfig.put("agentType", "code-agent");
+        agent.setConfig(agentConfig);
+        agent.setPositionX(50 + xSpacing * 5);
+        agent.setPositionY(yCenter);
+        stages.add(agent);
+
+        // 7. Verifier
+        Stage verifier = new Stage();
+        verifier.setId("verify-1");
+        verifier.setName("Verify");
+        verifier.setNodeType("verifier");
+        verifier.setDependencies(List.of("impl-1"));
+        verifier.setSystemPrompt("Verify the implementation for " + appType + ". " +
+                "Check: tests pass, code follows plan and design, no gaps remain. " +
+                "Description: " + description);
+        verifier.setPositionX(50 + xSpacing * 6);
+        verifier.setPositionY(yCenter);
+        stages.add(verifier);
+
+        // 8. Doc-Agent
+        Stage docAgent = new Stage();
+        docAgent.setId("doc-1");
+        docAgent.setName("Document");
+        docAgent.setNodeType("agent");
+        docAgent.setDependencies(List.of("verify-1"));
+        docAgent.setModel("");
+        docAgent.setSystemPrompt("You are a documentation agent for " + appType + ". " +
+                "Update project documentation. Read existing docs, append to spec.md and changelog.md, " +
+                "create design docs for new features. See stage outputs for results. " +
+                "Application: " + description);
+        Map<String, Object> docConfig = new HashMap<>();
+        docConfig.put("agentType", "doc-agent");
+        docConfig.put("enabledTools", List.of("file_read", "file_write", "directory_read"));
+        docAgent.setConfig(docConfig);
+        docAgent.setPositionX(50 + xSpacing * 7);
+        docAgent.setPositionY(yCenter);
+        stages.add(docAgent);
+
+        // 9. Output
+        Stage output = new Stage();
+        output.setId("output-1");
+        output.setName("Output");
+        output.setNodeType("output");
+        output.setDependencies(List.of("doc-1"));
+        output.setSystemPrompt("Output the final results for: " + description);
+        output.setPositionX(50 + xSpacing * 8);
+        output.setPositionY(yCenter);
+        stages.add(output);
+
+        pipeline.setStages(stages);
+        return pipeline;
+    }
+
+    /**
+     * Create a minimal pipeline: source → agent → verifier → output
+     */
+    public static Pipeline createMinimalPipeline(String appType, String description) {
+        Pipeline pipeline = new Pipeline();
+        pipeline.setId("minimal-pipeline");
+        pipeline.setName("Minimal Pipeline");
+        pipeline.setDescription("Minimal 4-stage pipeline for " + appType);
+        pipeline.setParallelStrategy("sequential");
+        pipeline.setTddEnabled(false);
+
+        List<Stage> stages = new ArrayList<>();
+
+        Stage source = new Stage();
+        source.setId("receive-1");
+        source.setName("Receive");
+        source.setNodeType("source");
+        source.setSystemPrompt("Receive input for: " + description);
+        source.setPositionX(50);
+        source.setPositionY(200);
+        stages.add(source);
+
+        Stage agent = new Stage();
+        agent.setId("impl-1");
+        agent.setName("Implement");
+        agent.setNodeType("agent");
+        agent.setDependencies(List.of("receive-1"));
+        agent.setSystemPrompt("Implement: " + description);
+        agent.setPositionX(300);
+        agent.setPositionY(200);
+        stages.add(agent);
+
+        Stage verifier = new Stage();
+        verifier.setId("verify-1");
+        verifier.setName("Verify");
+        verifier.setNodeType("verifier");
+        verifier.setDependencies(List.of("impl-1"));
+        verifier.setSystemPrompt("Verify: " + description);
+        verifier.setPositionX(550);
+        verifier.setPositionY(200);
+        stages.add(verifier);
+
+        Stage output = new Stage();
+        output.setId("output-1");
+        output.setName("Output");
+        output.setNodeType("output");
+        output.setDependencies(List.of("verify-1"));
+        output.setSystemPrompt("Output results for: " + description);
+        output.setPositionX(800);
+        output.setPositionY(200);
+        stages.add(output);
+
+        pipeline.setStages(stages);
+        return pipeline;
+    }
+
+    /**
      * When {@code pipeline.tddEnabled == true}, expands each agent → verifier stage pair
      * into a 4-stage TDD block: test → verify-test → impl → verify.
      * <p>

@@ -38,6 +38,7 @@ class AgentNodeStrategyTest {
     @Mock Neo4jSchemaRepository schemaRepository;
     @Mock ProjectContextBuilder projectContextBuilder;
     @Mock ExecutionStateManager stateManager;
+    @Mock PlanStepService planStepService;
 
     AgentNodeStrategy strategy;
 
@@ -52,7 +53,8 @@ class AgentNodeStrategyTest {
                 memPalaceClient, toolExecutor, schemaRepository,
                 projectContextBuilder,
                 stateManager,
-                null);  // ReasoningCapture
+                null,  // ReasoningCapture
+                planStepService);
 
         node = new Node();
         node.setId("n1");

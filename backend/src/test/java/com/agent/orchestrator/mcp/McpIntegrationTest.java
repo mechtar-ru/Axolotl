@@ -63,7 +63,7 @@ public class McpIntegrationTest {
         JsonNode json = mapper.readTree(response.getBody());
         assertThat(json.get("status").asText()).isEqualTo("MCP Server running");
         assertThat(json.has("tools")).isTrue();
-        assertThat(json.get("tools").size()).isGreaterThanOrEqualTo(7);
+        assertThat(json.get("tools").size()).isGreaterThanOrEqualTo(12);
     }
 
     @Test
@@ -75,7 +75,7 @@ public class McpIntegrationTest {
         assertThat(json.get("id").asInt()).isEqualTo(1);
         assertThat(json.has("result")).isTrue();
         assertThat(json.get("result").has("tools")).isTrue();
-        assertThat(json.get("result").get("tools").size()).isEqualTo(7);
+        assertThat(json.get("result").get("tools").size()).isEqualTo(12);
     }
 
     @Test

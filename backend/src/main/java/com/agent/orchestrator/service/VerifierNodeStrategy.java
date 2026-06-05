@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.agent.orchestrator.model.WorkflowSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -89,6 +90,10 @@ public class VerifierNodeStrategy {
                 ? (Boolean) config.get("stubDetection") : true;
         boolean premortemEnabled = checks.get("premortem") instanceof Boolean
                 ? (Boolean) checks.get("premortem") : false;
+        boolean coverageDesign = config.get("coverageDesign") instanceof Boolean
+                ? (Boolean) config.get("coverageDesign") : false;
+        boolean coveragePlan = config.get("coveragePlan") instanceof Boolean
+                ? (Boolean) config.get("coveragePlan") : false;
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Запуск верификации");
@@ -127,6 +132,62 @@ public class VerifierNodeStrategy {
                 if (webSocketHandler != null) {
                     webSocketHandler.sendLog(schemaId, "info",
                             "Premortem predictions: " + premortemPredictions.size(), node.getId());
+                }
+            }
+        }
+
+        // Step 1b: Design coverage check (reads design docs and checks against code)
+        List<Map<String, Object>> coverageCheckResults = new ArrayList<>();
+        if (coverageDesign || coveragePlan) {
+            WorkflowSchema schema = schemaRepository.findById(schemaId);
+            String targetPath = schema != null && schema.getTargetPath() != null ? schema.getTargetPath() : null;
+            if (targetPath != null) {
+                Path designDir = Path.of(targetPath, "design");
+                Path planDir = Path.of(targetPath, "plan");
+                StringBuilder coverageContext = new StringBuilder();
+
+                Path targetPathObj = Path.of(targetPath);
+                if (coverageDesign && Files.isDirectory(designDir)) {
+                    try {
+                        Files.walk(designDir, 2)
+                                .filter(p -> p.toString().endsWith(".md"))
+                                .forEach(p -> {
+                                    try {
+                                        String content = Files.readString(p);
+                                        String relPath = targetPathObj.relativize(p).toString();
+                                        coverageContext.append("\n=== DESIGN DOC: ").append(relPath).append(" ===\n");
+                                        coverageContext.append(content.substring(0, Math.min(content.length(), 3000))).append("\n");
+                                    } catch (Exception ignored) {}
+                                });
+                    } catch (Exception ignored) {}
+                }
+
+                if (coveragePlan && planDir != null && Files.isDirectory(planDir)) {
+                    try {
+                        Path stepsDir = planDir.resolve("steps");
+                        if (Files.isDirectory(stepsDir)) {
+                            Files.walk(stepsDir, 1)
+                                    .filter(p -> p.toString().endsWith(".md"))
+                                    .forEach(p -> {
+                                        try {
+                                            String content = Files.readString(p);
+                                            String relPath = planDir.relativize(p).toString();
+                                            coverageContext.append("\n=== PLAN STEP: ").append(relPath).append(" ===\n");
+                                            coverageContext.append(content.substring(0, Math.min(content.length(), 2000))).append("\n");
+                                        } catch (Exception ignored) {}
+                                    });
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                if (!coverageContext.isEmpty()) {
+                    Map<String, Object> coverageCheck = new HashMap<>();
+                    coverageCheck.put("name", "coverage");
+                    coverageCheck.put("hasDesignDocs", Files.isDirectory(designDir));
+                    coverageCheck.put("hasPlanSteps", planDir != null && Files.isDirectory(planDir.resolve("steps")));
+                    coverageCheck.put("coverageContext", coverageContext.toString());
+                    coverageCheck.put("passed", true); // informational by default
+                    coverageCheckResults.add(coverageCheck);
                 }
             }
         }
@@ -336,6 +397,9 @@ public class VerifierNodeStrategy {
         structuredResult.put("checkResults", allCheckResults);
         structuredResult.put("rewriteRetries", rewriteRetries);
         structuredResult.put("premortemEnabled", premortemEnabled);
+        if (!coverageCheckResults.isEmpty()) {
+            structuredResult.put("coverage", coverageCheckResults);
+        }
 
         ObjectMapper mapper = new ObjectMapper();
         String resultStr;

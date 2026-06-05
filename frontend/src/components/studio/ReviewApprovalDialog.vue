@@ -3,6 +3,7 @@
     <div class="review-modal">
       <div class="review-header">
         <span v-if="draftMode" class="review-title">Draft Review — Review artifacts before implementation</span>
+        <span v-else-if="reviewType === 'design'" class="review-title">Design Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
         <span v-else class="review-title">Plan Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
         <button class="close-btn" title="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -22,18 +23,49 @@
 
         <!-- Standard Review Mode -->
         <template v-else>
+          <!-- Diff Section (collapsible) — shows changes from previous version -->
+          <div v-if="showDiff && (previousPlan || previousDesign)" class="review-section">
+            <div class="collapsible-header" @click="diffOpen = !diffOpen">
+              <svg :class="['chevron', { open: diffOpen }]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="m9 18 6-6-6-6"/></svg>
+              <h4 class="section-title clickable">Diff — Changes from previous version</h4>
+            </div>
+            <div v-if="diffOpen" class="diff-wrapper">
+              <DiffViewer
+                :old-text="previousDesign || previousPlan || ''"
+                :new-text="planText"
+                :max-height="'250px'"
+              />
+            </div>
+          </div>
+
+          <!-- Questions Section — findings with type="question" -->
+          <div v-if="questions.length > 0" class="review-section">
+            <h4 class="section-title">Questions ({{ questions.length }})</h4>
+            <div class="questions-list">
+              <div v-for="(q, idx) in questions" :key="idx" class="question-item">
+                <div class="question-text">❓ {{ q.question || q.description }}</div>
+                <textarea
+                  v-model="questionAnswers[q.idx ?? idx]"
+                  class="question-textarea"
+                  :placeholder="'Answer for question ' + (idx + 1) + '...'"
+                  rows="2"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Final Plan Section -->
           <div class="review-section">
-            <h4 class="section-title">Final Plan</h4>
-            <pre v-if="!editing" class="plan-text">{{ plan }}</pre>
+            <h4 class="section-title">{{ reviewType === 'design' ? 'Design Document' : 'Implementation Plan' }}</h4>
+            <pre v-if="!editing" class="plan-text">{{ planText }}</pre>
             <textarea v-else v-model="editedPlan" class="plan-textarea" />
           </div>
 
-          <!-- Findings Section -->
-          <div v-if="findings.length > 0" class="review-section">
-            <h4 class="section-title">Findings ({{ findings.length }})</h4>
+          <!-- Standard Findings Section (non-question items) -->
+          <div v-if="regularFindings.length > 0" class="review-section">
+            <h4 class="section-title">Findings ({{ regularFindings.length }})</h4>
             <div class="findings-list">
-              <div v-for="(finding, idx) in findings" :key="idx" class="finding-item">
+              <div v-for="(finding, idx) in regularFindings" :key="idx" class="finding-item">
                 <div class="finding-header">
                   <span class="finding-icon" :class="severityClass(finding.severity)"></span>
                   <span class="severity-badge" :class="severityClass(finding.severity)">{{ finding.severity }}</span>
@@ -109,12 +141,15 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import DraftApprovalPanel, { type DraftArtifact } from './DraftApprovalPanel.vue';
+import DiffViewer from '@/components/shared/DiffViewer.vue';
 
-interface Finding {
+export interface Finding {
   source: string;
   severity: string;
   description: string;
   suggestion: string;
+  type?: string;      // 'question' or undefined for regular findings
+  question?: string;   // the question text when type="question"
 }
 
 interface FeedbackItem {
@@ -136,6 +171,9 @@ const props = withDefaults(defineProps<{
   feedbackHistory: FeedbackItem[];
   draftMode?: boolean;
   draftArtifacts?: DraftArtifact[];
+  reviewType?: string;       // 'design' | 'plan'
+  previousPlan?: string;      // previous version of the plan for diff
+  previousDesign?: string;    // previous version of the design for diff
 }>(), {
   visible: false,
   schemaId: '',
@@ -150,6 +188,9 @@ const props = withDefaults(defineProps<{
   feedbackHistory: () => [],
   draftMode: false,
   draftArtifacts: () => [],
+  reviewType: 'plan',
+  previousPlan: '',
+  previousDesign: '',
 });
 
 const emit = defineEmits<{
@@ -164,8 +205,10 @@ const editedPlan = ref(props.rewrittenPlan);
 const feedbackText = ref('');
 const feedbackItems = ref<string[]>([]);
 const showRejectConfirm = ref(false);
+const diffOpen = ref(false);
+const questionAnswers = ref<Record<number, string>>({});
 
-const plan = computed(() => {
+const planText = computed(() => {
   if (editing.value) return editedPlan.value;
   return props.rewrittenPlan || props.originalPlan || '';
 });
@@ -176,6 +219,24 @@ const modeLabel = computed(() => {
 
 const maxIterLabel = computed(() => {
   return props.maxIterations === 0 ? '\u221E' : String(props.maxIterations);
+});
+
+/** Findings with type="question" */
+const questions = computed(() => {
+  return props.findings
+    .map((f, idx) => ({ ...f, idx }))
+    .filter(f => f.type === 'question');
+});
+
+/** Findings without type="question" */
+const regularFindings = computed(() => {
+  return props.findings.filter(f => f.type !== 'question');
+});
+
+/** Whether to show diff section */
+const showDiff = computed(() => {
+  return (props.reviewType === 'design' && props.previousDesign)
+      || (props.reviewType === 'plan' && props.previousPlan);
 });
 
 watch(() => props.rewrittenPlan, (val) => {
@@ -191,6 +252,8 @@ watch(() => props.visible, (v) => {
     feedbackText.value = '';
     feedbackItems.value = [];
     showRejectConfirm.value = false;
+    diffOpen.value = false;
+    questionAnswers.value = {};
   }
 });
 
@@ -628,6 +691,79 @@ function handleReject() {
 
 .btn-approve:hover {
   background: var(--success-hover);
+}
+
+/* Diff section */
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.collapsible-header:hover .section-title {
+  color: var(--accent);
+}
+
+.section-title.clickable {
+  cursor: pointer;
+}
+
+.chevron {
+  transition: transform 0.2s;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.diff-wrapper {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* Questions section */
+.questions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.question-item {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-primary));
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.question-text {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.question-textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.question-textarea:focus {
+  border-color: var(--border-focus);
 }
 
 .inline-vbuttons { display: flex; gap: var(--space-1); }

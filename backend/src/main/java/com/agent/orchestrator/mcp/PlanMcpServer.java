@@ -1,6 +1,7 @@
 package com.agent.orchestrator.mcp;
 
 import com.agent.orchestrator.service.PlanService;
+import com.agent.orchestrator.service.PlanStepService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -27,10 +29,12 @@ public class PlanMcpServer {
 
     private final PlanService planService;
     private final PlanTools planTools;
+    private final PlanStepTools planStepTools;
 
-    public PlanMcpServer(PlanService planService) {
+    public PlanMcpServer(PlanService planService, PlanStepService planStepService) {
         this.planService = planService;
         this.planTools = new PlanTools(planService);
+        this.planStepTools = new PlanStepTools(planStepService);
         log.info("✅ MCP сервер инициализирован. Доступен на /mcp");
     }
 
@@ -38,9 +42,9 @@ public class PlanMcpServer {
 
     @GetMapping
     public ResponseEntity<Map<String, Object>> getHealth() {
-        List<String> toolNames = planTools.getToolSpecs().stream()
-                .map(PlanTools.ToolSpec::name)
-                .collect(Collectors.toList());
+        List<String> toolNames = new ArrayList<>();
+        planTools.getToolSpecs().stream().map(PlanTools.ToolSpec::name).forEach(toolNames::add);
+        planStepTools.getToolSpecs().stream().map(PlanTools.ToolSpec::name).forEach(toolNames::add);
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "MCP Server running");
@@ -118,36 +122,46 @@ public class PlanMcpServer {
         Map<String, Object> response = new LinkedHashMap<>();
         List<Map<String, Object>> tools = new ArrayList<>();
 
+        // Old plan tools
         for (PlanTools.ToolSpec spec : planTools.getToolSpecs()) {
-            Map<String, Object> tool = new LinkedHashMap<>();
-            tool.put("name", spec.name());
-            tool.put("description", spec.description());
+            tools.add(buildToolSpec(spec));
+        }
 
-            Map<String, Object> inputSchema = new LinkedHashMap<>();
-            inputSchema.put("type", "object");
-            inputSchema.put("properties", spec.properties());
-
-            List<String> required = new ArrayList<>();
-            Map<String, Object> cleanProperties = new LinkedHashMap<>();
-            spec.properties().forEach((key, value) -> {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> prop = new LinkedHashMap<>((Map<String, Object>) value);
-                if (Boolean.TRUE.equals(prop.remove("required"))) {
-                    required.add(key);
-                }
-                cleanProperties.put(key, prop);
-            });
-            if (!required.isEmpty()) {
-                inputSchema.put("required", required);
-            }
-            inputSchema.put("properties", cleanProperties);
-
-            tool.put("inputSchema", inputSchema);
-            tools.add(tool);
+        // New plan-step tools
+        for (PlanTools.ToolSpec spec : planStepTools.getToolSpecs()) {
+            tools.add(buildToolSpec(spec));
         }
 
         response.put("tools", tools);
         return response;
+    }
+
+    private Map<String, Object> buildToolSpec(PlanTools.ToolSpec spec) {
+        Map<String, Object> tool = new LinkedHashMap<>();
+        tool.put("name", spec.name());
+        tool.put("description", spec.description());
+
+        Map<String, Object> inputSchema = new LinkedHashMap<>();
+        inputSchema.put("type", "object");
+        inputSchema.put("properties", spec.properties());
+
+        List<String> required = new ArrayList<>();
+        Map<String, Object> cleanProperties = new LinkedHashMap<>();
+        spec.properties().forEach((key, value) -> {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> prop = new LinkedHashMap<>((Map<String, Object>) value);
+            if (Boolean.TRUE.equals(prop.remove("required"))) {
+                required.add(key);
+            }
+            cleanProperties.put(key, prop);
+        });
+        if (!required.isEmpty()) {
+            inputSchema.put("required", required);
+        }
+        inputSchema.put("properties", cleanProperties);
+
+        tool.put("inputSchema", inputSchema);
+        return tool;
     }
 
     @SuppressWarnings("unchecked")
@@ -161,7 +175,12 @@ public class PlanMcpServer {
 
         log.info("MCP tool call: name={}", toolName);
 
-        String result = planTools.callTool(toolName, args);
+        // Route to the appropriate tool handler
+        Set<String> stepToolNames = Set.of("read_plan_steps", "add_plan_steps",
+                "update_plan_step_status", "get_ready_steps", "get_plan_graph");
+        String result = stepToolNames.contains(toolName)
+                ? planStepTools.callTool(toolName, args)
+                : planTools.callTool(toolName, args);
 
         Map<String, Object> response = new LinkedHashMap<>();
         List<Map<String, Object>> content = new ArrayList<>();

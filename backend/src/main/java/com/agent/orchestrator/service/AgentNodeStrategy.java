@@ -7,6 +7,7 @@ import com.agent.orchestrator.llm.LlmUsage;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.PlanStep;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
@@ -36,6 +37,7 @@ public class AgentNodeStrategy {
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionStateManager stateManager;
     private final ReasoningCapture reasoningCapture;
+    private final PlanStepService planStepService;
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -45,7 +47,8 @@ public class AgentNodeStrategy {
                               Neo4jSchemaRepository schemaRepository,
                               ProjectContextBuilder projectContextBuilder,
                               ExecutionStateManager stateManager,
-                              ReasoningCapture reasoningCapture) {
+                              ReasoningCapture reasoningCapture,
+                              PlanStepService planStepService) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -55,6 +58,7 @@ public class AgentNodeStrategy {
         this.projectContextBuilder = projectContextBuilder;
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
+        this.planStepService = planStepService;
     }
 
     // ─── Agent execution ───
@@ -117,6 +121,12 @@ public class AgentNodeStrategy {
             }
         }
 
+        // Inject plan step context
+        String planCtx = buildPlanStepContext(schemaId);
+        if (!planCtx.isBlank()) {
+            systemPrompt += planCtx;
+        }
+
         LlmUsage usage = new LlmUsage();
         LlmResponse streamingResp = llmService.streamingChat(model, systemPrompt, prompt, null,
                 token -> {
@@ -155,7 +165,7 @@ public class AgentNodeStrategy {
     }
 
     public String executeToolAgentNode(Node node, String schemaId, String resolvedModel) {
-        String agentType = node.getData().getAgentType();
+        String agentType = node.getData().getAgentType() != null ? node.getData().getAgentType() : "code-agent";
         List<String> enabledTools = node.getData().getEnabledTools();
         int maxToolCalls = node.getData().getMaxToolCalls() > 0 ? node.getData().getMaxToolCalls() : 10;
 
@@ -164,8 +174,43 @@ public class AgentNodeStrategy {
             webSocketHandler.sendLog(schemaId, "info", "Агент типа: " + agentType + ", инструменты: " + enabledTools, node.getId());
         }
 
+        // Default tools per agent type
+        if (enabledTools == null || enabledTools.isEmpty()) {
+            switch (agentType) {
+                case "doc-agent":
+                    enabledTools = List.of("file_read", "file_write", "directory_read");
+                    break;
+                case "planner":
+                case "prep":
+                    enabledTools = List.of("file_read", "file_write", "directory_read");
+                    break;
+                default:
+                    enabledTools = List.of("file_read", "file_write", "bash", "grep", "directory_read");
+                    break;
+            }
+            node.getData().setEnabledTools(enabledTools);
+        }
+
         String prompt = node.getData().getUserPrompt();
         String systemPrompt = node.getData().getSystemPrompt();
+
+        // Agent-type-specific system prompt augmentation
+        if (systemPrompt == null || systemPrompt.isBlank()) {
+            switch (agentType) {
+                case "doc-agent":
+                    systemPrompt = buildDocAgentPrompt(node, schemaId);
+                    break;
+                case "planner":
+                    systemPrompt = buildPlannerPrompt(node, schemaId);
+                    break;
+                case "prep":
+                    systemPrompt = buildPrepPrompt(node, schemaId);
+                    break;
+                default:
+                    systemPrompt = "You are a coding agent. Implement the requested features.";
+                    break;
+            }
+        }
 
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
         String model = resolvedModel;
@@ -180,9 +225,15 @@ public class AgentNodeStrategy {
             systemPrompt = utilityService.interpolateVariables(systemPrompt, currentSchema, predecessorResults);
         }
 
-        String toolDefs = utilityService.buildToolDefinitions(enabledTools);
-        String toolInstructions = utilityService.buildToolInstructions(enabledTools);
-        systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + toolInstructions;
+        // For code-agent: inject tool instructions; for doc-agent: inject doc-specific instructions
+        if (!"doc-agent".equals(agentType)) {
+            String toolDefs = utilityService.buildToolDefinitions(enabledTools);
+            String toolInstructions = utilityService.buildToolInstructions(enabledTools);
+            systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + toolInstructions;
+        } else {
+            String docInstructions = buildDocAgentToolInstructions(enabledTools);
+            systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + docInstructions;
+        }
 
         if (!contextBlock.isEmpty()) {
             systemPrompt += "\n\nКонтекст от предыдущих узлов:\n" + contextBlock;
@@ -379,6 +430,149 @@ public class AgentNodeStrategy {
         }
 
         return finalResponse;
+    }
+
+    // ─── Plan Step context injection ───
+
+    /**
+     * Build a plan step context block from Neo4j plan steps.
+     * Appends at the end of the system prompt if plan steps exist for this schema.
+     */
+    private String buildPlanStepContext(String schemaId) {
+        try {
+            List<PlanStep> steps = planStepService.getSteps(schemaId);
+            if (steps == null || steps.isEmpty()) return "";
+
+            StringBuilder sb = new StringBuilder("\n\n## Plan Steps\n");
+            List<PlanStep> ready = planStepService.getReadySteps(schemaId);
+            Set<String> readyIds = ready != null ? ready.stream()
+                    .map(PlanStep::getId)
+                    .collect(java.util.stream.Collectors.toSet()) : java.util.Collections.emptySet();
+
+            sb.append("Status: ").append(steps.size()).append(" total steps, ")
+                    .append(ready != null ? ready.size() : 0).append(" ready for execution\n\n");
+
+            for (PlanStep s : steps) {
+                sb.append("- [").append(s.getStatus()).append("] #").append(s.getStepId())
+                        .append(": ").append(s.getTitle());
+                if (readyIds.contains(s.getId())) {
+                    sb.append(" ← READY");
+                }
+                if (s.getDependsOn() != null && !s.getDependsOn().isEmpty()) {
+                    sb.append(" (depends_on: ").append(String.join(", ", s.getDependsOn())).append(")");
+                }
+                sb.append("\n");
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.debug("Could not load plan steps for schema {}: {}", schemaId, e.getMessage());
+            return "";
+        }
+    }
+
+    // ─── Agent-type-specific prompt builders ───
+
+    private String buildDocAgentPrompt(Node node, String schemaId) {
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        String targetPath = schema != null && schema.getTargetPath() != null ? schema.getTargetPath() : ".";
+        String schemaName = schema != null && schema.getName() != null ? schema.getName() : "project";
+
+        return """
+            You are a documentation agent for project "%s".
+            Your task is to update project documentation based on recent changes.
+
+            ## Tools
+            - file_read — read existing documentation files
+            - file_write — create or update files (creates .bak backups)
+            - directory_read — list files in a directory
+
+            ## Documentation structure
+            - %s/.axolotl/spec.md — project specification (APPEND new features)
+            - %s/.axolotl/changelog.md — session changelog (APPEND entry)
+            - %s/design/ — feature design docs (CREATE for new features)
+            - %s/README.md — project overview (UPDATE only if core purpose changed)
+
+            ## Rules
+            1. READ existing files BEFORE modifying — you must APPEND, not replace.
+            2. spec.md: add new features as new sections with ## heading. Preserve all existing content.
+            3. changelog.md: append entry in format:
+               ## YYYY-MM-DD — <session title>
+               - <change>
+            4. design/: create <feature-name>.md for each feature >1 file change.
+            5. README: update only if the project's core purpose/description has changed.
+            6. Do NOT modify .axolotl/plan.md — reserved for future task planning.
+            7. After writing, output summary JSON:
+               {"updatedDocs": ["path1.md"], "createdDocs": ["design/feature-x.md"]}
+            """.formatted(schemaName, targetPath, targetPath, targetPath, targetPath);
+    }
+
+    private String buildPlannerPrompt(Node node, String schemaId) {
+        return """
+            You are a project planner. Based on the approved design from the upstream stage,
+            create a detailed implementation plan with numbered steps and dependencies.
+
+            Output the plan using this exact format:
+
+            ```plan
+            step: 1
+            title: "Setup project structure"
+            description: "Initialize directories and config files"
+            depends_on: []
+
+            step: 2
+            title: "Implement core models"
+            description: "Create data models and database schema"
+            depends_on: [1]
+            ```
+
+            Rules:
+            - Each step must have a unique number
+            - depends_on lists step numbers that must be completed first
+            - Steps without dependencies should have depends_on: []
+            - 3-10 steps recommended for a typical feature
+            - Steps must be implementable in 1-4 hours each
+            """;
+    }
+
+    private String buildPrepPrompt(Node node, String schemaId) {
+        return """
+            You are a preparation agent. Based on the approved plan and design,
+            generate the following artifacts:
+
+            1. Write plan/pseudo-frontend.md — pseudocode for UI components:
+               - Component tree with props and state
+               - Route definitions
+               - Event handlers and data flow
+               - API calls and their signatures
+
+            2. Write plan/pseudo-backend.md — pseudocode for backend:
+               - API endpoints (method, path, request/response shapes)
+               - Data models and database schema
+               - Service layer interfaces
+               - Middleware/auth flow
+
+            3. Write tests/ — test stubs matching the pseudocode API:
+               - Frontend: component mount, user interaction, API mock tests
+               - Backend: endpoint tests, model validation, integration tests
+
+            Use file_write to create each file. Read existing files first.
+            Output a summary of created files at the end.
+            """;
+    }
+
+    private String buildDocAgentToolInstructions(List<String> tools) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n\n## Available tools\n");
+        for (String t : tools) {
+            switch (t) {
+                case "file_read" -> sb.append("- file_read: Read file contents. Usage: {\"name\":\"file_read\",\"arguments\":{\"path\":\"file.md\"}}\n");
+                case "file_write" -> sb.append("- file_write: Write content to file (creates .bak for existing files). Usage: {\"name\":\"file_write\",\"arguments\":{\"path\":\"file.md\",\"content\":\"...\"}}\n");
+                case "directory_read" -> sb.append("- directory_read: List files in a directory. Usage: {\"name\":\"directory_read\",\"arguments\":{\"path\":\".\"}}\n");
+                default -> sb.append("- ").append(t).append("\n");
+            }
+        }
+        sb.append("\nIMPORTANT: Always read existing files before modifying them. APPEND to spec.md, don't overwrite.\n");
+        return sb.toString();
     }
 
     /**

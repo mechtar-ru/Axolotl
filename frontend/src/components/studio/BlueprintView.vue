@@ -21,6 +21,9 @@ import ActBlock from '@/components/blocks/ActBlock.vue'
 import VerifyBlock from '@/components/blocks/VerifyBlock.vue'
 import ReviewBlock from '@/components/blocks/ReviewBlock.vue'
 import DraftBlock from '@/components/blocks/DraftBlock.vue'
+import PlannerBlock from '@/components/blocks/PlannerBlock.vue'
+import PrepBlock from '@/components/blocks/PrepBlock.vue'
+import DocAgentBlock from '@/components/blocks/DocAgentBlock.vue'
 
 const props = defineProps<{
   appId: string
@@ -40,6 +43,9 @@ const nodeTypes = {
   draft: markRaw(DraftBlock),
   memory: markRaw(RememberBlock),
   output: markRaw(ActBlock),
+  planner: markRaw(PlannerBlock),
+  prep: markRaw(PrepBlock),
+  'doc-agent': markRaw(DocAgentBlock),
 }
 
 const { nodes, edges, addNodes, addEdges, onConnect, screenToFlowCoordinate, fitView, setNodes, setEdges } = useVueFlow({ id: 'blueprint-flow' })

@@ -9,6 +9,21 @@ Versioning: SemVer via git tags.
 
 ### Added
 
+#### App Creation Workflow (4-Phase Pipeline)
+- **PlanStep Neo4j model**: `GraphPlanStep` `@Node("PlanStep")` with bidirectional `DEPENDS_ON` relationships. `PlanStepStatus` enum (PENDING, IN_PROGRESS, DONE, REJECTED, INCOMPLETE). `PlanStep` POCO with `stepId`, `title`, `description`, `status`, `dependsOn` (list of step IDs), `schemaId`. `Neo4jPlanStepRepository` with Cypher queries for schema-level CRUD, status queries, and ready-step detection (dependencies all DONE). (`<current>`)
+- **Plan API**: `PlanStepService` with `createSteps()`, `updateStatus()` (validates dependencies before DONE), `getReadySteps()` (steps whose prerequisites are satisfied), `getDependencyGraph()` (nodes + edges for UI rendering), `syncToDisk()` (writes `plan/steps/*.md` and `plan/implementation_plan.md` to targetPath). `PlanStepController` at `/api/plan-steps/{schemaId}` with 6 REST endpoints (`<current>`).
+- **Plan MCP tools**: 5 new MCP tools: `read_plan_steps`, `add_plan_steps`, `update_plan_step_status`, `get_ready_steps`, `get_plan_graph`. Registered in `PlanMcpServer` alongside existing PlanTools. Agent nodes can read/update plan steps directly via MCP. (`<current>`)
+- **Pipeline templates**: `PipelineService.createAppPipeline()` generates 9-stage pipeline covering all 4 phases (Design → Planning → Implementation → Documentation). `createMinimalPipeline()` for 3-stage quick runs. Template selected via `pipeline.template` config key. (`<current>`)
+- **Planner agent type**: `buildPlannerPrompt()` generates structured plan decomposition system prompt. Outputs parseable `step: N / title: / description: / depends_on: []` format. Creates `PlanStep` nodes in Neo4j via MCP. New `PlannerBlock.vue` with config panels for model + system prompt. (`<current>`)
+- **Prep agent type**: `buildPrepPrompt()` generates pseudocode + test stubs. Writes `plan/pseudo-frontend.md`, `plan/pseudo-backend.md`, and test stubs via `file_write`. New `PrepBlock.vue` with config panels. (`<current>`)
+- **Doc-Agent mode**: Agent node with `agentType="doc-agent"`. `buildDocAgentPrompt()` instructs to append to `spec.md`, append to `changelog.md`, create `design/feature-*.md` for new features, update README only on core purpose change. Supports `file_read`/`file_write`/`directory_read`. New `DocAgentBlock.vue` icon in palette. (`<current>`)
+- **Agent type dispatch in NodeRouter**: `NodeRouter.executeNode()` reads `agentType` from node config (`code-agent`/`planner`/`prep`/`doc-agent`), dispatches to `executeToolAgentNode()` which selects default tools and system prompts per agent type. (`<current>`)
+- **Plan step context injection**: `AgentNodeStrategy.buildPlanStepContext()` injects current plan status (total steps, ready steps, per-step status + dependencies) into agent system prompt. Agents see which steps are pending/done/ready without needing separate MCP calls. (`<current>`)
+- **Verifier coverage checks**: `VerifierNodeStrategy` reads `design/` docs and `plan/steps/*.md` when `coverageDesign`/`coveragePlan` toggles enabled. Passes doc context to LLM for coverage verification. Results stored in structured verdict JSON under `coverage` key. (`<current>`)
+- **DiffViewer component**: Shared `DiffViewer.vue` with LCS-based diff algorithm, side-by-side line numbers (+/- prefix), color-coded added/removed lines, stats bar. Reusable in ReviewApprovalDialog and DiffReviewDialog. (`<current>`)
+- **Review dialog redesign**: `ReviewApprovalDialog` now has expandable diff section (collapsible, compares previous design/plan vs current), questions section (findings with `type="question"` rendered as labeled text inputs with answers collected), `reviewType` prop (design/plan), `previousPlan`/`previousDesign` props. (`<current>`)
+- **Agent type selector in BlockConfigPanel**: Dropdown to switch agent between `code-agent`, `planner`, `prep`, `doc-agent`. Persisted to `config.agentType`. Shown for all agent-like blocks (agent, planner, prep, doc-agent). (`<current>`)
+
 - **Project grouping overhaul**: Schemas can be assigned to named groups via `projectGroup` field. DashboardView groups schemas by project, sorted A-Z or by recency. `lastRunAt` field tracks last pipeline execution time. Test schemas auto-detected by naming patterns (`test-`, `pw-review`, `debug-`, `check-`, `premortem-`, `pipeline-`, `final-`, `valid-` prefixes). 3 new endpoints: `POST /schemas/batch-delete`, `GET /schemas/test-schemas`, `GET /schemas/recent` (`3ea365e2`).
 - **Drag-n-drop between groups**: AppCards in group sections are draggable. Dropping a card on a different group moves it there instantly via `PUT /api/schemas/{id}` with updated `projectGroup`. Groups are drop zones with `@dragover.prevent` / `@drop` (`869b5fe4`).
 - **Dashboard filter & sort controls**: Sort by Last Updated, Name A-Z, Last Run. Type filter dropdown (All / Chat / Custom / Game). Apps/tests toggle hides test schemas. Batch delete confirmation uses `AppModal` instead of `window.confirm` (`3ea365e2`, `869b5fe4`).
@@ -21,6 +36,9 @@ Versioning: SemVer via git tags.
 - **Per-node execution timeout**: Retry loop in `NodeRouter` wrapped in `CompletableFuture.supplyAsync().get(timeoutSecs, SECONDS)` reading `NodeData.timeoutSeconds` config (default 60s).
 
 ### Fixed
+
+- **Plan syncToDisk path traversal**: Removed user-supplied `targetPath` parameter from `POST /sync-to-disk`. Now resolves targetPath from schema's stored value via `Neo4jSchemaRepository.findById()`, preventing arbitrary file writes outside the project directory (`<current>`).
+- **AgentNodeStrategy fully-qualified class names**: `buildPlanStepContext()` used verbose `com.agent.orchestrator.model.PlanStep` instead of the shorter imported `PlanStep`. Fixed imports and replaced all fully-qualified references (`<current>`).
 
 - **ProjectGroupDialog not showing**: Missing `:model-value="true"` on `AppModal` — modal was mounted (`v-if="groupDialogSchema"`) but hidden (`v-if="modelValue"` was undefined). Also forwarded `@update:model-value` as `@close` for ✕ button dismissal (`20f4f979`).
 - **AppCard click swallowed by action buttons**: Vue 3 processes all VNode handlers synchronously, so `@click.stop` on children didn't prevent parent `@click` navigation. Added `target.closest('.card-actions')` guard in `handleClick()` (`20f4f979`).
