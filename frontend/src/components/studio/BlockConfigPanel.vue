@@ -247,8 +247,21 @@ function onFilePicked(e: Event) {
   input.value = ''
 }
 
-function browseProjectDir() {
-  dirInputRef.value?.click()
+async function browseProjectDir() {
+  try {
+    if ('showDirectoryPicker' in window) {
+      const handle = await (window as any).showDirectoryPicker()
+      const dirName = handle.name
+      if (dirName) {
+        projectPath.value = dirName
+        saveConfig()
+      }
+    } else {
+      dirInputRef.value?.click()
+    }
+  } catch {
+    // user cancelled — do nothing
+  }
 }
 
 function onDirPicked(e: Event) {

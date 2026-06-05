@@ -136,8 +136,24 @@ function cancelEditPath() {
   isEditingPath.value = false
 }
 
-function browseFolder() {
-  folderPickerRef.value?.click()
+async function browseFolder() {
+  try {
+    if ('showDirectoryPicker' in window) {
+      const handle = await (window as any).showDirectoryPicker()
+      const dirName = handle.name
+      if (!dirName) return
+      const base = settingsStore.projectsFolder
+      const path = base ? `${base}/${dirName}/` : `${dirName}/`
+      if (!currentSchema.value) return
+      if (path !== currentSchema.value.targetPath) {
+        canvasStore.markDirty({ ...currentSchema.value, targetPath: path })
+      }
+    } else {
+      folderPickerRef.value?.click()
+    }
+  } catch {
+    // user cancelled — do nothing
+  }
 }
 
 function onFolderPicked(event: Event) {

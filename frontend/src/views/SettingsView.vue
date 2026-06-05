@@ -68,7 +68,7 @@
                   placeholder="e.g. /Users/name/git/Axolotl"
                 />
                 <input ref="folderPickerRef" type="file" webkitdirectory style="display:none" @change="onSettingsFolderPicked" />
-                <button class="browse-btn" @click="folderPickerRef?.click()" title="Browse">
+                <button class="browse-btn" @click="pickDirectory()" title="Browse">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
                     <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
                   </svg>
@@ -155,6 +155,23 @@ const folderPickerRef = ref<HTMLInputElement | null>(null)
 
 function onProjectsFolderInput(val: string) {
   projectsFolder.value = val
+}
+
+async function pickDirectory() {
+  try {
+    if ('showDirectoryPicker' in window) {
+      const handle = await (window as any).showDirectoryPicker()
+      const dirName = handle.name
+      if (dirName) {
+        const base = projectsFolder.value ? projectsFolder.value.replace(/\/[^/]*\/?$/, '') : ''
+        projectsFolder.value = base ? `${base}/${dirName}/` : `~/Axolotl/${dirName}`
+      }
+    } else {
+      folderPickerRef.value?.click()
+    }
+  } catch {
+    // user cancelled — do nothing
+  }
 }
 
 function onSettingsFolderPicked(event: Event) {
