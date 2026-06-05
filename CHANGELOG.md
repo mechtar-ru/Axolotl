@@ -9,6 +9,10 @@ Versioning: SemVer via git tags.
 
 ### Added
 
+- **Project grouping overhaul**: Schemas can be assigned to named groups via `projectGroup` field. DashboardView groups schemas by project, sorted A-Z or by recency. `lastRunAt` field tracks last pipeline execution time. Test schemas auto-detected by naming patterns (`test-`, `pw-review`, `debug-`, `check-`, `premortem-`, `pipeline-`, `final-`, `valid-` prefixes). 3 new endpoints: `POST /schemas/batch-delete`, `GET /schemas/test-schemas`, `GET /schemas/recent` (`3ea365e2`).
+- **Drag-n-drop between groups**: AppCards in group sections are draggable. Dropping a card on a different group moves it there instantly via `PUT /api/schemas/{id}` with updated `projectGroup`. Groups are drop zones with `@dragover.prevent` / `@drop` (`869b5fe4`).
+- **Dashboard filter & sort controls**: Sort by Last Updated, Name A-Z, Last Run. Type filter dropdown (All / Chat / Custom / Game). Apps/tests toggle hides test schemas. Batch delete confirmation uses `AppModal` instead of `window.confirm` (`3ea365e2`, `869b5fe4`).
+- **Recent section**: Shows top 5 schemas sorted by lastRunAt/updatedAt across all schemas (not just ungrouped). Expanded by default (`3ea365e2`).
 - **Flutter/Dart project support**: Added `.dart` to default source extensions in `NodeSourceHandler.readProjectContext()`, enabling Flutter projects to be loaded by source nodes without explicit extension configuration.
 - **Pipeline service decomposition**: Extracted `PipelineBuilder`, `PipelineStatusManager`, `DiffService` from `PipelineService`. PipelineBuilder owns stage creation from nodes/edges. PipelineStatusManager owns 4 in-memory pipeline state maps. DiffService provides `computeSimpleDiff()` and `computeDiffPayloads()`.
 - **Execution utility decomposition**: Extracted `ToolCallParser` (4-layer tool call parsing), `NodeCommandExecutor` (bash/grep), `NodeSourceHandler` (text/file/URL/project source resolution), `NodeFileWriter` (sandbox-aware file writes) from `ExecutionUtilityService`.
@@ -18,6 +22,11 @@ Versioning: SemVer via git tags.
 
 ### Fixed
 
+- **ProjectGroupDialog not showing**: Missing `:model-value="true"` on `AppModal` — modal was mounted (`v-if="groupDialogSchema"`) but hidden (`v-if="modelValue"` was undefined). Also forwarded `@update:model-value` as `@close` for ✕ button dismissal (`20f4f979`).
+- **AppCard click swallowed by action buttons**: Vue 3 processes all VNode handlers synchronously, so `@click.stop` on children didn't prevent parent `@click` navigation. Added `target.closest('.card-actions')` guard in `handleClick()` (`20f4f979`).
+- **AppCard action buttons replaced with `<button>`**: Previously `<div>` elements with `@click` handlers — now native `<button>` elements with `pointer-events: auto` on SVGs (`20f4f979`).
+- **Undefined CSS var `--text-tertiary`**: Changed to `--text-muted` in AppCard.vue (`869b5fe4`).
+- **DashboardView groups hidden on first load**: `groupExpanded[group]` was `undefined` (falsy in `v-show`). Changed to `groupExpanded[group] !== false` so groups are expanded by default before the watch fires (`20f4f979`).
 - **ToolCall parsing in OpenAI-compatible providers**: `OpenAiChatClient.parseResponse()` now handles `content=null` (when `tool_calls` are present in the API response) and extracts structured `tool_calls` JSON into the response text for downstream `ToolCallParser` processing. Previously crashed with NPE on null content.
 - **Output node file path resolution**: `ExecutionUtilityService.executeOutputNode()` resolves relative `filePath` against the schema's `targetPath`, so output files (e.g., `review.md`) are written inside the project directory instead of the backend's working directory.
 - **Output node null parent directory**: `NodeFileWriter.writeOutput()` checks `path.getParent()` for null before calling `Files.createDirectories()`, fixing NPE when the output path is a bare filename without a parent directory.
@@ -25,8 +34,15 @@ Versioning: SemVer via git tags.
 - **`build_app` Android SDK detection**: `checkAndroidSdk()` reports missing `ANDROID_HOME` as a warning instead of a blocker when the SDK is found via common path scan or `flutter config --machine`. Flutter can find the SDK through its own config, so ANDROID_HOME is not required for `flutter build apk`.
 - **`build_app` checkXcode/checkCocoaPods null safety**: Both methods now accept `null` for the `missing` list (warn-only mode), preventing NPE when called from APK-only build paths.
 
+### Changed
+
+- **AppCard group button hover**: `.group-btn:hover` now highlights with `var(--accent)` (was no visible hover state) (`869b5fe4`).
+- **allAppsCollapsed default**: Changed from `true` to `false` — Recent section expanded on first load (`869b5fe4`).
+- **Test schemas button**: Hidden when `testSchemas.length === 0` (was always visible showing "0 tests") (`869b5fe4`).
+
 ### Removed
 
+- **Dead CSS in AppCard.vue**: Removed `.app-card:hover .delete-btn { display: inline-flex }` — delete button is always visible, rule had no effect (`869b5fe4`).
 - **Dead code**: Removed `transientOnly` skip-logic from `shouldSkipNode()` and callers — feature never used, added only complexity.
 
 ## [v0.4.0] - 2026-05-28
