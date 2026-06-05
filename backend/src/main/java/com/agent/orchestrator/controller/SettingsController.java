@@ -163,9 +163,14 @@ public class SettingsController {
     @PutMapping("/user/default-model")
     public ResponseEntity<Map<String, Object>> setUserDefaultModel(@RequestBody Map<String, String> body) {
         String userId = getCurrentUserId();
-        if (userId == null) return ResponseEntity.status(401).build();
         String model = body.get("defaultModel");
-        settingsService.setUserDefaultModel(userId, model);
+        if (userId != null) {
+            settingsService.setUserDefaultModel(userId, model);
+        } else {
+            // Fall back to global default when not authenticated so the endpoint
+            // never returns 401 (which the frontend treats as logout).
+            settingsService.setGlobalDefaultModel(model);
+        }
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "ok");
         response.put("defaultModel", model);
