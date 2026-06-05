@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps<{
@@ -17,8 +17,10 @@ const props = defineProps<{
     targetPath?: string
     isGenerated?: boolean
     status?: 'active' | 'idle'
+    projectGroup?: string | null
   }
   onClick?: () => void
+  groups?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -27,7 +29,51 @@ const emit = defineEmits<{
   duplicate: []
   delete: []
   setGroup: []
+  groupSelect: [groupName: string | null]
 }>()
+
+const dropdownOpen = ref(false)
+const showNewInput = ref(false)
+const newGroupName = ref('')
+const dropdownRef = ref<HTMLElement | null>(null)
+
+function toggleDropdown(e: MouseEvent) {
+  e.stopPropagation()
+  dropdownOpen.value = !dropdownOpen.value
+  if (!dropdownOpen.value) {
+    showNewInput.value = false
+    newGroupName.value = ''
+  }
+}
+
+function selectGroup(group: string | null) {
+  emit('groupSelect', group)
+  dropdownOpen.value = false
+  showNewInput.value = false
+  newGroupName.value = ''
+}
+
+function startNewGroup() {
+  showNewInput.value = true
+  newGroupName.value = ''
+}
+
+async function confirmNewGroup() {
+  const name = newGroupName.value.trim()
+  if (!name) return
+  selectGroup(name)
+}
+
+function handleOutsideClick(e: MouseEvent) {
+  if (dropdownOpen.value && dropdownRef.value && !dropdownRef.value.contains(e.target as Node)) {
+    dropdownOpen.value = false
+    showNewInput.value = false
+    newGroupName.value = ''
+  }
+}
+
+onMounted(() => document.addEventListener('click', handleOutsideClick))
+onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 
 const router = useRouter()
 
@@ -78,6 +124,7 @@ function handleClick(e: MouseEvent) {
   }
 }
 
+const newGroupInputRef = ref<HTMLInputElement | null>(null)
 const deleting = ref(false)
 
 async function handleDelete(e: MouseEvent) {
@@ -133,12 +180,51 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
     <div class="app-card-footer">
       <span v-if="app.updatedAt" class="app-date">Updated {{ formatDate(app.updatedAt) }}</span>
       <span v-else-if="app.createdAt" class="app-date">Created {{ formatDate(app.createdAt) }}</span>
-      <div class="card-actions">
-        <button class="action-btn group-btn" @click.stop="emit('setGroup')" title="Set project group">
-          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
-            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10-1a1 1 0 00-1 1v6a1 1 0 001 1h3a1 1 0 001-1v-6a1 1 0 00-1-1h-3z"/>
-          </svg>
-        </button>
+      <div class="card-actions" ref="dropdownRef">
+        <div class="group-dropdown-wrapper">
+          <button class="action-btn group-btn" @click="toggleDropdown" title="Set project group">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+              <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10-1a1 1 0 00-1 1v6a1 1 0 001 1h3a1 1 0 001-1v-6a1 1 0 00-1-1h-3z"/>
+            </svg>
+          </button>
+          <div v-if="dropdownOpen" class="group-dropdown" @click.stop>
+            <div
+              v-for="g in (props.groups || [])"
+              :key="g"
+              class="dropdown-item"
+              :class="{ active: g === app.projectGroup }"
+              @click="selectGroup(g)"
+            >{{ g }}</div>
+            <div class="dropdown-divider"></div>
+            <template v-if="!showNewInput">
+              <div class="dropdown-item new-group-item" @click="startNewGroup">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+                  <path d="M10 5a.75.75 0 01.75.75v3.5h3.5a.75.75 0 010 1.5h-3.5v3.5a.75.75 0 01-1.5 0v-3.5h-3.5a.75.75 0 010-1.5h3.5v-3.5A.75.75 0 0110 5z"/>
+                </svg>
+                New group...
+              </div>
+            </template>
+            <div v-else class="new-group-input-row">
+              <input
+                v-model="newGroupName"
+                type="text"
+                placeholder="Group name"
+                class="new-group-input"
+                @keyup.enter="confirmNewGroup"
+                ref="newGroupInputRef"
+                autofocus
+              />
+              <button class="new-group-confirm" @click="confirmNewGroup">+</button>
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item none-item" @click="selectGroup(null)">
+              <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
+                <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"/>
+              </svg>
+              (None)
+            </div>
+          </div>
+        </div>
         <button class="action-btn delete-btn" @click="handleDelete" title="Delete app">
           <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
             <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
@@ -300,5 +386,89 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
 .delete-btn:hover {
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
+}
+
+/* ── Group dropdown ── */
+.group-dropdown-wrapper {
+  position: relative;
+  display: inline-flex;
+}
+.group-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: var(--z-dropdown, 50);
+  min-width: 180px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: var(--shadow-lg, 0 4px 16px rgba(0,0,0,0.2));
+  padding: 4px 0;
+  margin-top: 4px;
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.dropdown-item:hover {
+  background: var(--bg-hover, rgba(128,128,128,0.1));
+}
+.dropdown-item.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+.dropdown-item svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+.dropdown-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 8px;
+}
+.new-group-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+}
+.new-group-input {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-primary);
+  outline: none;
+}
+.new-group-input:focus {
+  border-color: var(--accent);
+}
+.new-group-confirm {
+  padding: 4px 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+}
+.new-group-confirm:hover {
+  opacity: 0.9;
+}
+.none-item {
+  color: var(--text-muted);
+}
+.none-item:hover {
+  color: var(--danger);
 }
 </style>

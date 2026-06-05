@@ -5,7 +5,7 @@ import { useSchemaStore } from '@/stores/schemaStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import AppCard from '@/components/app/AppCard.vue'
 import AppModal from '@/components/ui/AppModal.vue'
-import ProjectGroupDialog from '@/components/app/ProjectGroupDialog.vue'
+
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
 import ProjectsFolderPrompt from '@/components/settings/ProjectsFolderPrompt.vue'
@@ -422,16 +422,10 @@ async function createBlankApp() {
 const schemaGroups = ref<Record<string, WorkflowSchema[]>>({})
 const groupExpanded = ref<Record<string, boolean>>({})
 
-// Expand all groups by default once loaded
-watch(schemaGroups, (val) => {
-  for (const key of Object.keys(val)) {
-    if (groupExpanded.value[key] === undefined) {
-      groupExpanded.value[key] = true
-    }
-  }
-}, { immediate: false })
-const showGroupDialog = ref(false)
-const groupDialogSchema = ref<WorkflowSchema | null>(null)
+// All known group names (for the AppCard dropdown), sorted
+const groupNames = computed(() => {
+  return Object.keys(schemaGroups.value).filter(g => g !== '').sort()
+})
 
 async function loadGroups() {
   try {
@@ -441,7 +435,22 @@ async function loadGroups() {
   }
 }
 
-const groupSortMode = ref<'alpha' | 'recency'>('alpha')
+/** Handle group selection from AppCard dropdown */
+async function onGroupSelect(schema: WorkflowSchema, groupName: string | null) {
+  try {
+    const updated = await schemaApi.updateSchema(schema.id, { projectGroup: groupName || '' })
+    // Update local store
+    const idx = schemaStore.schemas.findIndex(s => s.id === schema.id)
+    if (idx >= 0) {
+      schemaStore.schemas[idx] = updated
+    }
+    await loadGroups()
+  } catch (e) {
+    console.error('Failed to update group:', e)
+  }
+}
+
+const groupSortMode = ref<'alpha' | 'recency'>('recency')
 
 const sortedGroupNames = computed(() => {
   const groups = Object.keys(schemaGroups.value)
@@ -524,7 +533,7 @@ async function onDrop(e: DragEvent, targetGroup: string) {
     return
   }
   try {
-    await schemaApi.updateSchema(schemaId, { projectGroup: targetGroup || null } as any)
+    await schemaApi.updateSchema(schemaId, { projectGroup: targetGroup || '' } as any)
     await loadGroups()
   } catch (e) {
     console.error('Failed to move schema:', e)
@@ -547,16 +556,7 @@ const otherSchemas = computed(() => {
   return schemaGroups.value[''].filter(a => !recentIds.has(a.id))
 })
 
-function openGroupDialog(app: WorkflowSchema) {
-  groupDialogSchema.value = app
-  showGroupDialog.value = true
-}
 
-async function onGroupSaved(schema: WorkflowSchema) {
-  showGroupDialog.value = false
-  groupDialogSchema.value = null
-  await loadGroups()
-}
 
 const importInput = ref<HTMLInputElement | null>(null)
 
@@ -697,9 +697,10 @@ async function onImportFile(event: Event) {
                 v-for="app in sortedFilteredApps.slice(0, 5)"
                 :key="app.id"
                 :app="app"
+                :groups="groupNames"
                 @click="openApp(app.id)"
                 @delete="promptDeleteApp(app)"
-                @set-group="openGroupDialog(app)"
+                @group-select="onGroupSelect(app, $event)"
               />
             </div>
           </div>
@@ -729,15 +730,16 @@ async function onImportFile(event: Event) {
               </div>
               <span class="subsection-count">{{ (schemaGroups[group] || []).length }}</span>
             </div>
-            <div v-show="groupExpanded[group] !== false" class="apps-grid" @dragover.prevent @drop="onDrop($event, group)">
+            <div v-show="groupExpanded[group] === true" class="apps-grid" @dragover.prevent @drop="onDrop($event, group)">
               <AppCard
                 v-for="app in groupSchemas(group)"
                 :key="app.id"
                 :app="app"
+                :groups="groupNames"
                 draggable="true"
                 @click="openApp(app.id)"
                 @delete="promptDeleteApp(app)"
-                @set-group="openGroupDialog(app)"
+                @group-select="onGroupSelect(app, $event)"
                 @dragstart="onDragStart($event, app.id)"
               />
             </div>
@@ -851,13 +853,6 @@ async function onImportFile(event: Event) {
       app-id=""
       @add-to-canvas="onQuickStartCreated"
       @close="showQuickStart = false"
-    />
-
-    <ProjectGroupDialog
-      v-if="groupDialogSchema"
-      :schema="groupDialogSchema"
-      @saved="onGroupSaved"
-      @close="showGroupDialog = false; groupDialogSchema = null"
     />
 
     <ProjectsFolderPrompt

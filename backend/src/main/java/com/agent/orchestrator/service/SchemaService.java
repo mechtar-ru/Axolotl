@@ -123,10 +123,25 @@ public class SchemaService {
     public Map<String, List<WorkflowSchema>> getSchemasGrouped(String userId) {
         List<WorkflowSchema> all = getSchemasByUserId(userId);
         return all.stream().collect(java.util.stream.Collectors.groupingBy(
-            s -> s.getProjectGroup() != null && !s.getProjectGroup().isBlank()
-                ? s.getProjectGroup() : "",
+            s -> resolveGroupKey(s),
             java.util.stream.Collectors.toList()
         ));
+    }
+
+    /** Resolve the group key for a schema: explicit projectGroup, auto-assigned by name pattern, or blank. */
+    private String resolveGroupKey(WorkflowSchema s) {
+        String explicit = s.getProjectGroup();
+        if (explicit != null && !explicit.isBlank()) {
+            return explicit;
+        }
+        // Auto-assign by name patterns (case-insensitive)
+        String name = s.getName();
+        if (name != null) {
+            String lower = name.toLowerCase();
+            if (lower.contains("eios")) return "EIOS";
+            // Add more auto-grouping patterns here as needed
+        }
+        return "";
     }
 
     public List<WorkflowSchema> getRecentSchemas(String userId, int limit) {
@@ -206,6 +221,10 @@ public class SchemaService {
         if (incoming.getPlanningOutline() != null) existing.setPlanningOutline(incoming.getPlanningOutline());
         if (incoming.getPlanningRefinedPlan() != null) existing.setPlanningRefinedPlan(incoming.getPlanningRefinedPlan());
         if (incoming.getPlanningContext() != null) existing.setPlanningContext(incoming.getPlanningContext());
+        // projectGroup: non-null values overwrite (including empty string to clear)
+        if (incoming.getProjectGroup() != null) {
+            existing.setProjectGroup(incoming.getProjectGroup().isBlank() ? null : incoming.getProjectGroup());
+        }
 
         schemaRepository.save(existing);
 
