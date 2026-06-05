@@ -166,11 +166,11 @@ public class SettingsController {
         String model = body.get("defaultModel");
         if (userId != null) {
             settingsService.setUserDefaultModel(userId, model);
-        } else {
-            // Fall back to global default when not authenticated so the endpoint
-            // never returns 401 (which the frontend treats as logout).
-            settingsService.setGlobalDefaultModel(model);
         }
+        // When not authenticated (expired JWT), silently skip the save and
+        // return 200 anyway.  Never return 401 — the frontend treats any 401
+        // as logout.  The user's preference from their last authenticated
+        // session remains intact, and they can update it after re-login.
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("status", "ok");
         response.put("defaultModel", model);

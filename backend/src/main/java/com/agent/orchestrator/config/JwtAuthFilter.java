@@ -38,7 +38,6 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                path.startsWith("/api/health") ||
                path.startsWith("/api/memory") ||
                path.startsWith("/api/graph") ||
-               path.startsWith("/api/settings") ||
                path.startsWith("/api/agents") ||
                path.startsWith("/api/templates") ||
                path.startsWith("/api/history") ||
