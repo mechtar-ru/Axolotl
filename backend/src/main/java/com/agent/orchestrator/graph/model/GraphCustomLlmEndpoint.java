@@ -1,8 +1,16 @@
 package com.agent.orchestrator.graph.model;
 
 import org.springframework.data.neo4j.core.schema.*;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node("CustomLlmEndpoint")
+@Getter
+@Setter
+@ToString
+@NoArgsConstructor
 public class GraphCustomLlmEndpoint {
 
     @Id
@@ -36,35 +44,14 @@ public class GraphCustomLlmEndpoint {
     @Property("priority")
     private Integer priority;
 
-    public GraphCustomLlmEndpoint() {}
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
 
-    public String getBaseUrl() { return baseUrl; }
-    public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
 
-    public String getApiKey() { return apiKey; }
-    public void setApiKey(String apiKey) { this.apiKey = apiKey; }
 
-    public String getModelName() { return modelName; }
-    public void setModelName(String modelName) { this.modelName = modelName; }
 
-    public String getAuthType() { return authType; }
-    public void setAuthType(String authType) { this.authType = authType; }
 
-    public Boolean getEnabled() { return enabled; }
-    public void setEnabled(Boolean enabled) { this.enabled = enabled; }
 
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 
-    public String getLastUsedAt() { return lastUsedAt; }
-    public void setLastUsedAt(String lastUsedAt) { this.lastUsedAt = lastUsedAt; }
 
-    public Integer getPriority() { return priority; }
-    public void setPriority(Integer priority) { this.priority = priority; }
 }

@@ -223,6 +223,15 @@ public class VerifierNodeStrategy {
         String currentContent = inputContent;
         String currentResult = "";
 
+        // Determine project type for Flutter-specific checks
+        String projectType = null;
+        try {
+            WorkflowSchema ws = schemaRepository.findById(schemaId);
+            if (ws != null) projectType = ws.getProjectType();
+        } catch (Exception e) {
+            log.debug("Could not determine project type: {}", e.getMessage());
+        }
+
         while (rewriteRetries <= maxRewriteRetries) {
             // Build verification prompt for this iteration
             StringBuilder verificationPrompt = new StringBuilder();
@@ -231,7 +240,11 @@ public class VerifierNodeStrategy {
             verificationPrompt.append("Инструкции:\\n");
             verificationPrompt.append("1. Сначала прочитай содержимое файла через file_read\\n");
             if (syntaxCheck) {
-                verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'python3 -m py_compile <filepath>'\\n");
+                if ("FLUTTER".equals(projectType)) {
+                    verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'dart analyze <filepath>'\\n");
+                } else {
+                    verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'python3 -m py_compile <filepath>'\\n");
+                }
             }
             if (stubDetection) {
                 verificationPrompt.append("3. Проверь файл на наличие заглушек (stubs):\\n");
@@ -250,6 +263,8 @@ public class VerifierNodeStrategy {
             }
             if (testCommand != null && !testCommand.isBlank()) {
                 verificationPrompt.append("5. Запусти тестовую команду: bash '").append(testCommand).append("'\\n");
+            } else if ("FLUTTER".equals(projectType)) {
+                verificationPrompt.append("5. Если есть тестовые файлы (*.dart в test/ или *_test.dart), запусти: bash 'flutter test'\\n");
             }
             if (premortemEnabled && !premortemPredictions.isEmpty()) {
                 verificationPrompt.append("6. Проверь, какие из предсказанных сценариев отказа подтвердились:\\n");

@@ -59,10 +59,8 @@ public class ExecutionStateReconciler {
                     continue;
                 }
 
-                Instant startedAt;
-                try {
-                    startedAt = Instant.parse(run.getStartedAt());
-                } catch (Exception e) {
+                Instant startedAt = run.getStartedAt();
+                if (startedAt == null) {
                     startedAt = Instant.now();
                 }
 

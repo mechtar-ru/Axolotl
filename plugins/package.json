@@ -1,0 +1,9 @@
+{
+  "name": "axolotl-plugins",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Axolotl OpenCode plugin workspace",
+  "dependencies": {
+    "@cortexkit/opencode-magic-context": "^0.22.4"
+  }
+}

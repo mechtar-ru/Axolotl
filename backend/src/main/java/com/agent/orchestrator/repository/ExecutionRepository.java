@@ -20,6 +20,8 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -47,6 +49,20 @@ public class ExecutionRepository {
     private final Neo4jCheckpointRepository checkpointRepo;
     private final Neo4jExecutionRecordRepository recordRepo;
 
+    private static String formatInstant(Instant instant) {
+        return instant != null ? instant.toString() : null;
+    }
+
+    private static Instant parseInstant(String str) {
+        if (str == null || str.isEmpty()) return null;
+        try {
+            return Instant.parse(str);
+        } catch (DateTimeParseException e) {
+            log.warn("Failed to parse instant: {}", str);
+            return null;
+        }
+    }
+
     public ExecutionRepository(
             Neo4jExecutionRunRepository runRepo,
             Neo4jNodeExecutionRepository nodeExecRepo,
@@ -69,14 +85,14 @@ public class ExecutionRepository {
         withRetry(() -> runRepo.findById(id).ifPresent(graphRun -> {
             graphRun.setStatus(status);
             graphRun.setError(error);
-            graphRun.setUpdatedAt(java.time.Instant.now().toString());
+            graphRun.setUpdatedAt(java.time.Instant.now());
             runRepo.save(graphRun);
         }));
     }
 
     public void updateRunCompleted(String id, String status, long totalTokens, double estimatedCost) {
         withRetry(() -> runRepo.findById(id).ifPresent(graphRun -> {
-            String now = java.time.Instant.now().toString();
+            Instant now = java.time.Instant.now();
             graphRun.setStatus(status);
             graphRun.setTotalTokens(totalTokens);
             graphRun.setEstimatedCost(estimatedCost);
@@ -183,7 +199,7 @@ public class ExecutionRepository {
             Map<String, String> map = jsonToMap(g.getStageStatusJson());
             map.put(stageId, status);
             g.setStageStatusJson(mapToJson(map));
-            g.setUpdatedAt(java.time.Instant.now().toString());
+            g.setUpdatedAt(java.time.Instant.now());
             runRepo.save(g);
         }));
     }
@@ -193,7 +209,7 @@ public class ExecutionRepository {
             Map<String, String> map = jsonToMap(g.getStageOutputsJson());
             map.put(stageId, output);
             g.setStageOutputsJson(mapToJson(map));
-            g.setUpdatedAt(java.time.Instant.now().toString());
+            g.setUpdatedAt(java.time.Instant.now());
             runRepo.save(g);
         }));
     }
@@ -300,7 +316,7 @@ public class ExecutionRepository {
             graph.setDurationMs(durationMs);
             graph.setToolCalls(toolCalls);
             graph.setError(error);
-            graph.setCompletedAt(java.time.Instant.now().toString());
+            graph.setCompletedAt(java.time.Instant.now());
             nodeExecRepo.save(graph);
         }));
     }
@@ -316,7 +332,7 @@ public class ExecutionRepository {
             graph.setToolCalls(toolCalls);
             graph.setError(error);
             graph.setReasoning(reasoning);
-            graph.setCompletedAt(java.time.Instant.now().toString());
+            graph.setCompletedAt(java.time.Instant.now());
             nodeExecRepo.save(graph);
         }));
     }
@@ -332,7 +348,7 @@ public class ExecutionRepository {
             graph.setToolCalls(toolCalls);
             graph.setFilesWritten(filesWritten);
             graph.setError(error);
-            graph.setCompletedAt(java.time.Instant.now().toString());
+            graph.setCompletedAt(java.time.Instant.now());
             nodeExecRepo.save(graph);
         }));
     }

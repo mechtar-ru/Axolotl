@@ -3,8 +3,15 @@ package com.agent.orchestrator.graph.model;
 import org.springframework.data.neo4j.core.schema.*;
 import java.time.Instant;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node(labels = {"Field", "Code"})
+@Getter
+@Setter
+@ToString
 public class CodeField {
 
     @Id
@@ -53,28 +60,6 @@ public class CodeField {
         this.type = type;
     }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-    public String getHash() { return hash; }
-    public void setHash(String hash) { this.hash = hash; }
-    public String getSignature() { return signature; }
-    public void setSignature(String signature) { this.signature = signature; }
-    public String getVisibility() { return visibility; }
-    public void setVisibility(String visibility) { this.visibility = visibility; }
     public boolean isStatic() { return isStatic; }
-    public void setStatic(boolean isStatic) { this.isStatic = isStatic; }
     public boolean isFinal() { return isFinal; }
-    public void setFinal(boolean isFinal) { this.isFinal = isFinal; }
-    public String getInitializer() { return initializer; }
-    public void setInitializer(String initializer) { this.initializer = initializer; }
-    public int getLineNumber() { return lineNumber; }
-    public void setLineNumber(int lineNumber) { this.lineNumber = lineNumber; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public CodeClass getParentClass() { return parentClass; }
-    public void setParentClass(CodeClass parentClass) { this.parentClass = parentClass; }
 }

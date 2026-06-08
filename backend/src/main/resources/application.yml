@@ -60,6 +60,20 @@ axolotl:
   reconciler:
     interval: 300000
 
+  plugins:
+    enabled: false
+    bun-path: bun
+    bridge-path: plugins/plugin-bridge.js
+    startup-timeout-ms: 15000
+    request-timeout-ms: 30000
+    max-restart-attempts: 3
+    restart-backoff-ms: 1000
+    auto-update: true
+    auto-update-on-start: true
+    # Comma-separated list of npm packages to load as plugins
+    # e.g.: @cortexkit/opencode-magic-context
+    list: ""
+
 # OpenAPI / Swagger
 springdoc:
   api-docs:

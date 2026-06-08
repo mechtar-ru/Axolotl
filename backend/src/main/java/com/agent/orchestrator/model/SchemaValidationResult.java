@@ -1,12 +1,17 @@
 package com.agent.orchestrator.model;
 
+import lombok.Data;
+
 import java.util.ArrayList;
 import java.util.List;
 
+@Data
 public class SchemaValidationResult {
 
     private final List<ValidationIssue> errors = new ArrayList<>();
     private final List<ValidationIssue> warnings = new ArrayList<>();
+
+    public SchemaValidationResult() {}
 
     public boolean isValid() {
         return errors.isEmpty();
@@ -14,14 +19,6 @@ public class SchemaValidationResult {
 
     public boolean hasWarnings() {
         return !warnings.isEmpty();
-    }
-
-    public List<ValidationIssue> getErrors() {
-        return errors;
-    }
-
-    public List<ValidationIssue> getWarnings() {
-        return warnings;
     }
 
     public void addError(String field, String message) {
@@ -40,6 +37,7 @@ public class SchemaValidationResult {
         warnings.add(new ValidationIssue(field, message, nodeId));
     }
 
+    @Data
     public static class ValidationIssue {
         private final String field;
         private final String message;
@@ -50,9 +48,5 @@ public class SchemaValidationResult {
             this.message = message;
             this.nodeId = nodeId;
         }
-
-        public String getField() { return field; }
-        public String getMessage() { return message; }
-        public String getNodeId() { return nodeId; }
     }
 }

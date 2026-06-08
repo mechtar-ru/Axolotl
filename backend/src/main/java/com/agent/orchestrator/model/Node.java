@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 
+import lombok.Data;
+
 public class Node {
     private String id;
     private String type;
@@ -74,6 +76,7 @@ public class Node {
         public void setY(double y) { this.y = y; }
     }
     
+    @Data
     public static class NodeData {
         private String systemPrompt;
         private String userPrompt;
@@ -126,9 +129,13 @@ public class Node {
         private List<ToolPermission> toolPermissions;
         private int maxToolCalls;
         private Integer timeoutSeconds;
+        private Integer contextBudgetTokens;
 
         public Integer getTimeoutSeconds() { return timeoutSeconds; }
         public void setTimeoutSeconds(Integer timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
+
+        public Integer getContextBudgetTokens() { return contextBudgetTokens; }
+        public void setContextBudgetTokens(Integer contextBudgetTokens) { this.contextBudgetTokens = contextBudgetTokens; }
 
         public String getAgentType() { return agentType; }
         public void setAgentType(String agentType) { this.agentType = agentType; }
@@ -167,32 +174,20 @@ public class Node {
         public void setRoutes(List<TransformRoute> routes) { this.routes = routes; }
     }
 
+    @Data
     public static class TransformStep {
         private String type;
         private Map<String, Object> config;
-
-        public String getType() { return type; }
-        public void setType(String type) { this.type = type; }
-
-        public Map<String, Object> getConfig() { return config; }
-        public void setConfig(Map<String, Object> config) { this.config = config; }
     }
 
+    @Data
     public static class TransformRoute {
         private String condition;
         private String targetNodeId;
         private String targetPort;
-
-        public String getCondition() { return condition; }
-        public void setCondition(String condition) { this.condition = condition; }
-
-        public String getTargetNodeId() { return targetNodeId; }
-        public void setTargetNodeId(String targetNodeId) { this.targetNodeId = targetNodeId; }
-
-        public String getTargetPort() { return targetPort; }
-        public void setTargetPort(String targetPort) { this.targetPort = targetPort; }
     }
     
+    @Data
     public static class Message {
         private String role;
         private String content;
@@ -205,12 +200,5 @@ public class Node {
             this.content = content;
             this.timestamp = System.currentTimeMillis();
         }
-
-        public String getRole() { return role; }
-        public void setRole(String role) { this.role = role; }
-        public String getContent() { return content; }
-        public void setContent(String content) { this.content = content; }
-        public long getTimestamp() { return timestamp; }
-        public void setTimestamp(long timestamp) { this.timestamp = timestamp; }
     }
 }

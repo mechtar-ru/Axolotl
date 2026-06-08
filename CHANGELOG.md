@@ -9,6 +9,19 @@ Versioning: SemVer via git tags.
 
 ### Added
 
+#### PRISM Phase 2 — Models, Interfaces, and Context Budget
+- **Model contracts**: `@Data` on 23 POJO model classes (Agent, ApiKey, ExecutionRun, Plan, Node, Task, etc.) — structural identity via Lombok-generated `equals`/`hashCode`/`toString`. 6 enums correctly skipped. `@Getter @Setter @ToString` on all 18 graph models (384 lines of manual getter/setter boilerplate removed) (`<current>`).
+- **Service interfaces**: `SchemaService` interface (39 public methods), `ToolExecutor` interface (18 public methods + `ToolHandler`). Original classes renamed to `SchemaServiceImpl`/`ToolExecutorImpl`. All consumers reference interface types (`<current>`).
+- **PipelineFactory extraction**: 4 static pipeline methods + 2 helpers moved from `PipelineServiceImpl` (1717L→1175L) to new `PipelineFactory.java`. Covers `createDefaultPipeline`, `createAppPipeline`, `createMinimalPipeline`, `expandTddStages` (`<current>`).
+- **Context budget on non-tool agent path**: `executeAgentNode()` now collects `ContextBlock` items with priority and assembles via `ContextAssembler` — same 5-tier priority scheme (CRITICAL/HIGH/MEDIUM/LOW/EXPERIMENTAL) as the tool agent path (`<current>`).
+- **Tool instructions under budget**: `buildToolInstructions()`/`buildDocAgentToolInstructions()` moved from unbounded direct concatenation to `ContextBlock("toolInstructions", ..., HIGH)` inside budgeted assembly — tool instructions can be truncated when budget is tight, with HIGH priority ensuring they're preferred over MEDIUM/LOW content (`<current>`).
+- **PipelineStatusManager encapsulation**: Replaced raw `ConcurrentHashMap` field access with unmodifiable map views + dedicated mutation methods (`registerPipeline`, `putStageResult`, `consumeResumeState`). `cancelFlags` changed from `ConcurrentHashMap<String, Boolean>` to `ConcurrentHashMap<String, AtomicBoolean>` to prevent mutable state leaks (`<current>`).
+- **ToolExecutor constructor injection**: Converted from setter injection + `@PostConstruct` to `@Autowired` parameterized constructor. `NodeExecutor.@PostConstruct init()` removed (was duplicating Spring DI). Cleaned ToolExecutor interface of setter methods (6 removed from contract) (`<current>`).
+- **Context budget field**: `contextBudgetTokens` (Integer, nullable) added to `Node.NodeData`. AgentNode.vue shows number input (100–128000, step 100) in expanded tools section (`<current>`).
+- **Per-node config hash tracking**: `NodeData.configHash` field computed from deterministic config content — enables change detection for re-execution decisions (`<current>`).
+- **Builder pattern for ExecutionRun**: `ExecutionRun.Builder` with 15 chained methods, replacing telescoping constructors (`<current>`).
+- **StepExecution record**: Immutable `StepExecution` record replaces anonymous Object[] tuples for pipeline stage status tracking (`<current>`).
+
 #### App Creation Workflow (4-Phase Pipeline)
 - **PlanStep Neo4j model**: `GraphPlanStep` `@Node("PlanStep")` with bidirectional `DEPENDS_ON` relationships. `PlanStepStatus` enum (PENDING, IN_PROGRESS, DONE, REJECTED, INCOMPLETE). `PlanStep` POCO with `stepId`, `title`, `description`, `status`, `dependsOn` (list of step IDs), `schemaId`. `Neo4jPlanStepRepository` with Cypher queries for schema-level CRUD, status queries, and ready-step detection (dependencies all DONE). (`<current>`)
 - **Plan API**: `PlanStepService` with `createSteps()`, `updateStatus()` (validates dependencies before DONE), `getReadySteps()` (steps whose prerequisites are satisfied), `getDependencyGraph()` (nodes + edges for UI rendering), `syncToDisk()` (writes `plan/steps/*.md` and `plan/implementation_plan.md` to targetPath). `PlanStepController` at `/api/plan-steps/{schemaId}` with 6 REST endpoints (`<current>`).
@@ -37,6 +50,11 @@ Versioning: SemVer via git tags.
 
 ### Fixed
 
+#### PRISM Phase 2
+- **Frontend TS regressions**: `DiffViewer.vue` — fixed `'un changed'`→`'unchanged'` typo in `DiffLine` type, `undefined` array access issues via flat DP array with safe `get()` helper. `ReviewApprovalDialog.vue:286` — fixed missing `plan` variable reference. `DashboardView.vue:441` — fixed wrong arg type in `getSchema` call. `vue-tsc --noEmit` now clean (`<current>`).
+- **AgentNodeStrategy context duplication**: Old direct-concatenation block (predecessor results, mempalace, project context, diff review instructions) was NOT removed when budgeted assembly was added — context appended to systemPrompt TWICE. Fixed by deleting the redundant block, leaving only the budgeted assembly path (`<current>`).
+- **ToolExecutor dead code**: Removed `registerFromInit(null)` dead method, unused `toolRequestId` field, `stdoutLines` queue, `lock` object (`<current>`).
+
 - **Plan syncToDisk path traversal**: Removed user-supplied `targetPath` parameter from `POST /sync-to-disk`. Now resolves targetPath from schema's stored value via `Neo4jSchemaRepository.findById()`, preventing arbitrary file writes outside the project directory (`<current>`).
 - **AgentNodeStrategy fully-qualified class names**: `buildPlanStepContext()` used verbose `com.agent.orchestrator.model.PlanStep` instead of the shorter imported `PlanStep`. Fixed imports and replaced all fully-qualified references (`<current>`).
 
@@ -61,6 +79,9 @@ Versioning: SemVer via git tags.
 - **Test schemas button**: Hidden when `testSchemas.length === 0` (was always visible showing "0 tests") (`869b5fe4`).
 
 ### Removed
+
+#### PRISM Phase 2
+- **Dead frontend node components**: 19 files removed from `frontend/src/components/nodes/` (AgentNode, CommandNode, CommentNode, ConditionNode, FallbackNode, FileWriteNode, GroupNode, GuardrailNode, HumanNode, LoopNode, MemoryNode, MemoryResultCard, OutputNode, SchemaBuilderNode, SourceNode, SubagentNode, TransformNode, 5 test files, `node-base.css`). Replaced by `blocks/` directory (11 files), the active node rendering system (`<current>`).
 
 - **Dead CSS in AppCard.vue**: Removed `.app-card:hover .delete-btn { display: inline-flex }` — delete button is always visible, rule had no effect (`869b5fe4`).
 - **Dead code**: Removed `transientOnly` skip-logic from `shouldSkipNode()` and callers — feature never used, added only complexity.

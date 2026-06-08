@@ -83,7 +83,7 @@ class ExecutionStateReconcilerTest {
         run.setId(id);
         run.setSchemaId(schemaId);
         run.setStatus("running");
-        run.setStartedAt(Instant.now().minusSeconds(600).toString());
+        run.setStartedAt(Instant.now().minusSeconds(600));
         return run;
     }
 }

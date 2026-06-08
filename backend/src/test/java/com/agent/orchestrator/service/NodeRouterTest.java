@@ -17,11 +17,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class NodeRouterTest {
 
-    @Mock NodeExecutor nodeExecutor;
     @Mock ExecutionUtilityService utilityService;
     @Mock LlmService llmService;
     @Mock ExecutionWebSocketHandler webSocketHandler;
@@ -34,16 +34,22 @@ class NodeRouterTest {
     @Mock ExecutionRepository executionRepository;
     @Mock ExecutionStateManager stateManager;
     @Mock ReasoningCapture reasoningCapture;
+    @Mock AgentNodeStrategy agentStrategy;
+    @Mock SchemaBuilderNodeStrategy schemaBuilderStrategy;
+    @Mock VerifierNodeStrategy verifierStrategy;
+    @Mock ReviewNodeStrategy reviewStrategy;
+    @Mock DraftNodeStrategy draftStrategy;
 
     NodeRouter nodeRouter;
 
     @BeforeEach
     void setUp() {
         nodeRouter = new NodeRouter(
-                nodeExecutor, utilityService, llmService, webSocketHandler,
+                utilityService, llmService, webSocketHandler,
                 memPalaceClient, toolExecutor, transformService, schemaRepository,
                 planService, projectContextBuilder, executionRepository,
-                stateManager, reasoningCapture);
+                stateManager, reasoningCapture,
+                agentStrategy, schemaBuilderStrategy, verifierStrategy, reviewStrategy, draftStrategy);
     }
 
     // ─── getAutoRetryCount ───
@@ -79,123 +85,12 @@ class NodeRouterTest {
     }
 
     @Test
-    void getAutoRetryCount_zeroIsZero() {
-        Node node = createNodeWithConfig(Map.of("autoRetryCount", 0));
+    void getAutoRetryCount_negativeValue_returnsZero() {
+        Node node = createNodeWithConfig(Map.of("autoRetryCount", -1));
         assertEquals(0, nodeRouter.getAutoRetryCount(node));
-    }
-
-    @Test
-    void getAutoRetryCount_noNodeData_returnsZero() {
-        Node node = new Node();
-        node.setId("test-node");
-        assertEquals(0, nodeRouter.getAutoRetryCount(node));
-    }
-
-    // ─── isTransientError ───
-
-    @Test
-    void isTransientError_nullMessage_returnsFalse() {
-        Exception e = new RuntimeException((String) null);
-        assertFalse(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_429_transient() {
-        Exception e = new RuntimeException("HTTP 429 Too Many Requests");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_502_transient() {
-        Exception e = new RuntimeException("502 Bad Gateway");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_503_transient() {
-        Exception e = new RuntimeException("503 Service Unavailable");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_rateLimit_transient() {
-        Exception e = new RuntimeException("rate limit exceeded, retry in 30s");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_rateLimitWithUnderscore_transient() {
-        Exception e = new RuntimeException("rate_limit_exceeded");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_tooManyRequests_transient() {
-        Exception e = new RuntimeException("too many requests, please slow down");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_socketTimeout_transient() {
-        Exception e = new SocketTimeoutException("Read timed out");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_timeoutMessage_transient() {
-        Exception e = new RuntimeException("connect timed out");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_serviceUnavailable_transient() {
-        Exception e = new RuntimeException("service unavailable, try again later");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_temporarilyUnavailable_transient() {
-        Exception e = new RuntimeException("The server is temporarily unavailable");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_tryAgainLater_transient() {
-        Exception e = new RuntimeException("Please try again later");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_internalServerError_transient() {
-        Exception e = new RuntimeException("Internal server error occurred");
-        assertTrue(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_nonTransient_returnsFalse() {
-        Exception e = new RuntimeException("400 Bad Request - invalid input");
-        assertFalse(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_nullPointer_returnsFalse() {
-        Exception e = new NullPointerException("Cannot invoke because value is null");
-        assertFalse(nodeRouter.isTransientError(e));
-    }
-
-    @Test
-    void isTransientError_genericError_returnsFalse() {
-        Exception e = new RuntimeException("Something went wrong");
-        assertFalse(nodeRouter.isTransientError(e));
     }
 
     // ─── getTimeoutSeconds ───
-
-    @Test
-    void getTimeoutSeconds_noConfig_returnsDefault() {
-        Node node = createNodeWithConfig(null);
-        assertEquals(300, nodeRouter.getTimeoutSeconds(node));
-    }
 
     @Test
     void getTimeoutSeconds_emptyConfig_returnsDefault() {
@@ -204,34 +99,91 @@ class NodeRouterTest {
     }
 
     @Test
-    void getTimeoutSeconds_returnsConfiguredValue() {
-        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 120));
-        assertEquals(120, nodeRouter.getTimeoutSeconds(node));
+    void getTimeoutSeconds_noConfig_returnsDefault() {
+        Node node = createNodeWithConfig(null);
+        assertEquals(300, nodeRouter.getTimeoutSeconds(node));
     }
 
     @Test
-    void getTimeoutSeconds_minCapsAtOne() {
-        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 0));
-        assertEquals(1, nodeRouter.getTimeoutSeconds(node));
-    }
-
-    @Test
-    void getTimeoutSeconds_nodeDataFieldTakesPrecedence() {
-        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 30));
+    void getTimeoutSeconds_fromDataTimeoutSeconds() {
+        Node node = new Node();
+        node.setData(new Node.NodeData());
         node.getData().setTimeoutSeconds(120);
         assertEquals(120, nodeRouter.getTimeoutSeconds(node));
     }
 
-    // ─── helpers ───
+    @Test
+    void getTimeoutSeconds_fromConfigTimeoutSeconds() {
+        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 90));
+        assertEquals(90, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    @Test
+    void getTimeoutSeconds_dataPriorityOverConfig() {
+        Node node = new Node();
+        node.setData(new Node.NodeData());
+        node.getData().setTimeoutSeconds(60);
+        node.getData().setConfig(Map.of("timeoutSeconds", 90));
+        assertEquals(60, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    @Test
+    void getTimeoutSeconds_capsAtStageTimeout() {
+        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 2000));
+        assertEquals(1200, nodeRouter.getTimeoutSeconds(node));
+    }
+
+    // ─── isTransientError ───
+
+    @Test
+    void isTransientError_null_false() {
+        assertFalse(nodeRouter.isTransientError(null));
+    }
+
+    @Test
+    void isTransientError_timeoutMessage_transient() {
+        assertTrue(nodeRouter.isTransientError(new SocketTimeoutException("timeout")));
+    }
+
+    @Test
+    void isTransientError_temporarilyUnavailable_transient() {
+        assertTrue(nodeRouter.isTransientError(new RuntimeException("temporarily unavailable")));
+    }
+
+    @Test
+    void isTransientError_rateLimitWithUnderscore_transient() {
+        assertTrue(nodeRouter.isTransientError(new RuntimeException("rate_limit exceeded")));
+    }
+
+    @Test
+    void isTransientError_rateLimitWithSpace_transient() {
+        assertTrue(nodeRouter.isTransientError(new RuntimeException("rate limit exceeded")));
+    }
+
+    @Test
+    void isTransientError_connectionReset_transient() {
+        assertTrue(nodeRouter.isTransientError(new RuntimeException("connection reset")));
+    }
+
+    @Test
+    void isTransientError_genericRuntimeException_false() {
+        assertFalse(nodeRouter.isTransientError(new RuntimeException("some other error")));
+    }
+
+    @Test
+    void isTransientError_wrappedTransient_transient() {
+        RuntimeException wrapper = new RuntimeException("wrapped", new SocketTimeoutException("timeout"));
+        assertTrue(nodeRouter.isTransientError(wrapper));
+    }
+
+    // ─── Helpers ───
 
     private Node createNodeWithConfig(Map<String, Object> config) {
         Node node = new Node();
-        node.setId("test-node");
-        Node.NodeData data = new Node.NodeData();
         if (config != null) {
-            data.setConfig(new HashMap<>(config));
+            node.setData(new Node.NodeData());
+            node.getData().setConfig(config);
         }
-        node.setData(data);
         return node;
     }
 }

@@ -1,7 +1,9 @@
 package com.agent.orchestrator.model;
 
+import lombok.Data;
 import java.time.Instant;
 
+@Data
 public class ShareLink {
     private String id;
     private String schemaId;
@@ -21,22 +23,4 @@ public class ShareLink {
         this.schemaId = schemaId;
         this.token = java.util.UUID.randomUUID().toString().replace("-", "");
     }
-
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-
-    public String getSchemaId() { return schemaId; }
-    public void setSchemaId(String schemaId) { this.schemaId = schemaId; }
-
-    public String getToken() { return token; }
-    public void setToken(String token) { this.token = token; }
-
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-
-    public Instant getExpiresAt() { return expiresAt; }
-    public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
-
-    public boolean isReadOnly() { return readOnly; }
-    public void setReadOnly(boolean readOnly) { this.readOnly = readOnly; }
 }

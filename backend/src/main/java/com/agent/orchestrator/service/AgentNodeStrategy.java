@@ -1,5 +1,8 @@
 package com.agent.orchestrator.service;
 
+import com.agent.orchestrator.context.ContextAssembler;
+import com.agent.orchestrator.context.ContextBlock;
+import com.agent.orchestrator.context.ContextPriority;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.LlmResponse;
@@ -38,6 +41,7 @@ public class AgentNodeStrategy {
     private final ExecutionStateManager stateManager;
     private final ReasoningCapture reasoningCapture;
     private final PlanStepService planStepService;
+    private final ContextAssembler contextAssembler;
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -48,7 +52,8 @@ public class AgentNodeStrategy {
                               ProjectContextBuilder projectContextBuilder,
                               ExecutionStateManager stateManager,
                               ReasoningCapture reasoningCapture,
-                              PlanStepService planStepService) {
+                              PlanStepService planStepService,
+                              ContextAssembler contextAssembler) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -59,6 +64,7 @@ public class AgentNodeStrategy {
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
         this.planStepService = planStepService;
+        this.contextAssembler = contextAssembler;
     }
 
     // ─── Agent execution ───
@@ -89,42 +95,69 @@ public class AgentNodeStrategy {
 
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
         Map<String, Object> predecessorResults = utilityService.collectPredecessorResults(currentSchema, node.getId());
-        String contextBlock = utilityService.buildContextBlock(predecessorResults);
-        if (!contextBlock.isEmpty()) {
-            String effectiveSystem = (systemPrompt != null ? systemPrompt + "\n\n" : "")
-                    + "Контекст от предыдущих узлов:\n" + contextBlock;
-            systemPrompt = effectiveSystem;
-        }
+        String contextBlockText = utilityService.buildContextBlock(predecessorResults);
 
         prompt = utilityService.interpolateVariables(prompt, currentSchema, predecessorResults);
         if (systemPrompt != null) {
             systemPrompt = utilityService.interpolateVariables(systemPrompt, currentSchema, predecessorResults);
         }
 
-        if (memPalaceClient.isEnabled()) {
-            String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
-            if (!memoryContext.isEmpty()) {
-                systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + memoryContext;
-            }
-        }
+        // Dynamic token budget: collect all additional context, prioritize and truncate
+        {
+            List<ContextBlock> ctxBlocks = new ArrayList<>();
 
-        if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
-            try {
-                String projectContext = projectContextBuilder.buildContext(
-                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
-                if (!projectContext.isEmpty()) {
-                    systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "")
-                            + "=== Project Context ===\n" + projectContext;
+            if (!contextBlockText.isEmpty()) {
+                ctxBlocks.add(new ContextBlock("predecessorResults",
+                        "Контекст от предыдущих узлов:\n" + contextBlockText, ContextPriority.MEDIUM));
+            }
+
+            if (memPalaceClient.isEnabled()) {
+                String memoryCtx = memPalaceClient.buildGraphContext(prompt, 5);
+                if (!memoryCtx.isEmpty()) {
+                    ctxBlocks.add(new ContextBlock("mempalace", memoryCtx, ContextPriority.EXPERIMENTAL));
                 }
-            } catch (Exception e) {
-                log.warn("Failed to build project context: {}", e.getMessage());
             }
-        }
 
-        // Inject plan step context
-        String planCtx = buildPlanStepContext(schemaId);
-        if (!planCtx.isBlank()) {
-            systemPrompt += planCtx;
+            if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+                try {
+                    String projectCtx = projectContextBuilder.buildContext(
+                            currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
+                    if (!projectCtx.isEmpty()) {
+                        ctxBlocks.add(new ContextBlock("projectContext",
+                                "=== Project Context ===\n" + projectCtx, ContextPriority.LOW));
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to build project context: {}", e.getMessage());
+                }
+            }
+
+            // Plan step context
+            String planCtx = buildPlanStepContext(schemaId);
+            if (!planCtx.isBlank()) {
+                ctxBlocks.add(new ContextBlock("planSteps", planCtx, ContextPriority.HIGH));
+            }
+
+            // Determine budget
+            int budget = node.getData() != null && node.getData().getContextBudgetTokens() != null
+                    && node.getData().getContextBudgetTokens() > 0
+                    ? node.getData().getContextBudgetTokens()
+                    : ContextAssembler.DEFAULT_BUDGET_TOKENS;
+
+            // Assemble with priority-based budgeting
+            var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
+
+            // Append assembled context to system prompt
+            if (!ctxResult.text().isEmpty()) {
+                systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + ctxResult.text();
+            }
+
+            // WebSocket observability — send context stats
+            if (webSocketHandler != null) {
+                try {
+                    String statsJson = buildContextStatsJson(ctxResult);
+                    webSocketHandler.sendLog(schemaId, "info", "Context budget: " + statsJson, node.getId());
+                } catch (Exception ignored) {}
+            }
         }
 
         LlmUsage usage = new LlmUsage();
@@ -225,47 +258,86 @@ public class AgentNodeStrategy {
             systemPrompt = utilityService.interpolateVariables(systemPrompt, currentSchema, predecessorResults);
         }
 
-        // For code-agent: inject tool instructions; for doc-agent: inject doc-specific instructions
-        if (!"doc-agent".equals(agentType)) {
-            String toolDefs = utilityService.buildToolDefinitions(enabledTools);
-            String toolInstructions = utilityService.buildToolInstructions(enabledTools);
-            systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + toolInstructions;
-        } else {
-            String docInstructions = buildDocAgentToolInstructions(enabledTools);
-            systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + docInstructions;
-        }
+        // Dynamic token budget: collect all additional context, prioritize and truncate
+        {
+            List<ContextBlock> ctxBlocks = new ArrayList<>();
 
-        if (!contextBlock.isEmpty()) {
-            systemPrompt += "\n\nКонтекст от предыдущих узлов:\n" + contextBlock;
-        }
-
-        if (memPalaceClient.isEnabled()) {
-            String memoryContext = memPalaceClient.buildGraphContext(prompt, 5);
-            if (!memoryContext.isEmpty()) {
-                systemPrompt += "\n\n" + memoryContext;
+            if (!contextBlock.isEmpty()) {
+                ctxBlocks.add(new ContextBlock("predecessorResults",
+                        "Контекст от предыдущих узлов:\n" + contextBlock, ContextPriority.MEDIUM));
             }
-        }
 
-        if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
-            try {
-                String projectContext = projectContextBuilder.buildContext(
-                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
-                if (!projectContext.isEmpty()) {
-                    systemPrompt += "\n\n=== Project Context ===\n" + projectContext;
+            if (memPalaceClient.isEnabled()) {
+                String memoryCtx = memPalaceClient.buildGraphContext(prompt, 5);
+                if (!memoryCtx.isEmpty()) {
+                    ctxBlocks.add(new ContextBlock("mempalace", memoryCtx, ContextPriority.EXPERIMENTAL));
                 }
-            } catch (Exception e) {
-                log.warn("Failed to build project context: {}", e.getMessage());
             }
-        }
 
-        // If requireDiffReview is enabled, inject instructions to modify existing files
-        if (node.getData() != null && node.getData().getConfig() != null
-                && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
-            systemPrompt += "\n\nIMPORTANT: Diff review mode enabled.\n"
-                + "You MUST modify existing files using file_write on their current paths.\n"
-                + "Do NOT create new files unless absolutely necessary.\n"
-                + "After you finish, the pipeline will pause for human diff review.\n"
-                + "Always read the existing file content first before modifying it.\n";
+            if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+                try {
+                    String projectCtx = projectContextBuilder.buildContext(
+                            currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
+                    if (!projectCtx.isEmpty()) {
+                        ctxBlocks.add(new ContextBlock("projectContext",
+                                "=== Project Context ===\n" + projectCtx, ContextPriority.LOW));
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to build project context: {}", e.getMessage());
+                }
+            }
+
+            if (node.getData() != null && node.getData().getConfig() != null
+                    && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
+                ctxBlocks.add(new ContextBlock("diffReview",
+                        "IMPORTANT: Diff review mode enabled.\n"
+                        + "You MUST modify existing files using file_write on their current paths.\n"
+                        + "Do NOT create new files unless absolutely necessary.\n"
+                        + "After you finish, the pipeline will pause for human diff review.\n"
+                        + "Always read the existing file content first before modifying it.\n",
+                        ContextPriority.HIGH));
+            }
+
+            // Plan step context
+            String planCtx = buildPlanStepContext(schemaId);
+            if (!planCtx.isBlank()) {
+                ctxBlocks.add(new ContextBlock("planSteps", planCtx, ContextPriority.HIGH));
+            }
+
+            // Tool instructions — budgeted as HIGH priority (was previously unbounded before assembly)
+            if (!"doc-agent".equals(agentType)) {
+                String toolInstructions = utilityService.buildToolInstructions(enabledTools);
+                if (toolInstructions != null && !toolInstructions.isBlank()) {
+                    ctxBlocks.add(new ContextBlock("toolInstructions", toolInstructions, ContextPriority.HIGH));
+                }
+            } else {
+                String docInstructions = buildDocAgentToolInstructions(enabledTools);
+                if (docInstructions != null && !docInstructions.isBlank()) {
+                    ctxBlocks.add(new ContextBlock("toolInstructions", docInstructions, ContextPriority.HIGH));
+                }
+            }
+
+            // Determine budget
+            int budget = node.getData() != null && node.getData().getContextBudgetTokens() != null
+                    && node.getData().getContextBudgetTokens() > 0
+                    ? node.getData().getContextBudgetTokens()
+                    : ContextAssembler.DEFAULT_BUDGET_TOKENS;
+
+            // Assemble with priority-based budgeting
+            var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
+
+            // Append assembled context to system prompt
+            if (!ctxResult.text().isEmpty()) {
+                systemPrompt += "\n\n" + ctxResult.text();
+            }
+
+            // WebSocket observability — send context stats
+            if (webSocketHandler != null) {
+                try {
+                    String statsJson = buildContextStatsJson(ctxResult);
+                    webSocketHandler.sendLog(schemaId, "info", "Context budget: " + statsJson, node.getId());
+                } catch (Exception ignored) {}
+            }
         }
 
         List<Node.Message> messages = new ArrayList<>();
@@ -689,5 +761,36 @@ public class AgentNodeStrategy {
             webSocketHandler.sendResult(schemaId, node.getId(), analysisResult);
         }
         return analysisResult;
+    }
+
+    // ─── Context budget helpers ───
+
+    private String buildContextStatsJson(ContextAssembler.AssemblyResult result) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"totalTokens\":").append(result.totalTokens()).append(",");
+        sb.append("\"criticalTokens\":").append(result.criticalTokens()).append(",");
+        sb.append("\"budgetTokens\":").append(result.budgetTokens()).append(",");
+        sb.append("\"blocks\":[");
+        boolean first = true;
+        for (var stat : result.stats()) {
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("{");
+            sb.append("\"name\":\"").append(escapeJson(stat.name())).append("\",");
+            sb.append("\"tokens\":").append(stat.tokens()).append(",");
+            sb.append("\"priority\":\"").append(stat.priority().name()).append("\",");
+            sb.append("\"included\":").append(stat.included()).append(",");
+            sb.append("\"skipped\":").append(stat.skipped()).append(",");
+            sb.append("\"truncated\":").append(stat.truncated());
+            sb.append("}");
+        }
+        sb.append("]");
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) return "";
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -3,6 +3,9 @@ package com.agent.orchestrator.model;
 import java.util.Set;
 import java.util.HashSet;
 
+import lombok.Data;
+
+@Data
 public class ToolPermission {
     private String toolId;
     private boolean enabled;
@@ -26,26 +29,6 @@ public class ToolPermission {
         this.toolId = toolId;
     }
 
-    public String getToolId() { return toolId; }
-    public void setToolId(String toolId) { this.toolId = toolId; }
-
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-    public Set<String> getAllowedPaths() { return allowedPaths; }
-    public void setAllowedPaths(Set<String> allowedPaths) { this.allowedPaths = allowedPaths; }
-
-    public Set<String> getBlockedCommands() { return blockedCommands; }
-    public void setBlockedCommands(Set<String> blockedCommands) { this.blockedCommands = blockedCommands; }
-
-    public int getMaxCallsPerExecution() { return maxCallsPerExecution; }
-    public void setMaxCallsPerExecution(int maxCallsPerExecution) { this.maxCallsPerExecution = maxCallsPerExecution; }
-
-    public long getTimeoutMs() { return timeoutMs; }
-    public void setTimeoutMs(long timeoutMs) { this.timeoutMs = timeoutMs; }
-
-    public boolean isRequiresApproval() { return requiresApproval; }
-    public void setRequiresApproval(boolean requiresApproval) { this.requiresApproval = requiresApproval; }
 
     public boolean allowsCommand(String command) {
         if (blockedCommands.contains(command)) return false;

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,20 +20,24 @@ public class PipelineStatusManager {
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
 
-    public ConcurrentHashMap<String, CompletableFuture<?>> getRunningPipelines() {
-        return runningPipelines;
+    /** Returns an unmodifiable view. Callers cannot mutate internal state. */
+    public Map<String, CompletableFuture<?>> getRunningPipelines() {
+        return Collections.unmodifiableMap(runningPipelines);
     }
 
-    public ConcurrentHashMap<String, AtomicBoolean> getCancelFlags() {
-        return cancelFlags;
+    /** Returns an unmodifiable view. Callers cannot mutate internal state. */
+    public Map<String, AtomicBoolean> getCancelFlags() {
+        return Collections.unmodifiableMap(cancelFlags);
     }
 
-    public ConcurrentHashMap<String, ConcurrentHashMap<String, String>> getStageResults() {
-        return stageResults;
+    /** Returns an unmodifiable view. Callers cannot mutate internal state. */
+    public Map<String, Map<String, String>> getStageResults() {
+        return Collections.unmodifiableMap(stageResults);
     }
 
-    public ConcurrentHashMap<String, Integer> getPipelineResumeState() {
-        return pipelineResumeState;
+    /** Returns an unmodifiable view. Callers cannot mutate internal state. */
+    public Map<String, Integer> getPipelineResumeState() {
+        return Collections.unmodifiableMap(pipelineResumeState);
     }
 
     public void cancelPipeline(String schemaId) {
@@ -42,8 +47,10 @@ public class PipelineStatusManager {
         if (future != null) future.cancel(true);
     }
 
+    /** Returns the stage results for a schema, or empty map if none. */
     public Map<String, String> getStageResults(String schemaId) {
-        return stageResults.getOrDefault(schemaId, new ConcurrentHashMap<>());
+        ConcurrentHashMap<String, String> results = stageResults.get(schemaId);
+        return results != null ? Collections.unmodifiableMap(results) : Collections.emptyMap();
     }
 
     public boolean isPipelineRunning(String schemaId) {
@@ -56,5 +63,63 @@ public class PipelineStatusManager {
         Map<String, String> nodeResults = stateNodeResults.get(schemaId);
         if (nodeResults == null) return;
         nodeResults.keySet().removeIf(k -> k.endsWith(":approved"));
+    }
+
+    // ── dedicated mutation methods ──
+
+    /** Register a new pipeline run with cancel flag and stage results map. */
+    public void registerPipeline(String schemaId, CompletableFuture<?> future, AtomicBoolean cancelFlag) {
+        runningPipelines.put(schemaId, future);
+        cancelFlags.put(schemaId, cancelFlag);
+        stageResults.put(schemaId, new ConcurrentHashMap<>());
+    }
+
+    /** Register only cancel flag + stage results (for resume flows). */
+    public void registerCancelAndResults(String schemaId, AtomicBoolean cancelFlag) {
+        cancelFlags.put(schemaId, cancelFlag);
+        stageResults.put(schemaId, new ConcurrentHashMap<>());
+    }
+
+    /** Unregister all state for a pipeline. */
+    public void unregisterPipeline(String schemaId) {
+        runningPipelines.remove(schemaId);
+        cancelFlags.remove(schemaId);
+        stageResults.remove(schemaId);
+    }
+
+    /** Store a single stage result, creating the inner map if absent. */
+    public void putStageResult(String schemaId, String stageId, String output) {
+        stageResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                .put(stageId, output);
+    }
+
+    /** Remove a completed future from running pipelines (without cancelling). */
+    public void removeFuture(String schemaId) {
+        runningPipelines.remove(schemaId);
+    }
+
+    /** Remove the cancel flag for a schema (keeps stage results intact for post-run inspection). */
+    public void removeCancelFlag(String schemaId) {
+        cancelFlags.remove(schemaId);
+    }
+
+    /** Check if a resume state exists for the schema. */
+    public boolean hasResumeState(String schemaId) {
+        return pipelineResumeState.containsKey(schemaId);
+    }
+
+    /** Store resume state for a schema. */
+    public void storeResumeState(String schemaId, int index) {
+        pipelineResumeState.put(schemaId, index);
+    }
+
+    /** Consume and remove resume state, returning the stored index. */
+    public Integer consumeResumeState(String schemaId) {
+        return pipelineResumeState.remove(schemaId);
+    }
+
+    /** Check if pipeline is currently running for the schema. */
+    public CompletableFuture<?> getRunningFuture(String schemaId) {
+        return runningPipelines.get(schemaId);
     }
 }

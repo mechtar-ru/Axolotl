@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import BaseButton from '@/components/shared/BaseButton.vue'
 
 const props = defineProps<{
   oldText: string
@@ -10,7 +9,7 @@ const props = defineProps<{
 }>()
 
 interface DiffLine {
-  type: 'un changed' | 'added' | 'removed'
+  type: 'unchanged' | 'added' | 'removed'
   text: string
   oldLineNum?: number
   newLineNum?: number
@@ -24,13 +23,20 @@ const lines = computed(() => {
   // Simple LCS-based diff
   const oldLen = oldLines.length
   const newLen = newLines.length
-  const dp: number[][] = Array.from({ length: oldLen + 1 }, () => new Array(newLen + 1).fill(0))
+  // Use flat array for better TypeScript inference: dp[i * (newLen + 1) + j]
+  const width = newLen + 1
+  const dp: number[] = new Array((oldLen + 1) * width).fill(0)
+  const idx = (i: number, j: number) => i * width + j
+  const get = (i: number, j: number) => dp[idx(i, j)]!
 
   for (let i = 1; i <= oldLen; i++) {
     for (let j = 1; j <= newLen; j++) {
-      dp[i][j] = oldLines[i - 1] === newLines[j - 1]
-        ? dp[i - 1][j - 1] + 1
-        : Math.max(dp[i - 1][j], dp[i][j - 1])
+      // i>=1, j>=1 guarantees in-bounds access
+      const oldLine = oldLines[i - 1]!
+      const newLine = newLines[j - 1]!
+      dp[idx(i, j)] = oldLine === newLine
+        ? get(i - 1, j - 1) + 1
+        : Math.max(get(i - 1, j), get(i, j - 1))
     }
   }
 
@@ -38,14 +44,26 @@ const lines = computed(() => {
   let i = oldLen, j = newLen
   const temp: DiffLine[] = []
   while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-      temp.push({ type: 'unchanged', text: oldLines[i - 1], oldLineNum: i, newLineNum: j })
-      i--; j--
-    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-      temp.push({ type: 'added', text: newLines[j - 1], newLineNum: j })
+    if (i > 0 && j > 0) {
+      const oldLine = oldLines[i - 1]!
+      const newLine = newLines[j - 1]!
+      if (oldLine === newLine) {
+        temp.push({ type: 'unchanged', text: oldLine, oldLineNum: i, newLineNum: j })
+        i--; j--
+      } else if (j > 0 && (i === 0 || get(i, j - 1) >= get(i - 1, j))) {
+        temp.push({ type: 'added', text: newLine, newLineNum: j })
+        j--
+      } else {
+        temp.push({ type: 'removed', text: oldLine, oldLineNum: i })
+        i--
+      }
+    } else if (j > 0) {
+      const newLine = newLines[j - 1]!
+      temp.push({ type: 'added', text: newLine, newLineNum: j })
       j--
     } else {
-      temp.push({ type: 'removed', text: oldLines[i - 1], oldLineNum: i })
+      const oldLine = oldLines[i - 1]!
+      temp.push({ type: 'removed', text: oldLine, oldLineNum: i })
       i--
     }
   }

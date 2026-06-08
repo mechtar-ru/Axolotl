@@ -1,5 +1,6 @@
 package com.agent.orchestrator.service;
 
+import com.agent.orchestrator.context.ContextAssembler;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
@@ -39,6 +40,7 @@ class AgentNodeStrategyTest {
     @Mock ProjectContextBuilder projectContextBuilder;
     @Mock ExecutionStateManager stateManager;
     @Mock PlanStepService planStepService;
+    @Mock com.agent.orchestrator.context.ContextAssembler contextAssembler;
 
     AgentNodeStrategy strategy;
 
@@ -49,12 +51,17 @@ class AgentNodeStrategyTest {
 
     @BeforeEach
     void setUp() {
+        when(contextAssembler.assemble(anyList(), anyInt()))
+                .thenReturn(new com.agent.orchestrator.context.ContextAssembler.AssemblyResult(
+                        "", 0, 0, 0, List.of()));
+
         strategy = new AgentNodeStrategy(utilityService, llmService, webSocketHandler,
                 memPalaceClient, toolExecutor, schemaRepository,
                 projectContextBuilder,
                 stateManager,
                 null,  // ReasoningCapture
-                planStepService);
+                planStepService,
+                contextAssembler);
 
         node = new Node();
         node.setId("n1");
@@ -147,7 +154,6 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
         when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
         when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
@@ -159,7 +165,6 @@ class AgentNodeStrategyTest {
         String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
 
         assertNotNull(result);
-        verify(utilityService).buildToolDefinitions(anyList());
         verify(utilityService).buildToolInstructions(anyList());
         verify(utilityService).buildMessagesForToolCall(anyList());
         verify(llmService).chat(anyString(), isNull(), anyString(), isNull(), any());
@@ -263,7 +268,6 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolDefinitions(anyList())).thenReturn("");
         when(utilityService.buildToolInstructions(anyList())).thenReturn("");
         when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
@@ -275,7 +279,6 @@ class AgentNodeStrategyTest {
         String result = strategy.executeAgentNode(toolNode, "schema-1", "resolved-model");
 
         assertNotNull(result);
-        verify(utilityService).buildToolDefinitions(anyList());
     }
 
     @Test

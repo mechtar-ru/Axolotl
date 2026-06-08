@@ -283,7 +283,7 @@ function addFeedback() {
 }
 
 function emitApprove() {
-  emit('approve', plan.value);
+  emit('approve', planText.value);
 }
 
 function emitSuggest() {

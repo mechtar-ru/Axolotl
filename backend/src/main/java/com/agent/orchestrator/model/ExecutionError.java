@@ -1,9 +1,12 @@
 package com.agent.orchestrator.model;
 
+import lombok.Data;
+
 /**
  * Structured error for user-facing error messages.
  * Replaces raw e.getMessage() propagation with categorized errors.
  */
+@Data
 public class ExecutionError {
 
     public enum ErrorType {
@@ -27,10 +30,6 @@ public class ExecutionError {
     public ExecutionError(ErrorType type, String message) {
         this(type, message, null);
     }
-
-    public String getType() { return type; }
-    public String getMessage() { return message; }
-    public String getDetail() { return detail; }
 
     public static ExecutionError config(String message, String detail) {
         return new ExecutionError(ErrorType.CONFIG_ERROR, message, detail);

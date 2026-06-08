@@ -5,8 +5,15 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node(labels = {"Decision", "Architecture"})
+@Getter
+@Setter
+@ToString
 public class Decision {
     
     @Id
@@ -59,30 +66,7 @@ public class Decision {
         this.rationale = rationale;
     }
     
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    public String getRationale() { return rationale; }
-    public void setRationale(String rationale) { this.rationale = rationale; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-    public String getPriority() { return priority; }
-    public void setPriority(String priority) { this.priority = priority; }
-    public String getDecidedBy() { return decidedBy; }
-    public void setDecidedBy(String decidedBy) { this.decidedBy = decidedBy; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getDecidedAt() { return decidedAt; }
-    public void setDecidedAt(Instant decidedAt) { this.decidedAt = decidedAt; }
-    public String getSource() { return source; }
-    public void setSource(String source) { this.source = source; }
     public Set<CodeClass> getImpactedClasses() { return impactedClasses; }
-    public void setImpactedClasses(Set<CodeClass> impactedClasses) { this.impactedClasses = impactedClasses; }
     public Set<CodeMethod> getImpactedMethods() { return impactedMethods; }
-    public void setImpactedMethods(Set<CodeMethod> impactedMethods) { this.impactedMethods = impactedMethods; }
     public Set<Decision> getRelatedDecisions() { return relatedDecisions; }
-    public void setRelatedDecisions(Set<Decision> relatedDecisions) { this.relatedDecisions = relatedDecisions; }
 }

@@ -29,7 +29,7 @@ import static org.mockito.Mockito.*;
 class PipelineServiceTest {
 
     @Mock Neo4jSchemaRepository schemaRepository;
-    @Mock NodeExecutor nodeExecutor;
+    @Mock NodeRouter nodeRouter;
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock ExecutionRepository executionRepository;
     @Mock ExecutionStateManager stateManager;
@@ -44,7 +44,7 @@ class PipelineServiceTest {
     @BeforeEach
     void setUp() {
         pipelineBuilder = new PipelineBuilder(schemaRepository);
-        pipelineService = new PipelineService(schemaRepository, nodeExecutor,
+        pipelineService = new PipelineServiceImpl(schemaRepository, nodeRouter,
                 webSocketHandler, executionRepository, stateManager, schemaValidator, pipelineBuilder, statusManager, diffService);
         // Default: validation passes
         SchemaValidationResult validResult = new SchemaValidationResult();
@@ -213,7 +213,7 @@ class PipelineServiceTest {
         when(schemaRepository.findById("running-schema")).thenReturn(schema);
 
         // Simulate already-running state with an incomplete future
-        statusManager.getRunningPipelines().put("running-schema", new CompletableFuture<>());
+        statusManager.registerPipeline("running-schema", new CompletableFuture<>(), new AtomicBoolean(false));
 
         assertThrows(RuntimeException.class, () ->
             pipelineService.executePipeline("running-schema"));
@@ -255,7 +255,7 @@ class PipelineServiceTest {
         when(schemaRepository.findById("test")).thenReturn(schema);
 
         // Simulate already-running state with an incomplete future
-        statusManager.getRunningPipelines().put("test", new CompletableFuture<>());
+        statusManager.registerPipeline("test", new CompletableFuture<>(), new AtomicBoolean(false));
 
         assertThrows(RuntimeException.class, () ->
             pipelineService.executePipeline("test"));

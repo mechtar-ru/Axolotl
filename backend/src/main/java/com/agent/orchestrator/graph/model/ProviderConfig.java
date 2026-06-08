@@ -2,8 +2,16 @@ package com.agent.orchestrator.graph.model;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.neo4j.core.schema.*;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node("ProviderConfig")
+@Getter
+@Setter
+@ToString
+@NoArgsConstructor
 public class ProviderConfig {
     @Id
     @Property("providerName")
@@ -21,7 +29,6 @@ public class ProviderConfig {
     @Property("updatedAt")
     private String updatedAt;
 
-    public ProviderConfig() {}
 
     public ProviderConfig(String providerName, String apiKeyHash, String baseUrl, String defaultModel, String updatedAt) {
         this.providerName = providerName;
@@ -31,14 +38,4 @@ public class ProviderConfig {
         this.updatedAt = updatedAt;
     }
 
-    public String getProviderName() { return providerName; }
-    public void setProviderName(String providerName) { this.providerName = providerName; }
-    public String getApiKeyHash() { return apiKeyHash; }
-    public void setApiKeyHash(String apiKeyHash) { this.apiKeyHash = apiKeyHash; }
-    public String getBaseUrl() { return baseUrl; }
-    public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
-    public String getDefaultModel() { return defaultModel; }
-    public void setDefaultModel(String defaultModel) { this.defaultModel = defaultModel; }
-    public String getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(String updatedAt) { this.updatedAt = updatedAt; }
 }

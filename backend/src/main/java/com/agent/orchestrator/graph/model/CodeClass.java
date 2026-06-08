@@ -5,8 +5,15 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node(labels = {"Class", "Code"})
+@Getter
+@Setter
+@ToString
 public class CodeClass {
 
     @Id
@@ -83,46 +90,10 @@ public class CodeClass {
         this.packageName = packageName;
     }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getQualifiedName() { return qualifiedName; }
-    public void setQualifiedName(String qualifiedName) { this.qualifiedName = qualifiedName; }
-    public String getHash() { return hash; }
-    public void setHash(String hash) { this.hash = hash; }
-    public String getPackageName() { return packageName; }
-    public void setPackageName(String packageName) { this.packageName = packageName; }
-    public String getFilePath() { return filePath; }
-    public void setFilePath(String filePath) { this.filePath = filePath; }
     public boolean isAbstract() { return isAbstract; }
-    public void setAbstract(boolean isAbstract) { this.isAbstract = isAbstract; }
     public boolean isInterface() { return isInterface; }
-    public void setInterface(boolean isInterface) { this.isInterface = isInterface; }
-    public String getVisibility() { return visibility; }
-    public void setVisibility(String visibility) { this.visibility = visibility; }
-    public String getAstBody() { return astBody; }
-    public void setAstBody(String astBody) { this.astBody = astBody; }
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    public String getImports() { return imports; }
-    public void setImports(String imports) { this.imports = imports; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public int getTokenCount() { return tokenCount; }
-    public void setTokenCount(int tokenCount) { this.tokenCount = tokenCount; }
     public Set<CodeMethod> getMethods() { return methods; }
-    public void setMethods(Set<CodeMethod> methods) { this.methods = methods; }
     public Set<CodeField> getFields() { return fields; }
-    public void setFields(Set<CodeField> fields) { this.fields = fields; }
-    public CodeClass getSuperClass() { return superClass; }
-    public void setSuperClass(CodeClass superClass) { this.superClass = superClass; }
     public Set<CodeClass> getInterfaces() { return interfaces; }
-    public void setInterfaces(Set<CodeClass> interfaces) { this.interfaces = interfaces; }
     public Set<CodeClass> getDependencies() { return dependencies; }
-    public void setDependencies(Set<CodeClass> dependencies) { this.dependencies = dependencies; }
-    public CodePackage getParentPackage() { return parentPackage; }
-    public void setParentPackage(CodePackage parentPackage) { this.parentPackage = parentPackage; }
 }

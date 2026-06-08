@@ -13,7 +13,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -37,7 +36,6 @@ public class NodeExecutor {
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
-    private final NodeRouter router;
     private final AgentNodeStrategy agentStrategy;
     private final SchemaBuilderNodeStrategy schemaBuilderStrategy;
     private final VerifierNodeStrategy verifierStrategy;
@@ -125,7 +123,6 @@ public class NodeExecutor {
                         ProjectContextBuilder projectContextBuilder,
                         ExecutionRepository executionRepository,
                         ExecutionStateManager stateManager,
-                        @Lazy NodeRouter router,
                         AgentNodeStrategy agentStrategy,
                         VerifierNodeStrategy verifierStrategy,
                         SchemaBuilderNodeStrategy schemaBuilderStrategy,
@@ -142,19 +139,11 @@ public class NodeExecutor {
         this.projectContextBuilder = projectContextBuilder;
         this.executionRepository = executionRepository;
         this.stateManager = stateManager;
-        this.router = router;
         this.agentStrategy = agentStrategy;
         this.verifierStrategy = verifierStrategy;
         this.schemaBuilderStrategy = schemaBuilderStrategy;
         this.reviewStrategy = reviewStrategy;
         this.draftStrategy = draftStrategy;
-    }
-
-    @PostConstruct
-    void init() {
-        toolExecutor.setWebSocketHandler(webSocketHandler);
-        toolExecutor.setLlmService(llmService);
-        toolExecutor.setStateManager(stateManager);
     }
 
     // ────────────────────────── result maps (delegated to stateManager) ──────────────────────────
@@ -177,13 +166,6 @@ public class NodeExecutor {
 
     public void setCurrentRunId(String schemaId, String runId) {
         stateManager.setCurrentRunId(schemaId, runId);
-    }
-
-    // ────────────────────────── main dispatcher ──────────────────────────
-
-    public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
-                            ExecutionMode mode, String resolvedModel) {
-        router.executeNode(node, schemaId, cancelFlag, mode, resolvedModel);
     }
 
     // ────────────────────────── agent nodes (delegated to AgentNodeStrategy) ──────────────────────────

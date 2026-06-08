@@ -3,6 +3,9 @@ package com.agent.orchestrator.model;
 import java.util.Map;
 import java.util.List;
 
+import lombok.Data;
+
+@Data
 public class Tool {
     private String id;
     private String name;
@@ -22,23 +25,6 @@ public class Tool {
         this.enabledByDefault = false;
     }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public String getInputSchema() { return inputSchema; }
-    public void setInputSchema(String inputSchema) { this.inputSchema = inputSchema; }
-
-    public ToolCategory getCategory() { return category; }
-    public void setCategory(ToolCategory category) { this.category = category; }
-
-    public boolean isEnabledByDefault() { return enabledByDefault; }
-    public void setEnabledByDefault(boolean enabledByDefault) { this.enabledByDefault = enabledByDefault; }
 
     public enum ToolCategory {
         FILE_SYSTEM,
@@ -50,6 +36,7 @@ public class Tool {
         CUSTOM
     }
 
+    @Data
     public static class ToolResult {
         private boolean success;
         private String output;
@@ -72,16 +59,6 @@ public class Tool {
             return new ToolResult(false, null, error);
         }
 
-        public boolean isSuccess() { return success; }
-        public void setSuccess(boolean success) { this.success = success; }
 
-        public String getOutput() { return output; }
-        public void setOutput(String output) { this.output = output; }
-
-        public String getError() { return error; }
-        public void setError(String error) { this.error = error; }
-
-        public long getExecutionTimeMs() { return executionTimeMs; }
-        public void setExecutionTimeMs(long executionTimeMs) { this.executionTimeMs = executionTimeMs; }
     }
 }

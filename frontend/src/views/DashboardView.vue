@@ -438,7 +438,7 @@ async function loadGroups() {
 /** Handle group selection from AppCard dropdown */
 async function onGroupSelect(schema: WorkflowSchema, groupName: string | null) {
   try {
-    const updated = await schemaApi.updateSchema(schema.id, { projectGroup: groupName || '' })
+    const updated = await schemaApi.updateSchema(schema.id, { ...schema, projectGroup: groupName || '' })
     // Update local store
     const idx = schemaStore.schemas.findIndex(s => s.id === schema.id)
     if (idx >= 0) {

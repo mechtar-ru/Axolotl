@@ -17,7 +17,7 @@ class ToolExecutorTest {
 
     @Test
     void testFileWriteBlockedOutsideTargetPath() {
-        ToolExecutor executor = new ToolExecutor();
+        ToolExecutorImpl executor = new ToolExecutorImpl();
         ToolPermission unrestrictedPerm = new ToolPermission();
         unrestrictedPerm.setEnabled(true);
 
@@ -35,7 +35,7 @@ class ToolExecutorTest {
     @Test
     void testFileWriteAllowedInsideTargetPath() throws IOException {
         Path tempDir = Files.createTempDirectory("axolotl-test-");
-        ToolExecutor executor = new ToolExecutor();
+        ToolExecutorImpl executor = new ToolExecutorImpl();
         ToolPermission unrestrictedPerm = new ToolPermission();
         unrestrictedPerm.setEnabled(true);
 
@@ -55,7 +55,7 @@ class ToolExecutorTest {
     void testFileWriteAllowedWithNodeOverride() throws IOException {
         Path tempDir = Files.createTempDirectory("axolotl-test-");
         Path overrideDir = Files.createTempDirectory("axolotl-override-");
-        ToolExecutor executor = new ToolExecutor();
+        ToolExecutorImpl executor = new ToolExecutorImpl();
 
         ToolPermission overridePerm = new ToolPermission();
         overridePerm.setEnabled(true);
@@ -76,7 +76,7 @@ class ToolExecutorTest {
     @Test
     void testFileWriteOutsideTargetPathWithNodeOverride() throws IOException {
         Path tempDir = Files.createTempDirectory("axolotl-test-");
-        ToolExecutor executor = new ToolExecutor();
+        ToolExecutorImpl executor = new ToolExecutorImpl();
 
         ToolPermission overridePerm = new ToolPermission();
         overridePerm.setEnabled(true);

@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import lombok.Data;
+
+@Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Task {
     private String id;
@@ -37,52 +40,8 @@ public class Task {
         this.title = title;
     }
 
-    // Getters and setters
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
 
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
-
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public TaskStatus getStatus() { return status; }
-    public void setStatus(TaskStatus status) { this.status = status; }
-
-    public Priority getPriority() { return priority; }
-    public void setPriority(Priority priority) { this.priority = priority; }
-
-    public List<String> getDependencies() { return dependencies; }
-    public void setDependencies(List<String> dependencies) { this.dependencies = dependencies; }
-
-    public String getNodeId() { return nodeId; }
-    public void setNodeId(String nodeId) { this.nodeId = nodeId; }
-
-    public String getSchemaId() { return schemaId; }
-    public void setSchemaId(String schemaId) { this.schemaId = schemaId; }
-
-    public String getReason() { return reason; }
-    public void setReason(String reason) { this.reason = reason; }
-
-    public int getOrder() { return order; }
-    public void setOrder(int order) { this.order = order; }
-
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-
-    public List<String> getAcceptanceCriteria() { return acceptanceCriteria; }
-    public void setAcceptanceCriteria(List<String> acceptanceCriteria) { this.acceptanceCriteria = acceptanceCriteria; }
-
-    public List<Boolean> getAcceptanceCriteriaMet() { return acceptanceCriteriaMet; }
-    public void setAcceptanceCriteriaMet(List<Boolean> acceptanceCriteriaMet) { this.acceptanceCriteriaMet = acceptanceCriteriaMet; }
-
-    public List<GeneratedFile> getGeneratedFiles() { return generatedFiles; }
-    public void setGeneratedFiles(List<GeneratedFile> generatedFiles) { this.generatedFiles = generatedFiles; }
-
+    @Data
     public static class GeneratedFile {
         private String path;
         private String description;
@@ -94,11 +53,6 @@ public class Task {
             this.description = description;
         }
 
-        public String getPath() { return path; }
-        public void setPath(String path) { this.path = path; }
-
-        public String getDescription() { return description; }
-        public void setDescription(String description) { this.description = description; }
     }
 
     public void touch() {

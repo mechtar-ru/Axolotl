@@ -1,8 +1,17 @@
 package com.agent.orchestrator.graph.model;
 
 import org.springframework.data.neo4j.core.schema.*;
+import java.time.Instant;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node("Checkpoint")
+@Getter
+@Setter
+@ToString
+@NoArgsConstructor
 public class GraphCheckpoint {
 
     @Id
@@ -19,22 +28,11 @@ public class GraphCheckpoint {
     private int currentWave;
 
     @Property("createdAt")
-    private String createdAt;
+    private Instant createdAt;
 
-    public GraphCheckpoint() {}
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
 
-    public String getRunId() { return runId; }
-    public void setRunId(String runId) { this.runId = runId; }
 
-    public String getCompletedNodeIds() { return completedNodeIds; }
-    public void setCompletedNodeIds(String completedNodeIds) { this.completedNodeIds = completedNodeIds; }
 
-    public int getCurrentWave() { return currentWave; }
-    public void setCurrentWave(int currentWave) { this.currentWave = currentWave; }
 
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

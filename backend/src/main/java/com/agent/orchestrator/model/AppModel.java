@@ -1,5 +1,8 @@
 package com.agent.orchestrator.model;
 
+import lombok.Data;
+
+@Data
 public class AppModel {
     public enum AppType {
         CHAT,
@@ -55,26 +58,4 @@ public class AppModel {
         schema.setTargetPathConflictAction(this.targetPathConflictAction);
         return schema;
     }
-
-    // Getters and Setters
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-
-    public String getWorkspaceId() { return workspaceId; }
-    public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
-
-    public AppType getAppType() { return appType; }
-    public void setAppType(AppType appType) { this.appType = appType; }
-
-    public String getTargetPath() { return targetPath; }
-    public void setTargetPath(String targetPath) { this.targetPath = targetPath; }
-
-    public String getTargetPathConflictAction() { return targetPathConflictAction; }
-    public void setTargetPathConflictAction(String targetPathConflictAction) { this.targetPathConflictAction = targetPathConflictAction; }
 }

@@ -5,8 +5,15 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node(labels = {"Package", "Code"})
+@Getter
+@Setter
+@ToString
 public class CodePackage {
     
     @Id
@@ -43,20 +50,6 @@ public class CodePackage {
         this.path = path;
     }
     
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getPath() { return path; }
-    public void setPath(String path) { this.path = path; }
-    public String getLanguage() { return language; }
-    public void setLanguage(String language) { this.language = language; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
     public Set<CodePackage> getSubpackages() { return subpackages; }
-    public void setSubpackages(Set<CodePackage> subpackages) { this.subpackages = subpackages; }
     public Set<CodeClass> getClasses() { return classes; }
-    public void setClasses(Set<CodeClass> classes) { this.classes = classes; }
-    public CodePackage getParent() { return parent; }
-    public void setParent(CodePackage parent) { this.parent = parent; }
 }

@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.graph.repository.Neo4jPlanRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +16,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Service
+@Transactional
 public class PlanService {
 
     private static final Logger log = LoggerFactory.getLogger(PlanService.class);

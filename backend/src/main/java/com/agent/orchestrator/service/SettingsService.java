@@ -3,6 +3,7 @@ package com.agent.orchestrator.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.agent.orchestrator.graph.model.GraphProviderSetting;
 import com.agent.orchestrator.graph.repository.Neo4jProviderSettingRepository;
@@ -19,6 +20,7 @@ import java.util.*;
  * Позволяет обновлять ключи без перезапуска сервера.
  */
 @Service
+@Transactional
 public class SettingsService {
 
     private static final Logger log = LoggerFactory.getLogger(SettingsService.class);

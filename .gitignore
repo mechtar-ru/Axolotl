@@ -63,3 +63,7 @@ thoughts/
 # Python cache
 scripts/__pycache__/
 screenshot-*.png
+
+# Plugins (npm packages installed by plugin system)
+plugins/node_modules/
+plugin-bridge.log

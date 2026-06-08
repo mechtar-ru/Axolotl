@@ -1,7 +1,9 @@
 package com.agent.orchestrator.model;
 
+import lombok.Data;
 import java.time.Instant;
 
+@Data
 public class ApiKey {
     private String id;
     private String name;
@@ -26,34 +28,4 @@ public class ApiKey {
         this.enabled = true;
         this.scopes = new String[] { "workflows:read", "workflows:execute" };
     }
-
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
-    public String getKeyHash() { return keyHash; }
-    public void setKeyHash(String keyHash) { this.keyHash = keyHash; }
-
-    public String getKeyPrefix() { return keyPrefix; }
-    public void setKeyPrefix(String keyPrefix) { this.keyPrefix = keyPrefix; }
-
-    public String getUserId() { return userId; }
-    public void setUserId(String userId) { this.userId = userId; }
-
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-
-    public Instant getExpiresAt() { return expiresAt; }
-    public void setExpiresAt(Instant expiresAt) { this.expiresAt = expiresAt; }
-
-    public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-    public String[] getScopes() { return scopes; }
-    public void setScopes(String[] scopes) { this.scopes = scopes; }
-
-    public String getWebhookUrl() { return webhookUrl; }
-    public void setWebhookUrl(String webhookUrl) { this.webhookUrl = webhookUrl; }
 }

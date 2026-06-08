@@ -36,7 +36,6 @@ public class NodeRouter {
 
     private static final Logger log = LoggerFactory.getLogger(NodeRouter.class);
 
-    private final NodeExecutor nodeExecutor;
     private final ExecutionUtilityService utilityService;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
@@ -49,9 +48,13 @@ public class NodeRouter {
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
     private final ReasoningCapture reasoningCapture;
+    private final AgentNodeStrategy agentStrategy;
+    private final SchemaBuilderNodeStrategy schemaBuilderStrategy;
+    private final VerifierNodeStrategy verifierStrategy;
+    private final ReviewNodeStrategy reviewStrategy;
+    private final DraftNodeStrategy draftStrategy;
 
-    public NodeRouter(NodeExecutor nodeExecutor,
-                      ExecutionUtilityService utilityService,
+    public NodeRouter(ExecutionUtilityService utilityService,
                       LlmService llmService,
                       ExecutionWebSocketHandler webSocketHandler,
                       MemPalaceClient memPalaceClient,
@@ -62,8 +65,12 @@ public class NodeRouter {
                       ProjectContextBuilder projectContextBuilder,
                       ExecutionRepository executionRepository,
                       ExecutionStateManager stateManager,
-                      ReasoningCapture reasoningCapture) {
-        this.nodeExecutor = nodeExecutor;
+                      ReasoningCapture reasoningCapture,
+                      AgentNodeStrategy agentStrategy,
+                      SchemaBuilderNodeStrategy schemaBuilderStrategy,
+                      VerifierNodeStrategy verifierStrategy,
+                      ReviewNodeStrategy reviewStrategy,
+                      DraftNodeStrategy draftStrategy) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -76,6 +83,11 @@ public class NodeRouter {
         this.executionRepository = executionRepository;
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
+        this.agentStrategy = agentStrategy;
+        this.schemaBuilderStrategy = schemaBuilderStrategy;
+        this.verifierStrategy = verifierStrategy;
+        this.reviewStrategy = reviewStrategy;
+        this.draftStrategy = draftStrategy;
     }
 
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
@@ -125,11 +137,11 @@ public class NodeRouter {
                             switch (nodeType) {
                                 case "agent":
                                     if (mode == ExecutionMode.DRY_RUN) {
-                                        return nodeExecutor.simulateAgentNode(node, schemaId);
+                                        return agentStrategy.simulateAgentNode(node, schemaId);
                                     } else if (mode == ExecutionMode.ANALYZE) {
-                                        return nodeExecutor.analyzeAgentNode(node, schemaId);
+                                        return agentStrategy.analyzeAgentNode(node, schemaId);
                                     } else {
-                                        return nodeExecutor.executeAgentNode(node, schemaId, resolvedModel);
+                                        return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel);
                                     }
 
                                 case "output":
@@ -160,10 +172,10 @@ public class NodeRouter {
                                     return handleGuardrailNode(node, schemaId);
 
                                 case "verifier":
-                                    return nodeExecutor.executeVerifierNode(node, schemaId, resolvedModel);
+                                    return verifierStrategy.executeVerifierNode(node, schemaId, resolvedModel);
 
                                 case "review":
-                                    return nodeExecutor.executeReviewNode(node, schemaId, resolvedModel);
+                                    return reviewStrategy.executeReviewNode(node, schemaId, resolvedModel);
 
                                 case "human":
                                     return handleHumanNode(node, schemaId, cancelFlag);
@@ -175,10 +187,10 @@ public class NodeRouter {
                                     return utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
 
                                 case "schemabuilder":
-                                    return nodeExecutor.executeSchemaBuilderNode(node, schemaId, resolvedModel);
+                                    return schemaBuilderStrategy.executeSchemaBuilderNode(node, schemaId, resolvedModel);
 
                                 case "draft":
-                                    return nodeExecutor.executeDraftNode(node, schemaId, resolvedModel);
+                                    return draftStrategy.executeDraftNode(node, schemaId, resolvedModel);
 
                                 default:
                                     log.warn("Unknown node type: {}", nodeType);

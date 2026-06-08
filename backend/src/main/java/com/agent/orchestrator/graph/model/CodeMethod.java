@@ -5,8 +5,15 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
+import lombok.NoArgsConstructor;
 
 @Node(labels = {"Method", "Code"})
+@Getter
+@Setter
+@ToString
 public class CodeMethod {
 
     @Id
@@ -74,40 +81,8 @@ public class CodeMethod {
         this.returnType = returnType;
     }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getSignature() { return signature; }
-    public void setSignature(String signature) { this.signature = signature; }
-    public String getHash() { return hash; }
-    public void setHash(String hash) { this.hash = hash; }
-    public String getReturnType() { return returnType; }
-    public void setReturnType(String returnType) { this.returnType = returnType; }
-    public String getVisibility() { return visibility; }
-    public void setVisibility(String visibility) { this.visibility = visibility; }
     public boolean isStatic() { return isStatic; }
-    public void setStatic(boolean isStatic) { this.isStatic = isStatic; }
     public boolean isAbstract() { return isAbstract; }
-    public void setAbstract(boolean isAbstract) { this.isAbstract = isAbstract; }
-    public int getLineNumber() { return lineNumber; }
-    public void setLineNumber(int lineNumber) { this.lineNumber = lineNumber; }
-    public String getParameters() { return parameters; }
-    public void setParameters(String parameters) { this.parameters = parameters; }
-    public String getBody() { return body; }
-    public void setBody(String body) { this.body = body; }
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    public int getTokenCount() { return tokenCount; }
-    public void setTokenCount(int tokenCount) { this.tokenCount = tokenCount; }
-    public Instant getCreatedAt() { return createdAt; }
-    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
-    public Instant getUpdatedAt() { return updatedAt; }
-    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
     public Set<CodeMethod> getCalls() { return calls; }
-    public void setCalls(Set<CodeMethod> calls) { this.calls = calls; }
     public Set<CodeMethod> getCalledBy() { return calledBy; }
-    public void setCalledBy(Set<CodeMethod> calledBy) { this.calledBy = calledBy; }
-    public CodeClass getParentClass() { return parentClass; }
-    public void setParentClass(CodeClass parentClass) { this.parentClass = parentClass; }
 }

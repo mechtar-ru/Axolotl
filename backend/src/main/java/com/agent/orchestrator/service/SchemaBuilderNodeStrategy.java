@@ -224,8 +224,8 @@ public class SchemaBuilderNodeStrategy {
         // Save the new schema directly via repository
         String id = UUID.randomUUID().toString();
         newSchema.setId(id);
-        newSchema.setCreatedAt(Instant.now().toString());
-        newSchema.setUpdatedAt(Instant.now().toString());
+        newSchema.setCreatedAt(Instant.now());
+        newSchema.setUpdatedAt(Instant.now());
         schemaRepository.save(newSchema);
         WorkflowSchema saved = newSchema;
 
