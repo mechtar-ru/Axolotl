@@ -10,6 +10,7 @@ export interface WebSocketCallbacks {
   onLog?: (message: string) => void;
   onNodeTime?: (data: { schemaId: string; nodeId: string; durationMs: number }) => void;
   onToken?: (data: { schemaId: string; nodeId: string; token: string }) => void;
+  onReasoning?: (data: { schemaId: string; nodeId: string; reasoning: string }) => void;
   onWave?: (data: { waveNumber: number; nodeIds: string[]; status: string }) => void;
   onToolCall?: (data: { schemaId: string; nodeId: string; toolName: string; args: string; durationMs: number; success: boolean; result: string }) => void;
   onPredictCall?: (data: { schemaId: string; nodeId: string; signature: string; inputSummary: string; outputSummary: string; durationMs: number; tokens: number }) => void;
@@ -161,6 +162,9 @@ export function useWebSocket() {
               break;
             case 'token':
               callbacks?.onToken?.(data);
+              break;
+            case 'reasoning':
+              callbacks?.onReasoning?.(data);
               break;
             case 'wave':
               callbacks?.onWave?.(data);

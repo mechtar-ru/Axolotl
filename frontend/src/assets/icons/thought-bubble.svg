@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Main bubble -->
+  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  <!-- Small tail bubble 1 -->
+  <circle cx="5" cy="19" r="1"/>
+  <!-- Small tail bubble 2 -->
+  <circle cx="3" cy="21" r="0.75"/>
+</svg>
