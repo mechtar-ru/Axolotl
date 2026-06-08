@@ -12,11 +12,13 @@ const props = defineProps<{
   selected?: boolean
   data?: {
     config?: Record<string, unknown>
+    hasReasoning?: boolean
   }
 }>()
 
 const emit = defineEmits<{
   'config-click': []
+  'reasoning-click': []
 }>()
 
 const statusColors: Record<string, string> = {
@@ -67,6 +69,18 @@ function handleDoubleClick() {
 
     <!-- Status indicator -->
     <div v-if="status && status !== 'idle'" class="status-dot" :style="{ background: statusColors[status] }" />
+
+    <!-- Reasoning badge -->
+    <button
+      v-if="data?.hasReasoning"
+      class="reasoning-badge"
+      title="View reasoning"
+      @click.stop="emit('reasoning-click')"
+    >
+      <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+      </svg>
+    </button>
 
     <!-- Bottom handle (output) -->
     <Handle type="source" :position="Position.Bottom" class="block-handle" />
@@ -130,6 +144,34 @@ function handleDoubleClick() {
   height: 8px;
   border-radius: 50%;
   border: 2px solid var(--bg-secondary);
+}
+
+.reasoning-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  padding: 2px;
+  border: none;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, transform 0.15s;
+  z-index: 10;
+}
+
+.reasoning-badge:hover {
+  background: var(--accent-hover, var(--accent));
+  transform: scale(1.1);
+}
+
+.reasoning-badge:active {
+  transform: scale(0.95);
 }
 
 .block-handle {
