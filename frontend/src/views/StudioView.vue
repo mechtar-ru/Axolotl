@@ -19,6 +19,7 @@ import PromptToSchemaModal from '@/components/editor/PromptToSchemaModal.vue'
 import ReviewApprovalDialog from '@/components/studio/ReviewApprovalDialog.vue'
 import DepsInstallDialog from '@/components/studio/DepsInstallDialog.vue'
 import DiffReviewDialog from '@/components/studio/DiffReviewDialog.vue'
+import ThoughtsPanel from '@/components/studio/ThoughtsPanel.vue'
 import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/useReviewStore'
 import { useToast } from '@/composables/useToast'
@@ -82,6 +83,12 @@ const depsProjectPath = ref('')
 const showDiffDialog = ref(false)
 const diffDiffs = ref<Array<{filePath: string; diff: string; originalLength: number; newLength: number}>>([])
 const diffNodeId = ref('')
+
+// Thoughts/Reasoning display state
+const showThoughtsPanel = ref(false)
+const currentReasoningNodeId = ref('')
+const currentReasoning = ref('')
+const nodeReasonings = ref<Record<string, string>>({})  // nodeId → reasoning text
 
 const showPipelinePanel = ref(false)
 const hasFailedRun = ref(false)
@@ -216,6 +223,13 @@ provide('executionProgress', executionProgress)
       diffDiffs.value = data.diffs || []
       diffNodeId.value = data.nodeId
       showDiffDialog.value = true
+    },
+    onReasoning: (data) => {
+      if (!isActive) return
+      nodeReasonings.value[data.nodeId] = data.reasoning
+      // Store the most recent reasoning for display
+      currentReasoningNodeId.value = data.nodeId
+      currentReasoning.value = data.reasoning
     },
     onReconnect: async (schemaId) => {
       console.log('🔌 WebSocket reconnected, refreshing schema state for', schemaId)
@@ -704,6 +718,12 @@ function goToDashboard() {
       :node-id="diffNodeId"
       :diffs="diffDiffs"
       @close="showDiffDialog = false"
+    />
+
+    <ThoughtsPanel
+      :visible="showThoughtsPanel"
+      :reasoning="currentReasoning"
+      @close="showThoughtsPanel = false"
     />
   </div>
 </template>
