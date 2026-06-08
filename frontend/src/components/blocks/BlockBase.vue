@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, inject } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
 
 const props = defineProps<{
@@ -20,6 +20,8 @@ const emit = defineEmits<{
   'config-click': []
   'reasoning-click': []
 }>()
+
+const appState = inject<any>('appState', {})
 
 const statusColors: Record<string, string> = {
   idle: 'transparent',
@@ -43,6 +45,13 @@ const pulseAnim = computed(() => props.status === 'running')
 
 function handleDoubleClick() {
   emit('config-click')
+}
+
+function handleReasoningClick() {
+  if (appState.onReasoningBadgeClick) {
+    appState.onReasoningBadgeClick(props.id)
+  }
+  emit('reasoning-click')
 }
 </script>
 

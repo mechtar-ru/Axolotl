@@ -112,11 +112,18 @@ async function handleRetry() {
 }
 
 // Provide state for child components
+const onReasoningBadgeClick = (nodeId: string) => {
+  currentReasoningNodeId.value = nodeId
+  currentReasoning.value = nodeReasonings.get(nodeId) || ''
+  showThoughtsPanel.value = true
+}
+
 provide('appState', {
   app,
   isRunning,
   activeMode,
-  appId
+  appId,
+  onReasoningBadgeClick
 })
 
 provide('isRunning', isRunning)
