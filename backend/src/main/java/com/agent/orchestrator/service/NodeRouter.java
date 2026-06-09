@@ -48,11 +48,10 @@ public class NodeRouter {
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
     private final ReasoningCapture reasoningCapture;
+    private final List<NodeExecutionStrategy> strategies;
     private final AgentNodeStrategy agentStrategy;
-    private final SchemaBuilderNodeStrategy schemaBuilderStrategy;
-    private final VerifierNodeStrategy verifierStrategy;
-    private final ReviewNodeStrategy reviewStrategy;
-    private final DraftNodeStrategy draftStrategy;
+    private final NodeOutputValidator outputValidator;
+    private Map<String, NodeExecutionStrategy> strategyRegistry;
 
     public NodeRouter(ExecutionUtilityService utilityService,
                       LlmService llmService,
@@ -66,11 +65,9 @@ public class NodeRouter {
                       ExecutionRepository executionRepository,
                       ExecutionStateManager stateManager,
                       ReasoningCapture reasoningCapture,
-                      AgentNodeStrategy agentStrategy,
-                      SchemaBuilderNodeStrategy schemaBuilderStrategy,
-                      VerifierNodeStrategy verifierStrategy,
-                      ReviewNodeStrategy reviewStrategy,
-                      DraftNodeStrategy draftStrategy) {
+                       List<NodeExecutionStrategy> strategies,
+                       AgentNodeStrategy agentStrategy,
+                       NodeOutputValidator outputValidator) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -83,11 +80,17 @@ public class NodeRouter {
         this.executionRepository = executionRepository;
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
+        this.strategies = strategies;
         this.agentStrategy = agentStrategy;
-        this.schemaBuilderStrategy = schemaBuilderStrategy;
-        this.verifierStrategy = verifierStrategy;
-        this.reviewStrategy = reviewStrategy;
-        this.draftStrategy = draftStrategy;
+        this.outputValidator = outputValidator;
+    }
+
+    @PostConstruct
+    public void initStrategyRegistry() {
+        strategyRegistry = new HashMap<>();
+        for (NodeExecutionStrategy strategy : strategies) {
+            strategyRegistry.put(strategy.supportedNodeType(), strategy);
+        }
     }
 
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
@@ -171,12 +174,6 @@ public class NodeRouter {
                                 case "guardrail":
                                     return handleGuardrailNode(node, schemaId);
 
-                                case "verifier":
-                                    return verifierStrategy.executeVerifierNode(node, schemaId, resolvedModel);
-
-                                case "review":
-                                    return reviewStrategy.executeReviewNode(node, schemaId, resolvedModel);
-
                                 case "human":
                                     return handleHumanNode(node, schemaId, cancelFlag);
 
@@ -186,13 +183,18 @@ public class NodeRouter {
                                 case "subagent":
                                     return utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
 
-                                case "schemabuilder":
-                                    return schemaBuilderStrategy.executeSchemaBuilderNode(node, schemaId, resolvedModel);
-
-                                case "draft":
-                                    return draftStrategy.executeDraftNode(node, schemaId, resolvedModel);
-
                                 default:
+                                    NodeExecutionStrategy strategy = strategyRegistry.get(nodeType);
+                                    if (strategy != null) {
+                                        Map<String, Object> strategyResult = strategy.executeNode(node, null, null, null, null,
+                                                Map.of("model", resolvedModel), schemaId);
+                                        NodeOutputValidator.ValidationResult vr = outputValidator.validate(nodeType, strategyResult, node);
+                                        if (!vr.isValid() && webSocketHandler != null) {
+                                            webSocketHandler.sendLog(schemaId, "warning",
+                                                    "Output validation: " + String.join("; ", vr.getIssues()), node.getId());
+                                        }
+                                        return (String) strategyResult.getOrDefault("result", "");
+                                    }
                                     log.warn("Unknown node type: {}", nodeType);
                                     return "Неизвестный тип узла: " + nodeType;
                             }

@@ -31,6 +31,18 @@ spring:
       password: ${NEO4J_PASSWORD:axolotl2026}
 
 axolotl:
+  features:
+    webhook:
+      enabled: ${AXOLOTL_FEATURE_WEBHOOK:false}
+    graph-query:
+      enabled: ${AXOLOTL_FEATURE_GRAPH_QUERY:true}
+    tdd-pipeline:
+      enabled: ${AXOLOTL_FEATURE_TDD_PIPELINE:true}
+    orchestration:
+      enabled: ${AXOLOTL_FEATURE_ORCHESTRATION:true}
+    experimental:
+      draft-node:
+        enabled: ${AXOLOTL_FEATURE_DRAFT_NODE:true}
   apps:
     base-path: ${AXOLOTL_APPS_PATH:/Users/evgenijtihomirov/git/Axolotl}
   jwt:

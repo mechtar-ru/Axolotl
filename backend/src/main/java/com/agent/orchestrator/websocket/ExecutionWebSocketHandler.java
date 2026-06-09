@@ -64,17 +64,48 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
 
     private final Map<String, List<WebSocketSession>> sessions = new ConcurrentHashMap<>();
     private final Map<String, ReentrantLock> sessionLocks = new ConcurrentHashMap<>();
+    private final Map<String, List<Map<String, Object>>> eventBuffer = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         String schemaId = getSchemaIdFromSession(session);
         if (schemaId != null) {
             sessions.computeIfAbsent(schemaId, k -> new CopyOnWriteArrayList<>()).add(session);
-            log.info("WebSocket подключен для схемы: {} (session: {}, URI: {})", schemaId, session.getId(),
+            log.info("WebSocket connected for schema: {} (session: {}, URI: {})", schemaId, session.getId(),
                     session.getUri());
+            // Replay buffered events on reconnect
+            replayBuffer(schemaId, session);
         } else {
-            log.error("WebSocket подключен без schemaId: {}, URI: {}", session.getId(), session.getUri());
+            log.error("WebSocket connected without schemaId: {}, URI: {}", session.getId(), session.getUri());
         }
+    }
+
+    private void replayBuffer(String schemaId, WebSocketSession session) {
+        List<Map<String, Object>> buffer = eventBuffer.remove(schemaId);
+        if (buffer == null || buffer.isEmpty()) return;
+        log.info("Replaying {} buffered events for schema: {}", buffer.size(), schemaId);
+        // Send state_replay envelope first
+        try {
+            Map<String, Object> replayMsg = new LinkedHashMap<>();
+            replayMsg.put("type", "state_replay");
+            replayMsg.put("schemaId", schemaId);
+            replayMsg.put("eventCount", buffer.size());
+            session.sendMessage(new TextMessage(toJson(replayMsg)));
+        } catch (IOException e) {
+            log.error("Failed to send state_replay envelope: {}", e.getMessage());
+        }
+        // Send each buffered event
+        for (Map<String, Object> event : buffer) {
+            if (session.isOpen()) {
+                try {
+                    session.sendMessage(new TextMessage(toJson(event)));
+                } catch (IOException e) {
+                    log.error("Failed to replay event: {}", e.getMessage());
+                    break;
+                }
+            }
+        }
+        log.info("Replay completed for schema: {}", schemaId);
     }
 
     @Override
@@ -128,7 +159,8 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
     private void sendMessage(String schemaId, String jsonMessage) {
         List<WebSocketSession> sessionList = sessions.get(schemaId);
         if (sessionList == null || sessionList.isEmpty()) {
-            log.debug("Нет активной WS сессии для схемы {}", schemaId);
+            log.debug("No active WS session for schema {} — buffering event", schemaId);
+            bufferEvent(schemaId, jsonMessage);
             return;
         }
         ReentrantLock lock = sessionLocks.computeIfAbsent(schemaId, k -> new ReentrantLock());
@@ -139,12 +171,27 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
                     try {
                         session.sendMessage(new TextMessage(jsonMessage));
                     } catch (IOException e) {
-                        log.error("Ошибка отправки WebSocket сообщения: {}", e.getMessage());
+                        log.error("Error sending WebSocket message: {}", e.getMessage());
                     }
                 }
             }
         } finally {
             lock.unlock();
+        }
+    }
+
+    private void bufferEvent(String schemaId, String jsonMessage) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> event = objectMapper.readValue(jsonMessage, Map.class);
+            List<Map<String, Object>> buffer = eventBuffer.computeIfAbsent(schemaId, k -> new ArrayList<>());
+            // Keep only the last 1000 events per schema to prevent OOM
+            if (buffer.size() >= 1000) {
+                buffer.removeFirst();
+            }
+            buffer.add(event);
+        } catch (Exception e) {
+            log.error("Failed to buffer event: {}", e.getMessage());
         }
     }
 

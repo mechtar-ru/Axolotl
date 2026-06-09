@@ -3,7 +3,9 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * Uses ExecutionUtilityService for shared helper methods.
  */
 @Component
-public class VerifierNodeStrategy {
+public class VerifierNodeStrategy implements NodeExecutionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(VerifierNodeStrategy.class);
 
@@ -51,6 +53,20 @@ public class VerifierNodeStrategy {
         this.schemaRepository = schemaRepository;
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
+    }
+
+    @Override
+    public String supportedNodeType() {
+        return "verifier";
+    }
+
+    @Override
+    public Map<String, Object> executeNode(Node node, NodeExecution nodeExec, WorkflowSchema schema,
+                                             List<Node> allNodes, List<Edge> edges,
+                                             Map<String, Object> executionContext, String schemaId) {
+        String resolvedModel = (String) executionContext.getOrDefault("model", "");
+        String result = executeVerifierNode(node, schemaId, resolvedModel);
+        return Map.of("result", result);
     }
 
     // ────────────────────────── verifier execution ──────────────────────────

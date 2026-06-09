@@ -8,8 +8,10 @@ import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmUsage;
 import com.agent.orchestrator.llm.MemPalaceClient;
+import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.PlanStep;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
@@ -27,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Uses ExecutionUtilityService for shared helper methods.
  */
 @Component
-public class AgentNodeStrategy {
+public class AgentNodeStrategy implements NodeExecutionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(AgentNodeStrategy.class);
 
@@ -65,6 +67,20 @@ public class AgentNodeStrategy {
         this.reasoningCapture = reasoningCapture;
         this.planStepService = planStepService;
         this.contextAssembler = contextAssembler;
+    }
+
+    @Override
+    public String supportedNodeType() {
+        return "agent";
+    }
+
+    @Override
+    public Map<String, Object> executeNode(Node node, NodeExecution nodeExec, WorkflowSchema schema,
+                                             List<Node> allNodes, List<Edge> edges,
+                                             Map<String, Object> executionContext, String schemaId) {
+        String resolvedModel = (String) executionContext.getOrDefault("model", "");
+        String result = executeAgentNode(node, schemaId, resolvedModel);
+        return Map.of("result", result);
     }
 
     // ─── Agent execution ───

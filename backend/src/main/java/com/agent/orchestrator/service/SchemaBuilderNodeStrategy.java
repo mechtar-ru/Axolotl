@@ -5,6 +5,7 @@ import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.Plan;
 import com.agent.orchestrator.model.Priority;
 import com.agent.orchestrator.model.ToolPermission;
@@ -30,7 +31,7 @@ import java.util.UUID;
  * Uses ExecutionUtilityService for shared helper methods.
  */
 @Component
-public class SchemaBuilderNodeStrategy {
+public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaBuilderNodeStrategy.class);
 
@@ -102,6 +103,20 @@ public class SchemaBuilderNodeStrategy {
         this.schemaRepository = schemaRepository;
         this.planService = planService;
         this.reasoningCapture = reasoningCapture;
+    }
+
+    @Override
+    public String supportedNodeType() {
+        return "schemabuilder";
+    }
+
+    @Override
+    public Map<String, Object> executeNode(Node node, NodeExecution nodeExec, WorkflowSchema schema,
+                                             List<Node> allNodes, List<Edge> edges,
+                                             Map<String, Object> executionContext, String schemaId) {
+        String resolvedModel = (String) executionContext.getOrDefault("model", "");
+        String result = executeSchemaBuilderNode(node, schemaId, resolvedModel);
+        return Map.of("result", result);
     }
 
     public String executeSchemaBuilderNode(Node node, String schemaId, String resolvedModel) {

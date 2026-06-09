@@ -3,7 +3,9 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
@@ -14,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -21,7 +24,7 @@ import java.util.Map;
  * Uses ExecutionUtilityService for shared helper methods.
  */
 @Component
-public class ReviewNodeStrategy {
+public class ReviewNodeStrategy implements NodeExecutionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewNodeStrategy.class);
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
@@ -51,6 +54,20 @@ public class ReviewNodeStrategy {
         this.planService = planService;
         this.executionRepository = executionRepository;
         this.reasoningCapture = reasoningCapture;
+    }
+
+    @Override
+    public String supportedNodeType() {
+        return "review";
+    }
+
+    @Override
+    public Map<String, Object> executeNode(Node node, NodeExecution nodeExec, WorkflowSchema schema,
+                                             List<Node> allNodes, List<Edge> edges,
+                                             Map<String, Object> executionContext, String schemaId) {
+        String resolvedModel = (String) executionContext.getOrDefault("model", "");
+        String result = executeReviewNode(node, schemaId, resolvedModel);
+        return Map.of("result", result);
     }
 
     // ────────────────────────── review execution ──────────────────────────

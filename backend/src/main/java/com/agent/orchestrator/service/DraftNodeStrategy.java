@@ -4,7 +4,9 @@ import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.model.DraftResult;
+import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
+import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,7 +33,7 @@ import java.util.Map;
  *   backend  → targetPath/.axolotl/modules.md   — backend module architecture
  */
 @Component
-public class DraftNodeStrategy {
+public class DraftNodeStrategy implements NodeExecutionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(DraftNodeStrategy.class);
 
@@ -126,6 +129,20 @@ public class DraftNodeStrategy {
         this.webSocketHandler = webSocketHandler;
         this.schemaRepository = schemaRepository;
         this.reasoningCapture = reasoningCapture;
+    }
+
+    @Override
+    public String supportedNodeType() {
+        return "draft";
+    }
+
+    @Override
+    public Map<String, Object> executeNode(Node node, NodeExecution nodeExec, WorkflowSchema schema,
+                                             List<Node> allNodes, List<Edge> edges,
+                                             Map<String, Object> executionContext, String schemaId) {
+        String resolvedModel = (String) executionContext.getOrDefault("model", "");
+        String result = executeDraftNode(node, schemaId, resolvedModel);
+        return Map.of("result", result);
     }
 
     /**

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import com.agent.orchestrator.model.CustomLlmEndpoint;
 import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
+import com.agent.orchestrator.service.CircuitBreakerWrapper;
 import com.agent.orchestrator.service.SettingsService;
 
 import java.time.Instant;
@@ -34,16 +35,18 @@ public class LlmService {
     private final Map<String, LlmProvider> providers;
     private final CustomLlmEndpointRepository customEndpointRepository;
     private final SettingsService settingsService;
+    private final CircuitBreakerWrapper circuitBreaker;
     private final ConcurrentHashMap<String, CachedProviderInfo> providerCache = new ConcurrentHashMap<>();
 
     public LlmService(List<LlmProvider> providerList, CustomLlmEndpointRepository customEndpointRepository,
-                      SettingsService settingsService) {
+                      SettingsService settingsService, CircuitBreakerWrapper circuitBreaker) {
         this.providers = new HashMap<>();
         for (LlmProvider provider : providerList) {
             providers.put(provider.getName(), provider);
         }
         this.customEndpointRepository = customEndpointRepository;
         this.settingsService = settingsService;
+        this.circuitBreaker = circuitBreaker;
         log.info("LLM providers: {}", providers.keySet());
     }
 
@@ -171,7 +174,8 @@ public class LlmService {
                     throw new RuntimeException(error);
                 }
                 String strippedModel = stripProviderPrefix(m);
-                LlmResponse response = provider.chat(strippedModel, systemPrompt, userPrompt, config, usage);
+                LlmResponse response = circuitBreaker.call(providerName,
+                        () -> provider.chat(strippedModel, systemPrompt, userPrompt, config, usage));
                 // Validate response — "Error:" prefix or blank text means the provider returned an error text, not a real response
                 if (response == null || response.text() == null || response.text().isBlank()) {
                     log.warn("Model {} returned empty response; trying fallback if available", m);
@@ -216,7 +220,8 @@ public class LlmService {
                     throw new RuntimeException(error);
                 }
                 String strippedModel = stripProviderPrefix(m);
-                LlmResponse response = provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken, usage);
+                LlmResponse response = circuitBreaker.call(providerName,
+                        () -> provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken, usage));
                 // Validate response — "Error:" prefix or blank text means the provider returned an error text
                 if (response == null || response.text() == null || response.text().isBlank()) {
                     log.warn("Streaming model {} returned empty response; trying fallback", m);
@@ -349,6 +354,7 @@ public class LlmService {
 
             info.put("baseUrl", provider.getBaseUrl());
             info.put("custom", false);
+            info.put("circuitState", circuitBreaker.getState(provider.getName()).name());
             // Attach persisted defaultModel from settings
             String storedDefault = settingsService.getDefaultModel(provider.getName());
             if (storedDefault != null) {

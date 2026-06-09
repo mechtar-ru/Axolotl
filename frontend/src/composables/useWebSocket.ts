@@ -24,6 +24,8 @@ export interface WebSocketCallbacks {
   onDisconnect?: () => void;
   /** Called after successful reconnection. Implementation should re-query schema/execution state. */
   onReconnect?: (schemaId: string) => void;
+  /** Called when the server replays buffered events after WS reconnect. */
+  onStateReplay?: (data: { schemaId: string; eventCount: number }) => void;
 }
 
 const BACKOFF_BASE_MS = 1000;
@@ -192,6 +194,9 @@ export function useWebSocket() {
               break;
             case 'diffs_needed':
               callbacks?.onDiffsNeeded?.(data);
+              break;
+            case 'state_replay':
+              callbacks?.onStateReplay?.(data);
               break;
             default:
               break;
