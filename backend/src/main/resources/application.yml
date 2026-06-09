@@ -73,7 +73,7 @@ axolotl:
     interval: 300000
 
   plugins:
-    enabled: false
+    enabled: true
     bun-path: bun
     bridge-path: plugins/plugin-bridge.js
     startup-timeout-ms: 15000

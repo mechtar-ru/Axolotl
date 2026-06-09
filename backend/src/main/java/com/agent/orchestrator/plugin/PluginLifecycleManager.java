@@ -28,7 +28,7 @@ public class PluginLifecycleManager {
 
     private final ToolExecutor toolExecutor;
 
-    @Value("${axolotl.plugins.enabled:false}")
+    @Value("${axolotl.plugins.enabled:true}")
     private boolean pluginEnabled;
 
     @Value("${axolotl.plugins.bridge-path:plugins/plugin-bridge.js}")
