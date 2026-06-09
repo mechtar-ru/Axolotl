@@ -76,6 +76,7 @@ const reviewGeneratePlan = ref(true)
 // Pipeline resilience: auto retry count and fallback models
 const autoRetryCount = ref(0)
 const fallbackModels = ref<string[]>([])
+const timeoutSeconds = ref(300)
 
 // Draft type selector
 const draftType = ref('spec')
@@ -167,6 +168,7 @@ function resetRefs() {
   expectedFileCount.value = null
   autoRetryCount.value = 0
   fallbackModels.value = []
+  timeoutSeconds.value = 300
   reviewPremortem.value = true
   reviewPrism.value = false
   reviewPostmortem.value = false
@@ -209,6 +211,7 @@ watch(() => props.blockId, () => {
   expectedFileCount.value = (config.expectedFileCount as number) ?? null
   autoRetryCount.value = (config.autoRetryCount as number) ?? 0
   fallbackModels.value = (config.fallbackModels as string[]) ?? []
+  timeoutSeconds.value = (config.timeoutSeconds as number) ?? 300
   // Draft type
   draftType.value = (config.draftType as string) || 'spec'
   // Review fields
@@ -306,6 +309,7 @@ function saveConfig() {
       agentType: agentType.value,
       autoRetryCount: autoRetryCount.value,
       fallbackModels: fallbackModels.value,
+      timeoutSeconds: timeoutSeconds.value,
     },
   }
 
@@ -344,6 +348,7 @@ function saveConfig() {
     if (!node.value.data.config) node.value.data.config = {}
     ;(node.value.data.config as Record<string, any>).autoRetryCount = autoRetryCount.value
     ;(node.value.data.config as Record<string, any>).fallbackModels = fallbackModels.value
+    ;(node.value.data.config as Record<string, any>).timeoutSeconds = timeoutSeconds.value
   }
 
   // Verifier-specific config
@@ -391,6 +396,7 @@ function saveConfig() {
         systemPrompt: prompt.value,
         autoRetryCount: autoRetryCount.value,
         fallbackModels: fallbackModels.value,
+        timeoutSeconds: timeoutSeconds.value,
       },
       // Top-level fields for backend NodeData deserialization
       model: model.value,
@@ -636,6 +642,20 @@ function handleKeydown(e: KeyboardEvent) {
             No models available
           </div>
         </div>
+
+        <!-- Execution Timeout -->
+        <label class="config-label" style="margin-top: 8px;">Timeout (seconds)</label>
+        <input
+          v-model.number="timeoutSeconds"
+          type="number"
+          min="10"
+          max="3600"
+          step="10"
+          class="num-input"
+          style="width: 100px;"
+          @input="saveConfig"
+        />
+        <span class="config-hint">Per-node execution limit (10–3600s)</span>
       </div>
 
       <!-- Draft Type (Draft blocks) -->

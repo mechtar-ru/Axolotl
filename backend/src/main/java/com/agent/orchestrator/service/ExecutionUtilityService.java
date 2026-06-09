@@ -54,14 +54,11 @@ public class ExecutionUtilityService {
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final MemPalaceClient memPalaceClient;
-    private final ToolExecutor toolExecutor;
     private final Neo4jSchemaRepository schemaRepository;
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionStateManager stateManager;
-    private final ExecutionRepository executionRepository;
-    private final ToolCallParser toolCallParser;
-    private final NodeCommandExecutor nodeCommandExecutor;
     private final NodeSourceHandler nodeSourceHandler;
+    private final NodeCommandExecutor nodeCommandExecutor;
     private final NodeFileWriter nodeFileWriter;
 
     @Value("${axolotl.sandbox.allowedWriteDirs:.}")
@@ -71,28 +68,22 @@ public class ExecutionUtilityService {
 
 
     public ExecutionUtilityService(LlmService llmService,
-                                   ExecutionWebSocketHandler webSocketHandler,
-                                   MemPalaceClient memPalaceClient,
-                                   ToolExecutor toolExecutor,
-                                   Neo4jSchemaRepository schemaRepository,
-                                   ProjectContextBuilder projectContextBuilder,
-                                   ExecutionStateManager stateManager,
-                                   ExecutionRepository executionRepository,
-                                   ToolCallParser toolCallParser,
-                                   NodeCommandExecutor nodeCommandExecutor,
-                                   NodeSourceHandler nodeSourceHandler,
-                                   NodeFileWriter nodeFileWriter) {
+                                    ExecutionWebSocketHandler webSocketHandler,
+                                    MemPalaceClient memPalaceClient,
+                                    Neo4jSchemaRepository schemaRepository,
+                                    ProjectContextBuilder projectContextBuilder,
+                                    ExecutionStateManager stateManager,
+                                    NodeSourceHandler nodeSourceHandler,
+                                    NodeCommandExecutor nodeCommandExecutor,
+                                    NodeFileWriter nodeFileWriter) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
-        this.toolExecutor = toolExecutor;
         this.schemaRepository = schemaRepository;
         this.projectContextBuilder = projectContextBuilder;
         this.stateManager = stateManager;
-        this.executionRepository = executionRepository;
-        this.toolCallParser = toolCallParser;
-        this.nodeCommandExecutor = nodeCommandExecutor;
         this.nodeSourceHandler = nodeSourceHandler;
+        this.nodeCommandExecutor = nodeCommandExecutor;
         this.nodeFileWriter = nodeFileWriter;
     }
 
@@ -241,180 +232,16 @@ public class ExecutionUtilityService {
         return !cancelFlag.get();
     }
 
-    // ────────────────────────── generatedFiles extraction ──────────────────────────
-
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> extractGeneratedFiles(String response) {
-        if (response == null || response.isBlank()) return null;
-        String tail = response.substring(Math.max(0, response.length() - 500));
-        int idx = tail.lastIndexOf("\"generatedFiles\"");
-        if (idx < 0) return null;
-        int brace = tail.lastIndexOf('{', idx);
-        if (brace < 0) return null;
-        String candidate = tail.substring(brace);
-        int depth = 0;
-        int close = -1;
-        for (int i = 0; i < candidate.length(); i++) {
-            char c = candidate.charAt(i);
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) { close = i; break; }
-            }
-        }
-        if (close < 0) return null;
-        String json = candidate.substring(0, close + 1);
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(json, Map.class);
-        } catch (Exception e) {
-            log.debug("Failed to parse generatedFiles JSON from agent response: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    // ────────────────────────── tool helpers ──────────────────────────
-
-    public String buildToolDefinitions(List<String> toolIds) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("## available_tools\n\n");
-        sb.append("namespace functions {\n\n");
-        for (String toolId : toolIds) {
-            Tool tool = toolExecutor.getTool(toolId);
-            if (tool != null) {
-                sb.append("// ").append(tool.getDescription()).append("\n");
-                sb.append("type ").append(toolId).append(" = (_: {\n");
-                sb.append(tool.getInputSchema().replace("\"", "'")).append("\n}) => any;\n\n");
-            }
-        }
-        sb.append("}\n");
-        return sb.toString();
-    }
-
-    public String buildToolInstructions(List<String> toolIds) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You have access to tools. To use a tool, respond with a JSON object in your final answer.\n\n");
-        sb.append("Available tools:\n");
-        for (String toolId : toolIds) {
-            Tool tool = toolExecutor.getTool(toolId);
-            if (tool != null) {
-                sb.append("- ").append(toolId).append(": ").append(tool.getDescription()).append("\n");
-            }
-        }
-        if (toolIds.contains("file_write")) {
-            sb.append("\nNote: After each file_write, a syntax validator runs automatically. ");
-            sb.append("If errors are found, they appear after the write confirmation. ");
-            sb.append("Read them carefully and fix the issues in your next iteration.\n");
-        }
-        if (toolIds.contains("build_app")) {
-            sb.append("\nNote: Use build_app after all files are written to check build dependencies ");
-            sb.append("and compile the app. It detects missing SDKs and runs the build.\n");
-        }
-        sb.append("\nTo call a tool, include tool_calls in your response:\n");
-        sb.append("```json\n");
-        sb.append("{\"role\": \"assistant\", \"content\": \"...\", \"tool_calls\": [");
-        sb.append("{\"id\": \"call_1\", \"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}]");
-        sb.append("}\n```\n");
-        return sb.toString();
-    }
-
-    public String buildMessagesForToolCall(List<Node.Message> messages) {
-        StringBuilder sb = new StringBuilder();
-        for (Node.Message msg : messages) {
-            sb.append("<message role=\"").append(msg.getRole()).append("\">\n");
-            sb.append(msg.getContent()).append("\n</message>\n");
-        }
-        return sb.toString();
-    }
-
-    public List<Map<String, Object>> parseToolCalls(String response) {
-        return toolCallParser.parse(response);
-    }
-
-    // ────────────────────────── tool call execution ──────────────────────────
-
-    public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId) {
-        return executeToolCall(toolId, args, node, schemaId, null, null);
-    }
-
-    public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId, String schemaTargetPath) {
-        return executeToolCall(toolId, args, node, schemaId, schemaTargetPath, null);
-    }
-
-    public String executeToolCall(String toolId, Map<String, Object> args, Node node, String schemaId,
-                                  String schemaTargetPath, String projectType) {
-        ToolPermission permission = null;
-        if (node.getData().getToolPermissions() != null) {
-            for (ToolPermission tp : node.getData().getToolPermissions()) {
-                if (tp.getToolId() != null && tp.getToolId().equals(toolId)) {
-                    permission = tp;
-                    break;
-                }
-            }
-        }
-
-        if (permission == null) {
-            List<String> enabledTools = node.getData().getEnabledTools();
-            if (enabledTools != null && enabledTools.contains(toolId)) {
-                permission = new ToolPermission(toolId);
-                permission.setEnabled(true);
-            }
-        }
-
-        // Inject diff-review flag for file_write when stage config requires it
-        if ("file_write".equals(toolId) && node.getData().getConfig() != null
-                && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
-            args.put("_diffReview", true);
-        }
-
-        ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId(), schemaTargetPath, projectType);
-        return result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
-    }
-
-    // ────────────────────────── user approval ──────────────────────────
-
-    public void sendUserApprovalRequest(String schemaId, String nodeId, int toolCallCount, int maxToolCalls) {
-        if (webSocketHandler != null) {
-            webSocketHandler.sendLog(schemaId, "warning",
-                    "Достигнут лимит инструментов (" + toolCallCount + "/" + maxToolCalls + "). Требуется подтверждение для продолжения.",
-                    nodeId);
-        }
-    }
-
     // ────────────────────────── write output ──────────────────────────
 
     public String writeOutput(String outputType, String filePath, String fileFormat, String content) {
         return nodeFileWriter.writeOutput(outputType, filePath, fileFormat, content);
     }
 
-    // ────────────────────────── command sanitization ──────────────────────────
-
-    public String sanitizeCommand(String command) {
-        return nodeCommandExecutor.sanitizeCommand(command);
-    }
-
-    // ────────────────────────── URL validation ──────────────────────────
-
-    public void validateUrl(String url) {
-        nodeSourceHandler.validateUrl(url);
-    }
-
     // ────────────────────────── path sandbox ──────────────────────────
 
     public boolean isPathAllowed(String filePath) {
         return nodeFileWriter.isPathAllowed(filePath);
-    }
-
-    // ────────────────────────── URL fetch ──────────────────────────
-
-    public String fetchUrlContent(String url) {
-        return nodeSourceHandler.fetchUrlContent(url);
-    }
-
-    // ────────────────────────── project context ──────────────────────────
-
-    public String readProjectContext(String projectPath, Map<String, Object> config) {
-        return nodeSourceHandler.readProjectContext(projectPath, config);
     }
 
     // ────────────────────────── output node handler ──────────────────────────
@@ -827,18 +654,6 @@ public class ExecutionUtilityService {
     public String handleSourceNode(Node node, String schemaId) {
         return nodeSourceHandler.handleSourceNode(node, schemaId);
     }
-
-    // ────────────────────────── Test accessors (package-private) ──────────────────────────
-
-    String sanitizeCommandPublic(String command) { return sanitizeCommand(command); }
-    void validateUrlPublic(String url) { validateUrl(url); }
-    boolean isPathAllowedPublic(String path) { return isPathAllowed(path); }
-    public boolean evaluateConditionPublic(String expr, java.util.Map<String, Object> ctx) { return evaluateCondition(expr, ctx); }
-    public String interpolateVariablesPublic(String text, WorkflowSchema schema, java.util.Map<String, Object> preds) { return interpolateVariables(text, schema, preds); }
-    public String buildContextBlockPublic(java.util.Map<String, Object> preds) { return buildContextBlock(preds); }
-    public String writeOutputPublic(String outputType, String filePath, String fileFormat, String content) { return writeOutput(outputType, filePath, fileFormat, content); }
-    public boolean sleepWithCancelPublic(long millis, java.util.concurrent.atomic.AtomicBoolean cancelFlag) { return sleepWithCancel(millis, cancelFlag); }
-    public String executeOutputNodePublic(Node node, String schemaId, ExecutionMode mode) { return executeOutputNode(node, schemaId, mode); }
 
     // ────────────────────────── documentation generation ──────────────────────────
 

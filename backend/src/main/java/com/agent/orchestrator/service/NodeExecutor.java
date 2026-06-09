@@ -228,11 +228,8 @@ public class NodeExecutor {
         return draftStrategy.executeDraftNode(node, schemaId, resolvedModel);
     }
 
-    // ────────────────────────── Test accessors (package-private, delegate to ExecutionUtilityService) ──────────────────────────
+    // ────────────────────────── Facade delegations (for SchemaServiceImpl) ──────────────────────────
 
-    String sanitizeCommandPublic(String command) { return utilityService.sanitizeCommand(command); }
-    void validateUrlPublic(String url) { utilityService.validateUrl(url); }
-    boolean isPathAllowedPublic(String path) { return utilityService.isPathAllowed(path); }
     boolean evaluateConditionPublic(String expr, java.util.Map<String, Object> ctx) { return utilityService.evaluateCondition(expr, ctx); }
     String interpolateVariablesPublic(String text, WorkflowSchema schema, java.util.Map<String, Object> preds) { return utilityService.interpolateVariables(text, schema, preds); }
     String buildContextBlockPublic(java.util.Map<String, Object> preds) { return utilityService.buildContextBlock(preds); }

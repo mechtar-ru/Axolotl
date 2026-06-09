@@ -120,4 +120,29 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         RETURN count(r) AS deletedCount
         """)
     long deleteRunsOlderThan(@Param("cutoffTimestamp") String cutoffTimestamp);
+
+    @Query("""
+        MATCH (r:ExecutionRun)
+        WHERE r.status IN ['running', 'paused']
+        RETURN r
+        """)
+    List<GraphExecutionRun> findStaleRuns();
+
+    @Query("""
+        MATCH (r:ExecutionRun {id: $runId})
+        SET r.status = $status
+        SET r.error = $error
+        SET r.updatedAt = toString(datetime())
+        """)
+    void forceUpdateRunStatus(@Param("runId") String runId,
+                              @Param("status") String status,
+                              @Param("error") String error);
+
+    @Query("""
+        MATCH (n:NodeExecution {runId: $runId, status: 'running'})
+        SET n.status = 'failed'
+        SET n.error = $error
+        """)
+    void failRunningNodeExecutions(@Param("runId") String runId,
+                                   @Param("error") String error);
 }

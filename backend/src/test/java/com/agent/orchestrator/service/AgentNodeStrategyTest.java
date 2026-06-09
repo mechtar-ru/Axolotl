@@ -41,6 +41,8 @@ class AgentNodeStrategyTest {
     @Mock ExecutionStateManager stateManager;
     @Mock PlanStepService planStepService;
     @Mock com.agent.orchestrator.context.ContextAssembler contextAssembler;
+    @Mock ReasoningCapture reasoningCapture;
+    @Mock ToolExecutionService toolExecutionService;
 
     AgentNodeStrategy strategy;
 
@@ -59,9 +61,10 @@ class AgentNodeStrategyTest {
                 memPalaceClient, toolExecutor, schemaRepository,
                 projectContextBuilder,
                 stateManager,
-                null,  // ReasoningCapture
+                reasoningCapture,
                 planStepService,
-                contextAssembler);
+                contextAssembler,
+                toolExecutionService);
 
         node = new Node();
         node.setId("n1");
@@ -106,7 +109,7 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class), any()))
                 .thenReturn(textOnly("Test response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -120,7 +123,7 @@ class AgentNodeStrategyTest {
         verify(utilityService).collectPredecessorResults(schema, "n1");
         verify(utilityService).buildContextBlock(anyMap());
         verify(utilityService, times(2)).interpolateVariables(anyString(), eq(schema), anyMap());
-        verify(utilityService).extractGeneratedFiles("Test response");
+        verify(toolExecutionService).extractGeneratedFiles("Test response");
         verify(llmService).streamingChat(eq("resolved-model"), anyString(), anyString(), isNull(), any(Consumer.class), any());
         verify(webSocketHandler, atLeastOnce()).sendProgress(anyString(), anyString(), anyString(), anyInt(), anyString());
     }
@@ -135,7 +138,7 @@ class AgentNodeStrategyTest {
         when(llmService.streamingChat(anyString(), anyString(), anyString(), isNull(), any(Consumer.class), any()))
                 .thenReturn(textOnly("Response with files"));
         Map<String, Object> extractedFiles = Map.of("file1.txt", 150);
-        when(utilityService.extractGeneratedFiles("Response with files")).thenReturn(extractedFiles);
+        when(toolExecutionService.extractGeneratedFiles("Response with files")).thenReturn(extractedFiles);
         Map<String, Object> generatedFilesRegistry = new ConcurrentHashMap<>();
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(generatedFilesRegistry);
         when(memPalaceClient.isEnabled()).thenReturn(false);
@@ -154,10 +157,10 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
-        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
-        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
         when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
@@ -165,8 +168,8 @@ class AgentNodeStrategyTest {
         String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
 
         assertNotNull(result);
-        verify(utilityService).buildToolInstructions(anyList());
-        verify(utilityService).buildMessagesForToolCall(anyList());
+        verify(toolExecutionService).buildToolInstructions(anyList());
+        verify(toolExecutionService).buildMessagesForToolCall(anyList());
         verify(llmService).chat(anyString(), isNull(), anyString(), isNull(), any());
     }
 
@@ -178,10 +181,10 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
-        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
-        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(toolExecutionService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
 
         // First call returns a tool call, second call returns final text (no tools)
         Map<String, Object> toolCall = Map.of(
@@ -189,10 +192,10 @@ class AgentNodeStrategyTest {
                 "name", "bash",
                 "arguments", Map.of("command", "ls")
         );
-        when(utilityService.parseToolCalls(anyString()))
+        when(toolExecutionService.parseToolCalls(anyString()))
                 .thenReturn(List.of(toolCall))
                 .thenReturn(List.of());
-        when(utilityService.executeToolCall(anyString(), anyMap(), eq(toolNode), anyString(), nullable(String.class), nullable(String.class)))
+        when(toolExecutionService.executeToolCall(anyString(), anyMap(), eq(toolNode), anyString(), nullable(String.class), nullable(String.class)))
                 .thenReturn("file1.txt\nfile2.txt");
         when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any()))
                 .thenReturn(textOnly("{\"tool_calls\": [{\"name\": \"bash\", \"arguments\": {\"command\": \"ls\"}}]}"))
@@ -204,8 +207,8 @@ class AgentNodeStrategyTest {
 
         assertNotNull(result);
         assertEquals("Final result after tools", result);
-        verify(utilityService, times(2)).parseToolCalls(anyString());
-        verify(utilityService).executeToolCall(eq("bash"), anyMap(), eq(toolNode), eq("schema-1"), nullable(String.class), nullable(String.class));
+        verify(toolExecutionService, times(2)).parseToolCalls(anyString());
+        verify(toolExecutionService).executeToolCall(eq("bash"), anyMap(), eq(toolNode), eq("schema-1"), nullable(String.class), nullable(String.class));
     }
 
     @Test
@@ -268,10 +271,10 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolInstructions(anyList())).thenReturn("");
-        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
-        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.buildToolInstructions(anyList())).thenReturn("");
+        when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
         when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool result"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
@@ -292,11 +295,11 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
-        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
-        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
-        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(toolExecutionService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
         when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of("f1.py", "created"));
@@ -322,11 +325,11 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
-        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
-        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
-        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(toolExecutionService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
         when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2")))
@@ -348,11 +351,11 @@ class AgentNodeStrategyTest {
         when(utilityService.buildContextBlock(Map.of())).thenReturn("");
         when(utilityService.interpolateVariables(anyString(), eq(schema), anyMap()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(utilityService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
-        when(utilityService.buildToolInstructions(anyList())).thenReturn("tool instructions");
-        when(utilityService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
-        when(utilityService.parseToolCalls(anyString())).thenReturn(List.of());
-        when(utilityService.extractGeneratedFiles(anyString())).thenReturn(null);
+        when(toolExecutionService.buildToolDefinitions(anyList())).thenReturn("tool definitions");
+        when(toolExecutionService.buildToolInstructions(anyList())).thenReturn("tool instructions");
+        when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
+        when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
+        when(toolExecutionService.extractGeneratedFiles(anyString())).thenReturn(null);
         when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of());

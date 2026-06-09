@@ -44,6 +44,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private final ReasoningCapture reasoningCapture;
     private final PlanStepService planStepService;
     private final ContextAssembler contextAssembler;
+    private final ToolExecutionService toolExecutionService;
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -55,7 +56,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                               ExecutionStateManager stateManager,
                               ReasoningCapture reasoningCapture,
                               PlanStepService planStepService,
-                              ContextAssembler contextAssembler) {
+                              ContextAssembler contextAssembler,
+                              ToolExecutionService toolExecutionService) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -67,6 +69,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         this.reasoningCapture = reasoningCapture;
         this.planStepService = planStepService;
         this.contextAssembler = contextAssembler;
+        this.toolExecutionService = toolExecutionService;
     }
 
     @Override
@@ -198,7 +201,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         }
 
         if (result != null && !result.isBlank()) {
-            Map<String, Object> extracted = utilityService.extractGeneratedFiles(result);
+            Map<String, Object> extracted = toolExecutionService.extractGeneratedFiles(result);
             if (extracted != null) {
                 stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), extracted);
             }
@@ -322,7 +325,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
             // Tool instructions — budgeted as HIGH priority (was previously unbounded before assembly)
             if (!"doc-agent".equals(agentType)) {
-                String toolInstructions = utilityService.buildToolInstructions(enabledTools);
+                String toolInstructions = toolExecutionService.buildToolInstructions(enabledTools);
                 if (toolInstructions != null && !toolInstructions.isBlank()) {
                     ctxBlocks.add(new ContextBlock("toolInstructions", toolInstructions, ContextPriority.HIGH));
                 }
@@ -399,16 +402,16 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
             LlmUsage iterUsage = new LlmUsage();
             LlmResponse iterResp = llmService.chat(model, null,
-                    utilityService.buildMessagesForToolCall(messages), chatConfig, iterUsage);
+                    toolExecutionService.buildMessagesForToolCall(messages), chatConfig, iterUsage);
             lastResponse = iterResp.text();
             if (iterResp.reasoning() != null) {
-                reasoningCapture.capture(node.getId(), iterResp.reasoning());
+                reasoningCapture.capture(schemaId, node.getId(), iterationCount, iterResp.reasoning());
             }
             totalUsage.add(iterUsage);
             messages.add(new Node.Message("assistant", lastResponse));
             fullResponse.append(lastResponse).append("\n");
 
-            List<Map<String, Object>> toolCalls = utilityService.parseToolCalls(lastResponse);
+            List<Map<String, Object>> toolCalls = toolExecutionService.parseToolCalls(lastResponse);
             if (toolCalls.isEmpty()) {
                 long iterDuration = System.currentTimeMillis() - iterationStartTime;
                 if (webSocketHandler != null) {
@@ -420,7 +423,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             int toolsInThisIteration = 0;
             for (Map<String, Object> toolCall : toolCalls) {
                 if (toolCallCount >= maxToolCalls) {
-                    utilityService.sendUserApprovalRequest(schemaId, node.getId(), toolCallCount, maxToolCalls);
+                    toolExecutionService.sendUserApprovalRequest(schemaId, node.getId(), toolCallCount, maxToolCalls);
                     break;
                 }
 
@@ -430,7 +433,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
                 String targetPath = currentSchema != null ? currentSchema.getTargetPath() : null;
                 String projectType = currentSchema != null ? currentSchema.getProjectType() : null;
-                String toolResult = utilityService.executeToolCall(toolId, args, node, schemaId, targetPath, projectType);
+                String toolResult = toolExecutionService.executeToolCall(toolId, args, node, schemaId, targetPath, projectType);
                 messages.add(new Node.Message("tool", toolResult));
                 messages.add(new Node.Message("tool_call_id", (String) toolCall.get("id")));
 
@@ -473,7 +476,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
         String finalResponse = lastResponse != null ? lastResponse : fullResponse.toString();
         if (finalResponse != null && !finalResponse.isBlank()) {
-            Map<String, Object> extracted = utilityService.extractGeneratedFiles(finalResponse);
+            Map<String, Object> extracted = toolExecutionService.extractGeneratedFiles(finalResponse);
             if (extracted != null) {
                 stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), extracted);
             }

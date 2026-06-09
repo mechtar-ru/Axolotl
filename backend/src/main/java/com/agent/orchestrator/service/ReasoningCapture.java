@@ -34,6 +34,16 @@ public class ReasoningCapture {
     }
 
     /**
+     * Store reasoning content with iteration context.
+     * Key is formatted as {@code schemaId:nodeId:iterationCount}.
+     */
+    public void capture(String schemaId, String nodeId, int iterationCount, String reasoning) {
+        if (reasoning != null && !reasoning.isBlank()) {
+            store.put(schemaId + ":" + nodeId + ":" + iterationCount, reasoning);
+        }
+    }
+
+    /**
      * Read and remove reasoning content for a node.
      *
      * @param nodeId the SchemaNode ID

@@ -32,20 +32,18 @@ class ExecutionUtilityServiceTest {
     @Mock LlmService llmService;
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock MemPalaceClient memPalaceClient;
-    @Mock ToolExecutor toolExecutor;
     @Mock Neo4jSchemaRepository schemaRepository;
     @Mock ProjectContextBuilder projectContextBuilder;
     @Mock ExecutionStateManager stateManager;
-    @Mock ExecutionRepository executionRepository;
 
     ExecutionUtilityService utilityService;
 
     @BeforeEach
     void setUp() {
         utilityService = new ExecutionUtilityService(llmService, webSocketHandler, memPalaceClient,
-                toolExecutor, schemaRepository, projectContextBuilder, stateManager, executionRepository,
-                new ToolCallParser(), new NodeCommandExecutor(webSocketHandler),
+                schemaRepository, projectContextBuilder, stateManager,
                 new NodeSourceHandler(webSocketHandler, memPalaceClient, schemaRepository, projectContextBuilder, stateManager),
+                new NodeCommandExecutor(webSocketHandler),
                 new NodeFileWriter());
     }
 
@@ -141,40 +139,40 @@ class ExecutionUtilityServiceTest {
 
     @Test
     void evaluateCondition_trueExpression_returnsTrue() {
-        assertTrue(utilityService.evaluateConditionPublic("true", Map.of()));
+        assertTrue(utilityService.evaluateCondition("true", Map.of()));
     }
 
     @Test
     void evaluateCondition_falseExpression_returnsFalse() {
-        assertFalse(utilityService.evaluateConditionPublic("false", Map.of()));
+        assertFalse(utilityService.evaluateCondition("false", Map.of()));
     }
 
     @Test
     void evaluateCondition_nullExpression_returnsFalse() {
-        assertFalse(utilityService.evaluateConditionPublic(null, Map.of()));
+        assertFalse(utilityService.evaluateCondition(null, Map.of()));
     }
 
     @Test
     void evaluateCondition_blankExpression_returnsFalse() {
-        assertFalse(utilityService.evaluateConditionPublic("", Map.of()));
+        assertFalse(utilityService.evaluateCondition("", Map.of()));
     }
 
     @Test
     void evaluateCondition_withVariableComparison() {
         Map<String, Object> ctx = Map.of("iterations", 3);
-        assertTrue(utilityService.evaluateConditionPublic("iterations < 5", ctx));
+        assertTrue(utilityService.evaluateCondition("iterations < 5", ctx));
     }
 
     @Test
     void evaluateCondition_withStringComparison() {
         Map<String, Object> ctx = Map.of("result", "hello");
-        assertTrue(utilityService.evaluateConditionPublic("result == 'hello'", ctx));
+        assertTrue(utilityService.evaluateCondition("result == 'hello'", ctx));
     }
 
     @Test
     void evaluateCondition_withFalseComparison() {
         Map<String, Object> ctx = Map.of("iterations", 10);
-        assertFalse(utilityService.evaluateConditionPublic("iterations < 5", ctx));
+        assertFalse(utilityService.evaluateCondition("iterations < 5", ctx));
     }
 
     // ── sleepWithCancel ──
@@ -191,66 +189,6 @@ class ExecutionUtilityServiceTest {
         AtomicBoolean cancelFlag = new AtomicBoolean(true);
         boolean result = utilityService.sleepWithCancel(100, cancelFlag);
         assertFalse(result);
-    }
-
-    // ── sanitizeCommand ──
-
-    @Test
-    void sanitizeCommand_blocksRmRf() {
-        assertThrows(SecurityException.class,
-                () -> utilityService.sanitizeCommandPublic("rm -rf /"));
-    }
-
-    @Test
-    void sanitizeCommand_blocksMkfs() {
-        assertThrows(SecurityException.class,
-                () -> utilityService.sanitizeCommandPublic("mkfs.ext4 /dev/sda1"));
-    }
-
-    @Test
-    void sanitizeCommand_blocksShutdown() {
-        assertThrows(SecurityException.class,
-                () -> utilityService.sanitizeCommandPublic("shutdown -h now"));
-    }
-
-    @Test
-    void sanitizeCommand_blocksDangerousShellExpansion() {
-        assertThrows(SecurityException.class,
-                () -> utilityService.sanitizeCommandPublic("echo $(rm -rf /)"));
-    }
-
-    @Test
-    void sanitizeCommand_allowsSafeCommands() {
-        assertEquals("ls -la", utilityService.sanitizeCommandPublic("ls -la"));
-        assertEquals("echo hello", utilityService.sanitizeCommandPublic("echo hello"));
-        assertEquals("cat file.txt", utilityService.sanitizeCommandPublic("cat file.txt"));
-    }
-
-    // ── validateUrl ──
-
-    @Test
-    void validateUrl_blocksFtp() {
-        assertThrows(SecurityException.class,
-                () -> utilityService.validateUrlPublic("ftp://example.com/file"));
-    }
-
-    @Test
-    void validateUrl_blocksFileUrl() {
-        assertThrows(SecurityException.class,
-                () -> utilityService.validateUrlPublic("file:///etc/passwd"));
-    }
-
-    @Test
-    void validateUrl_acceptsHttps() {
-        // Should throw because 8.8.8.8 is not loopback/site-local
-        // But it's a public DNS, so the InetAddress check should pass
-        // Actually 8.8.8.8 is not loopback/site-local/link-local/any-local, so this should be fine
-        // We just verify no exception for a valid public URL
-        try {
-            utilityService.validateUrlPublic("https://google.com");
-        } catch (SecurityException e) {
-            // Could fail if DNS resolution fails in test environment, that's OK
-        }
     }
 
     // ── interpolateVariables ──
@@ -293,141 +231,6 @@ class ExecutionUtilityServiceTest {
         assertTrue(context.contains("[node1]"));
         assertTrue(context.contains("result1"));
         assertTrue(context.contains("[node2]"));
-    }
-
-    // ── buildToolDefinitions ──
-
-    @Test
-    void buildToolDefinitions_returnsDefinitions() {
-        Tool mockTool = new Tool();
-        mockTool.setId("bash");
-        mockTool.setDescription("Execute bash commands");
-        mockTool.setInputSchema("{\"command\": \"string\"}");
-        when(toolExecutor.getTool("bash")).thenReturn(mockTool);
-
-        String result = utilityService.buildToolDefinitions(List.of("bash"));
-
-        assertTrue(result.contains("bash"));
-        assertTrue(result.contains("Execute bash commands"));
-    }
-
-    // ── buildToolInstructions ──
-
-    @Test
-    void buildToolInstructions_returnsInstructions() {
-        Tool mockTool = new Tool();
-        mockTool.setId("file_read");
-        mockTool.setDescription("Read files");
-        when(toolExecutor.getTool("file_read")).thenReturn(mockTool);
-
-        String result = utilityService.buildToolInstructions(List.of("file_read"));
-
-        assertTrue(result.contains("file_read"));
-        assertTrue(result.contains("Read files"));
-        assertTrue(result.contains("tool_calls"));
-    }
-
-    // ── buildMessagesForToolCall ──
-
-    @Test
-    void buildMessagesForToolCall_formatsMessages() {
-        Node.Message msg1 = new Node.Message("system", "You are a bot");
-        Node.Message msg2 = new Node.Message("user", "Hello");
-        String result = utilityService.buildMessagesForToolCall(List.of(msg1, msg2));
-
-        assertTrue(result.contains("system"));
-        assertTrue(result.contains("You are a bot"));
-        assertTrue(result.contains("user"));
-        assertTrue(result.contains("Hello"));
-    }
-
-    // ── executeToolCall ──
-
-    @Test
-    void executeToolCall_usesToolPermissions() {
-        Node node = new Node();
-        Node.NodeData data = new Node.NodeData();
-        data.setEnabledTools(List.of("bash"));
-        List<com.agent.orchestrator.model.ToolPermission> perms = List.of(
-                new com.agent.orchestrator.model.ToolPermission("bash")
-        );
-        perms.get(0).setEnabled(true);
-        data.setToolPermissions(perms);
-        node.setData(data);
-
-        ToolResult toolResult = new ToolResult(true, "output", null);
-        when(toolExecutor.execute(eq("bash"), anyMap(), any(), eq("s1"), any(), any(), any())).thenReturn(toolResult);
-
-        String result = utilityService.executeToolCall("bash", Map.of("command", "ls"), node, "s1");
-
-        assertEquals("output", result);
-        verify(toolExecutor).execute(eq("bash"), anyMap(), any(), eq("s1"), any(), any(), any());
-    }
-
-    @Test
-    void executeToolCall_returnsError_whenToolFails() {
-        Node node = new Node();
-        Node.NodeData data = new Node.NodeData();
-        data.setEnabledTools(List.of("bash"));
-        node.setData(data);
-
-        ToolResult toolResult = new ToolResult(false, null, "command not found");
-        when(toolExecutor.execute(eq("bash"), anyMap(), any(), eq("s1"), any(), any(), any())).thenReturn(toolResult);
-
-        String result = utilityService.executeToolCall("bash", Map.of("command", "unknown"), node, "s1");
-
-        assertTrue(result.startsWith("Error"));
-    }
-
-    // ── extractGeneratedFiles ──
-
-    @Test
-    void extractGeneratedFiles_returnsNull_whenResponseEmpty() {
-        assertNull(utilityService.extractGeneratedFiles(""));
-    }
-
-    @Test
-    void extractGeneratedFiles_returnsNull_whenNoGeneratedFiles() {
-        assertNull(utilityService.extractGeneratedFiles("Just a normal response without the magic key"));
-    }
-
-    @Test
-    void extractGeneratedFiles_parsesGeneratedFiles() {
-        String response = "Some text before {\"generatedFiles\": {\"file1.txt\": 150}}";
-        Map<String, Object> result = utilityService.extractGeneratedFiles(response);
-        assertNotNull(result);
-        assertTrue(result.containsKey("generatedFiles"));
-    }
-
-    // ── parseToolCalls ──
-
-    @Test
-    void parseToolCalls_returnsEmptyList_whenNoToolCalls() {
-        assertTrue(utilityService.parseToolCalls("Just a normal response").isEmpty());
-    }
-
-    @Test
-    void parseToolCalls_parsesToolCalls() {
-        String response = "{\"tool_calls\": [{\"id\": \"call_1\", \"name\": \"bash\", \"arguments\": {\"command\": \"ls\"}}]}";
-        List<Map<String, Object>> result = utilityService.parseToolCalls(response);
-        assertEquals(1, result.size());
-        assertEquals("bash", result.get(0).get("name"));
-    }
-
-    @Test
-    void parseToolCalls_parsesToolCallsWithMarkdown() {
-        String response = "```json\n{\"tool_calls\": [{\"id\": \"call_1\", \"name\": \"bash\", \"arguments\": {\"command\": \"ls\"}}]}\n```";
-        List<Map<String, Object>> result = utilityService.parseToolCalls(response);
-        assertEquals(1, result.size());
-        assertEquals("bash", result.get(0).get("name"));
-    }
-
-    // ── sendUserApprovalRequest ──
-
-    @Test
-    void sendUserApprovalRequest_sendsWebSocketLog() {
-        utilityService.sendUserApprovalRequest("schema-1", "n1", 10, 20);
-        verify(webSocketHandler).sendLog(eq("schema-1"), eq("warning"), anyString(), eq("n1"));
     }
 
     // ── writeOutput ──
