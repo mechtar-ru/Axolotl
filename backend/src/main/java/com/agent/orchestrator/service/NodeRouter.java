@@ -357,12 +357,12 @@ public class NodeRouter {
     int getTimeoutSeconds(Node node) {
         if (node.getData() == null) return 300;
         if (node.getData().getTimeoutSeconds() != null) {
-            return Math.max(1, node.getData().getTimeoutSeconds());
+            return Math.max(1, Math.min(1200, node.getData().getTimeoutSeconds()));
         }
         if (node.getData().getConfig() != null) {
             Object val = node.getData().getConfig().get("timeoutSeconds");
             if (val instanceof Number) {
-                return Math.max(1, ((Number) val).intValue());
+                return Math.max(1, Math.min(1200, ((Number) val).intValue()));
             }
         }
         return 300;
@@ -373,8 +373,16 @@ public class NodeRouter {
      * and common rate-limit / temporary-unavailability message patterns.
      */
     boolean isTransientError(Exception e) {
+        if (e == null) return false;
         String msg = e.getMessage() != null ? e.getMessage().toLowerCase() : "";
-        if (msg.isEmpty()) return false;
+        if (msg.isEmpty()) {
+            // Check cause for wrapped exceptions
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception) {
+                return isTransientError((Exception) cause);
+            }
+            return false;
+        }
 
         // HTTP status codes
         if (msg.contains("429") || msg.contains("502") || msg.contains("503")) return true;
@@ -392,7 +400,14 @@ public class NodeRouter {
                 || msg.contains("server error")
                 || msg.contains("internal server error")
                 // Empty response from LLM — retryable (rate limit can produce empty choices)
-                || msg.contains("no choices")) return true;
+                || msg.contains("no choices")
+                // Connection resets from network issues
+                || msg.contains("connection reset")
+                || msg.contains("connection refused")) return true;
+
+        // Check cause for wrapped exceptions (message didn't match)
+        Throwable cause = e.getCause();
+        if (cause instanceof Exception && isTransientError((Exception) cause)) return true;
 
         return false;
     }
