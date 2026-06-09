@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,11 +37,7 @@ public class NodeExecutor {
     private final ProjectContextBuilder projectContextBuilder;
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
-    private final AgentNodeStrategy agentStrategy;
-    private final SchemaBuilderNodeStrategy schemaBuilderStrategy;
-    private final VerifierNodeStrategy verifierStrategy;
-    private final ReviewNodeStrategy reviewStrategy;
-    private final DraftNodeStrategy draftStrategy;
+    private final List<NodeExecutionStrategy> strategies;
 
     @Value("${axolotl.sandbox.allowedWriteDirs:.}")
     private java.util.List<String> allowedWriteDirs;
@@ -48,7 +45,33 @@ public class NodeExecutor {
     private static final int MAX_CONTEXT_CHARS = 4000;
     private static final int MAX_SUBAGENT_DEPTH = 5;
 
-    // ── Public constants (re-exported via SchemaService) ──
+    private Map<String, NodeExecutionStrategy> strategyMap;
+
+    public NodeExecutor(ExecutionUtilityService utilityService,
+                        LlmService llmService,
+                        ExecutionWebSocketHandler webSocketHandler,
+                        MemPalaceClient memPalaceClient,
+                        ToolExecutor toolExecutor,
+                        TransformService transformService,
+                        Neo4jSchemaRepository schemaRepository,
+                        PlanService planService,
+                        ProjectContextBuilder projectContextBuilder,
+                        ExecutionRepository executionRepository,
+                        ExecutionStateManager stateManager,
+                        List<NodeExecutionStrategy> strategies) {
+        this.utilityService = utilityService;
+        this.llmService = llmService;
+        this.webSocketHandler = webSocketHandler;
+        this.memPalaceClient = memPalaceClient;
+        this.toolExecutor = toolExecutor;
+        this.transformService = transformService;
+        this.schemaRepository = schemaRepository;
+        this.planService = planService;
+        this.projectContextBuilder = projectContextBuilder;
+        this.executionRepository = executionRepository;
+        this.stateManager = stateManager;
+        this.strategies = strategies;
+    }
 
     public static final String ARCHITECT_ANALYST_PROMPT = """
             You are a senior software architect analyzing a project's codebase structure.
@@ -112,39 +135,32 @@ public class NodeExecutor {
             Use the project context provided by the previous node to create a detailed implementation plan.
             """;
 
-    public NodeExecutor(ExecutionUtilityService utilityService,
-                        LlmService llmService,
-                        ExecutionWebSocketHandler webSocketHandler,
-                        MemPalaceClient memPalaceClient,
-                        ToolExecutor toolExecutor,
-                        TransformService transformService,
-                        Neo4jSchemaRepository schemaRepository,
-                        PlanService planService,
-                        ProjectContextBuilder projectContextBuilder,
-                        ExecutionRepository executionRepository,
-                        ExecutionStateManager stateManager,
-                        AgentNodeStrategy agentStrategy,
-                        VerifierNodeStrategy verifierStrategy,
-                        SchemaBuilderNodeStrategy schemaBuilderStrategy,
-                        ReviewNodeStrategy reviewStrategy,
-                        DraftNodeStrategy draftStrategy) {
-        this.utilityService = utilityService;
-        this.llmService = llmService;
-        this.webSocketHandler = webSocketHandler;
-        this.memPalaceClient = memPalaceClient;
-        this.toolExecutor = toolExecutor;
-        this.transformService = transformService;
-        this.schemaRepository = schemaRepository;
-        this.planService = planService;
-        this.projectContextBuilder = projectContextBuilder;
-        this.executionRepository = executionRepository;
-        this.stateManager = stateManager;
-        this.agentStrategy = agentStrategy;
-        this.verifierStrategy = verifierStrategy;
-        this.schemaBuilderStrategy = schemaBuilderStrategy;
-        this.reviewStrategy = reviewStrategy;
-        this.draftStrategy = draftStrategy;
+    @PostConstruct
+    void initStrategyMap() {
+        this.strategyMap = new HashMap<>();
+        for (NodeExecutionStrategy s : strategies) {
+            strategyMap.put(s.supportedNodeType(), s);
+        }
+        this.agentStrategy = (AgentNodeStrategy) strategyFor("agent");
+        this.schemaBuilderStrategy = (SchemaBuilderNodeStrategy) strategyFor("schemabuilder");
+        this.verifierStrategy = (VerifierNodeStrategy) strategyFor("verifier");
+        this.reviewStrategy = (ReviewNodeStrategy) strategyFor("review");
+        this.draftStrategy = (DraftNodeStrategy) strategyFor("draft");
     }
+
+    private NodeExecutionStrategy strategyFor(String nodeType) {
+        NodeExecutionStrategy s = strategyMap.get(nodeType);
+        if (s == null) {
+            throw new IllegalArgumentException("No strategy found for node type: " + nodeType);
+        }
+        return s;
+    }
+
+    private AgentNodeStrategy agentStrategy;
+    private SchemaBuilderNodeStrategy schemaBuilderStrategy;
+    private VerifierNodeStrategy verifierStrategy;
+    private ReviewNodeStrategy reviewStrategy;
+    private DraftNodeStrategy draftStrategy;
 
     // ────────────────────────── result maps (delegated to stateManager) ──────────────────────────
 
