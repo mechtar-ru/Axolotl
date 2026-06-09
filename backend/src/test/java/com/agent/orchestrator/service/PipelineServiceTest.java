@@ -35,6 +35,7 @@ class PipelineServiceTest {
     @Mock ExecutionStateManager stateManager;
     @Mock SchemaValidator schemaValidator;
     @Mock DiffService diffService;
+    @Mock PipelineStageExecutionService stageExecutionService;
     @Captor ArgumentCaptor<WorkflowSchema> schemaCaptor;
 
     PipelineStatusManager statusManager = new PipelineStatusManager();
@@ -44,8 +45,8 @@ class PipelineServiceTest {
     @BeforeEach
     void setUp() {
         pipelineBuilder = new PipelineBuilder(schemaRepository);
-        pipelineService = new PipelineServiceImpl(schemaRepository, nodeRouter,
-                webSocketHandler, executionRepository, stateManager, schemaValidator, pipelineBuilder, statusManager, diffService);
+        pipelineService = new PipelineServiceImpl(schemaRepository,
+                webSocketHandler, executionRepository, stateManager, schemaValidator, pipelineBuilder, statusManager, stageExecutionService);
         // Default: validation passes
         SchemaValidationResult validResult = new SchemaValidationResult();
         when(schemaValidator.validate(any())).thenReturn(validResult);
