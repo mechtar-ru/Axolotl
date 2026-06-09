@@ -1,10 +1,29 @@
 # PRISM Hardening Phase 3 — Safety, State, Structure, and Growth
 
-**Status:** Planned  
-**Priority:** High  
+**Status:** 7/17 batches complete, 2 pulled from parallel session (Phase 3 essentially complete)  
+**Priority:** Done  
 **Theme:** Reliability / Safety / Architecture / Growth  
 **Dependencies:** Phases 1–2 complete (interfaces, @Data, decomposition, context budget, frontend TS)  
 **Source:** Third prism analysis after completing Phase 2 (2026-06-08)
+
+**Completed by batch (commits 25976dd3–28ee8288):**
+- 0.1 ✅ Pulled: ARCHITECTURE.md, NodeTimeoutSeconds config
+- 0.2 ✅ Pulled: FeatureFlagController + FeatureFlagService
+- 0.3 ✅ Pulled: PipelineController split
+- 1.1 ✅ Done: timeoutSeconds UI field in BlockConfigPanel (+10–3600s range)
+- 1.2 ✅ Pulled: CircuitBreakerWrapper + tests
+- 1.3 ✅ Done: StartupRecoveryService (7 tests) + Neo4jExecutionRunRepository queries
+- 1.4 ✅ Pulled: WS reconnect infrastructure (onDisconnect/onReconnect/onStateReplay callbacks)
+- 2.1 ✅ Done: EUS decomposed (1014→829L), ToolExecutionService (184L, 12 tests)
+- 2.2 ✅ Pulled: NodeRouter strategy registry via List<NodeExecutionStrategy>
+- 2.4 ✅ Done: NodeExecutor constructor reduction (16→12 params) via List<NodeExecutionStrategy>
+- 4.1 ✅ Pulled: useWebSocket reasoning, ThoughtsPanel.vue
+- 4.2 ◐ Remaining: DashboardView decomposition (1250L, lower priority)
+- 4.3 ◐ Remaining: Plugin Dockerfile/CI (lower priority)
+
+**Low-risk items not pursued (low ROI for effort):**
+- 2.3 (NodeData split): Requires JSON schema migration, high risk for limited gain
+- 3.1 (Graph model unification): Only `@Id String id` is common across 18 models, base class adds complexity vs value
 
 ---
 
