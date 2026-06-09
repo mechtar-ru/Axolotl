@@ -114,7 +114,7 @@ async function handleRetry() {
 // Provide state for child components
 const onReasoningBadgeClick = (nodeId: string) => {
   currentReasoningNodeId.value = nodeId
-  currentReasoning.value = nodeReasonings.get(nodeId) || ''
+  currentReasoning.value = nodeReasonings.value[nodeId] || ''
   showThoughtsPanel.value = true
 }
 
@@ -728,7 +728,7 @@ function goToDashboard() {
     />
 
     <ThoughtsPanel
-      :visible="showThoughtsPanel"
+      :isOpen="showThoughtsPanel"
       :reasoning="currentReasoning"
       @close="showThoughtsPanel = false"
     />

@@ -1,6 +1,7 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.repository.CustomLlmEndpointRepository;
+import com.agent.orchestrator.service.CircuitBreakerWrapper;
 import com.agent.orchestrator.service.SettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -24,6 +26,7 @@ class LlmServiceTest {
     @Mock LlmProvider deepseek;
     @Mock CustomLlmEndpointRepository customEndpointRepository;
     @Mock SettingsService settingsService;
+    @Mock CircuitBreakerWrapper circuitBreaker;
 
     LlmService llmService;
 
@@ -34,8 +37,13 @@ class LlmServiceTest {
         when(anthropic.getName()).thenReturn("anthropic");
         when(deepseek.getName()).thenReturn("deepseek");
         lenient().when(customEndpointRepository.findAll()).thenReturn(List.of());
+        lenient().when(circuitBreaker.call(any(), any())).thenAnswer(invocation -> {
+            Supplier<LlmResponse> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
+        lenient().when(circuitBreaker.getState(any())).thenReturn(CircuitBreakerWrapper.State.CLOSED);
 
-        llmService = new LlmService(List.of(ollama, openai, anthropic, deepseek), customEndpointRepository, settingsService);
+        llmService = new LlmService(List.of(ollama, openai, anthropic, deepseek), customEndpointRepository, settingsService, circuitBreaker);
     }
 
     @Test

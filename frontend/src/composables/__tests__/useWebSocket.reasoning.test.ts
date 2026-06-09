@@ -14,11 +14,15 @@ describe('useWebSocket reasoning', () => {
       onopen: (() => void) | null = null
       onmessage: ((event: MessageEvent) => void) | null = null
       onclose: ((event: CloseEvent) => void) | null = null
-      onerror: (() => void) | null = null
-      readyState: number = WebSocket.OPEN
-      constructor(url: string) {
-        this.url = url
-        wsRef = this
+      onerror: ((event: Event) => void) | null = null
+      readyState: number = 1
+      binaryType: BinaryType = 'blob'
+      bufferedAmount: number = 0
+      extensions: string = ''
+      protocol: string = ''
+      constructor(url: string | URL, _protocols?: string | string[]) {
+        this.url = typeof url === 'string' ? url : url.href
+        wsRef = this as unknown as WebSocket
         // Simulate open immediately
         setTimeout(() => this.onopen?.(), 0)
       }

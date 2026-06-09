@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.net.SocketTimeoutException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -39,6 +40,7 @@ class NodeRouterTest {
     @Mock VerifierNodeStrategy verifierStrategy;
     @Mock ReviewNodeStrategy reviewStrategy;
     @Mock DraftNodeStrategy draftStrategy;
+    @Mock NodeOutputValidator outputValidator;
 
     NodeRouter nodeRouter;
 
@@ -49,7 +51,8 @@ class NodeRouterTest {
                 memPalaceClient, toolExecutor, transformService, schemaRepository,
                 planService, projectContextBuilder, executionRepository,
                 stateManager, reasoningCapture,
-                agentStrategy, schemaBuilderStrategy, verifierStrategy, reviewStrategy, draftStrategy);
+                List.of(agentStrategy, schemaBuilderStrategy, verifierStrategy, reviewStrategy, draftStrategy),
+                agentStrategy, outputValidator);
     }
 
     // ─── getAutoRetryCount ───
