@@ -51,6 +51,7 @@ public class NodeRouter {
     private final List<NodeExecutionStrategy> strategies;
     private final AgentNodeStrategy agentStrategy;
     private final NodeOutputValidator outputValidator;
+    private final MagicContextIndexer mcIndexer;
     private Map<String, NodeExecutionStrategy> strategyRegistry;
 
     public NodeRouter(ExecutionUtilityService utilityService,
@@ -67,7 +68,8 @@ public class NodeRouter {
                       ReasoningCapture reasoningCapture,
                        List<NodeExecutionStrategy> strategies,
                        AgentNodeStrategy agentStrategy,
-                       NodeOutputValidator outputValidator) {
+                       NodeOutputValidator outputValidator,
+                       MagicContextIndexer mcIndexer) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -83,6 +85,7 @@ public class NodeRouter {
         this.strategies = strategies;
         this.agentStrategy = agentStrategy;
         this.outputValidator = outputValidator;
+        this.mcIndexer = mcIndexer;
     }
 
     @PostConstruct
@@ -256,6 +259,15 @@ public class NodeRouter {
             if (node.getData() != null) {
                 node.getData().setResult(result);
             }
+
+            // Index result in Magic Context for future RAG retrieval (all node types)
+            if (result != null && !result.isBlank() && mcIndexer.isAvailable()) {
+                mcIndexer.indexNodeOutput(schemaId, node.getId(), nodeType, result,
+                        schemaRepository.findById(schemaId) != null
+                                ? schemaRepository.findById(schemaId).getName() : "",
+                        node.getName() != null ? node.getName() : "");
+            }
+
             // Don't override review nodes waiting for human approval
             boolean isAwaitingApproval = node.getStatus() == Node.NodeStatus.AWAITING_APPROVAL;
             if (!isAwaitingApproval) {

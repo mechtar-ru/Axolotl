@@ -43,6 +43,8 @@ class AgentNodeStrategyTest {
     @Mock com.agent.orchestrator.context.ContextAssembler contextAssembler;
     @Mock ReasoningCapture reasoningCapture;
     @Mock ToolExecutionService toolExecutionService;
+    @Mock MagicContextIndexer mcIndexer;
+    @Mock MagicContextRetriever mcRetriever;
 
     AgentNodeStrategy strategy;
 
@@ -57,6 +59,10 @@ class AgentNodeStrategyTest {
                 .thenReturn(new com.agent.orchestrator.context.ContextAssembler.AssemblyResult(
                         "", 0, 0, 0, List.of()));
 
+        // Default: MC not available — tests fall back to flat predecessor behavior
+        when(mcRetriever.isAvailable()).thenReturn(false);
+        when(mcRetriever.retrieveRelevantContext(anyString(), anyString())).thenReturn("");
+
         strategy = new AgentNodeStrategy(utilityService, llmService, webSocketHandler,
                 memPalaceClient, toolExecutor, schemaRepository,
                 projectContextBuilder,
@@ -64,7 +70,9 @@ class AgentNodeStrategyTest {
                 reasoningCapture,
                 planStepService,
                 contextAssembler,
-                toolExecutionService);
+                toolExecutionService,
+                mcIndexer,
+                mcRetriever);
 
         node = new Node();
         node.setId("n1");

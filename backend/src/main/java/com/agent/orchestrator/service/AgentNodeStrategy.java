@@ -45,6 +45,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private final PlanStepService planStepService;
     private final ContextAssembler contextAssembler;
     private final ToolExecutionService toolExecutionService;
+    private final MagicContextIndexer mcIndexer;
+    private final MagicContextRetriever mcRetriever;
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -57,7 +59,9 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                               ReasoningCapture reasoningCapture,
                               PlanStepService planStepService,
                               ContextAssembler contextAssembler,
-                              ToolExecutionService toolExecutionService) {
+                              ToolExecutionService toolExecutionService,
+                              MagicContextIndexer mcIndexer,
+                              MagicContextRetriever mcRetriever) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -70,6 +74,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         this.planStepService = planStepService;
         this.contextAssembler = contextAssembler;
         this.toolExecutionService = toolExecutionService;
+        this.mcIndexer = mcIndexer;
+        this.mcRetriever = mcRetriever;
     }
 
     @Override
@@ -125,7 +131,17 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         {
             List<ContextBlock> ctxBlocks = new ArrayList<>();
 
-            if (!contextBlockText.isEmpty()) {
+            // Try Magic Context RAG first, fall back to flat predecessor block
+            String mcQuery = (prompt != null && !prompt.isBlank() ? prompt : "task")
+                    + " " + (node.getName() != null ? node.getName() : "");
+            String mcContext = mcRetriever.retrieveRelevantContext(mcQuery, schemaId);
+            if (!mcContext.isEmpty()) {
+                ctxBlocks.add(new ContextBlock("mcContext", mcContext, ContextPriority.MEDIUM));
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Magic Context retrieval active (" + mcContext.length() + " chars)", node.getId());
+                }
+            } else if (!contextBlockText.isEmpty()) {
                 ctxBlocks.add(new ContextBlock("predecessorResults",
                         "Контекст от предыдущих узлов:\n" + contextBlockText, ContextPriority.MEDIUM));
             }
@@ -278,7 +294,17 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         {
             List<ContextBlock> ctxBlocks = new ArrayList<>();
 
-            if (!contextBlock.isEmpty()) {
+            // Try Magic Context RAG first, fall back to flat predecessor block
+            String mcQuery = (prompt != null && !prompt.isBlank() ? prompt : "task")
+                    + " " + (node.getName() != null ? node.getName() : "");
+            String mcContext = mcRetriever.retrieveRelevantContext(mcQuery, schemaId);
+            if (!mcContext.isEmpty()) {
+                ctxBlocks.add(new ContextBlock("mcContext", mcContext, ContextPriority.MEDIUM));
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Magic Context retrieval active (" + mcContext.length() + " chars)", node.getId());
+                }
+            } else if (!contextBlock.isEmpty()) {
                 ctxBlocks.add(new ContextBlock("predecessorResults",
                         "Контекст от предыдущих узлов:\n" + contextBlock, ContextPriority.MEDIUM));
             }

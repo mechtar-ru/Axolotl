@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { appApi, schemaApi } from '@/services/api'
-import type { WorkflowSchema } from '@/types'
+import { useSettingsStore } from '@/stores/settingsStore'
+import type { WorkflowSchema, FlowNode, FlowEdge } from '@/types'
 
 const props = defineProps<{
   visible: boolean
@@ -13,58 +14,288 @@ const emit = defineEmits<{
   'add-to-canvas': [schema: WorkflowSchema]
 }>()
 
+const settingsStore = useSettingsStore()
 const createMode = computed(() => !props.appId)
 
-// Presets — pure app descriptions, no pipeline structure
-interface Preset {
-  id: string
-  name: string
-  description: string
-}
-const presets: Preset[] = [
-  {
-    id: 'emotion-diary',
-    name: 'Emotion Diary',
-    description: 'Мобильное приложение-дневник эмоций с 6 категориями (радость, грусть, гнев, страх, удивление, спокойствие). Календарь с тепловой картой настроения, ежедневные вопросы для рефлексии, статистика за неделю/месяц, персонализированные советы. Тёмная и светлая тема. Офлайн-первый с локальным хранилищем.',
-  },
-  {
-    id: 'chat-bot',
-    name: 'Chat Bot',
-    description: 'AI-чат бот с памятью разговора. Поддержка контекста, личности ассистента, управление историей диалога. Веб-интерфейс с адаптивным дизайном.',
-  },
-  {
-    id: 'content-gen',
-    name: 'Content Generator',
-    description: 'Генератор контента для статей и соцсетей. Ввод темы и ключевых слов, исследование, создание структуры, написание полного текста с проверкой тона и грамматики. Сохранение в файл.',
-  },
-  {
-    id: 'sokoban',
-    name: 'Sokoban Game',
-    description: 'Классическая игра Sokoban для браузера на HTML/CSS/JS. 5 уровней, управление стрелками, отмена ходов (Z), сброс (R), счётчик ходов,检测 победы. Адаптивный дизайн.',
-  },
-]
+// ─── State ───
 
 const prompt = ref('')
 const appName = ref('')
 const loading = ref(false)
 const error = ref<string | null>(null)
 
+const projectType = ref<'CUSTOM' | 'FLUTTER' | 'WEB' | 'PYTHON'>('CUSTOM')
+const pipelineTemplate = ref<'standard' | 'app-creation' | 'minimal'>('standard')
+const selectedModel = ref<string>('')
+
+interface Preset {
+  id: string
+  name: string
+  description: string
+  projectType: 'CUSTOM' | 'FLUTTER' | 'WEB' | 'PYTHON'
+  pipelineTemplate: 'standard' | 'app-creation' | 'minimal'
+}
+
+const presets: Preset[] = [
+  {
+    id: 'eios',
+    name: 'EIOS (Flutter)',
+    description: 'Flutter-приложение: Emotional Intelligence Operating System — локальный эмоциональный трекер. 4 экрана: State (быстрая идентификация эмоций + телесные ощущения), Reset (протоколы регуляции: дыхание, заземление, когнитивная перезагрузка), Patterns (долгосрочные тренды и инсайты), Library (короткие образовательные материалы). SQLite + SQLCipher, приватность, офлайн, русский язык. Анти-руминация: перехват рекурсивного самоанализа. Body-state mapping: chest/jaw/stomach/throat/shoulders/head. Эмоциональная таксономия: обида, тоска, раздражение, тревожность, опустошение, подавленность, напряжение. Дизайн: графит, приглушённый индиго, тёмно-сине-серый, тёмный янтарь. Анимации медленные и тонкие.',
+    projectType: 'FLUTTER',
+    pipelineTemplate: 'app-creation',
+  },
+  {
+    id: 'chat-bot',
+    name: 'Chat Bot',
+    description: 'AI-чат бот с памятью разговора. Поддержка контекста, личности ассистента, управление историей диалога. Веб-интерфейс с адаптивным дизайном.',
+    projectType: 'CUSTOM',
+    pipelineTemplate: 'standard',
+  },
+  {
+    id: 'content-gen',
+    name: 'Content Generator',
+    description: 'Генератор контента для статей и соцсетей. Ввод темы и ключевых слов, исследование, создание структуры, написание полного текста с проверкой тона и грамматики. Сохранение в файл.',
+    projectType: 'CUSTOM',
+    pipelineTemplate: 'standard',
+  },
+  {
+    id: 'sokoban',
+    name: 'Sokoban Game',
+    description: 'Классическая игра Sokoban для браузера на HTML/CSS/JS. 5 уровней, управление стрелками, отмена ходов (Z), сброс (R), счётчик ходов,检测 победы. Адаптивный дизайн.',
+    projectType: 'WEB',
+    pipelineTemplate: 'minimal',
+  },
+]
+
+const projectTypes = [
+  { value: 'CUSTOM', label: 'Generic' },
+  { value: 'FLUTTER', label: 'Flutter / Dart' },
+  { value: 'WEB', label: 'Web (HTML/CSS/JS)' },
+  { value: 'PYTHON', label: 'Python' },
+]
+
+const pipelineTemplates = [
+  { value: 'standard', label: 'Standard', desc: 'Receive → Review → Agent → Verify → Output' },
+  { value: 'app-creation', label: 'App Creation', desc: 'Receive → Review → Planner → Review → Prep → Agent → Verify → Doc-Agent → Output' },
+  { value: 'minimal', label: 'Minimal', desc: 'Receive → Agent → Verify → Output' },
+]
+
+const modelOptions = ref<{ value: string; label: string; group: string }[]>([])
+const modelLoading = ref(false)
+
+const modelGroups = computed(() => {
+  const groups: { label: string; options: { value: string; label: string }[] }[] = []
+  for (const m of modelOptions.value) {
+    let g = groups.find(g => g.label === m.group)
+    if (!g) {
+      g = { label: m.group, options: [] }
+      groups.push(g)
+    }
+    g.options.push({ value: m.value, label: m.label })
+  }
+  return groups
+})
+
+// ─── Computed ───
+
+const agentTools = computed(() => {
+  const base = ['file_write', 'directory_read', 'file_read', 'bash']
+  if (projectType.value === 'FLUTTER') {
+    return [...base, 'grep', 'web_search', 'web_fetch']
+  }
+  return base
+})
+
+const verifierChecks = computed(() => {
+  const checks: Record<string, any> = { syntaxCheck: true, premortem: true }
+  if (projectType.value === 'FLUTTER') {
+    checks.testCommand = 'flutter test'
+  }
+  return checks
+})
+
+// ─── Lifecycle ───
+
+onMounted(async () => {
+  if (!settingsStore.providersLoaded) {
+    await settingsStore.loadProviders()
+  }
+  modelOptions.value = settingsStore.getAllModelOptions()
+})
+
 // Reset state when dialog opens
-watch(() => props.visible, (newVal) => {
+watch(() => props.visible, async (newVal) => {
   if (newVal) {
-    prompt.value = ''
-    appName.value = ''
     loading.value = false
     error.value = null
+    if (!settingsStore.providersLoaded) {
+      await settingsStore.loadProviders()
+    }
+    modelOptions.value = settingsStore.getAllModelOptions()
   }
 })
+
+// ─── Presets ───
 
 function applyPreset(presetId: string) {
   const preset = presets.find(p => p.id === presetId)
   if (preset) {
     prompt.value = preset.description
+    projectType.value = preset.projectType
+    pipelineTemplate.value = preset.pipelineTemplate
   }
 }
+
+// ─── Pipeline configs ───
+
+interface PipelineConfig {
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
+
+function makeReviewData(config: Record<string, any>, reviewType: string): Record<string, any> {
+  return {
+    config: {
+      checks: config.checks ?? { premortem: true, prism: false, postmortem: false },
+      mode: config.mode ?? 'manual',
+      maxAutoIterations: config.maxAutoIterations ?? 3,
+      generatePlan: config.generatePlan ?? true,
+      reviewType,
+      premortem: true,
+    },
+  } as Record<string, any>
+}
+
+function makeSourceData(description: string): Record<string, any> {
+  return {
+    sourceData: description,
+    config: { sourceType: 'text' },
+  } as Record<string, any>
+}
+
+function makeAgentData(systemPrompt: string, userPrompt: string, agentType: string, tools: string[]): Record<string, any> {
+  return {
+    systemPrompt,
+    userPrompt,
+    model: selectedModel.value || null,
+    agentType,
+    enabledTools: tools,
+    config: {},
+  } as Record<string, any>
+}
+
+function makeVerifierData(description: string, checksParam: Record<string, any>): Record<string, any> {
+  return {
+    config: {
+      checks: checksParam,
+      rewriteOnFail: true,
+      maxRewriteRetries: 3,
+      stubDetection: true,
+      validationCriteria: description,
+    },
+  } as Record<string, any>
+}
+
+function generateStandardPipeline(description: string): PipelineConfig {
+  return {
+    nodes: [
+      { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
+      { id: 'review-1', type: 'review' as any, name: 'Review Plan', position: { x: 350, y: 200 }, data: makeReviewData({}, 'standard') },
+      { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 600, y: 200 }, data: makeAgentData(
+          'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.',
+          'Implement the application described in the Receive node:\n\n{{sourceData}}',
+          'coder', agentTools.value) },
+      { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 850, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
+      { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1100, y: 200 }, data: { config: {
+            mode: 'summary_report', reportPath: 'pipeline-report.md',
+            includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
+            generateReadme: true, generateArchitecture: false,
+          } } as Record<string, any>,
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
+      { id: 'e2', source: 'review-1', target: 'think-1', type: 'data' as any },
+      { id: 'e3', source: 'think-1', target: 'verify-1', type: 'data' as any },
+      { id: 'e4', source: 'verify-1', target: 'act-1', type: 'data' as any },
+    ],
+  }
+}
+
+function generateAppCreationPipeline(description: string): PipelineConfig {
+  return {
+    nodes: [
+      { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 50, y: 200 }, data: makeSourceData(description) },
+      { id: 'review-1', type: 'review' as any, name: 'Design Review', position: { x: 300, y: 200 }, data: makeReviewData(
+          { checks: { premortem: true, prism: true, postmortem: true } }, 'design') },
+      { id: 'planner-1', type: 'planner' as any, name: 'Planner', position: { x: 550, y: 200 }, data: makeAgentData(
+          'You are a planning agent. Break down the application into implementation steps with dependencies.',
+          'Create a plan for: {{sourceData}}', 'planner', ['file_read', 'file_write', 'directory_read']) },
+      { id: 'review-2', type: 'review' as any, name: 'Plan Review', position: { x: 800, y: 200 }, data: makeReviewData(
+          { checks: { premortem: true, prism: false, postmortem: false } }, 'plan') },
+      { id: 'prep-1', type: 'prep' as any, name: 'Prep', position: { x: 1050, y: 200 }, data: makeAgentData(
+          'You are a preparation agent. Generate pseudocode contracts and tests for the planned implementation.',
+          'Generate pseudocode and tests based on the plan.', 'prep', ['file_read', 'file_write', 'directory_read']) },
+      { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 1300, y: 200 }, data: makeAgentData(
+          'You are a senior developer. Implement the application step by step according to the plan and pseudocode contracts.',
+          'Implement the application described in the Receive node:\n\n{{sourceData}}',
+          'coder', agentTools.value) },
+      { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 1550, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
+      { id: 'doc-1', type: 'doc-agent' as any, name: 'Doc-Agent', position: { x: 1800, y: 200 }, data: makeAgentData(
+          'You are a documentation agent. Update project docs based on the implementation.',
+          'Update project documentation for the implemented application.', 'doc-agent', ['file_read', 'file_write', 'directory_read']) },
+      { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 2050, y: 200 }, data: { config: {
+            mode: 'summary_report', reportPath: 'pipeline-report.md',
+            includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
+            generateReadme: true, generateArchitecture: false,
+          } } as Record<string, any>,
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
+      { id: 'e2', source: 'review-1', target: 'planner-1', type: 'data' as any },
+      { id: 'e3', source: 'planner-1', target: 'review-2', type: 'data' as any },
+      { id: 'e4', source: 'review-2', target: 'prep-1', type: 'data' as any },
+      { id: 'e5', source: 'prep-1', target: 'think-1', type: 'data' as any },
+      { id: 'e6', source: 'think-1', target: 'verify-1', type: 'data' as any },
+      { id: 'e7', source: 'verify-1', target: 'doc-1', type: 'data' as any },
+      { id: 'e8', source: 'doc-1', target: 'act-1', type: 'data' as any },
+    ],
+  }
+}
+
+function generateMinimalPipeline(description: string): PipelineConfig {
+  return {
+    nodes: [
+      { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
+      { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 400, y: 200 }, data: makeAgentData(
+          'You are a senior developer. Use the tools to implement the described application.',
+          'Implement:\n\n{{sourceData}}', 'coder', agentTools.value) },
+      { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 700, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
+      { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1000, y: 200 }, data: { config: {
+            mode: 'summary_report', reportPath: 'pipeline-report.md',
+            includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
+            generateReadme: true, generateArchitecture: false,
+          } } as Record<string, any>,
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'receive-1', target: 'think-1', type: 'data' as any },
+      { id: 'e2', source: 'think-1', target: 'verify-1', type: 'data' as any },
+      { id: 'e3', source: 'verify-1', target: 'act-1', type: 'data' as any },
+    ],
+  }
+}
+
+function getPipelineConfig(description: string): PipelineConfig {
+  switch (pipelineTemplate.value) {
+    case 'app-creation': return generateAppCreationPipeline(description)
+    case 'minimal': return generateMinimalPipeline(description)
+    default: return generateStandardPipeline(description)
+  }
+}
+
+// ─── Main action ───
 
 async function generate() {
   if (!prompt.value.trim()) return
@@ -78,20 +309,19 @@ async function generate() {
 
     // Create mode: create a blank schema first
     if (createMode.value) {
-      // Check for path conflict before creating
       try {
-        const pathCheck = await appApi.checkTargetPath(appName.value.trim(), 'CUSTOM')
+        const pathCheck = await appApi.checkTargetPath(appName.value.trim(), projectType.value)
         if (pathCheck.exists) {
           error.value = `Directory "${pathCheck.targetPath}" already exists. Create the app from the Dashboard to choose a conflict resolution strategy.`
           loading.value = false
           return
         }
       } catch {
-        // Path check failed — proceed anyway, createApp will handle it
+        // proceed
       }
       const created = await appApi.createApp({
         name: appName.value.trim(),
-        appType: 'CUSTOM',
+        appType: projectType.value,
         description: '',
       })
       if (!created || !created.id) {
@@ -104,88 +334,12 @@ async function generate() {
 
     // Fetch the current schema
     const schema = await schemaApi.getSchema(targetId)
-
-    // Apply fixed 5-node pipeline: Receive → Review → Agent → Verify → Output
     const description = prompt.value.trim()
 
-    schema.nodes = ([
-      {
-        id: 'receive-1',
-        type: 'source' as any,
-        name: 'Receive',
-        position: { x: 100, y: 200 },
-        data: {
-          sourceData: description,
-          sourceType: 'text',
-          config: { sourceType: 'text' },
-        } as Record<string, any>,
-      },
-      {
-        id: 'review-1',
-        type: 'review' as any,
-        name: 'Review Plan',
-        position: { x: 350, y: 200 },
-        data: {
-          checks: { premortem: true, prism: false, postmortem: false },
-          mode: 'manual',
-          maxAutoIterations: 3,
-          generatePlan: true,
-          config: { premortem: true },
-        } as Record<string, any>,
-      },
-      {
-        id: 'think-1',
-        type: 'agent' as any,
-        name: 'Agent',
-        position: { x: 600, y: 200 },
-        data: {
-          systemPrompt: 'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.',
-          userPrompt: 'Implement the application described in the Receive node:\n\n{{sourceData}}',
-          model: null,
-          agentType: 'coder',
-          enabledTools: ['file_write', 'directory_read', 'file_read', 'bash'],
-          config: {},
-        } as Record<string, any>,
-      },
-      {
-        id: 'verify-1',
-        type: 'verifier' as any,
-        name: 'Verify',
-        position: { x: 850, y: 200 },
-        data: {
-          checks: { syntaxCheck: true, testCommand: '', premortem: true },
-          rewriteOnFail: true,
-          maxRewriteRetries: 3,
-          config: { stubDetection: true },
-          validationCriteria: description,
-        } as Record<string, any>,
-      },
-      {
-        id: 'act-1',
-        type: 'output' as any,
-        name: 'Output',
-        position: { x: 1100, y: 200 },
-        data: {
-          config: {
-            mode: 'summary_report',
-            reportPath: 'pipeline-report.md',
-            includeReview: true,
-            includeFiles: true,
-            includeVerification: true,
-            includeMetrics: true,
-            generateReadme: true,
-            generateArchitecture: false,
-          },
-        } as Record<string, any>,
-      },
-    ]) as any
-
-    schema.edges = [
-      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
-      { id: 'e2', source: 'review-1', target: 'think-1', type: 'data' as any },
-      { id: 'e3', source: 'think-1', target: 'verify-1', type: 'data' as any },
-      { id: 'e4', source: 'verify-1', target: 'act-1', type: 'data' as any },
-    ]
+    // Generate pipeline from selected template
+    const pipeline = getPipelineConfig(description)
+    schema.nodes = pipeline.nodes as any
+    schema.edges = pipeline.edges as any
 
     const updated = await schemaApi.updateSchema(targetId, schema)
 
@@ -233,8 +387,7 @@ defineExpose({
         <!-- Input area -->
         <div class="dialog-body">
           <p class="dialog-hint">
-            Describe what you want to build. We'll create a pipeline:
-            <strong>Receive → Review Plan → Agent → Verify → Output</strong>
+            Describe what you want to build. Choose project type and pipeline template below.
           </p>
 
           <!-- App Name (create mode only) -->
@@ -248,6 +401,50 @@ defineExpose({
               placeholder="My App"
               :disabled="loading"
             />
+          </div>
+
+          <!-- Project type -->
+          <div class="field-row">
+            <label class="input-label" for="quickstart-type">Project Type:</label>
+            <select
+              id="quickstart-type"
+              v-model="projectType"
+              class="text-input"
+              :disabled="loading"
+            >
+              <option v-for="pt in projectTypes" :key="pt.value" :value="pt.value">{{ pt.label }}</option>
+            </select>
+          </div>
+
+          <!-- Pipeline template -->
+          <div class="field-row">
+            <label class="input-label" for="quickstart-pipeline">Pipeline:</label>
+            <select
+              id="quickstart-pipeline"
+              v-model="pipelineTemplate"
+              class="text-input"
+              :disabled="loading"
+            >
+              <option v-for="pt in pipelineTemplates" :key="pt.value" :value="pt.value" :title="pt.desc">
+                {{ pt.label }} — {{ pt.desc }}
+              </option>
+            </select>
+          </div>
+
+          <!-- Model selector -->
+          <div class="field-row">
+            <label class="input-label" for="quickstart-model">Model <span class="hint-muted">(optional, blank = default)</span>:</label>
+            <select
+              id="quickstart-model"
+              v-model="selectedModel"
+              class="text-input"
+              :disabled="loading"
+            >
+              <option value="">— System default —</option>
+              <optgroup v-for="group in modelGroups" :key="group.label" :label="group.label">
+                <option v-for="opt in group.options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </optgroup>
+            </select>
           </div>
 
           <!-- Preset selector -->
@@ -269,7 +466,7 @@ defineExpose({
             id="quickstart-prompt"
             v-model="prompt"
             class="prompt-input"
-            rows="5"
+            rows="8"
             placeholder="E.g. Build a Sokoban game in Python with pygame, 5 levels..."
             :disabled="loading"
           />
@@ -322,7 +519,7 @@ defineExpose({
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 560px;
+  max-width: 600px;
   max-height: 90vh;
   overflow-y: auto;
   box-shadow: var(--shadow-lg);
@@ -373,13 +570,18 @@ defineExpose({
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .input-label {
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-secondary);
+}
+
+.hint-muted {
+  font-weight: 400;
+  color: var(--text-tertiary, #888);
 }
 
 .field-row {
@@ -420,7 +622,7 @@ defineExpose({
   font-size: var(--text-sm);
   font-family: inherit;
   resize: vertical;
-  min-height: 100px;
+  min-height: 120px;
   box-sizing: border-box;
 }
 

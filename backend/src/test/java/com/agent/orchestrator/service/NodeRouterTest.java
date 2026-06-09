@@ -41,6 +41,7 @@ class NodeRouterTest {
     @Mock ReviewNodeStrategy reviewStrategy;
     @Mock DraftNodeStrategy draftStrategy;
     @Mock NodeOutputValidator outputValidator;
+    @Mock MagicContextIndexer mcIndexer;
 
     NodeRouter nodeRouter;
 
@@ -52,7 +53,7 @@ class NodeRouterTest {
                 planService, projectContextBuilder, executionRepository,
                 stateManager, reasoningCapture,
                 List.of(agentStrategy, schemaBuilderStrategy, verifierStrategy, reviewStrategy, draftStrategy),
-                agentStrategy, outputValidator);
+                agentStrategy, outputValidator, mcIndexer);
     }
 
     // ─── getAutoRetryCount ───
