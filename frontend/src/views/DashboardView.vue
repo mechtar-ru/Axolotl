@@ -7,6 +7,8 @@ import AppCard from '@/components/app/AppCard.vue'
 import AppModal from '@/components/ui/AppModal.vue'
 
 import QuickStartDialog from '@/components/studio/QuickStartDialog.vue'
+import NewAppModal from '@/components/studio/NewAppModal.vue'
+import ConflictModal from '@/components/studio/ConflictModal.vue'
 import TemplateCard from '@/components/app/TemplateCard.vue'
 import ProjectsFolderPrompt from '@/components/settings/ProjectsFolderPrompt.vue'
 import { appApi, schemaApi } from '@/services/api'
@@ -72,14 +74,10 @@ const templates = ref([
 ])
 
 const showNewAppModal = ref(false)
-const newAppName = ref('')
-const newAppType = ref('CUSTOM')
 
 // Conflict modal state
 const showConflictModal = ref(false)
 const pendingTemplate = ref<any>(null)
-const conflictAction = ref<'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH'>('CONTINUE')
-const customTargetPath = ref('')
 
 const generatedApps = computed(() => {
   const seen = new Map<string, typeof schemaStore.schemas[0]>()
@@ -334,7 +332,12 @@ async function createFromTemplate(templateId: string) {
   }
 }
 
-async function resolveConflict() {
+async function onAppCreated(schemaId: string) {
+  trackRecent(schemaId)
+  router.push(`/app/${schemaId}`)
+}
+
+async function onConflictResolve(action: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH', customPath?: string) {
   if (!pendingTemplate.value) return
   try {
     const template = pendingTemplate.value
@@ -342,12 +345,11 @@ async function resolveConflict() {
       name: template.name,
       appType: template.appType,
       description: template.description,
-      conflictAction: conflictAction.value,
-      customTargetPath: conflictAction.value === 'CHANGE_PATH' ? customTargetPath.value : undefined,
+      conflictAction: action,
+      customTargetPath: action === 'CHANGE_PATH' ? customPath : undefined,
       templateId: template.id,
     })
     if (appInfo) {
-      // Push template nodes/edges if this template has a definition
       const updated = await applyTemplateToSchema(appInfo.id, template.id)
       if (updated) {
         schemaStore.schemas.push(updated)
@@ -373,49 +375,6 @@ async function confirmDeleteApp() {
   await schemaStore.deleteSchema(deleteTarget.value.id)
   showDeleteModal.value = false
   deleteTarget.value = null
-}
-
-async function createBlankApp() {
-  if (!newAppName.value.trim()) return
-  try {
-    // For CUSTOM app types, use the original schemaStore.createSchema
-    if (newAppType.value === 'CUSTOM') {
-      const schema = await schemaStore.createSchema(newAppName.value, newAppType.value)
-      showNewAppModal.value = false
-      newAppName.value = ''
-      if (schema) {
-        router.push(`/app/${schema.id}`)
-      }
-    } else {
-      // For non-CUSTOM types, use appApi with conflict check
-      const pathCheck = await appApi.checkTargetPath(newAppName.value, newAppType.value)
-      if (pathCheck.exists) {
-        // Show conflict modal — create a pseudo-template for the pending app
-        showConflictModal.value = true
-        pendingTemplate.value = {
-          id: 'blank',
-          name: newAppName.value,
-          appType: newAppType.value,
-          description: ''
-        }
-        return
-      }
-      // No conflict — create directly
-      const appInfo = await appApi.createApp({
-        name: newAppName.value,
-        appType: newAppType.value,
-        description: '',
-      })
-      if (appInfo) {
-        schemaStore.schemas.push(appInfo as unknown as WorkflowSchema)
-        showNewAppModal.value = false
-        newAppName.value = ''
-        router.push(`/app/${appInfo.id}`)
-      }
-    }
-  } catch (error) {
-    console.error('Failed to create blank app:', error)
-  }
 }
 
 // Project grouping
@@ -766,72 +725,13 @@ async function onImportFile(event: Event) {
       </div>
     </section>
 
-    <!-- New App Modal -->
-    <AppModal v-model="showNewAppModal" title="Create New App">
-      <div class="form-group">
-        <label>App Name</label>
-        <input
-          v-model="newAppName"
-          type="text"
-          placeholder="My Awesome App"
-          class="input"
-          @keyup.enter="createBlankApp"
-        />
-      </div>
-      <div class="form-group">
-        <label>App Type</label>
-        <select v-model="newAppType" class="input">
-          <option value="CUSTOM">Custom</option>
-          <option value="CHAT">Chat Bot</option>
-          <option value="ANALYZER">Analyzer</option>
-          <option value="GENERATOR">Generator</option>
-          <option value="EMAIL">Email Agent</option>
-          <option value="GAME">Game</option>
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button class="btn-secondary" @click="showNewAppModal = false">Cancel</button>
-        <button class="btn-primary" @click="createBlankApp" :disabled="!newAppName.trim()">Create</button>
-      </div>
-    </AppModal>
+    <NewAppModal v-model="showNewAppModal" @created="onAppCreated" />
 
-    <!-- Conflict Resolution Modal -->
-    <AppModal v-model="showConflictModal" title="Directory Conflict">
-      <p>The target path already exists for "{{ pendingTemplate?.name }}". Choose how to proceed:</p>
-      <div class="conflict-options">
-        <label class="conflict-option" :class="{ selected: conflictAction === 'CONTINUE' }">
-          <input type="radio" v-model="conflictAction" value="CONTINUE" />
-          <div class="option-content">
-            <strong>Continue</strong>
-            <span>Keep existing files and append new ones</span>
-          </div>
-        </label>
-        <label class="conflict-option" :class="{ selected: conflictAction === 'OVERWRITE' }">
-          <input type="radio" v-model="conflictAction" value="OVERWRITE" />
-          <div class="option-content">
-            <strong>Overwrite</strong>
-            <span>Delete existing directory and start fresh</span>
-          </div>
-        </label>
-        <label class="conflict-option" :class="{ selected: conflictAction === 'CHANGE_PATH' }">
-          <input type="radio" v-model="conflictAction" value="CHANGE_PATH" />
-          <div class="option-content">
-            <strong>Change Path</strong>
-            <span>Specify a different target path</span>
-          </div>
-        </label>
-      </div>
-      <div v-if="conflictAction === 'CHANGE_PATH'" class="form-group">
-        <label>Custom Path</label>
-        <input v-model="customTargetPath" type="text" placeholder="/Users/.../Axolotl/my-app/" class="input" />
-      </div>
-      <div class="modal-actions">
-        <button class="btn-secondary" @click="showConflictModal = false">Cancel</button>
-        <button class="btn-primary" @click="resolveConflict">
-          {{ conflictAction === 'CONTINUE' ? 'Continue' : conflictAction === 'OVERWRITE' ? 'Overwrite' : 'Change Path' }}
-        </button>
-      </div>
-    </AppModal>
+    <ConflictModal
+      v-model="showConflictModal"
+      :template="pendingTemplate"
+      @resolve="onConflictResolve"
+    />
 
     <!-- Delete Confirmation Modal -->
     <AppModal v-model="showDeleteModal" title="Delete App">
