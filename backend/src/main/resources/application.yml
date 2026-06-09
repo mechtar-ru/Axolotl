@@ -84,7 +84,7 @@ axolotl:
     auto-update-on-start: true
     # Comma-separated list of npm packages to load as plugins
     # e.g.: @cortexkit/opencode-magic-context
-    list: ""
+    list: "@cortexkit/opencode-magic-context"
 
 # OpenAPI / Swagger
 springdoc:

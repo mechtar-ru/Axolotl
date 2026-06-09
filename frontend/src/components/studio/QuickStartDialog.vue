@@ -101,10 +101,70 @@ const modelGroups = computed(() => {
 const agentTools = computed(() => {
   const base = ['file_write', 'directory_read', 'file_read', 'bash']
   if (projectType.value === 'FLUTTER') {
-    return [...base, 'grep', 'web_search', 'web_fetch']
+    return [...base, 'grep', 'web_search', 'web_fetch', 'build_app']
   }
   return base
 })
+
+// ─── FLUTTER-specific instructions ───
+
+const FLUTTER_BASE_PROMPT = `
+IMPORTANT FLUTTER RULES (follow these exactly):
+
+1. PACKAGE MANAGEMENT:
+   - Before writing code, install ALL needed packages using \`bash\` to run \`flutter pub add <package>\`
+   - Required packages for mobile apps: sqflite, path_provider, path, intl, provider (or riverpod), fl_chart
+   - For SQLCipher: also add sqlcipher_flutter_libs
+   - Run \`flutter pub get\` after adding packages
+
+2. SCAFFOLD OVERWRITE:
+   - The project was created with \`flutter create\` which generates a stock counter app
+   - You MUST completely REWRITE \`lib/main.dart\` — do NOT extend the counter template
+   - Delete the entire generated content and build the app from scratch
+
+3. MULTI-SESSION DEVELOPMENT:
+   - Read ALL existing files in the project before starting (\`directory_read lib/\`, \`file_read pubspec.yaml\`)
+   - Do NOT recreate files that already exist — update them if needed
+   - Continue building on top of what previous sessions created
+   - Describe generated files in a JSON summary at the end
+
+4. BUILD VERIFICATION:
+   - After writing all files, call \`build_app\` to verify project health
+   - Fix any issues \`build_app\` reports before finishing
+
+5. FILE ORGANIZATION:
+   Create a clean lib/ structure: screens/, models/, services/, widgets/, database/
+`.trim()
+
+const FLUTTER_AGENT_PROMPT = FLUTTER_BASE_PROMPT + `
+
+You are a senior Flutter developer. Implement the application completely from scratch.
+Write production-quality Dart code with proper null safety, clean architecture, and error handling.
+
+Application to implement:
+{{sourceData}}`
+
+const FLUTTER_PLANNER_PROMPT = FLUTTER_BASE_PROMPT + `
+
+You are a planning agent for a Flutter app. Break down the implementation into steps with dependencies.
+Consider: screens needed, data models, database layer (SQLite), state management, navigation, theming.
+
+Create a plan for:
+{{sourceData}}`
+
+const FLUTTER_PREP_PROMPT = FLUTTER_BASE_PROMPT + `
+
+You are a preparation agent for a Flutter app. Generate pseudocode contracts, widget trees, and data flow diagrams.
+Focus on: screen component hierarchy, database table schemas, service method signatures, route definitions.
+
+Generate pseudocode based on the plan.
+`
+
+const FLUTTER_DOC_PROMPT = FLUTTER_BASE_PROMPT + `
+
+You are a documentation agent for a Flutter app. Update project documentation with architecture decisions,
+screen descriptions, data model documentation, and setup instructions for the implemented application.
+`
 
 const verifierChecks = computed(() => {
   const checks: Record<string, any> = { syntaxCheck: true, premortem: true }
@@ -197,14 +257,16 @@ function makeVerifierData(description: string, checksParam: Record<string, any>)
 }
 
 function generateStandardPipeline(description: string): PipelineConfig {
+  const agentPrompt = projectType.value === 'FLUTTER' ? FLUTTER_AGENT_PROMPT
+    : 'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.\n\nImplement the application described in the Receive node:\n\n{{sourceData}}'
+  const agentSystem = projectType.value === 'FLUTTER' ? 'You are a senior Flutter developer. Implement the application completely from scratch. Write production-quality Dart code with proper null safety, clean architecture, and error handling.'
+    : 'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.'
   return {
     nodes: [
       { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
       { id: 'review-1', type: 'review' as any, name: 'Review Plan', position: { x: 350, y: 200 }, data: makeReviewData({}, 'standard') },
       { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 600, y: 200 }, data: makeAgentData(
-          'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.',
-          'Implement the application described in the Receive node:\n\n{{sourceData}}',
-          'coder', agentTools.value) },
+          agentSystem, agentPrompt, 'coder', agentTools.value) },
       { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 850, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
       { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1100, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
@@ -223,27 +285,39 @@ function generateStandardPipeline(description: string): PipelineConfig {
 }
 
 function generateAppCreationPipeline(description: string): PipelineConfig {
+  const isFlutter = projectType.value === 'FLUTTER'
+  const plannerPrompt = isFlutter ? FLUTTER_PLANNER_PROMPT
+    : 'You are a planning agent. Break down the application into implementation steps with dependencies.\n\nCreate a plan for: {{sourceData}}'
+  const plannerSystem = isFlutter ? 'You are a planning agent for a Flutter app. Break down the implementation into steps with dependencies. Consider: screens needed, data models, database layer (SQLite), state management, navigation, theming.'
+    : 'You are a planning agent. Break down the application into implementation steps with dependencies.'
+  const prepPrompt = isFlutter ? FLUTTER_PREP_PROMPT
+    : 'Generate pseudocode and tests based on the plan.'
+  const prepSystem = isFlutter ? 'You are a preparation agent for a Flutter app. Generate pseudocode contracts, widget trees, and data flow diagrams. Focus on: screen component hierarchy, database table schemas, service method signatures, route definitions.'
+    : 'You are a preparation agent. Generate pseudocode contracts and tests for the planned implementation.'
+  const agentPrompt = isFlutter ? FLUTTER_AGENT_PROMPT
+    : 'You are a senior developer. Implement the application step by step according to the plan and pseudocode contracts.\n\nImplement the application described in the Receive node:\n\n{{sourceData}}'
+  const agentSystem = isFlutter ? 'You are a senior Flutter developer. Implement the application completely from scratch. Write production-quality Dart code with proper null safety, clean architecture, and error handling.'
+    : 'You are a senior developer. Implement the application step by step according to the plan and pseudocode contracts.'
+  const docPrompt = isFlutter ? FLUTTER_DOC_PROMPT
+    : 'Update project documentation for the implemented application.'
+  const docSystem = isFlutter ? 'You are a documentation agent for a Flutter app. Update project documentation with architecture decisions, screen descriptions, data model documentation, and setup instructions for the implemented application.'
+    : 'You are a documentation agent. Update project docs based on the implementation.'
   return {
     nodes: [
       { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 50, y: 200 }, data: makeSourceData(description) },
       { id: 'review-1', type: 'review' as any, name: 'Design Review', position: { x: 300, y: 200 }, data: makeReviewData(
           { checks: { premortem: true, prism: true, postmortem: true } }, 'design') },
       { id: 'planner-1', type: 'planner' as any, name: 'Planner', position: { x: 550, y: 200 }, data: makeAgentData(
-          'You are a planning agent. Break down the application into implementation steps with dependencies.',
-          'Create a plan for: {{sourceData}}', 'planner', ['file_read', 'file_write', 'directory_read']) },
+          plannerSystem, plannerPrompt, 'planner', ['file_read', 'file_write', 'directory_read']) },
       { id: 'review-2', type: 'review' as any, name: 'Plan Review', position: { x: 800, y: 200 }, data: makeReviewData(
           { checks: { premortem: true, prism: false, postmortem: false } }, 'plan') },
       { id: 'prep-1', type: 'prep' as any, name: 'Prep', position: { x: 1050, y: 200 }, data: makeAgentData(
-          'You are a preparation agent. Generate pseudocode contracts and tests for the planned implementation.',
-          'Generate pseudocode and tests based on the plan.', 'prep', ['file_read', 'file_write', 'directory_read']) },
+          prepSystem, prepPrompt, 'prep', ['file_read', 'file_write', 'directory_read']) },
       { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 1300, y: 200 }, data: makeAgentData(
-          'You are a senior developer. Implement the application step by step according to the plan and pseudocode contracts.',
-          'Implement the application described in the Receive node:\n\n{{sourceData}}',
-          'coder', agentTools.value) },
+          agentSystem, agentPrompt, 'coder', agentTools.value) },
       { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 1550, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
       { id: 'doc-1', type: 'doc-agent' as any, name: 'Doc-Agent', position: { x: 1800, y: 200 }, data: makeAgentData(
-          'You are a documentation agent. Update project docs based on the implementation.',
-          'Update project documentation for the implemented application.', 'doc-agent', ['file_read', 'file_write', 'directory_read']) },
+          docSystem, docPrompt, 'doc-agent', ['file_read', 'file_write', 'directory_read']) },
       { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 2050, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
             includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
@@ -265,12 +339,15 @@ function generateAppCreationPipeline(description: string): PipelineConfig {
 }
 
 function generateMinimalPipeline(description: string): PipelineConfig {
+  const agentPrompt = projectType.value === 'FLUTTER' ? FLUTTER_AGENT_PROMPT
+    : 'You are a senior developer. Use the tools to implement the described application.\n\nImplement:\n\n{{sourceData}}'
+  const agentSystem = projectType.value === 'FLUTTER' ? 'You are a senior Flutter developer. Implement the application completely from scratch. Write production-quality Dart code with proper null safety, clean architecture, and error handling.'
+    : 'You are a senior developer. Use the tools to implement the described application.'
   return {
     nodes: [
       { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
       { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 400, y: 200 }, data: makeAgentData(
-          'You are a senior developer. Use the tools to implement the described application.',
-          'Implement:\n\n{{sourceData}}', 'coder', agentTools.value) },
+          agentSystem, agentPrompt, 'coder', agentTools.value) },
       { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 700, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
       { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1000, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
