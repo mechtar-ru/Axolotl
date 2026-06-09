@@ -1,0 +1,49 @@
+name: Plugins
+
+on:
+  push:
+    branches: [main, 'feature/**', v*]
+    paths:
+      - 'plugins/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('plugins/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: cd plugins && bun install --frozen-lockfile
+
+      - name: Validate bridge script syntax
+        run: cd plugins && bun check plugin-bridge.js
+
+      - name: Test plugin loading
+        run: |
+          cd plugins
+          echo '{"jsonrpc":"2.0","id":1,"method":"plugin/initialize","params":{"config":{},"projectRoot":"/tmp","plugin":"@cortexkit/opencode-magic-context","version":"latest"}}' | timeout 15 bun plugin-bridge.js 2>&1 | head -20
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build plugin Docker image
+        run: docker build -t axolotl-plugins -f plugins/Dockerfile plugins/
