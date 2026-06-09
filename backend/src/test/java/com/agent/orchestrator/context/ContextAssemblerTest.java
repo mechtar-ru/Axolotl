@@ -106,6 +106,40 @@ class ContextAssemblerTest {
     }
 
     @Test
+    void disabledBudgetReturnsAllBlocksInOrder() {
+        // Budget 0 = disabled: all blocks included fully, no priority sorting
+        var blocks = List.of(
+                new ContextBlock("first", "FIRST_BLOCK", LOW),
+                new ContextBlock("second", "SECOND_BLOCK", EXPERIMENTAL),
+                new ContextBlock("third", "THIRD_BLOCK", MEDIUM)
+        );
+        var result = assembler.assemble(blocks, 0);
+        String text = result.text();
+        // All blocks present
+        assertTrue(text.contains("FIRST_BLOCK"), "first block should be included");
+        assertTrue(text.contains("SECOND_BLOCK"), "second block should be included");
+        assertTrue(text.contains("THIRD_BLOCK"), "third block should be included");
+        // Order preserved (EXPERIMENTAL before MEDIUM — no priority sorting)
+        int firstIdx = text.indexOf("FIRST_BLOCK");
+        int secondIdx = text.indexOf("SECOND_BLOCK");
+        int thirdIdx = text.indexOf("THIRD_BLOCK");
+        assertTrue(firstIdx < secondIdx, "order should be preserved (1st before 2nd)");
+        assertTrue(secondIdx < thirdIdx, "order should be preserved (2nd before 3rd)");
+        // No truncated or skipped stats
+        assertTrue(result.stats().stream().allMatch(s -> s.included() && !s.truncated() && !s.skipped()),
+                "all blocks should be included without truncation");
+        // budgetTokens = 0 when disabled
+        assertEquals(0, result.budgetTokens());
+    }
+
+    @Test
+    void disabledBudgetWithNullBlocks() {
+        var result = assembler.assemble(null, 0);
+        assertTrue(result.text().isEmpty());
+        assertEquals(0, result.totalTokens());
+    }
+
+    @Test
     void tokenCounterAccuracy() {
         // English text: ~4 chars per token
         String english = "Hello world this is a test";

@@ -24,15 +24,22 @@ public class ContextAssembler {
 
     private static final Logger log = LoggerFactory.getLogger(ContextAssembler.class);
 
-    /** Default token budget when none is specified */
-    public static final int DEFAULT_BUDGET_TOKENS = 8000;
+    /** Default token budget (0 = disabled, no limit) */
+    public static final int DEFAULT_BUDGET_TOKENS = 0;
 
     /**
      * Assemble context blocks into a system prompt within the given token budget.
+     * <p>
+     * When {@code totalBudget <= 0}, all blocks are included fully in their original
+     * list order (no priority sorting, no truncation). Only the total token count
+     * is computed for observability.
+     * <p>
+     * When {@code totalBudget > 0}, blocks are sorted by priority and lower-priority
+     * blocks are truncated or skipped to fit within the budget.
      *
-     * @param blocks       prioritized context blocks
-     * @param totalBudget  maximum total tokens for ALL non-CRITICAL blocks combined
-     *                     (CRITICAL blocks are always included and count outside this budget)
+     * @param blocks       context blocks (order preserved when budget disabled)
+     * @param totalBudget  maximum total tokens for non-CRITICAL blocks combined
+     *                     when budget is enabled; ≤0 means disabled (no limit)
      * @return assembly result containing the final text and block-level stats
      */
     public AssemblyResult assemble(List<ContextBlock> blocks, int totalBudget) {
@@ -40,7 +47,22 @@ public class ContextAssembler {
             return AssemblyResult.EMPTY;
         }
 
-        int effectiveBudget = totalBudget > 0 ? totalBudget : DEFAULT_BUDGET_TOKENS;
+        // Budget disabled (≤0): include all blocks in order, no truncation
+        if (totalBudget <= 0) {
+            StringBuilder sb = new StringBuilder();
+            List<BlockStat> stats = new ArrayList<>();
+            int totalTokens = 0;
+            for (ContextBlock block : blocks) {
+                if (block.isEmpty()) continue;
+                if (!sb.isEmpty()) sb.append("\n\n");
+                sb.append(block.content());
+                totalTokens += block.estimatedTokens();
+                stats.add(BlockStat.included(block.name(), block.estimatedTokens(), block.priority()));
+            }
+            return new AssemblyResult(sb.toString(), totalTokens, 0, 0, stats);
+        }
+
+        int effectiveBudget = totalBudget;
         List<ContextBlock> sorted = new ArrayList<>(blocks);
         sorted.sort(Comparator.comparingInt(b -> b.priority().getOrder()));
 

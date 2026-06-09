@@ -156,13 +156,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 ctxBlocks.add(new ContextBlock("planSteps", planCtx, ContextPriority.HIGH));
             }
 
-            // Determine budget
-            int budget = node.getData() != null && node.getData().getContextBudgetTokens() != null
-                    && node.getData().getContextBudgetTokens() > 0
-                    ? node.getData().getContextBudgetTokens()
-                    : ContextAssembler.DEFAULT_BUDGET_TOKENS;
+            // Determine budget (0 = disabled = unlimited)
+            int budget = resolveBudget(node);
 
-            // Assemble with priority-based budgeting
+            // Assemble with priority-based (budget > 0) or pass-through (budget = 0)
             var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
 
             // Append assembled context to system prompt
@@ -336,13 +333,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 }
             }
 
-            // Determine budget
-            int budget = node.getData() != null && node.getData().getContextBudgetTokens() != null
-                    && node.getData().getContextBudgetTokens() > 0
-                    ? node.getData().getContextBudgetTokens()
-                    : ContextAssembler.DEFAULT_BUDGET_TOKENS;
+            // Determine budget (0 = disabled = unlimited)
+            int budget = resolveBudget(node);
 
-            // Assemble with priority-based budgeting
+            // Assemble with priority-based (budget > 0) or pass-through (budget = 0)
             var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
 
             // Append assembled context to system prompt
@@ -783,6 +777,27 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     }
 
     // ─── Context budget helpers ───
+
+    /**
+     * Resolve token budget from node config.
+     * Priority: data.contextBudgetTokens > data.config.contextBudgetTokens > 0 (disabled).
+     */
+    private int resolveBudget(Node node) {
+        if (node == null || node.getData() == null) return 0;
+        // Check bean field first
+        if (node.getData().getContextBudgetTokens() != null
+                && node.getData().getContextBudgetTokens() > 0) {
+            return node.getData().getContextBudgetTokens();
+        }
+        // Fallback to config map (set by frontend BlockConfigPanel)
+        if (node.getData().getConfig() != null) {
+            Object val = node.getData().getConfig().get("contextBudgetTokens");
+            if (val instanceof Number && ((Number) val).intValue() > 0) {
+                return ((Number) val).intValue();
+            }
+        }
+        return 0; // disabled
+    }
 
     private String buildContextStatsJson(ContextAssembler.AssemblyResult result) {
         StringBuilder sb = new StringBuilder("{");

@@ -77,6 +77,7 @@ const reviewGeneratePlan = ref(true)
 const autoRetryCount = ref(0)
 const fallbackModels = ref<string[]>([])
 const timeoutSeconds = ref(300)
+const contextBudgetTokens = ref(0)
 
 // Draft type selector
 const draftType = ref('spec')
@@ -169,6 +170,7 @@ function resetRefs() {
   autoRetryCount.value = 0
   fallbackModels.value = []
   timeoutSeconds.value = 300
+  contextBudgetTokens.value = 0
   reviewPremortem.value = true
   reviewPrism.value = false
   reviewPostmortem.value = false
@@ -212,6 +214,7 @@ watch(() => props.blockId, () => {
   autoRetryCount.value = (config.autoRetryCount as number) ?? 0
   fallbackModels.value = (config.fallbackModels as string[]) ?? []
   timeoutSeconds.value = (config.timeoutSeconds as number) ?? 300
+  contextBudgetTokens.value = (config.contextBudgetTokens as number) ?? 0
   // Draft type
   draftType.value = (config.draftType as string) || 'spec'
   // Review fields
@@ -310,6 +313,7 @@ function saveConfig() {
       autoRetryCount: autoRetryCount.value,
       fallbackModels: fallbackModels.value,
       timeoutSeconds: timeoutSeconds.value,
+      contextBudgetTokens: contextBudgetTokens.value,
     },
   }
 
@@ -349,6 +353,7 @@ function saveConfig() {
     ;(node.value.data.config as Record<string, any>).autoRetryCount = autoRetryCount.value
     ;(node.value.data.config as Record<string, any>).fallbackModels = fallbackModels.value
     ;(node.value.data.config as Record<string, any>).timeoutSeconds = timeoutSeconds.value
+    ;(node.value.data.config as Record<string, any>).contextBudgetTokens = contextBudgetTokens.value
   }
 
   // Verifier-specific config
@@ -397,6 +402,7 @@ function saveConfig() {
         autoRetryCount: autoRetryCount.value,
         fallbackModels: fallbackModels.value,
         timeoutSeconds: timeoutSeconds.value,
+        contextBudgetTokens: contextBudgetTokens.value,
       },
       // Top-level fields for backend NodeData deserialization
       model: model.value,
@@ -656,6 +662,20 @@ function handleKeydown(e: KeyboardEvent) {
           @input="saveConfig"
         />
         <span class="config-hint">Per-node execution limit (10–3600s)</span>
+
+        <!-- Context Token Budget -->
+        <label class="config-label" style="margin-top: 8px;">Context Budget (tokens)</label>
+        <input
+          v-model.number="contextBudgetTokens"
+          type="number"
+          min="0"
+          max="128000"
+          step="100"
+          class="num-input"
+          style="width: 120px;"
+          @input="saveConfig"
+        />
+        <span class="config-hint">0 = unlimited; truncates context when set</span>
       </div>
 
       <!-- Draft Type (Draft blocks) -->
