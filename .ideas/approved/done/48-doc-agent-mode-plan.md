@@ -1,10 +1,9 @@
 # Doc-Agent Mode — Axolotl Implementation Plan
 
-**Status:** Planned  
-**Priority:** High  
-**Theme:** Documentation / Pipeline  
-**Dependencies:** None  
-**Estimate:** 2–3 days
+**Status:** Done — Fully implemented  
+- Backend: agentType field in NodeData + AgentNodeStrategy doc-agent path + PipelineFactory stage (7 files)
+- Frontend: DocAgentBlock.vue (green document icon) + ThinkBlock.vue (code-agent) as separate block components + BlockConfigPanel agentType selector
+- Pipeline template includes doc-agent after verifier stage
 
 ---
 

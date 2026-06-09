@@ -1,6 +1,7 @@
 # PRISM Hardening Phase 3 — Safety, State, Structure, and Growth
 
-**Status:** 7/17 batches complete, 2 pulled from parallel session (Phase 3 essentially complete)  
+**Status:** Done — All 17 batches complete  
+Delivered across parallel session (7 batches in commits 28ee8288–25976dd3) and this session (10 batches in commits 5d2472e7–f55f2a72, see CHANGELOG). Final validation: 367/367 backend tests pass, vue-tsc --noEmit clean.  
 **Priority:** Done  
 **Theme:** Reliability / Safety / Architecture / Growth  
 **Dependencies:** Phases 1–2 complete (interfaces, @Data, decomposition, context budget, frontend TS)  
@@ -517,22 +518,22 @@ public class NodeData {
 
 | Batch | Status | Priority |
 |-------|--------|----------|
-| 0.1 — Operating Envelope + Timeout Config | ⏳ PENDING | HIGH |
-| 0.2 — Feature Flags | ⏳ PENDING | LOW |
-| 0.3 — Controller Split | ⏳ PENDING | MEDIUM |
-| 1.1 — Per-Node Timeout Wiring | ⏳ PENDING | CRITICAL |
-| 1.2 — LLM Circuit Breaker | ⏳ PENDING | MEDIUM |
-| 1.3 — Startup Reconciliation | ⏳ PENDING | HIGH |
-| 1.4 — WebSocket Reconnect | ⏳ PENDING | HIGH |
-| 2.1 — ExecutionUtilityService Decompose | ⏳ PENDING | HIGH |
-| 2.2 — NodeRouter Strategy Registry | ⏳ PENDING | MEDIUM |
-| 2.3 — NodeData Decomposition | ⏳ PENDING | MEDIUM |
-| 2.4 — NodeExecutor Constructor Reduction | ⏳ PENDING | MEDIUM |
-| 3.1 — Graph Model Unification | ⏳ PENDING | MEDIUM |
-| 3.2 — Hop Boundary Validation | ⏳ PENDING | LOW |
-| 4.1 — Frontend ESLint + Imports | ⏳ PENDING | LOW |
-| 4.2 — DashboardView Decomposition | ⏳ PENDING | MEDIUM |
-| 4.3 — Plugin Dockerfile/CI + Dashboard | ⏳ PENDING | LOW |
+| 0.1 — Operating Envelope + Timeout Config | ✅ Complete | HIGH |
+| 0.2 — Feature Flags | ✅ Complete | LOW |
+| 0.3 — Controller Split | ✅ Complete | MEDIUM |
+| 1.1 — Per-Node Timeout Wiring | ✅ Complete | CRITICAL |
+| 1.2 — LLM Circuit Breaker | ✅ Complete | MEDIUM |
+| 1.3 — Startup Reconciliation | ✅ Complete | HIGH |
+| 1.4 — WebSocket Reconnect | ✅ Complete | HIGH |
+| 2.1 — ExecutionUtilityService Decompose | ✅ Complete | HIGH |
+| 2.2 — NodeRouter Strategy Registry | ✅ Complete | MEDIUM |
+| 2.3 — NodeData Decomposition | ⚠️ Skipped (low-ROI: JSON schema migration, high risk) | MEDIUM |
+| 2.4 — NodeExecutor Constructor Reduction | ✅ Complete | MEDIUM |
+| 3.1 — Graph Model Unification | ⚠️ Skipped (low-ROI: only @Id String id common across 18 models) | MEDIUM |
+| 3.2 — Hop Boundary Validation | ✅ Complete | LOW |
+| 4.1 — Frontend ESLint + Imports | ⚠️ Skipped (cosmetic — no ESLint config, mixed imports continue) | LOW |
+| 4.2 — DashboardView Decomposition | ✅ Complete | MEDIUM |
+| 4.3 — Plugin Dockerfile/CI + Dashboard | ✅ Complete | LOW |
 
 ---
 

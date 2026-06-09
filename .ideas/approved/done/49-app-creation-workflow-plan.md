@@ -1,10 +1,7 @@
 # App Creation Workflow — Axolotl Implementation Plan
 
-**Status:** Planned  
-**Priority:** High  
-**Theme:** Pipeline / Design / Planning  
-**Dependencies:** None (Doc-Agent 48 — parallel track)  
-**Estimate:** 5–7 days (phased: 3 phases)
+**Status:** Done — Fully implemented  
+All 9 items delivered in commit 67c20e1c (release/0.4.0): PlanStep Neo4j model + DEPENDS_ON, PlanStepService CRUD with dependency validation, PlanStepController (6 endpoints at /api/plan-steps), 5 Plan MCP tools, PipelineService.createAppPipeline/createMinimalPipeline, PlannerBlock + PrepBlock + DocAgentBlock + DiffViewer components, ReviewApprovalDialog redesign with diff accordion + questions, BlockConfigPanel agentType selector
 
 ---
 
