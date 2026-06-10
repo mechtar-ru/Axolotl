@@ -121,7 +121,8 @@ STEP 2 — INSTALL DEPENDENCIES
   - For SQLCipher: drift_sqlcipher, sqlcipher_flutter_libs
 
 STEP 3 — WRITE COMPLETE FILES
-  - Use \`file_write\` for EACH file. Write COMPLETE implementations, not stubs.
+  - Use \`ask_planner("Write complete Dart code for [path]")\` to generate content, then \`file_write\` to save it.
+  - Write COMPLETE implementations, not stubs.
   - Completely overwrite \`lib/main.dart\` — do NOT extend the counter template
   - File structure: lib/{main.dart, app.dart, screens/*.dart, models/*.dart, services/*.dart, database/*.dart, widgets/*.dart}
   - Read existing files first before modifying them
@@ -264,13 +265,16 @@ function makeAgentData(systemPrompt: string, userPrompt: string, agentType: stri
     enabledTools: tools,
     config: {},
   }
-  // If OpenRouter model is selected AND we have tools, set up dual-model:
-  // model = OpenRouter (thinking, no tools), executorModel = Ollama (tool execution)
+  // Dual-model: model = executor (runs tool loop), plannerModel = thinker (called via ask_planner tool)
   const thinkerModel = selectedModel.value
   if (thinkerModel) {
-    data.model = thinkerModel
     if (executorModelOverride) {
-      data.executorModel = executorModelOverride
+      // model is the executor (e.g. Ollama coder), thinker becomes plannerModel
+      data.model = executorModelOverride
+      data.plannerModel = thinkerModel
+    } else {
+      // Single model: model handles both thinking and tool execution
+      data.model = thinkerModel
     }
   }
   return data

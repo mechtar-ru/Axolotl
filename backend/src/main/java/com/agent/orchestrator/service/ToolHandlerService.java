@@ -4,8 +4,12 @@ import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.ProjectType;
+import com.agent.orchestrator.model.WorkflowSchema;
+import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.agent.orchestrator.llm.LlmService;
+import com.agent.orchestrator.llm.LlmResponse;
+import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import org.neo4j.driver.Driver;
 import org.springframework.stereotype.Service;
 
@@ -39,6 +43,7 @@ public class ToolHandlerService {
     private final ExecutionWebSocketHandler webSocketHandler;
     private final ExecutionStateManager stateManager;
     private final Driver neo4jDriver;
+    private final Neo4jSchemaRepository schemaRepository;
 
     private static final String DELETION_MARKER_FILE = "/Users/Shared/Axolotl/deleted_files.json";
 
@@ -49,11 +54,13 @@ public class ToolHandlerService {
     public ToolHandlerService(LlmService llmService,
                               ExecutionWebSocketHandler webSocketHandler,
                               ExecutionStateManager stateManager,
-                              Driver neo4jDriver) {
+                              Driver neo4jDriver,
+                              Neo4jSchemaRepository schemaRepository) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.stateManager = stateManager;
         this.neo4jDriver = neo4jDriver;
+        this.schemaRepository = schemaRepository;
     }
 
     // ── File Read ──
@@ -865,6 +872,70 @@ public class ToolHandlerService {
         } catch (Exception e) {
             details.append("- ❌ ").append(label).append(": check failed (").append(e.getMessage()).append(")\n");
             missing.add(label);
+        }
+    }
+
+    // ── Ask Planner ──
+
+    /**
+     * Calls the planner model (OpenRouter/thinker) with a prompt and returns text response.
+     * Used by the executor model when it needs architectural guidance, code generation, or gap analysis.
+     * Not registered in the handler map — called directly from ToolExecutorImpl with schemaId/nodeId.
+     */
+    public ToolResult handleAskPlanner(Map<String, Object> params, ToolPermission permission,
+                                        String schemaId, String nodeId) {
+        String prompt = (String) params.get("prompt");
+        if (prompt == null || prompt.isBlank()) {
+            return ToolResult.error("'prompt' argument is required");
+        }
+
+        // Look up planner model from node data
+        String plannerModel = null;
+        try {
+            WorkflowSchema schema = schemaRepository.findById(schemaId);
+            if (schema != null && schema.getNodes() != null) {
+                for (Node n : schema.getNodes()) {
+                    if (n.getId().equals(nodeId) && n.getData() != null) {
+                        plannerModel = n.getData().getPlannerModel();
+                        if (plannerModel == null || plannerModel.isBlank()) {
+                            plannerModel = n.getData().getModel();
+                        }
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to look up planner model: {}", e.getMessage());
+        }
+
+        if (plannerModel == null || plannerModel.isBlank()) {
+            // Fallback: use node's model directly
+            try {
+                WorkflowSchema schema = schemaRepository.findById(schemaId);
+                if (schema != null) {
+                    plannerModel = schema.getDefaultModel();
+                }
+            } catch (Exception e) {
+                return ToolResult.error("No planner model configured and cannot determine fallback: " + e.getMessage());
+            }
+        }
+
+        if (plannerModel == null || plannerModel.isBlank()) {
+            return ToolResult.error("No planner model configured on this node");
+        }
+
+        // Call planner model (NO tools — pure text generation)
+        try {
+            LlmResponse resp = llmService.chat(plannerModel,
+                "You are a senior software architect and Flutter expert. Provide detailed, complete, production-quality code and architecture guidance.",
+                prompt, null, null);
+            String text = resp != null ? resp.text() : "";
+            if (text == null || text.isBlank()) {
+                return ToolResult.error("Planner returned empty response");
+            }
+            return ToolResult.ok(text);
+        } catch (Exception e) {
+            return ToolResult.error("Planner call failed: " + e.getMessage());
         }
     }
 }

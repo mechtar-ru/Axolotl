@@ -42,7 +42,7 @@ public class ToolExecutorImpl implements ToolExecutor {
     );
 
     public ToolExecutorImpl() {
-        this.handlerService = new ToolHandlerService(null, null, null, null);
+        this.handlerService = new ToolHandlerService(null, null, null, null, null);
         registerDefaultTools();
     }
 
@@ -142,6 +142,11 @@ public class ToolExecutorImpl implements ToolExecutor {
 
         registerTool(new Tool("build_app", "Build App", "Build a mobile app project and report missing dependencies", """
             {"type":"object","properties":{"projectPath":{"type":"string","description":"Project directory path (default: schema target path)"}},"required":[]}
+            """, ToolCategory.EXECUTION));
+
+        registerTool(new Tool("ask_planner", "Ask Planner",
+            "Ask the senior architect model for guidance on architecture, code structure, complete code generation, or gap analysis. Pass a detailed prompt describing exactly what you need.", """
+            {"type":"object","properties":{"prompt":{"type":"string","description":"Detailed question or task for the architect model"}},"required":["prompt"]}
             """, ToolCategory.EXECUTION));
 
         // Register handlers from ToolHandlerService
@@ -245,6 +250,9 @@ public class ToolExecutorImpl implements ToolExecutor {
         long startTime = System.currentTimeMillis();
         if ("build_app".equals(toolId)) {
             return handlerService.handleBuildApp(params, permission, schemaTargetPath);
+        }
+        if ("ask_planner".equals(toolId)) {
+            return handlerService.handleAskPlanner(params, permission, schemaId, nodeId);
         }
         ToolExecutorHandler handler = handlers.get(toolId);
         if (handler != null) {

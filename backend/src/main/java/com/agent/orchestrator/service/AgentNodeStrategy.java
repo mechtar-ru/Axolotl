@@ -420,55 +420,60 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
-        // ─── Dual-Model: if executorModel is set, generate plan with thinker model first ───
-        String executorModel = node.getData() != null ? node.getData().getExecutorModel() : null;
-        String originalPlannerModel = model;
-        if (executorModel != null && !executorModel.isEmpty()) {
+        // ─── Recursive planner-executor: if plannerModel is set, enable ask_planner tool ───
+        String plannerModel = node.getData() != null ? node.getData().getPlannerModel() : null;
+        if (plannerModel == null && node.getData() != null && node.getData().getConfig() != null) {
+            Object pm = node.getData().getConfig().get("plannerModel");
+            if (pm instanceof String s) plannerModel = s;
+        }
+        boolean hasPlanner = plannerModel != null && !plannerModel.isBlank();
+        if (hasPlanner) {
+            // Add ask_planner to enabled tools if not already present
+            List<String> tools = node.getData().getEnabledTools();
+            if (tools == null) {
+                tools = new ArrayList<>();
+            }
+            if (!tools.contains("ask_planner")) {
+                tools.add("ask_planner");
+                node.getData().setEnabledTools(tools);
+            }
+
+            // Append recursive workflow instructions to system prompt
+            String workflowPrompt = """
+                    
+                    ## Recursive Planner-Executor Workflow
+                    
+                    You have access to the `ask_planner` tool which calls a senior architect model.
+                    Use it whenever you need: file structure design, complete code generation,
+                    architecture decisions, or gap analysis.
+                    
+                    FOLLOW THIS WORKFLOW:
+                    
+                    1. **SURVEY** — Read existing files with directory_read/file_read.
+                    
+                    2. **DESIGN** — Call ask_planner with "Design the complete file structure for this Flutter app that does [requirements]".
+                       Create the directories.
+                    
+                    3. **WRITE EACH FILE** — For each file, call ask_planner with "Write complete Dart code for [path]".
+                       Save the returned code with file_write. Overwrite lib/main.dart completely.
+                    
+                    4. **DEPENDENCIES** — Use `flutter pub add` for all required packages.
+                    
+                    5. **VERIFY** — Run `flutter build` or `dart analyze`.
+                    
+                    6. **GAP ANALYSIS** — When all files are written, call ask_planner with a summary of all files and their methods.
+                       Ask "Is this enough? What's missing?" Close gaps by repeating steps 3-5.
+                    
+                    IMPORTANT:
+                    - Write COMPLETE production code. No TODOs, no placeholders.
+                    - If ask_planner fails, use your own knowledge.
+                    - ask_planner returns text only — you must save it with file_write.
+                    """;
+            systemPrompt += "\n\n" + workflowPrompt;
+
             if (webSocketHandler != null) {
                 webSocketHandler.sendLog(schemaId, "info",
-                        "Dual-model: planner=" + model + " executor=" + executorModel, node.getId());
-            }
-
-            String planSysPrompt = "You are a senior software architect. Analyze the user's request and "
-                    + "produce a detailed implementation plan. Focus on:\n"
-                    + "- Architecture decisions\n"
-                    + "- Files to create/modify with their purpose\n"
-                    + "- Dependencies to add\n"
-                    + "- Implementation order (step by step)\n"
-                    + "- Key design patterns\n\n"
-                    + "Output a clear, actionable plan in markdown.";
-
-            List<Node.Message> planMsgs = new ArrayList<>();
-            planMsgs.add(new Node.Message("system", planSysPrompt));
-            planMsgs.add(new Node.Message("user", prompt));
-
-            LlmUsage planUsage = new LlmUsage();
-            String plan;
-            try {
-                LlmResponse planResp = llmService.chat(model, null,
-                        toolExecutionService.buildMessagesForToolCall(planMsgs), null, planUsage);
-                plan = planResp.text();
-            } catch (Exception e) {
-                log.warn("Dual-model planner failed (falling back to single model): {}", e.getMessage());
-                plan = null;
-            }
-
-            if (plan != null && !plan.isBlank()) {
-                messages.add(new Node.Message("assistant",
-                        "## Implementation Plan\n" + plan
-                        + "\n\nNow execute this plan using the available tools. Follow the plan step by step."));
-
-                model = executorModel;
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Planner produced " + plan.length() + " chars. Switching to executor=" + executorModel,
-                            node.getId());
-                }
-            } else {
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "warn",
-                            "Planner returned empty plan, using single model", node.getId());
-                }
+                        "Recursive planner-executor enabled: planner=" + plannerModel + " executor=" + model, node.getId());
             }
         }
 

@@ -127,6 +127,7 @@ public class Node {
         private String agentType;
         private List<String> enabledTools;
         private String executorModel;
+        private String plannerModel;
         private List<ToolPermission> toolPermissions;
         private int maxToolCalls;
         private Integer timeoutSeconds;
@@ -146,6 +147,9 @@ public class Node {
 
         public String getExecutorModel() { return executorModel; }
         public void setExecutorModel(String executorModel) { this.executorModel = executorModel; }
+
+        public String getPlannerModel() { return plannerModel; }
+        public void setPlannerModel(String plannerModel) { this.plannerModel = plannerModel; }
 
         public List<ToolPermission> getToolPermissions() { return toolPermissions; }
         public void setToolPermissions(List<ToolPermission> toolPermissions) { this.toolPermissions = toolPermissions; }
