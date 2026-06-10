@@ -13,6 +13,7 @@ import com.agent.orchestrator.model.ExecutionMode;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.NodeExecution;
 import com.agent.orchestrator.model.PlanStep;
+import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
@@ -383,6 +384,22 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         messages.add(new Node.Message("system", systemPrompt));
         messages.add(new Node.Message("user", prompt));
 
+        // Auto-scaffold for FLUTTER projects: run build_app before agent starts
+        // to ensure pubspec.yaml and lib/ exist (prevents "lib/ not found" loops)
+        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
+                && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+            try {
+                String scaffoldTarget = currentSchema.getTargetPath();
+                if (!java.nio.file.Files.exists(java.nio.file.Paths.get(scaffoldTarget, "pubspec.yaml"))) {
+                    log.info("Auto-scaffolding FLUTTER project in {}", scaffoldTarget);
+                    toolExecutor.execute("build_app", new HashMap<>(), new ToolPermission(),
+                            schemaId, node.getId(), scaffoldTarget);
+                }
+            } catch (Exception e) {
+                log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage());
+            }
+        }
+
         // Build structured tools for LLM API request body
         Map<String, Object> chatConfig = null;
         if (enabledTools != null && !enabledTools.isEmpty()) {
@@ -455,7 +472,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 String projectType = currentSchema != null ? currentSchema.getProjectType() : null;
                 String toolResult = toolExecutionService.executeToolCall(toolId, args, node, schemaId, targetPath, projectType);
                 messages.add(new Node.Message("tool", toolResult));
-                messages.add(new Node.Message("tool_call_id", (String) toolCall.get("id")));
+                String toolCallId = (String) toolCall.get("id");
+                if (toolCallId != null) {
+                    messages.add(new Node.Message("tool_call_id", toolCallId));
+                }
 
                 if (webSocketHandler != null) {
                     String logMsg = toolResult.length() > 100 ? toolResult.substring(0, 100) + "..." : toolResult;

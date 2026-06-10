@@ -1,5 +1,6 @@
 package com.agent.orchestrator.plugin;
 
+import com.agent.orchestrator.config.AppConfig;
 import com.agent.orchestrator.service.ToolExecutor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -27,6 +28,7 @@ public class PluginLifecycleManager {
     private static final Logger log = LoggerFactory.getLogger(PluginLifecycleManager.class);
 
     private final ToolExecutor toolExecutor;
+    private final AppConfig appConfig;
 
     @Value("${axolotl.plugins.enabled:true}")
     private boolean pluginEnabled;
@@ -55,7 +57,6 @@ public class PluginLifecycleManager {
     @Value("${axolotl.plugins.auto-update-on-start:true}")
     private boolean autoUpdateOnStart;
 
-    @Value("${user.dir}")
     private String projectRoot;
 
     /** Plugin definitions from application.yml */
@@ -71,8 +72,10 @@ public class PluginLifecycleManager {
         return t;
     });
 
-    public PluginLifecycleManager(ToolExecutor toolExecutor) {
+    public PluginLifecycleManager(ToolExecutor toolExecutor, AppConfig appConfig) {
         this.toolExecutor = toolExecutor;
+        this.appConfig = appConfig;
+        this.projectRoot = appConfig.getBasePath();
     }
 
     @PostConstruct

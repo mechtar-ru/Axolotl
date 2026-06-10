@@ -40,7 +40,7 @@ const presets: Preset[] = [
   {
     id: 'eios',
     name: 'EIOS (Flutter)',
-    description: 'Flutter-приложение: Emotional Intelligence Operating System — локальный эмоциональный трекер. 4 экрана: State (быстрая идентификация эмоций + телесные ощущения), Reset (протоколы регуляции: дыхание, заземление, когнитивная перезагрузка), Patterns (долгосрочные тренды и инсайты), Library (короткие образовательные материалы). SQLite + SQLCipher, приватность, офлайн, русский язык. Анти-руминация: перехват рекурсивного самоанализа. Body-state mapping: chest/jaw/stomach/throat/shoulders/head. Эмоциональная таксономия: обида, тоска, раздражение, тревожность, опустошение, подавленность, напряжение. Дизайн: графит, приглушённый индиго, тёмно-сине-серый, тёмный янтарь. Анимации медленные и тонкие.',
+    description: 'Flutter EIOS: local-first emotion tracker. 4 screens: emotion check-in (State), regulation protocols (Reset), trends (Patterns), library (Library). 7 emotions (обида/тоска/раздражение/тревожность/опустошение/подавленность/напряжение), 6 body zones (chest/jaw/stomach/throat/shoulders/head). SQLite+SQLCipher. Dark theme: graphite+indigo+amber. Russian UX, anti-rumination. 10 seconds vs 10 minutes UX principle.',
     projectType: 'FLUTTER',
     pipelineTemplate: 'app-creation',
   },
@@ -109,31 +109,34 @@ const agentTools = computed(() => {
 // ─── FLUTTER-specific instructions ───
 
 const FLUTTER_BASE_PROMPT = `
-IMPORTANT FLUTTER RULES (follow these exactly):
+==== FLUTTER WORKFLOW — FOLLOW EVERY STEP IN ORDER ====
 
-1. PACKAGE MANAGEMENT:
-   - Before writing code, install ALL needed packages using \`bash\` to run \`flutter pub add <package>\`
-   - Required packages for mobile apps: sqflite, path_provider, path, intl, provider (or riverpod), fl_chart
-   - For SQLCipher: also add sqlcipher_flutter_libs
-   - Run \`flutter pub get\` after adding packages
+STEP 1 — SURVEY EXISTING CODE
+  - Run \`directory_read lib/\` to see what already exists
+  - Run \`file_read pubspec.yaml\` to check current dependencies
 
-2. SCAFFOLD OVERWRITE:
-   - The project was created with \`flutter create\` which generates a stock counter app
-   - You MUST completely REWRITE \`lib/main.dart\` — do NOT extend the counter template
-   - Delete the entire generated content and build the app from scratch
+STEP 2 — INSTALL DEPENDENCIES
+  - Run \`bash "flutter pub add <package>"\` for EACH required package
+  - Typical needs: drift, path_provider, intl, provider/riverpod, fl_chart, flutter_secure_storage, flutter_markdown
+  - For SQLCipher: drift_sqlcipher, sqlcipher_flutter_libs
 
-3. MULTI-SESSION DEVELOPMENT:
-   - Read ALL existing files in the project before starting (\`directory_read lib/\`, \`file_read pubspec.yaml\`)
-   - Do NOT recreate files that already exist — update them if needed
-   - Continue building on top of what previous sessions created
-   - Describe generated files in a JSON summary at the end
+STEP 3 — WRITE COMPLETE FILES
+  - Use \`file_write\` for EACH file. Write COMPLETE implementations, not stubs.
+  - Completely overwrite \`lib/main.dart\` — do NOT extend the counter template
+  - File structure: lib/{main.dart, app.dart, screens/*.dart, models/*.dart, services/*.dart, database/*.dart, widgets/*.dart}
+  - Read existing files first before modifying them
 
-4. BUILD VERIFICATION:
-   - After writing all files, call \`build_app\` to verify project health
-   - Fix any issues \`build_app\` reports before finishing
+STEP 4 — VERIFY BUILD
+  - Run \`build_app\` to check project compiles
+  - Fix any errors found
 
-5. FILE ORGANIZATION:
-   Create a clean lib/ structure: screens/, models/, services/, widgets/, database/
+STEP 5 — REPORT
+  - Output a JSON summary: {"generatedFiles": [{"path": "...", "description": "..."}, ...]}
+
+RULES:
+  - Write ONE file per file_write call (not all at once)
+  - Use bash for flutter commands only
+  - If an existing file needs changes, read it first, then overwrite with file_write
 `.trim()
 
 const FLUTTER_AGENT_PROMPT = FLUTTER_BASE_PROMPT + `
@@ -178,7 +181,7 @@ const verifierChecks = computed(() => {
 
 onMounted(async () => {
   if (!settingsStore.providersLoaded) {
-    await settingsStore.loadProviders()
+    await settingsStore.fetchProviders()
   }
   modelOptions.value = settingsStore.getAllModelOptions()
 })
@@ -189,7 +192,7 @@ watch(() => props.visible, async (newVal) => {
     loading.value = false
     error.value = null
     if (!settingsStore.providersLoaded) {
-      await settingsStore.loadProviders()
+      await settingsStore.fetchProviders()
     }
     modelOptions.value = settingsStore.getAllModelOptions()
   }
@@ -203,6 +206,13 @@ function applyPreset(presetId: string) {
     prompt.value = preset.description
     projectType.value = preset.projectType
     pipelineTemplate.value = preset.pipelineTemplate
+    // FLUTTER presets auto-select the Ollama coder model (deepseek-v4 via Zen is unreachable from backend)
+    if (preset.projectType === 'FLUTTER') {
+      const coder = modelOptions.value.find(m =>
+        m.value.includes('qwen2.5-coder:14b') || m.value.includes('qwen2.5-coder:7b')
+      )
+      if (coder) selectedModel.value = coder.value
+    }
   }
 }
 
