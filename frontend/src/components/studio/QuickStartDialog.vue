@@ -243,15 +243,37 @@ function makeSourceData(description: string): Record<string, any> {
   } as Record<string, any>
 }
 
-function makeAgentData(systemPrompt: string, userPrompt: string, agentType: string, tools: string[]): Record<string, any> {
-  return {
+/** Find first available Ollama coder model from loaded model options */
+function findOllamaCoder(): string | null {
+  const coder = modelOptions.value.flatMap(g => g.options).find(m =>
+    m.value.includes('qwen2.5-coder:14b') || m.value.includes('qwen2.5-coder:7b')
+  )
+  return coder?.value || null
+}
+
+/** Check if a model string points to an OpenRouter free model (no tool calling) */
+function isOpenRouterModel(model: string): boolean {
+  return model.startsWith('openrouter:')
+}
+
+function makeAgentData(systemPrompt: string, userPrompt: string, agentType: string, tools: string[], executorModelOverride?: string): Record<string, any> {
+  const data: Record<string, any> = {
     systemPrompt,
     userPrompt,
-    model: selectedModel.value || null,
     agentType,
     enabledTools: tools,
     config: {},
-  } as Record<string, any>
+  }
+  // If OpenRouter model is selected AND we have tools, set up dual-model:
+  // model = OpenRouter (thinking, no tools), executorModel = Ollama (tool execution)
+  const thinkerModel = selectedModel.value
+  if (thinkerModel) {
+    data.model = thinkerModel
+    if (executorModelOverride) {
+      data.executorModel = executorModelOverride
+    }
+  }
+  return data
 }
 
 function makeVerifierData(description: string, checksParam: Record<string, any>): Record<string, any> {
@@ -276,7 +298,8 @@ function generateStandardPipeline(description: string): PipelineConfig {
       { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
       { id: 'review-1', type: 'review' as any, name: 'Review Plan', position: { x: 350, y: 200 }, data: makeReviewData({}, 'standard') },
       { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 600, y: 200 }, data: makeAgentData(
-          agentSystem, agentPrompt, 'coder', agentTools.value) },
+          agentSystem, agentPrompt, 'coder', agentTools.value,
+          isOpenRouterModel(selectedModel.value) ? findOllamaCoder() : undefined) },
       { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 850, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
       { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1100, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
@@ -324,7 +347,8 @@ function generateAppCreationPipeline(description: string): PipelineConfig {
       { id: 'prep-1', type: 'prep' as any, name: 'Prep', position: { x: 1050, y: 200 }, data: makeAgentData(
           prepSystem, prepPrompt, 'prep', ['file_read', 'file_write', 'directory_read']) },
       { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 1300, y: 200 }, data: makeAgentData(
-          agentSystem, agentPrompt, 'coder', agentTools.value) },
+          agentSystem, agentPrompt, 'coder', agentTools.value,
+          isOpenRouterModel(selectedModel.value) ? findOllamaCoder() : undefined) },
       { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 1550, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
       { id: 'doc-1', type: 'doc-agent' as any, name: 'Doc-Agent', position: { x: 1800, y: 200 }, data: makeAgentData(
           docSystem, docPrompt, 'doc-agent', ['file_read', 'file_write', 'directory_read']) },
@@ -357,7 +381,8 @@ function generateMinimalPipeline(description: string): PipelineConfig {
     nodes: [
       { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
       { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 400, y: 200 }, data: makeAgentData(
-          agentSystem, agentPrompt, 'coder', agentTools.value) },
+          agentSystem, agentPrompt, 'coder', agentTools.value,
+          isOpenRouterModel(selectedModel.value) ? findOllamaCoder() : undefined) },
       { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 700, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
       { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1000, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',

@@ -26,6 +26,7 @@ const node = computed(() => nodes.value.find(n => n.id === props.blockId))
 const blockLabel = ref('')
 const blockDescription = ref('')
 const model = ref('')
+const executorModel = ref('')
 const prompt = ref('')
 const selectedPersona = ref('')
 const blockType = ref('agent')
@@ -192,6 +193,7 @@ watch(() => props.blockId, () => {
   const config = (node.value.data?.config as Record<string, any>) || {}
   blockDescription.value = (node.value.data?.description as string) || (config.description as string) || ''
   model.value = (node.value.data?.model as string) || (config.model as string) || 'local'
+  executorModel.value = (node.value.data?.executorModel as string) || (config.executorModel as string) || ''
   prompt.value = (node.value.data?.systemPrompt as string) || (config.systemPrompt as string) || (config.prompt as string) || ''
   agentType.value = (config.agentType as string) || 'code-agent'
   // Detect persona match
@@ -304,8 +306,10 @@ function saveConfig() {
   node.value.data = {
     ...node.value.data,
     label: blockLabel.value,
+    executorModel: executorModel.value || undefined,
     config: {
       ...((node.value.data?.config as Record<string, any>) || {}),
+      executorModel: executorModel.value || undefined,
       description: blockDescription.value,
       model: model.value,
       systemPrompt: prompt.value,
@@ -612,6 +616,20 @@ function handleKeydown(e: KeyboardEvent) {
         <label class="config-label">Model</label>
         <select v-model="model" class="config-select">
           <option value="">Auto (user default)</option>
+          <template v-for="(models, group) in providerGroups" :key="group">
+            <optgroup :label="group">
+              <option v-for="m in models" :key="m.value" :value="m.value">{{ m.label }}</option>
+            </optgroup>
+          </template>
+        </select>
+
+        <!-- Executor Model (for dual-model: thinker → executor) -->
+        <label class="config-label" style="margin-top: 8px;">
+          Executor Model
+          <span class="hint-tip" title="When set, the primary model generates a plan (no tools) and this model executes tools. Useful for OpenRouter free models that lack tool calling.">ⓘ</span>
+        </label>
+        <select v-model="executorModel" class="config-select" @change="saveConfig">
+          <option value="">Same as model (single-model)</option>
           <template v-for="(models, group) in providerGroups" :key="group">
             <optgroup :label="group">
               <option v-for="m in models" :key="m.value" :value="m.value">{{ m.label }}</option>

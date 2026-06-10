@@ -30,6 +30,7 @@ export interface NodeData {
   model?: string;
   config?: Record<string, any>;
   messages?: Message[];
+  executorModel?: string;
   result?: string;
   condition?: string;
   loopCondition?: string;

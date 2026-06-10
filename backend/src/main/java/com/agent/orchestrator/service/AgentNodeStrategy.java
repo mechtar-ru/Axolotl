@@ -420,6 +420,58 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
+        // ─── Dual-Model: if executorModel is set, generate plan with thinker model first ───
+        String executorModel = node.getData() != null ? node.getData().getExecutorModel() : null;
+        String originalPlannerModel = model;
+        if (executorModel != null && !executorModel.isEmpty()) {
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "info",
+                        "Dual-model: planner=" + model + " executor=" + executorModel, node.getId());
+            }
+
+            String planSysPrompt = "You are a senior software architect. Analyze the user's request and "
+                    + "produce a detailed implementation plan. Focus on:\n"
+                    + "- Architecture decisions\n"
+                    + "- Files to create/modify with their purpose\n"
+                    + "- Dependencies to add\n"
+                    + "- Implementation order (step by step)\n"
+                    + "- Key design patterns\n\n"
+                    + "Output a clear, actionable plan in markdown.";
+
+            List<Node.Message> planMsgs = new ArrayList<>();
+            planMsgs.add(new Node.Message("system", planSysPrompt));
+            planMsgs.add(new Node.Message("user", prompt));
+
+            LlmUsage planUsage = new LlmUsage();
+            String plan;
+            try {
+                LlmResponse planResp = llmService.chat(model, null,
+                        toolExecutionService.buildMessagesForToolCall(planMsgs), null, planUsage);
+                plan = planResp.text();
+            } catch (Exception e) {
+                log.warn("Dual-model planner failed (falling back to single model): {}", e.getMessage());
+                plan = null;
+            }
+
+            if (plan != null && !plan.isBlank()) {
+                messages.add(new Node.Message("assistant",
+                        "## Implementation Plan\n" + plan
+                        + "\n\nNow execute this plan using the available tools. Follow the plan step by step."));
+
+                model = executorModel;
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Planner produced " + plan.length() + " chars. Switching to executor=" + executorModel,
+                            node.getId());
+                }
+            } else {
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warn",
+                            "Planner returned empty plan, using single model", node.getId());
+                }
+            }
+        }
+
         StringBuilder fullResponse = new StringBuilder();
         int toolCallCount = 0;
         int iterationCount = 0;

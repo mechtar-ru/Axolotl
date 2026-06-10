@@ -126,6 +126,7 @@ public class Node {
         // Tool-enabled agent fields
         private String agentType;
         private List<String> enabledTools;
+        private String executorModel;
         private List<ToolPermission> toolPermissions;
         private int maxToolCalls;
         private Integer timeoutSeconds;
@@ -142,6 +143,9 @@ public class Node {
 
         public List<String> getEnabledTools() { return enabledTools; }
         public void setEnabledTools(List<String> enabledTools) { this.enabledTools = enabledTools; }
+
+        public String getExecutorModel() { return executorModel; }
+        public void setExecutorModel(String executorModel) { this.executorModel = executorModel; }
 
         public List<ToolPermission> getToolPermissions() { return toolPermissions; }
         public void setToolPermissions(List<ToolPermission> toolPermissions) { this.toolPermissions = toolPermissions; }
