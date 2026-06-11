@@ -681,6 +681,13 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                             break;
                         }
                         long errCount = analyzeOut.lines().filter(l -> l.contains("error -")).count();
+                        if (errCount == 0) {
+                            break; // only info-level issues remain, no compilation errors
+                        }
+                        if (webSocketHandler != null) {
+                            webSocketHandler.sendLog(schemaId, "info",
+                                    "Auto-fix attempt " + attempt + ": " + errCount + " Dart errors", node.getId());
+                        }
                         if (webSocketHandler != null) {
                             webSocketHandler.sendLog(schemaId, "info",
                                     "Auto-fix attempt " + attempt + ": " + errCount + " Dart errors", node.getId());
