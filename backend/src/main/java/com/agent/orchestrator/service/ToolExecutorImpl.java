@@ -248,12 +248,29 @@ public class ToolExecutorImpl implements ToolExecutor {
     public ToolResult execute(String toolId, Map<String, Object> params, ToolPermission permission,
                                String schemaId, String nodeId, String schemaTargetPath) {
         long startTime = System.currentTimeMillis();
+        if (toolId == null) {
+            return ToolResult.error("Tool ID is null — malformed tool call from agent");
+        }
         if ("build_app".equals(toolId)) {
             return handlerService.handleBuildApp(params, permission, schemaTargetPath);
         }
         if ("ask_planner".equals(toolId)) {
             return handlerService.handleAskPlanner(params, permission, schemaId, nodeId);
         }
+
+        // Resolve relative paths against schemaTargetPath — handlers use Path.of()
+        // which resolves relative to CWD (= backend/ during Maven execution).
+        if (params != null && schemaTargetPath != null && !schemaTargetPath.isBlank()) {
+            String path = (String) params.get("path");
+            if (path != null && !path.startsWith("/")) {
+                params.put("path", schemaTargetPath.replaceAll("/+$", "") + "/" + path);
+            }
+            // Also ensure bash commands run in the project directory
+            if ("bash".equals(toolId) && !params.containsKey("cwd")) {
+                params.put("cwd", schemaTargetPath);
+            }
+        }
+
         ToolExecutorHandler handler = handlers.get(toolId);
         if (handler != null) {
             ToolResult result = handler.execute(params, permission);

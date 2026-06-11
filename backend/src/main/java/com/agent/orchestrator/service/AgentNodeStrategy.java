@@ -278,7 +278,21 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
+        // Append FLUTTER workflow instructions for code agents on FLUTTER projects
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
+        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
+                && !systemPrompt.contains("FLUTTER WORKFLOW")) {
+            systemPrompt += "\n\n" + """
+                    ==== FLUTTER WORKFLOW ====
+                    1. Create all files for the app via file_write (lib/main.dart must exist)
+                    2. Write COMPLETE implementations (not stubs) via file_write
+                    3. File structure: lib/{main.dart, app.dart, screens/*.dart, models/*.dart, services/*.dart}
+                    4. After writing all files, run: flutter pub add provider go_router sqflite intl
+                    5. Verify with build_app
+                    """.trim();
+        }
+
+        WorkflowSchema currentSchema2 = schemaRepository.findById(schemaId);
         String model = resolvedModel;
         if (model == null || model.isBlank()) {
             model = utilityService.resolveModel(node.getData().getModel(), null, null, null);
@@ -384,19 +398,87 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         messages.add(new Node.Message("system", systemPrompt));
         messages.add(new Node.Message("user", prompt));
 
-        // Auto-scaffold for FLUTTER projects: run build_app before agent starts
-        // to ensure pubspec.yaml and lib/ exist (prevents "lib/ not found" loops)
-        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
-                && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+                // Auto-scaffold for FLUTTER projects: run build_app before agent starts
+                // to ensure pubspec.yaml and lib/ exist (prevents "lib/ not found" loops)
+                if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
+                        && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+                    try {
+                        String scaffoldTarget = currentSchema.getTargetPath();
+                        if (!java.nio.file.Files.exists(java.nio.file.Paths.get(scaffoldTarget, "pubspec.yaml"))) {
+                            log.info("Auto-scaffolding FLUTTER project in {}", scaffoldTarget);
+                            // Directly create the Flutter project (build_app only validates, doesn't create)
+                            java.nio.file.Files.createDirectories(java.nio.file.Paths.get(scaffoldTarget));
+                            ProcessBuilder fb = new ProcessBuilder("flutter", "create",
+                                    "--project-name", new java.io.File(scaffoldTarget).getName(),
+                                    "--platforms", "android,ios,macos",
+                                    scaffoldTarget);
+                            fb.redirectErrorStream(true);
+                            Process fp = fb.start();
+                            fp.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
+                            log.info("flutter create exited with {}", fp.exitValue());
+                            // Delete stock scaffold files so agent MUST write fresh ones
+                            java.nio.file.Path mainDart = java.nio.file.Paths.get(scaffoldTarget, "lib", "main.dart");
+                            log.info("Scaffold created, main.dart exists: {}", java.nio.file.Files.exists(mainDart));
+                        }
+                    } catch (Exception e) {
+                        log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage());
+                    }
+                }
+
+                // Create architecture plan from planner model
+        String plannerModelBase = node.getData() != null ? node.getData().getPlannerModel() : null;
+        if (plannerModelBase == null && node.getData() != null && node.getData().getConfig() != null) {
+            Object pm = node.getData().getConfig().get("plannerModel");
+            if (pm instanceof String s) plannerModelBase = s;
+        }
+        final String plannerModel = plannerModelBase;
+        boolean hasPlanner = plannerModel != null && !plannerModel.isBlank();
+        if (hasPlanner) {
             try {
-                String scaffoldTarget = currentSchema.getTargetPath();
-                if (!java.nio.file.Files.exists(java.nio.file.Paths.get(scaffoldTarget, "pubspec.yaml"))) {
-                    log.info("Auto-scaffolding FLUTTER project in {}", scaffoldTarget);
-                    toolExecutor.execute("build_app", new HashMap<>(), new ToolPermission(),
-                            schemaId, node.getId(), scaffoldTarget);
+                // Architecture plan only (fast, ~60s). Executor implements via file_write.
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                        "Calling planner for architecture plan...", node.getId());
+                }
+                String plannerSysPrompt = "You are a senior Flutter architect. "
+                    + "List every file needed for the app (with path, purpose, key classes). "
+                    + "Keep it concise (under 3000 chars). For each file, say what it does and what goes in it.";
+                String plannerPrompt = "Design the architecture for:\n" + prompt;
+
+                // Hard timeout: 60s — OpenRouter free tier hangs on long requests
+                java.util.concurrent.CompletableFuture<LlmResponse> future =
+                    java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                        llmService.chat(plannerModel, plannerSysPrompt, plannerPrompt, null, null));
+                LlmResponse plannerResp = future.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                String archPlan = plannerResp != null ? plannerResp.text() : "";
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                        "Planner arch response: " + archPlan.length() + " chars", node.getId());
+                }
+
+                // Inject architecture plan as context for the executor
+                if (!archPlan.isBlank()) {
+                    String planContext = "## Architecture Plan (generated by " + plannerModel + ")\n"
+                        + archPlan.substring(0, Math.min(archPlan.length(), 4000))
+                        + "\n\n**Follow this plan. Implement ALL files using file_write.**";
+                    messages.add(new Node.Message("assistant", planContext));
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "info",
+                            "Architecture plan injected into executor context (" + archPlan.length() + " chars)", node.getId());
+                    }
+                }
+            } catch (java.util.concurrent.TimeoutException e) {
+                log.warn("Planner arch call timed out (60s)");
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warn",
+                        "Planner arch call timed out after 60s", node.getId());
                 }
             } catch (Exception e) {
-                log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage());
+                log.warn("Planner arch call failed: {}", e.getMessage());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warn",
+                        "Planner failed: " + e.getMessage(), node.getId());
+                }
             }
         }
 
@@ -417,63 +499,6 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             if (!structuredToolDefs.isEmpty()) {
                 chatConfig = new HashMap<>();
                 chatConfig.put("_tools", structuredToolDefs);
-            }
-        }
-
-        // ─── Recursive planner-executor: if plannerModel is set, enable ask_planner tool ───
-        String plannerModel = node.getData() != null ? node.getData().getPlannerModel() : null;
-        if (plannerModel == null && node.getData() != null && node.getData().getConfig() != null) {
-            Object pm = node.getData().getConfig().get("plannerModel");
-            if (pm instanceof String s) plannerModel = s;
-        }
-        boolean hasPlanner = plannerModel != null && !plannerModel.isBlank();
-        if (hasPlanner) {
-            // Add ask_planner to enabled tools if not already present
-            List<String> tools = node.getData().getEnabledTools();
-            if (tools == null) {
-                tools = new ArrayList<>();
-            }
-            if (!tools.contains("ask_planner")) {
-                tools.add("ask_planner");
-                node.getData().setEnabledTools(tools);
-            }
-
-            // Append recursive workflow instructions to system prompt
-            String workflowPrompt = """
-                    
-                    ## Recursive Planner-Executor Workflow
-                    
-                    You have access to the `ask_planner` tool which calls a senior architect model.
-                    Use it whenever you need: file structure design, complete code generation,
-                    architecture decisions, or gap analysis.
-                    
-                    FOLLOW THIS WORKFLOW:
-                    
-                    1. **SURVEY** — Read existing files with directory_read/file_read.
-                    
-                    2. **DESIGN** — Call ask_planner with "Design the complete file structure for this Flutter app that does [requirements]".
-                       Create the directories.
-                    
-                    3. **WRITE EACH FILE** — For each file, call ask_planner with "Write complete Dart code for [path]".
-                       Save the returned code with file_write. Overwrite lib/main.dart completely.
-                    
-                    4. **DEPENDENCIES** — Use `flutter pub add` for all required packages.
-                    
-                    5. **VERIFY** — Run `flutter build` or `dart analyze`.
-                    
-                    6. **GAP ANALYSIS** — When all files are written, call ask_planner with a summary of all files and their methods.
-                       Ask "Is this enough? What's missing?" Close gaps by repeating steps 3-5.
-                    
-                    IMPORTANT:
-                    - Write COMPLETE production code. No TODOs, no placeholders.
-                    - If ask_planner fails, use your own knowledge.
-                    - ask_planner returns text only — you must save it with file_write.
-                    """;
-            systemPrompt += "\n\n" + workflowPrompt;
-
-            if (webSocketHandler != null) {
-                webSocketHandler.sendLog(schemaId, "info",
-                        "Recursive planner-executor enabled: planner=" + plannerModel + " executor=" + model, node.getId());
             }
         }
 
@@ -522,6 +547,12 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 }
 
                 String toolId = (String) toolCall.get("name");
+                if (toolId == null) {
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "warn", "Skipped tool call with null name", node.getId());
+                    }
+                    continue;
+                }
                 @SuppressWarnings("unchecked")
                 Map<String, Object> args = (Map<String, Object>) toolCall.get("arguments");
 
@@ -617,7 +648,147 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             finalResponse += buildAndReport(currentSchema, schemaId, node.getId());
         }
 
+        // For FLUTTER projects, auto-install dependencies and verify build after agent completes
+        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
+                && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+            try {
+                String targetDir = currentSchema.getTargetPath();
+                String[] baseDeps = {"provider", "go_router", "intl", "path_provider", "sqflite", "fl_chart", "http"};
+                for (String dep : baseDeps) {
+                    ProcessBuilder pb = new ProcessBuilder("bash", "-c",
+                            "cd " + targetDir + " && flutter pub add " + dep + " 2>/dev/null");
+                    Process p = pb.start();
+                    p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+                }
+                // Run flutter pub get to ensure lockfile is fresh
+                ProcessBuilder pb = new ProcessBuilder("bash", "-c",
+                        "cd " + targetDir + " && flutter pub get");
+                Process p = pb.start();
+                p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+                finalResponse += "\n\n[DEPENDENCIES] Auto-installed Flutter packages";
+
+                // Auto-fix Flutter compilation errors using a fixer model (14B preferred)
+                String fixModel = resolveFlutterFixModel(node);
+                if (fixModel != null) {
+                    for (int attempt = 1; attempt <= 3; attempt++) {
+                        String analyzeOut = runDartAnalyze(targetDir);
+                        if (analyzeOut == null || analyzeOut.isBlank()
+                                || analyzeOut.contains("No issues found")
+                                || analyzeOut.contains("no issues found")) {
+                            if (attempt > 1) {
+                                finalResponse += "\n[FIX PASS] All errors resolved in " + attempt + " attempts";
+                            }
+                            break;
+                        }
+                        long errCount = analyzeOut.lines().filter(l -> l.contains("error -")).count();
+                        if (webSocketHandler != null) {
+                            webSocketHandler.sendLog(schemaId, "info",
+                                    "Auto-fix attempt " + attempt + ": " + errCount + " Dart errors", node.getId());
+                        }
+
+                        // Collect current file contents for context
+                        StringBuilder fileContext = new StringBuilder();
+                        java.nio.file.Files.walk(java.nio.file.Paths.get(targetDir, "lib"))
+                            .filter(f -> f.toString().endsWith(".dart"))
+                            .forEach(f -> {
+                                try {
+                                    fileContext.append("\n--- ").append(java.nio.file.Paths.get(targetDir).relativize(f)).append(" ---\n");
+                                    fileContext.append(java.nio.file.Files.readString(f));
+                                } catch (Exception e) { /* skip */ }
+                            });
+
+                        String fixPrompt = "Fix these Dart compilation errors. Return each FIXED file with marker:\n"
+                            + "--- lib/path/to/file.dart ---\n[complete fixed content]\n"
+                            + "Errors:\n" + analyzeOut
+                            + "\n\nCurrent files:\n" + fileContext;
+
+                        LlmResponse fixResp = llmService.chat(fixModel,
+                            "You are a Dart/Flutter fixer. Return ONLY fixed file content with --- path --- markers.",
+                            fixPrompt, null);
+
+                        if (fixResp != null && fixResp.text() != null) {
+                            int fixed = applyMarkedFiles(targetDir, fixResp.text());
+                            if (fixed > 0) {
+                                runBash(targetDir, "flutter pub get", 60);
+                                finalResponse += "\n[FIX PASS] Attempt " + attempt + ": fixed " + fixed + " files";
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Flutter post-processing failed (non-fatal): {}", e.getMessage());
+            }
+        }
+
         return finalResponse;
+    }
+
+    private String resolveFlutterFixModel(Node node) {
+        // Prefer 14B for fixes, fallback to executor model
+        String[] candidates = {"ollama:qwen2.5-coder:14b-instruct-q4_K_M", "ollama:qwen2.5-coder:7b-instruct-q4_K_M"};
+        if (node != null && node.getData() != null) {
+            String executorModel = node.getData().getModel();
+            if (executorModel != null && !executorModel.isBlank()) {
+                candidates = new String[]{executorModel, "ollama:qwen2.5-coder:14b-instruct-q4_K_M"};
+            }
+        }
+        for (String m : candidates) {
+            try {
+                String testResp = llmService.chat(m, "You are a test. Reply 'ok'.", "Reply 'ok'.", null).text();
+                if (testResp != null) return m;
+            } catch (Exception e) { /* try next */ }
+        }
+        return null;
+    }
+
+    private String runDartAnalyze(String targetDir) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("bash", "-c",
+                    "cd " + targetDir + " && dart analyze lib/ 2>&1");
+            Process p = pb.start();
+            if (p.waitFor(120, TimeUnit.SECONDS)) {
+                return new String(p.getInputStream().readAllBytes());
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private int applyMarkedFiles(String targetDir, String content) {
+        int count = 0;
+        try {
+            String[] parts = content.split("(?m)^--- ");
+            for (String part : parts) {
+                if (part.isBlank()) continue;
+                int nlIdx = part.indexOf('\n');
+                if (nlIdx < 0) continue;
+                String relPath = part.substring(0, nlIdx).trim().replace("```", "").trim();
+                String fileContent = part.substring(nlIdx + 1).trim();
+                // Remove trailing ``` if present (from markdown code blocks)
+                if (fileContent.endsWith("```")) {
+                    fileContent = fileContent.substring(0, fileContent.length() - 3).trim();
+                }
+                if (relPath.contains("..") || relPath.startsWith("/")) continue; // safety check
+                java.nio.file.Path fullPath = java.nio.file.Paths.get(targetDir, relPath);
+                java.nio.file.Files.createDirectories(fullPath.getParent());
+                java.nio.file.Files.writeString(fullPath, fileContent);
+                count++;
+            }
+        } catch (Exception e) {
+            log.warn("Error applying fix files: {}", e.getMessage());
+        }
+        return count;
+    }
+
+    private void runBash(String dir, String cmd, int timeoutSec) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + dir + " && " + cmd);
+            Process p = pb.start();
+            p.waitFor(timeoutSec, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            log.warn("bash command failed: {} (dir={}, cmd={})", e.getMessage(), dir, cmd);
+        }
     }
 
     // ─── Plan Step context injection ───
