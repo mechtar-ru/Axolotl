@@ -99,13 +99,13 @@ class NodeRouterTest {
     @Test
     void getTimeoutSeconds_emptyConfig_returnsDefault() {
         Node node = createNodeWithConfig(Map.of());
-        assertEquals(300, nodeRouter.getTimeoutSeconds(node));
+        assertEquals(600, nodeRouter.getTimeoutSeconds(node));
     }
 
     @Test
     void getTimeoutSeconds_noConfig_returnsDefault() {
         Node node = createNodeWithConfig(null);
-        assertEquals(300, nodeRouter.getTimeoutSeconds(node));
+        assertEquals(600, nodeRouter.getTimeoutSeconds(node));
     }
 
     @Test
@@ -133,8 +133,8 @@ class NodeRouterTest {
 
     @Test
     void getTimeoutSeconds_capsAtStageTimeout() {
-        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 2000));
-        assertEquals(1200, nodeRouter.getTimeoutSeconds(node));
+        Node node = createNodeWithConfig(Map.of("timeoutSeconds", 4000));
+        assertEquals(3600, nodeRouter.getTimeoutSeconds(node));
     }
 
     // ─── isTransientError ───

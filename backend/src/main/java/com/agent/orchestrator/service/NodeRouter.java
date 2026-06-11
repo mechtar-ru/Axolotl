@@ -363,21 +363,21 @@ public class NodeRouter {
     }
 
     /**
-     * Read timeoutSeconds from node config (default 300).
-     * Priority: node.data.timeoutSeconds > node.data.config.timeoutSeconds > 300
+     * Read timeoutSeconds from node config (default 600 for agent/code-gen nodes).
+     * Priority: node.data.timeoutSeconds > node.data.config.timeoutSeconds > 600
      */
     int getTimeoutSeconds(Node node) {
-        if (node.getData() == null) return 300;
+        if (node.getData() == null) return 600;
         if (node.getData().getTimeoutSeconds() != null) {
-            return Math.max(1, Math.min(1200, node.getData().getTimeoutSeconds()));
+            return Math.max(1, Math.min(3600, node.getData().getTimeoutSeconds()));
         }
         if (node.getData().getConfig() != null) {
             Object val = node.getData().getConfig().get("timeoutSeconds");
             if (val instanceof Number) {
-                return Math.max(1, Math.min(1200, ((Number) val).intValue()));
+                return Math.max(1, Math.min(3600, ((Number) val).intValue()));
             }
         }
-        return 300;
+        return 600;
     }
 
     /**
