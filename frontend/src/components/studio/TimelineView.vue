@@ -367,6 +367,7 @@ onActivated(() => {
           </div>
 
           <span class="tl-mode">{{ run.mode }}</span>
+          <span class="tl-session">Session {{ runs.length - runs.indexOf(run) }}</span>
           <span class="tl-date">{{ formatDate(run.startedAt) }}</span>
           <span class="tl-time">{{ formatTime(run.startedAt) }}</span>
           <span class="tl-duration">{{ formatDuration(run) }}</span>
@@ -412,7 +413,7 @@ onActivated(() => {
                 :disabled="reRunning"
                 @click.stop="reRun"
               >
-                {{ reRunning ? 'Running...' : 'Re-run' }}
+                {{ reRunning ? 'Running...' : (run.status === 'completed' ? 'New Session' : 'Re-run') }}
               </button>
               <button
                 v-if="confirmDeleteRunId === run.id"
@@ -659,6 +660,17 @@ onActivated(() => {
   font-size: var(--text-xs);
   color: var(--text-secondary);
   min-width: 56px;
+}
+
+.tl-session {
+  font-family: monospace;
+  font-size: var(--text-xs);
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.08);
+  padding: 1px var(--space-2);
+  border-radius: 8px;
+  min-width: 64px;
+  text-align: center;
 }
 
 .tl-date { color: var(--text-muted); min-width: 56px; }

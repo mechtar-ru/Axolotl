@@ -53,6 +53,12 @@ public class AppController {
         }
         schema.setWorkspaceId(req.workspaceId());
 
+        // Auto-create workspaceId if not provided (required for plan tracking)
+        if (schema.getWorkspaceId() == null || schema.getWorkspaceId().isBlank()) {
+            schema.setWorkspaceId(java.util.UUID.randomUUID().toString());
+            log.info("Auto-generated workspaceId={} for schema '{}'", schema.getWorkspaceId(), req.name());
+        }
+
         // Compute target path
         String targetPath;
         if (req.customTargetPath() != null && !req.customTargetPath().isBlank()) {

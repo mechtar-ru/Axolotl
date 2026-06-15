@@ -102,6 +102,14 @@ public class ExecutionRepository {
         }));
     }
 
+    public void updateRunGeneratedFiles(String id, List<String> generatedFiles) {
+        withRetry(() -> runRepo.findById(id).ifPresent(graphRun -> {
+            graphRun.setGeneratedFilesJson(listToJson(generatedFiles));
+            graphRun.setUpdatedAt(java.time.Instant.now());
+            runRepo.save(graphRun);
+        }));
+    }
+
     public ExecutionRun getRun(String id) {
         try {
             return runRepo.findById(id).map(this::toPocoRun).orElse(null);
@@ -471,6 +479,15 @@ public class ExecutionRepository {
         }
     }
 
+    private static String listToJson(List<String> list) {
+        try {
+            return jsonMapper.writeValueAsString(list != null ? list : new ArrayList<>());
+        } catch (JsonProcessingException e) {
+            log.error("Failed to serialize list to JSON", e);
+            return "[]";
+        }
+    }
+
     private static Map<String, String> jsonToMap(String json) {
         try {
             return jsonMapper.readValue(json != null ? json : "{}",
@@ -478,6 +495,17 @@ public class ExecutionRepository {
         } catch (JsonProcessingException e) {
             log.error("Failed to deserialize map from JSON: {}", json, e);
             return new HashMap<>();
+        }
+    }
+
+    private static List<String> jsonToStringList(String json) {
+        try {
+            if (json == null || json.isBlank()) return new ArrayList<>();
+            return jsonMapper.readValue(json,
+                    jsonMapper.getTypeFactory().constructCollectionType(ArrayList.class, String.class));
+        } catch (JsonProcessingException e) {
+            log.error("Failed to deserialize string list from JSON: {}", json, e);
+            return new ArrayList<>();
         }
     }
 
@@ -493,6 +521,7 @@ public class ExecutionRepository {
         g.setStageStatusJson(mapToJson(r.getStageStatus()));
         g.setStageOutputsJson(mapToJson(r.getStageOutputs()));
         g.setResumeIndex(r.getResumeIndex());
+        g.setGeneratedFilesJson(listToJson(r.getGeneratedFiles()));
         return g;
     }
 
@@ -512,6 +541,7 @@ public class ExecutionRepository {
         r.setStageStatus(jsonToMap(g.getStageStatusJson()));
         r.setStageOutputs(jsonToMap(g.getStageOutputsJson()));
         r.setResumeIndex(g.getResumeIndex());
+        r.setGeneratedFiles(jsonToStringList(g.getGeneratedFilesJson()));
         return r;
     }
 

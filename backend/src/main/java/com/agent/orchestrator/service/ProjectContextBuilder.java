@@ -47,12 +47,54 @@ public class ProjectContextBuilder {
         StringBuilder sb = new StringBuilder();
         sb.append("Current project state (target: ").append(targetPath).append("):\n\n");
 
+        // Session context
+        if (schemaId != null && !schemaId.isBlank()) {
+            try {
+                List<ExecutionRun> completedRuns = executionRepository.getCompletedRuns(schemaId, MAX_SESSION_HISTORY);
+                int sessionNumber = completedRuns.size() + 1;  // 1-indexed: first run = session 1
+
+                sb.append("\n## Session Context\n");
+                sb.append("This is **Session ").append(sessionNumber);
+                if (sessionNumber > 1) {
+                    sb.append("**, continuing from ").append(completedRuns.size())
+                      .append(" previous session(s)");
+                }
+                sb.append(".\n");
+
+                if (sessionNumber > 1) {
+                    sb.append("\n### Previous sessions:\n");
+                    for (int i = 0; i < completedRuns.size(); i++) {
+                        ExecutionRun run = completedRuns.get(i);
+                        int sNum = i + 1;
+                        sb.append("- **Session ").append(sNum).append("**: ");
+                        sb.append("status=").append(run.getStatus());
+                        if (run.getError() != null && !run.getError().isBlank()) {
+                            sb.append(", error=").append(run.getError().length() > 80
+                                    ? run.getError().substring(0, 80) + "..."
+                                    : run.getError());
+                        }
+                        if (run.getGeneratedFiles() != null && !run.getGeneratedFiles().isEmpty()) {
+                            sb.append(", files: ").append(String.join(", ", run.getGeneratedFiles()));
+                        }
+                        if (run.getTotalTokens() > 0) {
+                            sb.append(", tokens=").append(run.getTotalTokens());
+                        }
+                        sb.append("\n");
+                    }
+                    sb.append("\n**IMPORTANT**: You are continuing development. Read existing files with `directory_read` and `file_read` before creating new ones. Do NOT recreate what already exists — extend and modify.\n");
+                }
+            } catch (Exception e) {
+                log.warn("Failed to read session context: {}", e.getMessage());
+            }
+        }
+
         // File tree
         Path targetDir = Path.of(targetPath);
         if (Files.exists(targetDir)) {
+            sb.append("\n### File Tree\n");
             appendFileTree(sb, targetDir, "");
         } else {
-            sb.append("(directory does not exist yet)\n");
+            sb.append("\n(Directory does not exist yet — this is a fresh project)\n");
         }
 
         // Session goal
@@ -87,39 +129,6 @@ public class ProjectContextBuilder {
             }
         } catch (Exception e) {
             log.warn("Failed to read plan history: {}", e.getMessage());
-        }
-
-        // Past execution run results (if schemaId provided)
-        if (schemaId != null && !schemaId.isBlank()) {
-            try {
-                List<ExecutionRun> completedRuns = executionRepository.getCompletedRuns(schemaId, MAX_SESSION_HISTORY);
-                if (!completedRuns.isEmpty()) {
-                    sb.append("\nPrevious pipeline sessions:\n");
-                    for (int i = 0; i < completedRuns.size(); i++) {
-                        ExecutionRun run = completedRuns.get(i);
-                        sb.append("  Session ").append(i + 1).append(": ")
-                          .append("status=").append(run.getStatus());
-                        if (run.getMode() != null) {
-                            sb.append(", mode=").append(run.getMode());
-                        }
-                        if (run.getError() != null && !run.getError().isBlank()) {
-                            sb.append(", error=").append(run.getError().length() > 80
-                                    ? run.getError().substring(0, 80) + "..."
-                                    : run.getError());
-                        }
-                        if (run.getTotalTokens() > 0) {
-                            sb.append(", tokens=").append(run.getTotalTokens());
-                        }
-                        // Include generated files list if available
-                        if (run.getGeneratedFiles() != null && !run.getGeneratedFiles().isEmpty()) {
-                            sb.append(", files: [").append(run.getGeneratedFiles()).append("]");
-                        }
-                        sb.append("\n");
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to read past execution runs: {}", e.getMessage());
-            }
         }
 
         // Truncate if too long (>2000 tokens ≈ 8000 chars)

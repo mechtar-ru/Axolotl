@@ -680,6 +680,25 @@ public class PipelineStageExecutionService {
         }
 
         if (!resumedPaused) {
+            // Persist generated files to ExecutionRun
+            Map<String, Object> genFiles = stateManager.getGeneratedFilesRegistry();
+            List<String> schemaFiles = new ArrayList<>();
+            String prefix = schema.getId() + ":";
+            for (Map.Entry<String, Object> entry : genFiles.entrySet()) {
+                if (entry.getKey().startsWith(prefix)) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, String>> files = (List<Map<String, String>>) entry.getValue();
+                    if (files != null) {
+                        for (Map<String, String> f : files) {
+                            String path = f.get("path");
+                            if (path != null) schemaFiles.add(path);
+                        }
+                    }
+                }
+            }
+            if (!schemaFiles.isEmpty()) {
+                executionRepository.updateRunGeneratedFiles(run.getId(), schemaFiles);
+            }
             executionRepository.updateRunCompleted(run.getId(), cancelFlag.get() ? "cancelled" : "completed", 0, 0.0);
         }
     }

@@ -64,6 +64,9 @@ public class GraphExecutionRun {
     @Property("resumeIndex")
     private int resumeIndex = -1;
 
+    @Property("generatedFiles")
+    private String generatedFilesJson = "[]";
+
 
     public GraphExecutionRun(String id, String schemaId, String status, String mode) {
         this.id = id;
