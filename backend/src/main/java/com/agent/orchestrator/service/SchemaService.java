@@ -61,6 +61,11 @@ public interface SchemaService {
 
     void executeSchema(String id);
 
+    /** Execute schema with optional session-specific input (overrides source node's sourceData) */
+    default void executeSchema(String id, String sessionInput) {
+        executeSchema(id);
+    }
+
     void cancelExecution(String id);
 
     // ────────────────── Execution Runs / Resilience ──────────────────

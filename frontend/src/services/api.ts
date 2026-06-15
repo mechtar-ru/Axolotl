@@ -111,8 +111,9 @@ export const schemaApi = {
     await api.delete(`/schemas/${id}`);
   },
   
-  async executeSchema(id: string, mode: ExecutionMode = 'EXECUTE'): Promise<{ status: string; validation?: SchemaValidationResult }> {
-    const response = await api.post(`/schemas/${id}/execute`, {}, { params: { mode } });
+  async executeSchema(id: string, mode: ExecutionMode = 'EXECUTE', sessionInput?: string): Promise<{ status: string; validation?: SchemaValidationResult }> {
+    const body = sessionInput ? { sessionInput } : {};
+    const response = await api.post(`/schemas/${id}/execute`, body, { params: { mode } });
     return response.data;
   },
 

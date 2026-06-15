@@ -33,6 +33,7 @@ public class PipelineStageExecutionService {
     private final ExecutionStateManager stateManager;
     private final PipelineStatusManager statusManager;
     private final DiffService diffService;
+    private final PlanService planService;
     private final ExecutorService pipelineExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -46,7 +47,8 @@ public class PipelineStageExecutionService {
                                           ExecutionRepository executionRepository,
                                           ExecutionStateManager stateManager,
                                           PipelineStatusManager statusManager,
-                                          DiffService diffService) {
+                                          DiffService diffService,
+                                          PlanService planService) {
         this.schemaRepository = schemaRepository;
         this.nodeRouter = nodeRouter;
         this.webSocketHandler = webSocketHandler;
@@ -54,6 +56,7 @@ public class PipelineStageExecutionService {
         this.stateManager = stateManager;
         this.statusManager = statusManager;
         this.diffService = diffService;
+        this.planService = planService;
     }
 
     void clearStaleApprovals(String schemaId) {
@@ -64,6 +67,25 @@ public class PipelineStageExecutionService {
 
     public void runPipelineStages(List<Stage> stages, WorkflowSchema schema, String runId, AtomicBoolean cancelFlag) {
         if (stages == null || stages.isEmpty()) return;
+
+        // ── Create plan task for this session ──
+        String sessionTaskId = null;
+        if (schema.getWorkspaceId() != null && !schema.getWorkspaceId().isBlank()) {
+            try {
+                List<ExecutionRun> completedRuns = executionRepository.getCompletedRuns(schema.getId(), 10);
+                int sessionNum = completedRuns.size() + 1;
+                String taskTitle = "Session " + sessionNum + ": " + schema.getName();
+                Task task = planService.addTask(schema.getWorkspaceId(), taskTitle, schema.getDescription(),
+                        null, null, null, schema.getId());
+                sessionTaskId = task.getId();
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schema.getId(), "info",
+                            "Plan task created: " + taskTitle, null);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to create plan task for schema {}: {}", schema.getId(), e.getMessage());
+            }
+        }
 
         Map<String, Node> nodeMap = new HashMap<>();
         if (schema.getNodes() != null) {
@@ -142,6 +164,38 @@ public class PipelineStageExecutionService {
 
         if (!isPaused) {
             executionRepository.updateRunCompleted(runId, cancelFlag.get() ? "cancelled" : "completed", 0, 0.0);
+
+            // ── Complete plan task if created ──
+            if (sessionTaskId != null && !cancelFlag.get()) {
+                try {
+                    List<String> genFiles = new ArrayList<>();
+                    Map<String, Object> filesRegistry = stateManager.getGeneratedFilesRegistry();
+                    String prefix = schema.getId() + ":";
+                    for (Map.Entry<String, Object> entry : filesRegistry.entrySet()) {
+                        if (entry.getKey().startsWith(prefix)) {
+                            @SuppressWarnings("unchecked")
+                            List<Map<String, String>> files = (List<Map<String, String>>) entry.getValue();
+                            if (files != null) {
+                                for (Map<String, String> f : files) {
+                                    String path = f.get("path");
+                                    if (path != null) genFiles.add(path);
+                                }
+                            }
+                        }
+                    }
+                    List<Task.GeneratedFile> genFileList = genFiles.stream()
+                            .map(p -> new Task.GeneratedFile(p, ""))
+                            .toList();
+                    planService.completeTaskForExecution(sessionTaskId, schema.getWorkspaceId(), genFileList);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schema.getId(), "info",
+                                "Plan task completed: " + genFiles.size() + " files", null);
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to complete plan task {}: {}", sessionTaskId, e.getMessage());
+                }
+            }
+
             stateManager.removeSchema(schema.getId());
         }
     }

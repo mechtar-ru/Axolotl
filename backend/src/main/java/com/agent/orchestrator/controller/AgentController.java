@@ -27,6 +27,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+/**
+ * Request body for POST /schemas/{id}/execute
+ */
+record ExecuteRequest(String sessionInput) {}
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -181,6 +186,7 @@ public class AgentController {
     @PostMapping("/schemas/{id}/execute")
     public ResponseEntity<Map<String, Object>> executeSchema(
             @PathVariable String id,
+            @RequestBody(required = false) ExecuteRequest body,
             @RequestParam(defaultValue = "EXECUTE") ExecutionMode mode,
             jakarta.servlet.http.HttpServletRequest request) {
         String principal = SecurityContextHolder.getContext().getAuthentication() != null
@@ -190,7 +196,7 @@ public class AgentController {
                 request.getRemoteAddr());
 
         try {
-            schemaService.executeSchema(id);
+            schemaService.executeSchema(id, body != null ? body.sessionInput() : null);
             Map<String, Object> result = new HashMap<>();
             result.put("status", "started");
             result.put("schemaId", id);

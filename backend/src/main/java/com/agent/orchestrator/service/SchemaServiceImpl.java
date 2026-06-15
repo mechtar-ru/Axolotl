@@ -190,6 +190,11 @@ public class SchemaServiceImpl implements SchemaService {
     }
 
     @Override
+    public void executeSchema(String id, String sessionInput) {
+        executionService.executeSchema(id, sessionInput);
+    }
+
+    @Override
     public void cancelExecution(String id) {
         executionService.cancelExecution(id);
     }

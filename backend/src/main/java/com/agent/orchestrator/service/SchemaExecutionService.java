@@ -112,6 +112,66 @@ public class SchemaExecutionService {
         pipelineService.executeDerivedStages(id, schema, stages);
     }
 
+    public void executeSchema(String id, String sessionInput) {
+        if (sessionInput == null || sessionInput.isBlank()) {
+            executeSchema(id);
+            return;
+        }
+
+        // Load schema and override source node's input with session-specific input
+        WorkflowSchema schema = schemaRepository.findById(id);
+        if (schema == null)
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.NOT_FOUND, "Schema not found: " + id);
+
+        SchemaValidationResult validation = schemaValidator.validate(schema);
+        if (!validation.isValid()) {
+            log.warn("Schema validation failed for '{}': {} error(s)", schema.getName(), validation.getErrors().size());
+            throw new SchemaValidationException(validation);
+        }
+
+        if (schema.getUserId() == null) {
+            org.springframework.security.core.Authentication auth =
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+                schema.setUserId(auth.getName());
+                log.info("Set userId={} on schema {} from security context", auth.getName(), id);
+            } else {
+                log.warn("Could not get userId: auth={}, isAuth={}",
+                        auth != null, auth != null ? auth.isAuthenticated() : "N/A");
+            }
+        }
+
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                node.setStatus(Node.NodeStatus.IDLE);
+            }
+        }
+
+        // Override source node's sourceData with session input
+        if (schema.getNodes() != null) {
+            for (Node node : schema.getNodes()) {
+                if (node.getNodeType() == Node.NodeType.SOURCE) {
+                    if (node.getData() == null) node.setData(new Node.NodeData());
+                    if (node.getData().getConfig() == null) node.getData().setConfig(new java.util.HashMap<>());
+                    node.getData().getConfig().put("sourceData", sessionInput);
+                    log.info("Session input set on source node {}: {} chars", node.getId(), sessionInput.length());
+                    break;
+                }
+            }
+        }
+
+        if (metricsService != null) {
+            metricsService.recordSchemaExecutionStart();
+        }
+
+        List<Stage> stages = PipelineService.createStagesFromNodes(schema);
+        if (stages.isEmpty()) {
+            throw new RuntimeException("No stages derived from canvas nodes for schema " + id);
+        }
+        pipelineService.executeDerivedStages(id, schema, stages);
+    }
+
     public void cancelExecution(String id) {
         pipelineService.cancelPipeline(id);
         log.info("Execution cancel requested for schema: {}", id);

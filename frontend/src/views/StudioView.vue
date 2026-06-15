@@ -135,7 +135,7 @@ provide('executionProgress', executionProgress)
  * Start execution with WebSocket connection.
  * @param skipSave — if true, skip schemaStore.updateSchema (caller already saved)
  */
-  const startExecution = async (skipSave: boolean = false): Promise<void> => {
+const startExecution = async (skipSave: boolean = false, sessionInput?: string): Promise<void> => {
     if (isRunning.value) {
       console.warn('Execution already in progress')
       return
@@ -272,7 +272,7 @@ provide('executionProgress', executionProgress)
   }
 
   try {
-    await schemaApi.executeSchema(appId.value, 'EXECUTE')
+    await schemaApi.executeSchema(appId.value, 'EXECUTE', sessionInput)
   } catch (err) {
     executionError.value = (err as Error).message
     toast.error('Execution failed to start: ' + ((err as Error).message || err))
