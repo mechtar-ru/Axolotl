@@ -45,6 +45,8 @@ class AgentNodeStrategyTest {
     @Mock ToolExecutionService toolExecutionService;
     @Mock MagicContextIndexer mcIndexer;
     @Mock MagicContextRetriever mcRetriever;
+    @Mock FlutterScaffoldHelper flutterScaffoldHelper;
+    @Mock FixPassOrchestrator fixPassOrchestrator;
 
     AgentNodeStrategy strategy;
 
@@ -72,7 +74,9 @@ class AgentNodeStrategyTest {
                 contextAssembler,
                 toolExecutionService,
                 mcIndexer,
-                mcRetriever);
+                mcRetriever,
+                flutterScaffoldHelper,
+                fixPassOrchestrator);
 
         node = new Node();
         node.setId("n1");

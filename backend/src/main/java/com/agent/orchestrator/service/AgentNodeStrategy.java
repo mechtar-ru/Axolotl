@@ -48,6 +48,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private final ToolExecutionService toolExecutionService;
     private final MagicContextIndexer mcIndexer;
     private final MagicContextRetriever mcRetriever;
+    private final FlutterScaffoldHelper flutterScaffoldHelper;
+    private final FixPassOrchestrator fixPassOrchestrator;
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -62,7 +64,9 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                               ContextAssembler contextAssembler,
                               ToolExecutionService toolExecutionService,
                               MagicContextIndexer mcIndexer,
-                              MagicContextRetriever mcRetriever) {
+                              MagicContextRetriever mcRetriever,
+                              FlutterScaffoldHelper flutterScaffoldHelper,
+                              FixPassOrchestrator fixPassOrchestrator) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -77,6 +81,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         this.toolExecutionService = toolExecutionService;
         this.mcIndexer = mcIndexer;
         this.mcRetriever = mcRetriever;
+        this.flutterScaffoldHelper = flutterScaffoldHelper;
+        this.fixPassOrchestrator = fixPassOrchestrator;
     }
 
     @Override
@@ -292,7 +298,6 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                     """.trim();
         }
 
-        WorkflowSchema currentSchema2 = schemaRepository.findById(schemaId);
         String model = resolvedModel;
         if (model == null || model.isBlank()) {
             model = utilityService.resolveModel(node.getData().getModel(), null, null, null);
@@ -398,31 +403,11 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         messages.add(new Node.Message("system", systemPrompt));
         messages.add(new Node.Message("user", prompt));
 
-                // Auto-scaffold for FLUTTER projects: run build_app before agent starts
+                // Auto-scaffold for FLUTTER projects: run flutter create before agent starts
                 // to ensure pubspec.yaml and lib/ exist (prevents "lib/ not found" loops)
                 if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
                         && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
-                    try {
-                        String scaffoldTarget = currentSchema.getTargetPath();
-                        if (!java.nio.file.Files.exists(java.nio.file.Paths.get(scaffoldTarget, "pubspec.yaml"))) {
-                            log.info("Auto-scaffolding FLUTTER project in {}", scaffoldTarget);
-                            // Directly create the Flutter project (build_app only validates, doesn't create)
-                            java.nio.file.Files.createDirectories(java.nio.file.Paths.get(scaffoldTarget));
-                            ProcessBuilder fb = new ProcessBuilder("flutter", "create",
-                                    "--project-name", new java.io.File(scaffoldTarget).getName(),
-                                    "--platforms", "android,ios,macos",
-                                    scaffoldTarget);
-                            fb.redirectErrorStream(true);
-                            Process fp = fb.start();
-                            fp.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);
-                            log.info("flutter create exited with {}", fp.exitValue());
-                            // Delete stock scaffold files so agent MUST write fresh ones
-                            java.nio.file.Path mainDart = java.nio.file.Paths.get(scaffoldTarget, "lib", "main.dart");
-                            log.info("Scaffold created, main.dart exists: {}", java.nio.file.Files.exists(mainDart));
-                        }
-                    } catch (Exception e) {
-                        log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage());
-                    }
+                    flutterScaffoldHelper.ensureFlutterScaffold(currentSchema.getTargetPath());
                 }
 
                 // Create architecture plan from planner model
@@ -667,59 +652,18 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
                 finalResponse += "\n\n[DEPENDENCIES] Auto-installed Flutter packages";
 
-                // Auto-fix Flutter compilation errors using a fixer model (14B preferred)
-                String fixModel = resolveFlutterFixModel(node);
-                if (fixModel != null) {
-                    for (int attempt = 1; attempt <= 3; attempt++) {
-                        String analyzeOut = runDartAnalyze(targetDir);
-                        if (analyzeOut == null || analyzeOut.isBlank()
-                                || analyzeOut.contains("No issues found")
-                                || analyzeOut.contains("no issues found")) {
-                            if (attempt > 1) {
-                                finalResponse += "\n[FIX PASS] All errors resolved in " + attempt + " attempts";
-                            }
-                            break;
+                // Auto-fix Flutter compilation errors using the FixPassOrchestrator
+                FixPassOrchestrator.FixPassResult fixResult = fixPassOrchestrator.runFixPass(
+                        targetDir, node.getId(), schemaId, currentSchema.getName());
+                // Build result report from fix pass result
+                if (fixResult != null) {
+                    if (fixResult.fixedFiles() != null && !fixResult.fixedFiles().isEmpty()) {
+                        for (String msg : fixResult.fixedFiles()) {
+                            finalResponse += "\n" + msg;
                         }
-                        long errCount = analyzeOut.lines().filter(l -> l.contains("error -")).count();
-                        if (errCount == 0) {
-                            break; // only info-level issues remain, no compilation errors
-                        }
-                        if (webSocketHandler != null) {
-                            webSocketHandler.sendLog(schemaId, "info",
-                                    "Auto-fix attempt " + attempt + ": " + errCount + " Dart errors", node.getId());
-                        }
-                        if (webSocketHandler != null) {
-                            webSocketHandler.sendLog(schemaId, "info",
-                                    "Auto-fix attempt " + attempt + ": " + errCount + " Dart errors", node.getId());
-                        }
-
-                        // Collect current file contents for context
-                        StringBuilder fileContext = new StringBuilder();
-                        java.nio.file.Files.walk(java.nio.file.Paths.get(targetDir, "lib"))
-                            .filter(f -> f.toString().endsWith(".dart"))
-                            .forEach(f -> {
-                                try {
-                                    fileContext.append("\n--- ").append(java.nio.file.Paths.get(targetDir).relativize(f)).append(" ---\n");
-                                    fileContext.append(java.nio.file.Files.readString(f));
-                                } catch (Exception e) { /* skip */ }
-                            });
-
-                        String fixPrompt = "Fix these Dart compilation errors. Return each FIXED file with marker:\n"
-                            + "--- lib/path/to/file.dart ---\n[complete fixed content]\n"
-                            + "Errors:\n" + analyzeOut
-                            + "\n\nCurrent files:\n" + fileContext;
-
-                        LlmResponse fixResp = llmService.chat(fixModel,
-                            "You are a Dart/Flutter fixer. Return ONLY fixed file content with --- path --- markers.",
-                            fixPrompt, null);
-
-                        if (fixResp != null && fixResp.text() != null) {
-                            int fixed = applyMarkedFiles(targetDir, fixResp.text());
-                            if (fixed > 0) {
-                                runBash(targetDir, "flutter pub get", 60);
-                                finalResponse += "\n[FIX PASS] Attempt " + attempt + ": fixed " + fixed + " files";
-                            }
-                        }
+                    }
+                    if (fixResult.errorsRemaining() > 0) {
+                        finalResponse += "\n[FIX PASS] " + fixResult.errorsRemaining() + " error(s) remaining after fix pass";
                     }
                 }
             } catch (Exception e) {
@@ -728,74 +672,6 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         }
 
         return finalResponse;
-    }
-
-    private String resolveFlutterFixModel(Node node) {
-        // Prefer 14B for fixes, fallback to executor model
-        String[] candidates = {"ollama:qwen2.5-coder:14b-instruct-q4_K_M", "ollama:qwen2.5-coder:7b-instruct-q4_K_M"};
-        if (node != null && node.getData() != null) {
-            String executorModel = node.getData().getModel();
-            if (executorModel != null && !executorModel.isBlank()) {
-                candidates = new String[]{executorModel, "ollama:qwen2.5-coder:14b-instruct-q4_K_M"};
-            }
-        }
-        for (String m : candidates) {
-            try {
-                String testResp = llmService.chat(m, "You are a test. Reply 'ok'.", "Reply 'ok'.", null).text();
-                if (testResp != null) return m;
-            } catch (Exception e) { /* try next */ }
-        }
-        return null;
-    }
-
-    private String runDartAnalyze(String targetDir) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c",
-                    "cd " + targetDir + " && dart analyze lib/ 2>&1");
-            Process p = pb.start();
-            if (p.waitFor(120, TimeUnit.SECONDS)) {
-                return new String(p.getInputStream().readAllBytes());
-            }
-            return null;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private int applyMarkedFiles(String targetDir, String content) {
-        int count = 0;
-        try {
-            String[] parts = content.split("(?m)^--- ");
-            for (String part : parts) {
-                if (part.isBlank()) continue;
-                int nlIdx = part.indexOf('\n');
-                if (nlIdx < 0) continue;
-                String relPath = part.substring(0, nlIdx).trim().replace("```", "").trim();
-                String fileContent = part.substring(nlIdx + 1).trim();
-                // Remove trailing ``` if present (from markdown code blocks)
-                if (fileContent.endsWith("```")) {
-                    fileContent = fileContent.substring(0, fileContent.length() - 3).trim();
-                }
-                if (relPath.contains("..") || relPath.startsWith("/")) continue; // safety check
-                java.nio.file.Path fullPath = java.nio.file.Paths.get(targetDir, relPath);
-                java.nio.file.Files.createDirectories(fullPath.getParent());
-                java.nio.file.Files.writeString(fullPath, fileContent);
-                count++;
-            }
-        } catch (Exception e) {
-            log.warn("Error applying fix files: {}", e.getMessage());
-        }
-        return count;
-    }
-
-    private void runBash(String dir, String cmd, int timeoutSec) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + dir + " && " + cmd);
-            Process p = pb.start();
-            p.waitFor(timeoutSec, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            log.warn("bash command failed: {} (dir={}, cmd={})", e.getMessage(), dir, cmd);
-        }
     }
 
     // ─── Plan Step context injection ───
