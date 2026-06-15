@@ -1,0 +1,23 @@
+```dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'screens/emotion_screen.dart';
+import 'services/database_service.dart';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => DatabaseService(),
+      child: MaterialApp(
+        title: 'Russian EIOS',
+        theme: ThemeData.dark(),
+        home: EmotionScreen(),
+      ),
+    );
+  }
+}

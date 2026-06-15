@@ -241,11 +241,33 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
 
         // Determine project type for Flutter-specific checks
         String projectType = null;
+        String targetPath = null;
         try {
             WorkflowSchema ws = schemaRepository.findById(schemaId);
-            if (ws != null) projectType = ws.getProjectType();
+            if (ws != null) {
+                projectType = ws.getProjectType();
+                targetPath = ws.getTargetPath();
+            }
         } catch (Exception e) {
             log.debug("Could not determine project type: {}", e.getMessage());
+        }
+
+        // For FLUTTER projects, ensure dependencies are installed before any checks
+        if ("FLUTTER".equals(projectType) && targetPath != null) {
+            try {
+                ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + targetPath + " && flutter pub get");
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                boolean finished = p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+                if (finished) {
+                    log.debug("flutter pub get completed in {}: exit={}", targetPath, p.exitValue());
+                } else {
+                    p.destroyForcibly();
+                    log.warn("flutter pub get timed out in {}", targetPath);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to run flutter pub get in {}: {}", targetPath, e.getMessage());
+            }
         }
 
         while (rewriteRetries <= maxRewriteRetries) {
@@ -257,7 +279,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             verificationPrompt.append("1. Сначала прочитай содержимое файла через file_read\\n");
             if (syntaxCheck) {
                 if ("FLUTTER".equals(projectType)) {
-                    verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'dart analyze <filepath>'\\n");
+                    verificationPrompt.append("2. Установи зависимости (bash 'flutter pub get'), затем запусти синтаксическую проверку (bash 'dart analyze <filepath>')\\n");
                 } else {
                     verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'python3 -m py_compile <filepath>'\\n");
                 }

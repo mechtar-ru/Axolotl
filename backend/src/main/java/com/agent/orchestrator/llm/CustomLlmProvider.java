@@ -230,6 +230,7 @@ public class CustomLlmProvider implements LlmProvider {
         try {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", endpoint.getModelName());
+            requestBody.put("max_tokens", 16384);
 
             List<Map<String, String>> messages = new ArrayList<>();
             if (systemPrompt != null && !systemPrompt.isBlank()) {

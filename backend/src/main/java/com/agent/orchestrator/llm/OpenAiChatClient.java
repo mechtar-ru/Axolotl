@@ -275,6 +275,7 @@ public final class OpenAiChatClient {
                                    List<Map<String, Object>> tools) throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
+        body.put("max_tokens", 16384);
 
         List<Map<String, String>> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {

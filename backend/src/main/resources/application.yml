@@ -2,8 +2,6 @@ server:
   port: 8082
 
 spring:
-  main:
-    allow-circular-references: true
   autoconfigure:
     exclude:
       - org.springframework.ai.autoconfigure.openai.OpenAiAudioSpeechAutoConfiguration
@@ -44,7 +42,7 @@ axolotl:
       draft-node:
         enabled: ${AXOLOTL_FEATURE_DRAFT_NODE:true}
   apps:
-    base-path: ${AXOLOTL_APPS_PATH:/Users/evgenijtihomirov/git/Axolotl}
+    base-path: ${AXOLOTL_APPS_PATH:.}
   jwt:
     secret: ${AXOLOTL_JWT_SECRET:axolotl-secret-key-must-be-at-least-32-chars-long-for-hs256}
   llm:
@@ -58,7 +56,7 @@ axolotl:
       default-model: deepseek-v4-flash-free
       timeout: 3600
   mcp:
-    enabled: true
+    enabled: false
     path: /mcp
   mempalace:
     base-url: ${AXOLOTL_MEMPALACE_URL:http://localhost:5890}

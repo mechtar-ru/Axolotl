@@ -1,0 +1,19 @@
+[complete fixed content]
+Errors:
+Analyzing lib...
+
+  error - services/database_service.dart:35:15 - The name 'EmotionEntry' isn't a type, so it can't be used as a type argument. Try correcting the name to an existing type, or defining a type named 'EmotionEntry'. - non_type_as_type_argument
+  error - services/database_service.dart:37:46 - Undefined name 'EmotionEntry'. Try correcting the name to one that is defined, or defining the name. - undefined_identifier
+  error - services/database_service.dart:40:22 - Undefined class 'EmotionEntry'. Try changing the name to the name of an existing class, or creating a class with the name 'EmotionEntry'. - undefined_class
+  error - services/database_service.dart:44:23 - Undefined class 'EmotionEntry'. Try changing the name to the name of an existing class, or creating a class with the name 'EmotionEntry'. - undefined_class
+   info - main.dart:7:7 - Constructors for public widgets should have a named 'key' parameter. Try adding a named parameter to the constructor. - use_key_in_widget_constructors
+   info - main.dart:18:7 - Constructors for public widgets should have a named 'key' parameter. Try adding a named parameter to the constructor. - use_key_in_widget_constructors
+   info - models/emotion_entry.dart:2:8 - The imported package 'path' isn't a dependency of the importing package. Try adding a dependency for 'path' in the 'pubspec.yaml' file. - depend_on_referenced_packages
+   info - screens/emotion_screen.dart:3:7 - Constructors for public widgets should have a named 'key' parameter. Try adding a named parameter to the constructor. - use_key_in_widget_constructors
+   info - screens/reset_screen.dart:3:7 - Constructors for public widgets should have a named 'key' parameter. Try adding a named parameter to the constructor. - use_key_in_widget_constructors
+   info - services/database_service.dart:2:8 - The imported package 'path' isn't a dependency of the importing package. Try adding a dependency for 'path' in the 'pubspec.yaml' file. - depend_on_referenced_packages
+
+10 issues found.
+
+
+Current files:

@@ -245,11 +245,11 @@ function makeSourceData(description: string): Record<string, any> {
 }
 
 /** Find first available Ollama coder model from loaded model options */
-function findOllamaCoder(): string | null {
-  const coder = modelOptions.value.flatMap(g => g.options).find(m =>
+function findOllamaCoder(): string | undefined {
+  const coder = modelOptions.value.find(m =>
     m.value.includes('qwen2.5-coder:14b') || m.value.includes('qwen2.5-coder:7b')
   )
-  return coder?.value || null
+  return coder?.value || undefined
 }
 
 /** Check if a model string points to an OpenRouter free model (no tool calling) */
