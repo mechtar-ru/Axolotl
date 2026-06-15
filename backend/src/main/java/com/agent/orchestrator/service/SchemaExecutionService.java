@@ -151,7 +151,7 @@ public class SchemaExecutionService {
         // Override source node's sourceData with session input
         if (schema.getNodes() != null) {
             for (Node node : schema.getNodes()) {
-                if (node.getNodeType() == Node.NodeType.SOURCE) {
+                if ("source".equals(node.getType())) {
                     if (node.getData() == null) node.setData(new Node.NodeData());
                     if (node.getData().getConfig() == null) node.getData().setConfig(new java.util.HashMap<>());
                     node.getData().getConfig().put("sourceData", sessionInput);
