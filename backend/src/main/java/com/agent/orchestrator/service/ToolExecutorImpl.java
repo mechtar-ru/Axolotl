@@ -24,6 +24,7 @@ public class ToolExecutorImpl implements ToolExecutor {
     private final Map<String, Tool> tools = new ConcurrentHashMap<>();
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
     private final ToolHandlerService handlerService;
+    private final BuildToolHandler buildToolHandler;
     private LlmService llmService;
     private ExecutionWebSocketHandler webSocketHandler;
     private ExecutionStateManager stateManager;
@@ -43,6 +44,7 @@ public class ToolExecutorImpl implements ToolExecutor {
 
     public ToolExecutorImpl() {
         this.handlerService = new ToolHandlerService(null, null, null, null, null);
+        this.buildToolHandler = new BuildToolHandler();
         registerDefaultTools();
     }
 
@@ -52,12 +54,14 @@ public class ToolExecutorImpl implements ToolExecutor {
                             ExecutionStateManager stateManager,
                             @org.springframework.beans.factory.annotation.Autowired(required = false)
                             Driver neo4jDriver,
-                            ToolHandlerService handlerService) {
+                            ToolHandlerService handlerService,
+                            BuildToolHandler buildToolHandler) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.stateManager = stateManager;
         this.neo4jDriver = neo4jDriver;
         this.handlerService = handlerService;
+        this.buildToolHandler = buildToolHandler;
         registerDefaultTools();
     }
 
@@ -252,7 +256,7 @@ public class ToolExecutorImpl implements ToolExecutor {
             return ToolResult.error("Tool ID is null — malformed tool call from agent");
         }
         if ("build_app".equals(toolId)) {
-            return handlerService.handleBuildApp(params, permission, schemaTargetPath);
+            return buildToolHandler.handleBuildApp(params, permission, schemaTargetPath);
         }
         if ("ask_planner".equals(toolId)) {
             return handlerService.handleAskPlanner(params, permission, schemaId, nodeId);
