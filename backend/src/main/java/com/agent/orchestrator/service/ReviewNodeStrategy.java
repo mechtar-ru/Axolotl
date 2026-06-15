@@ -160,6 +160,25 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         }
 
         // ── Phase 1: Plan Generation ──
+        String planText = generatePlan(model, inputContent, pendingFeedback, generatePlan, schemaId, node);
+
+        // ── Phase 2: Analysis ──
+        Map<String, Object> analysisData = runAnalysis(model, planText, premortem, prism, postmortem, schemaId, node);
+        String analysisResult = (String) analysisData.get("analysisResult");
+        String reviewPromptStr = (String) analysisData.get("reviewPrompt");
+        String systemPrompt = (String) analysisData.get("systemPrompt");
+
+        // ── Phase 3: Result Parsing & Mode Handling ──
+        Map<String, Object> resultMap = parseAndHandleResult(analysisResult, planText,
+                inputContent, mode, maxAutoIterations, schemaId, node, model,
+                reviewPromptStr, systemPrompt);
+        return serializeResult(resultMap);
+    }
+
+    // ── Phase 1: Plan Generation ──
+
+    private String generatePlan(String model, String inputContent, String pendingFeedback,
+                                 boolean generatePlan, String schemaId, Node node) {
         String planText;
         if (generatePlan) {
             if (webSocketHandler != null) {
@@ -192,8 +211,14 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 webSocketHandler.sendLog(schemaId, "warn", "Empty plan input, using placeholder", node.getId());
             }
         }
+        return planText;
+    }
 
-        // ── Phase 2: Analysis (premortem/prism/postmortem checks) ──
+    // ── Phase 2: Analysis ──
+
+    private Map<String, Object> runAnalysis(String model, String planText,
+                                             boolean premortem, boolean prism, boolean postmortem,
+                                             String schemaId, Node node) {
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 50,
                     "Review Phase 2: analyzing plan");
@@ -258,7 +283,20 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 reasoningCapture.capture(node.getId(), analysisResp.reasoning());
             }
 
-        // Parse analysis result
+        Map<String, Object> result = new HashMap<>();
+        result.put("analysisResult", analysisResult);
+        result.put("reviewPrompt", reviewPrompt.toString());
+        result.put("systemPrompt", systemPrompt);
+        return result;
+    }
+
+    // ── Phase 3: Result Parsing & Mode Handling ──
+
+    private Map<String, Object> parseAndHandleResult(String analysisResult, String planText,
+                                                      String inputContent, String mode, int maxAutoIterations,
+                                                      String schemaId, Node node,
+                                                      String model,
+                                                      String reviewPromptStr, String systemPrompt) {
         String reviewStatus = "PASS";
         String findingsText = "[]";
         String rewrittenPlan = null;
@@ -337,7 +375,8 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
 
                 // Store result so downstream can pick up when approved
-                return buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, effectivePlan, null);
+                resultMap.put("finalResult", buildResultJson("AWAITING_APPROVAL", findingsText, summary, planText, effectivePlan, null));
+                return resultMap;
             }
 
             case "auto":
@@ -352,7 +391,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                     }
 
                     // Re-run Phase 2 with rewritten plan
-                    String reReviewPrompt = reviewPrompt.toString()
+                    String reReviewPrompt = reviewPromptStr
                             .replace(planText, rewrittenPlan != null ? rewrittenPlan : planText);
                     LlmResponse reResp = llmService.streamingChat(model, systemPrompt, reReviewPrompt, null,
                             token -> {
@@ -389,7 +428,8 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                                 resultMap.put("status", "PASS");
                                 resultMap.put("plan", rewrittenPlan);
                                 resultMap.put("rewriteIterations", autoIteration);
-                                return buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, autoIteration);
+                                resultMap.put("finalResult", buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, autoIteration));
+                                return resultMap;
                             }
 
                             if (reRoot.has("rewrittenPlan")) {
@@ -407,9 +447,10 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                     node.setStatus(Node.NodeStatus.FAILED);
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schemaId, "error",
-                                "Auto review failed after " + maxAutoIterations + " iterations", node.getId());
+                                "Max auto iterations (" + maxAutoIterations + ") reached without PASS", node.getId());
                     }
-                    return buildResultJson("FAILED", findingsText, "Max auto iterations (" + maxAutoIterations + ") reached without PASS", currentPlan, null, autoIteration);
+                    resultMap.put("finalResult", buildResultJson("FAILED", findingsText, "Max auto iterations (" + maxAutoIterations + ") reached without PASS", currentPlan, null, autoIteration));
+                    return resultMap;
                 }
 
                 finalResult = buildResultJson("PASS", findingsText, summary, currentPlan, null, null);
@@ -427,7 +468,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                                 "Hybrid review iteration " + hybridIteration + "/" + maxAutoIterations, node.getId());
                     }
 
-                    String hyReReviewPrompt = reviewPrompt.toString()
+                    String hyReReviewPrompt = reviewPromptStr
                             .replace(planText, rewrittenPlan != null ? rewrittenPlan : planText);
                     LlmResponse hyResp = llmService.streamingChat(model, systemPrompt, hyReReviewPrompt, null,
                             token -> {
@@ -461,7 +502,8 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                             if ("PASS".equals(hyStatus)) {
                                 resultMap.put("status", "PASS");
                                 resultMap.put("plan", rewrittenPlan);
-                                return buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, null);
+                                resultMap.put("finalResult", buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, null));
+                                return resultMap;
                             }
 
                             if (hyRoot.has("rewrittenPlan")) {
@@ -493,7 +535,8 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                     }
 
                     node.setStatus(Node.NodeStatus.AWAITING_APPROVAL);
-                    return buildResultJson("AWAITING_APPROVAL", findingsText, summary, hybridPlan, rewrittenPlan, null);
+                    resultMap.put("finalResult", buildResultJson("AWAITING_APPROVAL", findingsText, summary, hybridPlan, rewrittenPlan, null));
+                    return resultMap;
                 }
 
                 finalResult = buildResultJson("PASS", findingsText, summary, null, null, null);
@@ -501,14 +544,8 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
-        ObjectMapper finalMapper = new ObjectMapper();
-        try {
-            resultMap.put("finalResult", finalResult);
-            return finalMapper.writeValueAsString(resultMap);
-        } catch (Exception e) {
-            log.warn("Failed to serialize review result: {}", e.getMessage());
-            return finalResult;
-        }
+        resultMap.put("finalResult", finalResult);
+        return resultMap;
     }
 
     private String buildResultJson(String status, String findings, String summary, String plan, String rewrittenPlan, Integer rewriteIterations) {
