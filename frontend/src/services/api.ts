@@ -117,6 +117,11 @@ export const schemaApi = {
     return response.data;
   },
 
+  async sessionPlan(schemaId: string, message: string, history: Array<{role: string, content: string}>): Promise<{reply: string}> {
+    const response = await api.post(`/schemas/${schemaId}/session/plan`, { message, history });
+    return response.data;
+  },
+
   async validateSchema(id: string): Promise<SchemaValidationResult> {
     const response = await api.get(`/schemas/${id}/validate`);
     return response.data;

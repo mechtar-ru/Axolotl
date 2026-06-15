@@ -5,6 +5,7 @@ import type { ExecutionRun, NodeExecution } from '@/services/api'
 import { useExecutionState } from '@/composables/useExecutionState'
 import type { Ref } from 'vue'
 import TimelineEntry from '@/components/studio/TimelineEntry.vue'
+import SessionChatDialog from '@/components/studio/SessionChatDialog.vue'
 
 const props = defineProps<{
   schemaId: string
@@ -29,9 +30,29 @@ const displayLimit = ref(10)
 const confirmDeleteRunId = ref<string | null>(null)
 const releasingStale = ref(false)
 const reRunning = ref(false)
-const showSessionInput = ref(false)
-const sessionInputText = ref('')
 const errorMessage = ref<string | null>(null)
+const showSessionInput = ref(false)
+
+async function reRun() {
+  if (reRunning.value) return
+  showSessionInput.value = true
+}
+
+async function onChatExecute(planText: string) {
+  showSessionInput.value = false
+  if (reRunning.value) return
+  reRunning.value = true
+  clearError()
+  try {
+    const input = planText?.trim() || undefined
+    await startExecution(true, input)
+  } catch (e) {
+    console.error('Failed to execute:', e)
+    errorMessage.value = 'Failed to start execution'
+  } finally {
+    reRunning.value = false
+  }
+}
 const runNodeStatuses = ref<Record<string, Array<{nodeId: string; status: string}>>>({})
 const staleRunCount = ref(0) // resuming runs detected during fetch
 
@@ -233,28 +254,6 @@ function requestDeleteRun(runId: string) {
       confirmDeleteRunId.value = null
     }
   }, 3000)
-}
-
-async function reRun() {
-  if (reRunning.value) return
-  sessionInputText.value = ''
-  showSessionInput.value = true
-}
-
-async function executeWithInput() {
-  if (reRunning.value) return
-  reRunning.value = true
-  showSessionInput.value = false
-  clearError()
-  try {
-    const input = sessionInputText.value?.trim() || undefined
-    await startExecution(true, input)
-  } catch (e) {
-    console.error('Failed to execute:', e)
-    errorMessage.value = 'Failed to start execution'
-  } finally {
-    reRunning.value = false
-  }
 }
 
 async function resumeRun(runId?: string) {
@@ -483,27 +482,13 @@ onActivated(() => {
     </div>
   </div>
 
-  <!-- Session Input Dialog -->
-  <Teleport to="body">
-    <div v-if="showSessionInput" class="si-overlay" @click.self="showSessionInput = false">
-      <div class="si-dialog">
-        <h3 class="si-title">New Session</h3>
-        <p class="si-hint">Describe what to focus on in this session (optional):</p>
-        <textarea
-          v-model="sessionInputText"
-          class="si-textarea"
-          placeholder="e.g. Add user authentication screens, implement database layer..."
-          rows="5"
-        />
-        <div class="si-actions">
-          <button class="si-btn si-btn-cancel" @click="showSessionInput = false">Cancel</button>
-          <button class="si-btn si-btn-execute" @click="executeWithInput" :disabled="reRunning">
-            {{ reRunning ? 'Starting...' : 'Execute' }}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Teleport>
+  <!-- Session Chat Dialog -->
+  <SessionChatDialog
+    v-if="showSessionInput"
+    :schema-id="props.schemaId"
+    @execute="onChatExecute"
+    @close="showSessionInput = false"
+  />
 </template>
 
 <style scoped>
@@ -881,79 +866,6 @@ onActivated(() => {
   text-transform: uppercase;
   font-size: 10px;
 }
-
-/* ── Session Input Dialog ── */
-.si-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-.si-dialog {
-  background: var(--bg-surface, #fff);
-  border-radius: 12px;
-  padding: 24px;
-  min-width: 420px;
-  max-width: 560px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-}
-.si-title {
-  margin: 0 0 8px;
-  font-size: 16px;
-  font-weight: 600;
-}
-.si-hint {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-}
-.si-textarea {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 8px;
-  font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-  background: var(--bg-primary, #fafafa);
-  color: var(--text-primary, #111);
-  box-sizing: border-box;
-}
-.si-textarea:focus {
-  outline: none;
-  border-color: var(--accent, #6366f1);
-  box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
-}
-.si-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-.si-btn {
-  padding: 8px 20px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--border-color, #ddd);
-  transition: all 0.15s;
-}
-.si-btn-cancel {
-  background: transparent;
-  color: var(--text-secondary, #666);
-}
-.si-btn-cancel:hover { background: var(--bg-hover, #f0f0f0); }
-.si-btn-execute {
-  background: var(--accent, #6366f1);
-  color: #fff;
-  border-color: var(--accent, #6366f1);
-}
-.si-btn-execute:hover { opacity: 0.9; }
-.si-btn-execute:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ── Scrollbar ── */
 .tl-list::-webkit-scrollbar,
