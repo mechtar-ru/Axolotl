@@ -23,6 +23,7 @@ public class PluginBridge implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(PluginBridge.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final int MAX_LINE_LENGTH = 100_000; // 100KB max per JSON line
 
     // ─── Configuration ───
     private final String name;
@@ -53,7 +54,7 @@ public class PluginBridge implements AutoCloseable {
     private Consumer<String> logHandler;
 
     // ─── Auto-restart ───
-    private final ScheduledExecutorService restartScheduler;
+    private ScheduledExecutorService restartScheduler;
 
     // ─── Plugin info collected during init ───
     private volatile String pluginId;
@@ -76,11 +77,6 @@ public class PluginBridge implements AutoCloseable {
         this.requestTimeoutMs = requestTimeoutMs;
         this.maxRestartAttempts = maxRestartAttempts;
         this.restartBackoffMs = restartBackoffMs;
-        this.restartScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "plugin-restart-" + name);
-            t.setDaemon(true);
-            return t;
-        });
     }
 
     // ─── Lifecycle ───
@@ -102,6 +98,15 @@ public class PluginBridge implements AutoCloseable {
     }
 
     private void startInternal(Map<String, Object> initParams) throws PluginException {
+        // Recreate restart scheduler if it was shut down by a previous stop/restart
+        if (restartScheduler == null || restartScheduler.isShutdown()) {
+            restartScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "plugin-restart-" + name);
+                t.setDaemon(true);
+                return t;
+            });
+        }
+
         try {
             // Fresh Phaser for this start cycle (CountDownLatch can't be reset — Phaser can)
             readyPhaser = new Phaser(1);
@@ -347,6 +352,10 @@ public class PluginBridge implements AutoCloseable {
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
                 while (running && (line = reader.readLine()) != null) {
+                    if (line.length() > MAX_LINE_LENGTH) {
+                        log.warn("[{}] Plugin sent line exceeding {} chars, truncating", name, MAX_LINE_LENGTH);
+                        line = line.substring(0, MAX_LINE_LENGTH);
+                    }
                     if (line.isBlank() || !PluginMessage.looksLikeJson(line)) continue;
                     try {
                         PluginMessage.ParsedMessage msg = PluginMessage.parse(line);

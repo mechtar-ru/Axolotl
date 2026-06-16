@@ -31,7 +31,8 @@ public class JwtUtil {
             byte[] bytes = new byte[64];
             random.nextBytes(bytes);
             secret = Base64.getEncoder().encodeToString(bytes);
-            log.warn("JWT secret is not set — generated random secret. Tokens will not survive restart. Set axolotl.jwt.secret in properties.");
+            // TODO(h26): axolotl.jwt.secret should be configured in production. Add startup guard.
+            log.error("JWT secret is not set — generated random secret. Tokens will not survive restart. Set axolotl.jwt.secret in properties.");
         }
     }
 

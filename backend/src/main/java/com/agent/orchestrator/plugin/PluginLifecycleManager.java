@@ -7,6 +7,8 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.nio.file.Files;
@@ -87,29 +89,34 @@ public class PluginLifecycleManager {
     }
 
     @PostConstruct
-    public void initialize() {
+    void initialize() {
         if (!pluginEnabled) {
             log.info("Plugin system is disabled (set axolotl.plugins.enabled=true to enable)");
             return;
         }
 
-        // Kill any orphaned Bun processes from a previous JVM crash
+        // Kill any orphaned Bun processes from a previous JVM crash (fast)
         cleanupOrphanedBunProcesses();
 
-        // Build config synchronously (fast)
+        // Build config (fast)
         PluginConfig config = buildConfig();
 
-        // Auto-update npm packages — run SYNCHRONOUSLY before plugin init to avoid
-        // race on plugins/node_modules/ during loading.
+        // Auto-update npm packages — slow (60s timeout), run async
         if (autoUpdateEnabled && autoUpdateOnStart && hasPluginPackageJson()) {
-            try {
-                autoUpdatePackages(config);
-            } catch (Exception e) {
-                log.warn("Auto-update failed (non-fatal): {}", e.getMessage());
-            }
+            final PluginConfig cfg = config;
+            Thread updateThread = new Thread(() -> {
+                try {
+                    autoUpdatePackages(cfg);
+                    log.info("Auto-update completed");
+                } catch (Exception e) {
+                    log.warn("Auto-update failed (non-fatal): {}", e.getMessage());
+                }
+            }, "plugin-auto-update");
+            updateThread.setDaemon(true);
+            updateThread.start();
         }
 
-        // Initialize plugins (synchronous, bounded by startupTimeoutMs per plugin)
+        // Initialize plugins (bounded by startupTimeoutMs per plugin)
         try {
             registry = new PluginRegistry(config, toolExecutor, projectRoot);
             registry.initialize();
@@ -117,6 +124,12 @@ public class PluginLifecycleManager {
         } catch (Exception e) {
             log.error("Failed to initialize plugin system: {}", e.getMessage());
         }
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void logPluginState() {
+        log.info("Plugin system initialized: {} plugins loaded",
+                registry != null ? registry.getPluginCount() : 0);
     }
 
     @PreDestroy

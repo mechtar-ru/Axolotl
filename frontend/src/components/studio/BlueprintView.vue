@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, markRaw, onMounted, watch, nextTick, inject } from 'vue'
+import { ref, markRaw, onMounted, onBeforeUnmount, watch, nextTick, inject } from 'vue'
 import { VueFlow, useVueFlow, type Node, type Edge, MarkerType } from '@vue-flow/core'
 import { Background, BackgroundVariant } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -150,6 +150,13 @@ watch([nodes, edges], () => {
   if (syncTimer) clearTimeout(syncTimer)
   syncTimer = setTimeout(() => syncFlowToStore(), 500)
 }, { deep: true })
+
+onBeforeUnmount(() => {
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+    syncTimer = null
+  }
+})
 
 // Handle drag and drop from BlockPalette
 const dropPosition = ref({ x: 0, y: 0 })

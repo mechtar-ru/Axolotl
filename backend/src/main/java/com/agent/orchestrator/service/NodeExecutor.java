@@ -187,11 +187,11 @@ public class NodeExecutor {
     // ────────────────────────── agent nodes (delegated to AgentNodeStrategy) ──────────────────────────
 
     public String executeAgentNode(Node node, String schemaId, String resolvedModel) {
-        return agentStrategy.executeAgentNode(node, schemaId, resolvedModel);
+        return agentStrategy.executeAgentNode(node, schemaId, resolvedModel, null);
     }
 
     public String executeToolAgentNode(Node node, String schemaId, String resolvedModel) {
-        return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel);
+        return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel, null);
     }
 
     public String simulateAgentNode(Node node, String schemaId) {

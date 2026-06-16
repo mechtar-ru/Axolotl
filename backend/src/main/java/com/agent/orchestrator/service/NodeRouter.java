@@ -12,6 +12,7 @@ import com.agent.orchestrator.llm.LlmUsage;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.SocketTimeoutException;
 import java.util.Collections;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -101,6 +103,11 @@ public class NodeRouter {
         this.strategyRegistry = Collections.unmodifiableMap(registry);
     }
 
+    @PreDestroy
+    public void shutdown() {
+        ((ExecutorService) nodeExecutor).shutdownNow();
+    }
+
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
                             ExecutionMode mode, String resolvedModel) {
         String nodeExecutionId = null;
@@ -151,7 +158,7 @@ public class NodeRouter {
                                 } else if (mode == ExecutionMode.ANALYZE) {
                                     return agentStrategy.analyzeAgentNode(node, schemaId);
                                 } else {
-                                    return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel);
+                                    return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel, cancelFlag);
                                 }
 
                             case "output":

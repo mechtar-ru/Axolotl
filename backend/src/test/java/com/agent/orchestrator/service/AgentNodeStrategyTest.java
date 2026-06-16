@@ -127,7 +127,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeAgentNode(node, "schema-1", "resolved-model");
+        String result = strategy.executeAgentNode(node, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
         assertEquals("Test response", result);
@@ -155,7 +155,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(generatedFilesRegistry);
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        strategy.executeAgentNode(node, "schema-1", "test-model");
+        strategy.executeAgentNode(node, "schema-1", "test-model", null);
 
         assertTrue(generatedFilesRegistry.containsKey("schema-1:n1"));
         assertEquals(extractedFiles, generatedFilesRegistry.get("schema-1:n1"));
@@ -177,7 +177,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
         verify(toolExecutionService).buildToolInstructions(anyList());
@@ -215,7 +215,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
         assertEquals("Final result after tools", result);
@@ -291,7 +291,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeAgentNode(toolNode, "schema-1", "resolved-model");
+        String result = strategy.executeAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
     }
@@ -317,7 +317,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of("f1.py", "created"));
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
         assertTrue(result.contains("Expected at least 3 file(s)"));
@@ -348,7 +348,7 @@ class AgentNodeStrategyTest {
                 .thenReturn(Map.of("f1.py", "created", "f2.py", "created"));
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
         assertFalse(result.contains("[WARNING]"));
@@ -373,7 +373,7 @@ class AgentNodeStrategyTest {
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
-        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model");
+        String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
         assertFalse(result.contains("[WARNING]"));

@@ -78,7 +78,7 @@ class VerifierNodeStrategyTest {
     void executeVerifierNode_collectsPredecessorResultsAndUsesAgentStrategy() {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "v1")).thenReturn(Map.of("upstream_node", "def fib(n): return n"));
-        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [{\"name\": \"syntax\", \"passed\": true}], \"summary\": \"All good\"}");
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -88,7 +88,7 @@ class VerifierNodeStrategyTest {
         assertNotNull(result);
         assertTrue(result.contains("PASS") || result.contains("\"status\""));
         verify(utilityService).collectPredecessorResults(schema, "v1");
-        verify(agentStrategy).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"));
+        verify(agentStrategy).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull());
     }
 
     @Test
@@ -105,7 +105,7 @@ class VerifierNodeStrategyTest {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "v2")).thenReturn(Map.of("up", "code"));
         when(utilityService.resolveModel(isNull(), isNull(), isNull(), isNull())).thenReturn("resolved-model");
-        when(agentStrategy.executeToolAgentNode(eq(nodeNoModel), eq("schema-1"), eq("resolved-model")))
+        when(agentStrategy.executeToolAgentNode(eq(nodeNoModel), eq("schema-1"), eq("resolved-model"), isNull()))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [], \"summary\": \"OK\"}");
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -137,7 +137,7 @@ class VerifierNodeStrategyTest {
         when(utilityService.collectPredecessorResults(schema, "v3")).thenReturn(Map.of("up", "def foo(): pass"));
         when(llmService.chat(anyString(), isNull(), anyString(), isNull()))
                 .thenReturn(textOnly("- Potential null pointer\n- Missing error handling"));
-        when(agentStrategy.executeToolAgentNode(eq(premortemNode), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(premortemNode), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [{\"name\": \"syntax\", \"passed\": true}], \"summary\": \"OK\"}");
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -159,7 +159,7 @@ class VerifierNodeStrategyTest {
                 .thenReturn(textOnly("def fib(n): return n if n < 2 else fib(n-1) + fib(n-2)"));
 
         // First call FAIL, second call PASS
-        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"FAIL\", \"checks\": [{\"name\": \"syntax\", \"passed\": false, \"error\": \"indent error\"}]}")
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [{\"name\": \"syntax\", \"passed\": true}], \"summary\": \"Fixed\"}");
 
@@ -170,14 +170,14 @@ class VerifierNodeStrategyTest {
 
         assertNotNull(result);
         assertTrue(result.contains("PASS") || result.contains("\"status\""));
-        verify(agentStrategy, times(2)).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"));
+        verify(agentStrategy, times(2)).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull());
     }
 
     @Test
     void executeVerifierNode_returnsFailResult_whenAllChecksFail() {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "v1")).thenReturn(Map.of("up", "bad code"));
-        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"FAIL\", \"checks\": [{\"name\": \"syntax\", \"passed\": false, \"error\": \"syntax error\"}], \"summary\": \"Failed\"}");
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -193,7 +193,7 @@ class VerifierNodeStrategyTest {
     void executeVerifierNode_handlesEmptyPredecessorResults() {
         when(schemaRepository.findById("schema-1")).thenReturn(schema);
         when(utilityService.collectPredecessorResults(schema, "v1")).thenReturn(Map.of());
-        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [], \"summary\": \"No content to verify\"}");
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -201,7 +201,7 @@ class VerifierNodeStrategyTest {
         String result = strategy.executeVerifierNode(node, "schema-1", "test-model");
 
         assertNotNull(result);
-        verify(agentStrategy).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"));
+        verify(agentStrategy).executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull());
     }
 
     @Test
@@ -211,7 +211,7 @@ class VerifierNodeStrategyTest {
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("source1"))).thenReturn(null);
-        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [], \"summary\": \"OK\"}");
 
         String result = strategy.executeVerifierNode(node, "schema-1", "test-model");
@@ -228,7 +228,7 @@ class VerifierNodeStrategyTest {
         when(stateManager.getNodeResults()).thenReturn(nodeResults);
         when(stateManager.getOutputFileRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("source1"))).thenReturn(Map.of("file1.py", "created"));
-        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model")))
+        when(agentStrategy.executeToolAgentNode(eq(node), eq("schema-1"), eq("test-model"), isNull()))
                 .thenReturn("{\"status\": \"PASS\", \"checks\": [], \"summary\": \"All good\"}");
 
         String result = strategy.executeVerifierNode(node, "schema-1", "test-model");

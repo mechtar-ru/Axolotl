@@ -29,7 +29,7 @@ public class Neo4jSchemaRepository {
         List<WorkflowSchema> result = new ArrayList<>();
         try (Session session = driver.session()) {
             // Read only from the JSON blob (single source of truth)
-            Result rs = session.run("MATCH (s:WorkflowSchema) RETURN s.data");
+            Result rs = session.run("MATCH (s:WorkflowSchema) RETURN s.data LIMIT 1000");
             int count = 0;
             while (rs.hasNext()) {
                 var record = rs.next();

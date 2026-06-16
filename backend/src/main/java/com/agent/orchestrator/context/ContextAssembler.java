@@ -47,7 +47,7 @@ public class ContextAssembler {
             return AssemblyResult.EMPTY;
         }
 
-        // Budget disabled (≤0): include all blocks in order, no truncation
+        // Budget disabled (≤0): include all blocks in order, no priority sorting
         if (totalBudget <= 0) {
             StringBuilder sb = new StringBuilder();
             List<BlockStat> stats = new ArrayList<>();
@@ -55,7 +55,12 @@ public class ContextAssembler {
             for (ContextBlock block : blocks) {
                 if (block.isEmpty()) continue;
                 if (!sb.isEmpty()) sb.append("\n\n");
-                sb.append(block.content());
+                String content = block.content();
+                // Hard cap: 20K chars per block even with unlimited budget
+                if (content.length() > 20000) {
+                    content = content.substring(0, 20000) + "\n...[truncated at 20K chars per block]";
+                }
+                sb.append(content);
                 totalTokens += block.estimatedTokens();
                 stats.add(BlockStat.included(block.name(), block.estimatedTokens(), block.priority()));
             }

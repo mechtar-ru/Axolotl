@@ -400,7 +400,9 @@ public class CustomLlmProvider implements LlmProvider {
                     }
                 });
                 reader.start();
-                try { reader.join(120000); } catch (InterruptedException ignored) {}
+                try { reader.join(120000); } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
 
                 String reasoning = reasoningBuffer.length() > 0 ? reasoningBuffer.toString() : null;
                 String text = fullResponse.toString();

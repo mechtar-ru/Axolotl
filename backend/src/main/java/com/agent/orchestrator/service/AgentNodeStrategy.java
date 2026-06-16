@@ -23,7 +23,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import jakarta.annotation.PreDestroy;
 
 /**
  * Strategy for executing agent-type nodes (agent, tool-agent, simulation, analysis).
@@ -50,6 +54,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private final MagicContextRetriever mcRetriever;
     private final FlutterScaffoldHelper flutterScaffoldHelper;
     private final FixPassOrchestrator fixPassOrchestrator;
+    private final Executor plannerExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
@@ -85,6 +90,11 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         this.fixPassOrchestrator = fixPassOrchestrator;
     }
 
+    @PreDestroy
+    public void shutdown() {
+        ((ExecutorService) plannerExecutor).shutdownNow();
+    }
+
     @Override
     public String supportedNodeType() {
         return "agent";
@@ -95,18 +105,18 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                                              List<Node> allNodes, List<Edge> edges,
                                              Map<String, Object> executionContext, String schemaId) {
         String resolvedModel = (String) executionContext.getOrDefault("model", "");
-        String result = executeAgentNode(node, schemaId, resolvedModel);
+        String result = executeAgentNode(node, schemaId, resolvedModel, null);
         return Map.of("result", result);
     }
 
     // ─── Agent execution ───
 
-    public String executeAgentNode(Node node, String schemaId, String resolvedModel) {
+    public String executeAgentNode(Node node, String schemaId, String resolvedModel, AtomicBoolean cancelFlag) {
         boolean useTools = node.getData() != null && node.getData().getEnabledTools() != null
                 && !node.getData().getEnabledTools().isEmpty();
 
         if (useTools) {
-            return executeToolAgentNode(node, schemaId, resolvedModel);
+            return executeToolAgentNode(node, schemaId, resolvedModel, cancelFlag);
         }
 
         if (webSocketHandler != null) {
@@ -236,7 +246,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         return result;
     }
 
-    public String executeToolAgentNode(Node node, String schemaId, String resolvedModel) {
+    public String executeToolAgentNode(Node node, String schemaId, String resolvedModel, AtomicBoolean cancelFlag) {
         String agentType = node.getData().getAgentType() != null ? node.getData().getAgentType() : "code-agent";
         List<String> enabledTools = node.getData().getEnabledTools();
         int maxToolCalls = node.getData().getMaxToolCalls() > 0 ? node.getData().getMaxToolCalls() : 10;
@@ -419,6 +429,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         final String plannerModel = plannerModelBase;
         boolean hasPlanner = plannerModel != null && !plannerModel.isBlank();
         if (hasPlanner) {
+            java.util.concurrent.CompletableFuture<LlmResponse> future = null;
             try {
                 // Architecture plan only (fast, ~60s). Executor implements via file_write.
                 if (webSocketHandler != null) {
@@ -431,9 +442,9 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 String plannerPrompt = "Design the architecture for:\n" + prompt;
 
                 // Hard timeout: 60s — OpenRouter free tier hangs on long requests
-                java.util.concurrent.CompletableFuture<LlmResponse> future =
+                future =
                     java.util.concurrent.CompletableFuture.supplyAsync(() ->
-                        llmService.chat(plannerModel, plannerSysPrompt, plannerPrompt, null, null));
+                        llmService.chat(plannerModel, plannerSysPrompt, plannerPrompt, null, null), plannerExecutor);
                 LlmResponse plannerResp = future.get(60, java.util.concurrent.TimeUnit.SECONDS);
                 String archPlan = plannerResp != null ? plannerResp.text() : "";
                 if (webSocketHandler != null) {
@@ -453,6 +464,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                     }
                 }
             } catch (java.util.concurrent.TimeoutException e) {
+                future.cancel(true);
                 log.warn("Planner arch call timed out (60s)");
                 if (webSocketHandler != null) {
                     webSocketHandler.sendLog(schemaId, "warn",
@@ -495,6 +507,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         LlmUsage totalUsage = new LlmUsage();
 
         while (toolCallCount < maxToolCalls) {
+            if (cancelFlag != null && cancelFlag.get()) {
+                log.info("Agent execution cancelled for node {}", node.getId());
+                break;
+            }
             long iterationStartTime = System.currentTimeMillis();
             iterationCount++;
 
@@ -544,6 +560,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 String targetPath = currentSchema != null ? currentSchema.getTargetPath() : null;
                 String projectType = currentSchema != null ? currentSchema.getProjectType() : null;
                 String toolResult = toolExecutionService.executeToolCall(toolId, args, node, schemaId, targetPath, projectType);
+                if (cancelFlag != null && cancelFlag.get()) {
+                    log.info("Agent execution cancelled during tool call for node {}", node.getId());
+                    break;
+                }
                 messages.add(new Node.Message("tool", toolResult));
                 String toolCallId = (String) toolCall.get("id");
                 if (toolCallId != null) {
@@ -640,13 +660,15 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 String targetDir = currentSchema.getTargetPath();
                 String[] baseDeps = {"provider", "go_router", "intl", "path_provider", "sqflite", "fl_chart", "http"};
                 for (String dep : baseDeps) {
-                    ProcessBuilder pb = new ProcessBuilder("bash", "-c",
-                            "cd " + targetDir + " && flutter pub add " + dep + " 2>/dev/null");
+                    ProcessBuilder pb = new ProcessBuilder("flutter", "pub", "add", dep);
+                    pb.directory(new java.io.File(targetDir));
+                    pb.redirectErrorStream(true);
                     SafeProcess.run(pb, 30, java.util.concurrent.TimeUnit.SECONDS);
                 }
                 // Run flutter pub get to ensure lockfile is fresh
-                ProcessBuilder pb = new ProcessBuilder("bash", "-c",
-                        "cd " + targetDir + " && flutter pub get");
+                ProcessBuilder pb = new ProcessBuilder("flutter", "pub", "get");
+                pb.directory(new java.io.File(targetDir));
+                pb.redirectErrorStream(true);
                 SafeProcess.run(pb, 60, java.util.concurrent.TimeUnit.SECONDS);
                 finalResponse += "\n\n[DEPENDENCIES] Auto-installed Flutter packages";
 

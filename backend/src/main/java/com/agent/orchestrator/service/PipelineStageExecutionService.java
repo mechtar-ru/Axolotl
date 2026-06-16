@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
@@ -31,6 +32,7 @@ public class PipelineStageExecutionService {
     private final PipelineStatusManager statusManager;
     private final PlanService planService;
     private final PipelineStageRunner stageRunner;
+    private final ExecutorService pipelineLevelExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ObjectMapper mapper = new ObjectMapper();
 
     public PipelineStageExecutionService(Neo4jSchemaRepository schemaRepository,
@@ -118,7 +120,7 @@ public class PipelineStageExecutionService {
                     } else if (result == PipelineStageRunner.StageRunResult.FAILED) {
                         synchronized (levelFailed) { levelFailed[0] = true; }
                     }
-                });
+                }, pipelineLevelExecutor);
             }
             CompletableFuture.allOf(futures).join();
 
@@ -291,18 +293,11 @@ public class PipelineStageExecutionService {
             if (i >= firstFailedIndex) {
                 Stage s = stages.get(i);
                 Stage copy = copyStage(s);
-                // Filter deps to only those completed in the original run
+                // Preserve ALL original dependencies regardless of status.
+                // The topological sorter will still respect the order.
                 List<String> filtered = new ArrayList<>();
                 if (s.getDependencies() != null) {
-                    for (String dep : s.getDependencies()) {
-                        String depSt = persistedStatus != null ? persistedStatus.get(dep) : null;
-                        if ("completed".equals(depSt)) {
-                            filtered.add(dep);
-                        } else if (i < firstFailedIndex) {
-                            filtered.add(dep);
-                        }
-                        // Failed deps of retried stages stay — topological sort will error if cyclic
-                    }
+                    filtered.addAll(s.getDependencies());
                 }
                 copy.setDependencies(filtered);
                 retryStages.add(copy);
@@ -470,16 +465,11 @@ public class PipelineStageExecutionService {
             if (i >= firstFailedIndex) {
                 Stage s = stages.get(i);
                 Stage copy = copyStage(s);
+                // Preserve ALL original dependencies regardless of status.
+                // The topological sorter will still respect the order.
                 List<String> filtered = new ArrayList<>();
                 if (s.getDependencies() != null) {
-                    for (String dep : s.getDependencies()) {
-                        String depSt = persistedStatus != null ? persistedStatus.get(dep) : null;
-                        if ("completed".equals(depSt)) {
-                            filtered.add(dep);
-                        } else if (i < firstFailedIndex) {
-                            filtered.add(dep);
-                        }
-                    }
+                    filtered.addAll(s.getDependencies());
                 }
                 copy.setDependencies(filtered);
                 retryStages.add(copy);
@@ -511,6 +501,7 @@ public class PipelineStageExecutionService {
                 retryStageIndex++;
                 if (result == PipelineStageRunner.StageRunResult.FAILED) {
                     executionRepository.updateRunCompleted(newRunId, "failed", 0, 0.0);
+                    stateManager.removeSchema(schemaId);
                     statusManager.unregisterPipeline(schemaId);
                     return;
                 }
@@ -533,6 +524,7 @@ public class PipelineStageExecutionService {
             }
         }
 
+        stateManager.removeSchema(schemaId);
         statusManager.unregisterPipeline(schemaId);
     }
 
@@ -604,11 +596,19 @@ public class PipelineStageExecutionService {
         if (resumeIndex > 0) {
             Stage previousStage = stages.get(resumeIndex - 1);
             if ("review".equals(previousStage.getNodeType())) {
-                String approvedKey = schemaId + ":" + previousStage.getId() + ":approved";
-                stateManager.getNodeResults()
-                        .computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
-                        .put(approvedKey, "true");
-                log.info("Set approval flag for review stage {}", previousStage.getId());
+                // Only auto-approve if the review actually completed (not paused/failed)
+                Map<String, String> stageStatus = run != null ? run.getStageStatus() : null;
+                String prevStatus = stageStatus != null ? stageStatus.get(previousStage.getId()) : null;
+                if ("completed".equals(prevStatus)) {
+                    String approvedKey = schemaId + ":" + previousStage.getId() + ":approved";
+                    stateManager.getNodeResults()
+                            .computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                            .put(approvedKey, "true");
+                    log.info("Set approval flag for completed review stage {}", previousStage.getId());
+                } else {
+                    log.info("Skipped auto-approval for review stage {} (status: {})",
+                            previousStage.getId(), prevStatus != null ? prevStatus : "unknown");
+                }
             }
         }
 
@@ -698,6 +698,7 @@ public class PipelineStageExecutionService {
                 webSocketHandler.sendError(schema.getId(), "system",
                         "Pipeline resume failed: " + error.getMessage());
             }
+            stateManager.removeSchema(schemaId);
             return;
         }
 
@@ -738,6 +739,7 @@ public class PipelineStageExecutionService {
             }
             executionRepository.updateRunCompleted(run.getId(), cancelFlag.get() ? "cancelled" : "completed", 0, 0.0);
         }
+        stateManager.removeSchema(schemaId);
     }
 
     // ── Helpers ──
@@ -803,6 +805,11 @@ public class PipelineStageExecutionService {
      * Extract generated file paths from the in-memory registry for a schema.
      * Used to persist generatedFiles to Neo4j before state is cleaned up.
      */
+    @PreDestroy
+    public void shutdown() {
+        pipelineLevelExecutor.shutdownNow();
+    }
+
     private List<String> extractGeneratedFiles(String schemaId) {
         List<String> genFiles = new ArrayList<>();
         Map<String, Object> filesRegistry = stateManager.getGeneratedFilesRegistry();

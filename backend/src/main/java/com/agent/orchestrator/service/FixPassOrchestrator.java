@@ -79,7 +79,7 @@ public class FixPassOrchestrator {
             // Collect current file contents for context
             StringBuilder fileContext = new StringBuilder();
             try {
-                Files.walk(Paths.get(targetDir, "lib"))
+                Files.walk(Paths.get(targetDir, "lib"), 5)
                         .filter(f -> f.toString().endsWith(".dart"))
                         .forEach(f -> {
                             try {

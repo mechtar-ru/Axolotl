@@ -105,11 +105,14 @@ export function useWebSocket() {
       deliberateClose = false;
 
       if (ws.value) {
+        if (ws.value.readyState === WebSocket.OPEN) {
+          console.warn('WebSocket already connected, closing first');
+        }
         ws.value.close(1000, 'Reconnecting');
         ws.value = null;
       }
 
-      const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/execution';
+      const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8082/ws/execution';
       const url = `${WS_URL}?schemaId=${schemaId}`;
       ws.value = new WebSocket(url);
 
@@ -237,6 +240,10 @@ export function useWebSocket() {
   }
 
   const connect = (schemaId: string, wsCallbacks: WebSocketCallbacks) => {
+    if (isConnected.value) {
+      console.warn('Already connected, skipping duplicate connect');
+      return;
+    }
     connectInternal(schemaId, wsCallbacks);
   };
 

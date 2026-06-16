@@ -338,7 +338,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             node.setType("agent"); // Temporarily treat as agent for tool execution
 
             // Execute via tool agent path
-            currentResult = agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel);
+            currentResult = agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel, null);
 
             // Restore verifier type
             node.setType("verifier");
@@ -474,7 +474,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             }
             stateManager.getNodeResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                     .put(node.getId(), resultStr);
-            return resultStr;
+            throw new RuntimeException("Verifier failed after " + (rewriteRetries + 1) + " attempts: " + resultStr);
         }
 
         if (webSocketHandler != null) {

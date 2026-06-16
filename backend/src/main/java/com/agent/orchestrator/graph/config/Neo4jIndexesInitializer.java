@@ -36,6 +36,8 @@ public class Neo4jIndexesInitializer {
             session.run("CREATE INDEX exec_record_schema_id_idx IF NOT EXISTS FOR (r:ExecutionRecord) ON (r.schemaId)");
             session.run("CREATE INDEX exec_record_start_time_idx IF NOT EXISTS FOR (r:ExecutionRecord) ON (r.startTime)");
             session.run("CREATE INDEX plan_workspace_id_idx IF NOT EXISTS FOR (p:Plan) ON (p.workspaceId)");
+            session.run("CREATE INDEX schema_user_id_idx IF NOT EXISTS FOR (s:WorkflowSchema) ON (s.userId)");
+            session.run("CREATE INDEX plan_step_schema_id_idx IF NOT EXISTS FOR (p:PlanStep) ON (p.schemaId)");
 
             log.info("Neo4j indexes created successfully");
         } catch (Exception e) {

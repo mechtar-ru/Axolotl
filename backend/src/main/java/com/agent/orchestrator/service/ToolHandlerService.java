@@ -147,7 +147,7 @@ public class ToolHandlerService {
             return ToolResult.error("Command not allowed: " + cmdName + ". Allowed commands: " + getAllowedCommands());
         }
 
-        if (command.trim().startsWith("rm ") || command.trim().equals("rm")) {
+        if (command.trim().startsWith("rm ") || command.trim().equals("rm") || command.matches(".*\\brm\\b.*")) {
             return interceptRmCommand(command, cwd);
         }
 
@@ -165,6 +165,11 @@ public class ToolHandlerService {
                     return ToolResult.error("Pipe chain blocked: '" + segCmd + "' not in allowed set: " + ToolExecutorImpl.DEFAULT_ALLOWED_COMMANDS);
                 }
             }
+        }
+
+        if (command.contains("&&") || command.contains("||") || command.contains(";") || command.contains("\n")) {
+            log.warn("Blocked chained bash command: {}", command);
+            return ToolResult.error("Command chaining (&&, ||, ;, newline) is not allowed");
         }
 
         try {
@@ -493,6 +498,18 @@ public class ToolHandlerService {
 
         if (neo4jDriver == null) {
             return ToolResult.error("Neo4j driver not configured");
+        }
+
+        // Validate that only read-only Cypher queries are allowed
+        String trimmed = query.trim();
+        java.util.regex.Pattern ALLOWED_CYPHER =
+            java.util.regex.Pattern.compile("^\\s*(MATCH|RETURN|WHERE|WITH|ORDER|LIMIT|SKIP|UNWIND|\\()",
+                java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.MULTILINE);
+        if (!ALLOWED_CYPHER.matcher(trimmed).find()) {
+            return ToolResult.error("graph_query: only read-only MATCH/RETURN queries allowed");
+        }
+        if (trimmed.toUpperCase().matches(".*\\b(CREATE|DELETE|SET|REMOVE|MERGE)\\b.*")) {
+            return ToolResult.error("graph_query: write operations not allowed");
         }
 
         try (var session = neo4jDriver.session()) {

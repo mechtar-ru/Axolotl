@@ -12,6 +12,7 @@ import java.util.Optional;
 @Repository
 public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecutionRun, String> {
 
+    @Query("MATCH (r:ExecutionRun {schemaId: $schemaId}) RETURN r ORDER BY r.startedAt DESC LIMIT 100")
     List<GraphExecutionRun> findBySchemaIdOrderByStartedAtDesc(@Param("schemaId") String schemaId);
 
     @Query("""
@@ -53,7 +54,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {id: $runId})
         SET r.status = $status
         SET r.resumeIndex = $resumeIndex
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         """)
     void updateStatusAndResumeIndex(@Param("runId") String runId,
                                      @Param("status") String status,
@@ -62,7 +63,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
     @Query("""
         MATCH (r:ExecutionRun {id: $runId})
         SET r.resumeIndex = $resumeIndex
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         """)
     void updateResumeIndexOnly(@Param("runId") String runId,
                                 @Param("resumeIndex") int resumeIndex);
@@ -71,7 +72,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {schemaId: $schemaId})
         WHERE r.status = 'paused'
         SET r.status = 'resuming'
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         RETURN r
         ORDER BY r.startedAt DESC LIMIT 1
         """)
@@ -81,7 +82,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {schemaId: $schemaId})
         WHERE r.status = 'resuming'
         SET r.status = 'paused'
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         """)
     void releasePausedRun(@Param("schemaId") String schemaId);
 
@@ -89,7 +90,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {schemaId: $schemaId})
         WHERE r.status = 'resuming'
         SET r.status = 'paused'
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         RETURN count(r)
         """)
     long releaseStaleRuns(@Param("schemaId") String schemaId);
@@ -104,14 +105,14 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {id: $runId})
         WHERE r.status = 'paused'
         SET r.status = 'resuming'
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         RETURN r
         """)
     Optional<GraphExecutionRun> claimSpecificRun(@Param("runId") String runId);
 
     @Query("""
         MATCH (r:ExecutionRun)
-        WHERE toInteger(r.startedAt) < toInteger($cutoffTimestamp)
+        WHERE r.startedAt < datetime({epochSeconds: toInteger($cutoffSeconds)})
         WITH r
         MATCH (n:NodeExecution {runId: r.id})
         DETACH DELETE n
@@ -119,12 +120,12 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         DETACH DELETE r
         RETURN count(r) AS deletedCount
         """)
-    long deleteRunsOlderThan(@Param("cutoffTimestamp") String cutoffTimestamp);
+    long deleteRunsOlderThan(@Param("cutoffSeconds") String cutoffSeconds);
 
     @Query("""
         MATCH (r:ExecutionRun)
         WHERE r.status IN ['running', 'paused']
-        RETURN r
+        RETURN r LIMIT 50
         """)
     List<GraphExecutionRun> findStaleRuns();
 
@@ -132,7 +133,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         MATCH (r:ExecutionRun {id: $runId})
         SET r.status = $status
         SET r.error = $error
-        SET r.updatedAt = toString(datetime())
+        SET r.updatedAt = datetime()
         """)
     void forceUpdateRunStatus(@Param("runId") String runId,
                               @Param("status") String status,

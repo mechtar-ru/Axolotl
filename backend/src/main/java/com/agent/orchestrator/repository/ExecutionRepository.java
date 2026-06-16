@@ -423,6 +423,16 @@ public class ExecutionRepository {
         }
     }
 
+    public void deleteExecutionRecord(String id) {
+        try {
+            recordRepo.deleteById(id);
+            log.info("Deleted execution record {}", id);
+        } catch (Exception e) {
+            log.error("Error deleting execution record {}: {}", id, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete execution record " + id, e);
+        }
+    }
+
     public void deleteExecutionRecordsOlderThan(long cutoffTimestamp) {
         withRetry(() -> {
             recordRepo.deleteRecordsOlderThan(cutoffTimestamp);
@@ -430,10 +440,11 @@ public class ExecutionRepository {
         });
     }
 
-    public void deleteRunsOlderThan(long cutoffTimestamp) {
+    public void deleteRunsOlderThan(long cutoffTimestampMs) {
         try {
-            runRepo.deleteRunsOlderThan(String.valueOf(cutoffTimestamp));
-            log.info("Deleted runs older than cutoff={}", cutoffTimestamp);
+            long cutoffSeconds = cutoffTimestampMs / 1000;
+            runRepo.deleteRunsOlderThan(String.valueOf(cutoffSeconds));
+            log.info("Deleted runs older than cutoff={} ({} ms → {} s)", cutoffTimestampMs, cutoffTimestampMs, cutoffSeconds);
         } catch (Exception e) {
             log.error("Error deleting old runs: {}", e.getMessage(), e);
         }

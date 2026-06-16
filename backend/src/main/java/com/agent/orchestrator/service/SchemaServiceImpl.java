@@ -31,6 +31,7 @@ public class SchemaServiceImpl implements SchemaService {
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
     private final SchemaExecutionService executionService;
+    private final PlanStepService planStepService;
 
     public SchemaServiceImpl(Neo4jSchemaRepository schemaRepository,
                              MemPalaceClient memPalaceClient,
@@ -39,7 +40,8 @@ public class SchemaServiceImpl implements SchemaService {
                              LlmService llmService,
                              PlanService planService,
                              ExecutionRepository executionRepository,
-                             SchemaExecutionService executionService) {
+                             SchemaExecutionService executionService,
+                             PlanStepService planStepService) {
         this.schemaRepository = schemaRepository;
         this.memPalaceClient = memPalaceClient;
         this.settingsService = settingsService;
@@ -48,6 +50,7 @@ public class SchemaServiceImpl implements SchemaService {
         this.planService = planService;
         this.executionRepository = executionRepository;
         this.executionService = executionService;
+        this.planStepService = planStepService;
     }
 
     @jakarta.annotation.PostConstruct
@@ -163,6 +166,13 @@ public class SchemaServiceImpl implements SchemaService {
 
     @Override
     public void deleteSchema(String id) {
+        // Clean up related execution data
+        executionRepository.getRunsBySchema(id).forEach(run ->
+                executionRepository.deleteRun(run.getId()));
+        executionRepository.getExecutionRecordsBySchema(id).forEach(record ->
+                executionRepository.deleteExecutionRecord(record.getId()));
+        // Clean up plan steps
+        planStepService.deleteAllBySchemaId(id);
         schemaRepository.delete(id);
     }
 

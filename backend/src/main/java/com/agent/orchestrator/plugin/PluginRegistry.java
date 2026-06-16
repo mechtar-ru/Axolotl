@@ -400,10 +400,17 @@ public class PluginRegistry implements AutoCloseable {
 
     private String resolveBridgeJsPath() {
         String bridgePath = config.getBridgePath();
+        String resolved;
         if (bridgePath.startsWith("/") || bridgePath.startsWith("~")) {
-            return bridgePath;
+            resolved = bridgePath;
+        } else {
+            resolved = projectRoot + "/" + bridgePath;
         }
-        return projectRoot + "/" + bridgePath;
+        Path resolvedPath = Path.of(resolved);
+        if (!Files.exists(resolvedPath)) {
+            log.warn("Plugin bridge JS not found at {} (will surface as ProcessBuilder error)", resolvedPath.toAbsolutePath());
+        }
+        return resolvedPath.toAbsolutePath().toString();
     }
 
     private Map<String, Object> buildInitParams(PluginConfig.PluginDefinition pluginDef) {
