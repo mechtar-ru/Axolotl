@@ -136,89 +136,91 @@ public class NodeRouter {
             int autoRetry = getAutoRetryCount(node);
             int timeoutSecs = getTimeoutSeconds(node);
 
-            try {
-                result = CompletableFuture.supplyAsync(() -> {
-                    for (int attempt = 1; attempt <= Math.max(1, autoRetry + 1); attempt++) {
-                        try {
-                            switch (nodeType) {
-                                case "agent":
-                                    if (mode == ExecutionMode.DRY_RUN) {
-                                        return agentStrategy.simulateAgentNode(node, schemaId);
-                                    } else if (mode == ExecutionMode.ANALYZE) {
-                                        return agentStrategy.analyzeAgentNode(node, schemaId);
-                                    } else {
-                                        return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel);
-                                    }
-
-                                case "output":
-                                    return utilityService.executeOutputNode(node, schemaId, mode);
-
-                                case "command":
-                                    return utilityService.executeCommandNode(node, schemaId);
-
-                                case "filewrite":
-                                    return utilityService.executeFileWriteNode(node, schemaId);
-
-                                case "source":
-                                    return utilityService.handleSourceNode(node, schemaId);
-
-                                case "condition":
-                                    return handleConditionNode(node, schemaId);
-
-                                case "transform":
-                                    return handleTransformNode(node, schemaId);
-
-                                case "loop":
-                                    return handleLoopNode(node, schemaId, cancelFlag);
-
-                                case "memory":
-                                    return handleMemoryNode(node, schemaId);
-
-                                case "guardrail":
-                                    return handleGuardrailNode(node, schemaId);
-
-                                case "human":
-                                    return handleHumanNode(node, schemaId, cancelFlag);
-
-                                case "fallback":
-                                    return handleFallbackNode(node, schemaId);
-
-                                case "subagent":
-                                    return utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
-
-                                default:
-                                    NodeExecutionStrategy strategy = strategyRegistry.get(nodeType);
-                                    if (strategy != null) {
-                                        Map<String, Object> strategyResult = strategy.executeNode(node, null, null, null, null,
-                                                Map.of("model", resolvedModel), schemaId);
-                                        NodeOutputValidator.ValidationResult vr = outputValidator.validate(nodeType, strategyResult, node);
-                                        if (!vr.isValid() && webSocketHandler != null) {
-                                            webSocketHandler.sendLog(schemaId, "warning",
-                                                    "Output validation: " + String.join("; ", vr.getIssues()), node.getId());
-                                        }
-                                        return (String) strategyResult.getOrDefault("result", "");
-                                    }
-                                    log.warn("Unknown node type: {}", nodeType);
-                                    return "Неизвестный тип узла: " + nodeType;
-                            }
-                        } catch (Exception execEx) {
-                            if (attempt <= autoRetry && isTransientError(execEx)) {
-                                int waitMs = 5000 * attempt;
-                                log.warn("Transient error on attempt {}/{} for node {}: {}. Retrying in {}ms",
-                                        attempt, autoRetry, node.getId(), execEx.getMessage(), waitMs);
-                                if (webSocketHandler != null) {
-                                    webSocketHandler.sendLog(schemaId, "warning",
-                                            "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
+            CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+                for (int attempt = 1; attempt <= Math.max(1, autoRetry + 1); attempt++) {
+                    try {
+                        switch (nodeType) {
+                            case "agent":
+                                if (mode == ExecutionMode.DRY_RUN) {
+                                    return agentStrategy.simulateAgentNode(node, schemaId);
+                                } else if (mode == ExecutionMode.ANALYZE) {
+                                    return agentStrategy.analyzeAgentNode(node, schemaId);
+                                } else {
+                                    return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel);
                                 }
-                                try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
-                            } else {
-                                throw new RuntimeException(execEx);
+
+                            case "output":
+                                return utilityService.executeOutputNode(node, schemaId, mode);
+
+                            case "command":
+                                return utilityService.executeCommandNode(node, schemaId);
+
+                            case "filewrite":
+                                return utilityService.executeFileWriteNode(node, schemaId);
+
+                            case "source":
+                                return utilityService.handleSourceNode(node, schemaId);
+
+                            case "condition":
+                                return handleConditionNode(node, schemaId);
+
+                            case "transform":
+                                return handleTransformNode(node, schemaId);
+
+                            case "loop":
+                                return handleLoopNode(node, schemaId, cancelFlag);
+
+                            case "memory":
+                                return handleMemoryNode(node, schemaId);
+
+                            case "guardrail":
+                                return handleGuardrailNode(node, schemaId);
+
+                            case "human":
+                                return handleHumanNode(node, schemaId, cancelFlag);
+
+                            case "fallback":
+                                return handleFallbackNode(node, schemaId);
+
+                            case "subagent":
+                                return utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
+
+                            default:
+                                NodeExecutionStrategy strategy = strategyRegistry.get(nodeType);
+                                if (strategy != null) {
+                                    Map<String, Object> strategyResult = strategy.executeNode(node, null, null, null, null,
+                                            Map.of("model", resolvedModel), schemaId);
+                                    NodeOutputValidator.ValidationResult vr = outputValidator.validate(nodeType, strategyResult, node);
+                                    if (!vr.isValid() && webSocketHandler != null) {
+                                        webSocketHandler.sendLog(schemaId, "warning",
+                                                "Output validation: " + String.join("; ", vr.getIssues()), node.getId());
+                                    }
+                                    return (String) strategyResult.getOrDefault("result", "");
+                                }
+                                log.warn("Unknown node type: {}", nodeType);
+                                return "Неизвестный тип узла: " + nodeType;
+                        }
+                    } catch (Exception execEx) {
+                        if (attempt <= autoRetry && isTransientError(execEx)) {
+                            int waitMs = 5000 * attempt;
+                            log.warn("Transient error on attempt {}/{} for node {}: {}. Retrying in {}ms",
+                                    attempt, autoRetry, node.getId(), execEx.getMessage(), waitMs);
+                            if (webSocketHandler != null) {
+                                webSocketHandler.sendLog(schemaId, "warning",
+                                        "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
                             }
+                            try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                        } else {
+                            throw new RuntimeException(execEx);
                         }
                     }
-                    return "";
-                }).get(timeoutSecs, TimeUnit.SECONDS);
+                }
+                return "";
+            });
+            try {
+                result = future.get(timeoutSecs, TimeUnit.SECONDS);
             } catch (TimeoutException te) {
+                future.cancel(true);
                 String msg = "Node execution timed out after " + timeoutSecs + "s";
                 log.error("Timeout ({}s) executing node {}: {}", timeoutSecs, node.getId(), node.getName());
                 node.setStatus(Node.NodeStatus.FAILED);

@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,6 +18,8 @@ import java.util.regex.Pattern;
 public class ToolCallParser {
 
     private static final Logger log = LoggerFactory.getLogger(ToolCallParser.class);
+
+    private static final AtomicInteger callIdGen = new AtomicInteger(1);
 
     public List<Map<String, Object>> parse(String response) {
         List<Map<String, Object>> calls = new ArrayList<>();
@@ -97,6 +100,13 @@ public class ToolCallParser {
 
         } catch (Exception e) {
             log.warn("Failed to parse tool calls: {}", e.getMessage());
+        }
+
+        // Ensure every tool call has a non-null id — guards against NPE downstream
+        for (Map<String, Object> call : calls) {
+            if (call.get("id") == null || ((String) call.get("id")).isBlank()) {
+                call.put("id", "call_" + callIdGen.getAndIncrement());
+            }
         }
         return calls;
     }

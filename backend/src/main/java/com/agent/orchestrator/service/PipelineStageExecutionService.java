@@ -157,24 +157,15 @@ public class PipelineStageExecutionService {
         if (!isPaused) {
             executionRepository.updateRunCompleted(runId, cancelFlag.get() ? "cancelled" : "completed", 0, 0.0);
 
-            // ── Complete plan task if created ──
-            if (sessionTaskId != null && !cancelFlag.get()) {
-                try {
-                    List<String> genFiles = new ArrayList<>();
-                    Map<String, Object> filesRegistry = stateManager.getGeneratedFilesRegistry();
-                    String prefix = schema.getId() + ":";
-                    for (Map.Entry<String, Object> entry : filesRegistry.entrySet()) {
-                        if (entry.getKey().startsWith(prefix)) {
-                            @SuppressWarnings("unchecked")
-                            List<Map<String, String>> files = (List<Map<String, String>>) entry.getValue();
-                            if (files != null) {
-                                for (Map<String, String> f : files) {
-                                    String path = f.get("path");
-                                    if (path != null) genFiles.add(path);
-                                }
-                            }
-                        }
-                    }
+            // ── Persist generated files to Neo4j (survives restart) ──
+            try {
+                List<String> genFiles = extractGeneratedFiles(schema.getId());
+                if (!genFiles.isEmpty()) {
+                    executionRepository.updateRunGeneratedFiles(runId, genFiles);
+                }
+
+                // ── Complete plan task if created ──
+                if (sessionTaskId != null && !cancelFlag.get()) {
                     List<Task.GeneratedFile> genFileList = genFiles.stream()
                             .map(p -> new Task.GeneratedFile(p, ""))
                             .toList();
@@ -183,9 +174,9 @@ public class PipelineStageExecutionService {
                         webSocketHandler.sendLog(schema.getId(), "info",
                                 "Plan task completed: " + genFiles.size() + " files", null);
                     }
-                } catch (Exception e) {
-                    log.warn("Failed to complete plan task {}: {}", sessionTaskId, e.getMessage());
                 }
+            } catch (Exception e) {
+                log.warn("Failed to persist generated files for run {}: {}", runId, e.getMessage());
             }
 
             stateManager.removeSchema(schema.getId());
@@ -806,6 +797,29 @@ public class PipelineStageExecutionService {
 
     Node cloneNode(Node original) {
         return mapper.convertValue(original, Node.class);
+    }
+
+    /**
+     * Extract generated file paths from the in-memory registry for a schema.
+     * Used to persist generatedFiles to Neo4j before state is cleaned up.
+     */
+    private List<String> extractGeneratedFiles(String schemaId) {
+        List<String> genFiles = new ArrayList<>();
+        Map<String, Object> filesRegistry = stateManager.getGeneratedFilesRegistry();
+        String prefix = schemaId + ":";
+        for (Map.Entry<String, Object> entry : filesRegistry.entrySet()) {
+            if (entry.getKey().startsWith(prefix)) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, String>> files = (List<Map<String, String>>) entry.getValue();
+                if (files != null) {
+                    for (Map<String, String> f : files) {
+                        String path = f.get("path");
+                        if (path != null) genFiles.add(path);
+                    }
+                }
+            }
+        }
+        return genFiles;
     }
 
 }

@@ -22,7 +22,6 @@ import java.util.stream.*;
  * Extracted from SchemaServiceImpl to keep schema lifecycle management focused on CRUD.
  */
 @Service
-@Transactional
 public class SchemaExecutionService {
 
     private static final Logger log = LoggerFactory.getLogger(SchemaExecutionService.class);
@@ -179,10 +178,12 @@ public class SchemaExecutionService {
 
     // ── Execution Runs / Resilience ──
 
+    @Transactional(readOnly = true)
     public List<ExecutionRun> findExecutionRuns(String schemaId) {
         return executionRepository.getRunsBySchema(schemaId);
     }
 
+    @Transactional(readOnly = true)
     public ExecutionRun getPausedRun(String schemaId) {
         return executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
     }
@@ -199,16 +200,19 @@ public class SchemaExecutionService {
         resumeExecution(schemaId, parentRunId);
     }
 
+    @Transactional(readOnly = true)
     public List<NodeExecution> getExecutionNodes(String runId) {
         return executionRepository.getNodeExecutionsByRun(runId);
     }
 
     // ── History ──
 
+    @Transactional(readOnly = true)
     public List<ExecutionRecord> getExecutionHistory(String schemaId) {
         return executionRepository.getExecutionRecordsBySchema(schemaId);
     }
 
+    @Transactional(readOnly = true)
     public List<ExecutionRecord> getAllExecutionHistory() {
         return executionRepository.getAllExecutionRecords();
     }
@@ -471,6 +475,7 @@ public class SchemaExecutionService {
 
     // ── Results ──
 
+    @Transactional(readOnly = true)
     public Map<String, String> getExecutionResults(String executionId) {
         Map<String, String> results = nodeExecutor.getNodeResults().get(executionId);
         if (results == null) {
@@ -479,6 +484,7 @@ public class SchemaExecutionService {
         return new HashMap<>(results);
     }
 
+    @Transactional(readOnly = true)
     public Map<String, Object> getGeneratedFiles(String schemaId) {
         Map<String, Object> files = new HashMap<>();
         String prefix = schemaId + ":";

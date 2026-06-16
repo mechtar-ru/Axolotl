@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.*;
+import java.io.IOException;
 
 /**
  * Spring-managed lifecycle coordinator for the Axolotl plugin system.
@@ -76,6 +77,13 @@ public class PluginLifecycleManager {
         this.toolExecutor = toolExecutor;
         this.appConfig = appConfig;
         this.projectRoot = appConfig.getBasePath();
+
+        // Register JVM shutdown hook to kill Bun subprocesses even on abrupt termination
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (registry != null) {
+                registry.close();
+            }
+        }, "plugin-shutdown-hook"));
     }
 
     @PostConstruct
@@ -84,6 +92,9 @@ public class PluginLifecycleManager {
             log.info("Plugin system is disabled (set axolotl.plugins.enabled=true to enable)");
             return;
         }
+
+        // Kill any orphaned Bun processes from a previous JVM crash
+        cleanupOrphanedBunProcesses();
 
         // Build config synchronously (fast)
         PluginConfig config = buildConfig();
@@ -127,6 +138,26 @@ public class PluginLifecycleManager {
     }
 
     // ─── Internals ───
+
+    /**
+     * Kill any orphaned plugin-bridge Bun processes left from a previous JVM crash.
+     * Prevents zombie accumulation across restart cycles.
+     */
+    private void cleanupOrphanedBunProcesses() {
+        try {
+            Process killProc = Runtime.getRuntime().exec(new String[]{
+                "pkill", "-f", "plugin-bridge.js"
+            });
+            boolean finished = killProc.waitFor(5, TimeUnit.SECONDS);
+            if (finished && killProc.exitValue() == 0) {
+                log.info("Cleaned up orphaned plugin bridge process(es) from previous session");
+            }
+        } catch (IOException e) {
+            log.debug("No pkill available (non-Linux?): {}", e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 
     private PluginConfig buildConfig() {
         PluginConfig config = new PluginConfig();

@@ -27,6 +27,11 @@ spring:
     authentication:
       username: ${NEO4J_USERNAME:neo4j}
       password: ${NEO4J_PASSWORD:axolotl2026}
+    pool:
+      max-active: 16
+      max-idle: 4
+      max-lifetime: 300000
+      connection-timeout: 5000
 
 axolotl:
   features:
@@ -67,6 +72,13 @@ axolotl:
     batch-parallelism: ${AXOLOTL_GRAPH_BATCH_PARALLELISM:8}
     batch-size: ${AXOLOTL_GRAPH_BATCH_SIZE:20}
     codebase-path: ${AXOLOTL_GRAPH_CODEBASE_PATH:}
+  tools:
+    allowed-commands: >-
+      ls,cat,grep,find,git,cd,pwd,echo,head,tail,wc,sort,uniq,diff,patch,
+      mkdir,cp,mv,rm,touch,chmod,date,env,which,dirname,basename,readlink,
+      xargs,cut,tr,sed,awk,printf,tee,zip,unzip,tar,gzip,gunzip,make,mvn,
+      npm,node,python3,python,curl,wget,ping,nslookup,dig,ssh,scp,rsync,
+      flutter,dart,pub
   reconciler:
     interval: 300000
 

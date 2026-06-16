@@ -11,6 +11,7 @@ import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import org.neo4j.driver.Driver;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
@@ -50,6 +51,17 @@ public class ToolHandlerService {
     private ProjectType projectType = ProjectType.FLUTTER;
 
     public void setProjectType(ProjectType pt) { this.projectType = pt; }
+
+    /** Configured allowed commands from application.yml, falls back to DEFAULT_ALLOWED_COMMANDS */
+    @Value("${axolotl.tools.allowed-commands:}")
+    private String allowedCommandsConfig;
+
+    private Set<String> getAllowedCommands() {
+        if (allowedCommandsConfig != null && !allowedCommandsConfig.isBlank()) {
+            return Set.of(allowedCommandsConfig.trim().split("\\s*,\\s*"));
+        }
+        return ToolExecutorImpl.DEFAULT_ALLOWED_COMMANDS;
+    }
 
     public ToolHandlerService(LlmService llmService,
                               ExecutionWebSocketHandler webSocketHandler,
@@ -131,8 +143,8 @@ public class ToolHandlerService {
         }
 
         String cmdName = command.trim().split("\\s+")[0];
-        if (!ToolExecutorImpl.DEFAULT_ALLOWED_COMMANDS.contains(cmdName)) {
-            return ToolResult.error("Command not allowed: " + cmdName + ". Allowed commands: " + ToolExecutorImpl.DEFAULT_ALLOWED_COMMANDS);
+        if (!getAllowedCommands().contains(cmdName)) {
+            return ToolResult.error("Command not allowed: " + cmdName + ". Allowed commands: " + getAllowedCommands());
         }
 
         if (command.trim().startsWith("rm ") || command.trim().equals("rm")) {

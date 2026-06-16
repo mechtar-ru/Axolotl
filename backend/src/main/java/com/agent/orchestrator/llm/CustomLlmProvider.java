@@ -25,7 +25,7 @@ import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 @Component
 public class CustomLlmProvider implements LlmProvider {
     private static final Logger log = LoggerFactory.getLogger(CustomLlmProvider.class);
-    private static final int TIMEOUT_SECONDS = 3600;
+    private static final int TIMEOUT_SECONDS = 120;
     private static final String OPENROUTER_REFERER = "https://axolotl.app";
     private static final String OPENROUTER_TITLE = "Axolotl";
 
