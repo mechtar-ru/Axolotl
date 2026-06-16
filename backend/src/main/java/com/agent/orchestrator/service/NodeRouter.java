@@ -26,6 +26,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.SocketTimeoutException;
+import java.util.Collections;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 /**
  * Routes node execution to the appropriate handler based on node type.
@@ -53,6 +56,7 @@ public class NodeRouter {
     private final NodeOutputValidator outputValidator;
     private final MagicContextIndexer mcIndexer;
     private Map<String, NodeExecutionStrategy> strategyRegistry;
+    private final Executor nodeExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public NodeRouter(ExecutionUtilityService utilityService,
                       LlmService llmService,
@@ -90,10 +94,11 @@ public class NodeRouter {
 
     @PostConstruct
     public void initStrategyRegistry() {
-        strategyRegistry = new HashMap<>();
+        Map<String, NodeExecutionStrategy> registry = new HashMap<>();
         for (NodeExecutionStrategy strategy : strategies) {
-            strategyRegistry.put(strategy.supportedNodeType(), strategy);
+            registry.put(strategy.supportedNodeType(), strategy);
         }
+        this.strategyRegistry = Collections.unmodifiableMap(registry);
     }
 
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
@@ -121,7 +126,7 @@ public class NodeRouter {
                                 ne.getId(), "running", null, 0L, 0L, 0, null);
                     }
                 } catch (Exception e) {
-                    log.debug("Не удалось обновить статус узла в БД: {}", e.getMessage());
+                    log.warn("Не удалось обновить статус узла в БД", e);
                 }
             }
 
@@ -210,13 +215,21 @@ public class NodeRouter {
                                         "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
                             }
                             try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                            if (Thread.currentThread().isInterrupted()) {
+                                log.warn("Node execution interrupted during retry wait");
+                                break;
+                            }
+                            if (cancelFlag.get()) {
+                                log.warn("Node execution cancelled during retry wait");
+                                break;
+                            }
                         } else {
                             throw new RuntimeException(execEx);
                         }
                     }
                 }
                 return "";
-            });
+            }, nodeExecutor);
             try {
                 result = future.get(timeoutSecs, TimeUnit.SECONDS);
             } catch (TimeoutException te) {
@@ -236,7 +249,7 @@ public class NodeRouter {
                         executionRepository.updateNodeExecution(
                                 nodeExecutionId, "failed", null, 0L, 0L, 0, "Timeout: " + timeoutSecs + "s");
                     } catch (Exception ex) {
-                        log.debug("Failed to persist timeout error: {}", ex.getMessage());
+                        log.warn("Failed to persist timeout error", ex);
                     }
                 }
                 return;
@@ -310,7 +323,7 @@ public class NodeRouter {
                     executionRepository.updateNodeExecution(
                             nodeExecutionId, "completed", result, tokensUsed, 0L, toolCalls, null, reasoning);
                 } catch (Exception e) {
-                    log.debug("Не удалось сохранить результат узла в БД: {}", e.getMessage());
+                    log.warn("Не удалось сохранить результат узла в БД", e);
                 }
             }
 
@@ -329,7 +342,7 @@ public class NodeRouter {
                     executionRepository.updateNodeExecution(
                             nodeExecutionId, "failed", null, tokensUsed, 0L, 0, e.getMessage());
                 } catch (Exception ex) {
-                    log.debug("Не удалось сохранить ошибку узла в БД: {}", ex.getMessage());
+                    log.warn("Не удалось сохранить ошибку узла в БД", ex);
                 }
             }
         }

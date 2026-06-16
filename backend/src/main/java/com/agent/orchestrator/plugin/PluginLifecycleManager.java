@@ -99,25 +99,23 @@ public class PluginLifecycleManager {
         // Build config synchronously (fast)
         PluginConfig config = buildConfig();
 
-        // Initialize plugins first (synchronous, bounded by startupTimeoutMs per plugin)
+        // Auto-update npm packages — run SYNCHRONOUSLY before plugin init to avoid
+        // race on plugins/node_modules/ during loading.
+        if (autoUpdateEnabled && autoUpdateOnStart && hasPluginPackageJson()) {
+            try {
+                autoUpdatePackages(config);
+            } catch (Exception e) {
+                log.warn("Auto-update failed (non-fatal): {}", e.getMessage());
+            }
+        }
+
+        // Initialize plugins (synchronous, bounded by startupTimeoutMs per plugin)
         try {
             registry = new PluginRegistry(config, toolExecutor, projectRoot);
             registry.initialize();
             log.info("Plugin system initialized with {} plugin(s)", registry.getPluginCount());
         } catch (Exception e) {
             log.error("Failed to initialize plugin system: {}", e.getMessage());
-        }
-
-        // Auto-update npm packages — run async AFTER plugin init to avoid
-        // race on plugins/node_modules/ during loading.
-        if (autoUpdateEnabled && autoUpdateOnStart && hasPluginPackageJson()) {
-            startupExecutor.submit(() -> {
-                try {
-                    autoUpdatePackages(config);
-                } catch (Exception e) {
-                    log.warn("Auto-update failed: {}", e.getMessage());
-                }
-            });
         }
     }
 
@@ -146,7 +144,7 @@ public class PluginLifecycleManager {
     private void cleanupOrphanedBunProcesses() {
         try {
             Process killProc = Runtime.getRuntime().exec(new String[]{
-                "pkill", "-f", "plugin-bridge.js"
+                "pkill", "-f", "^bun.* plugin-bridge\\.js$"
             });
             boolean finished = killProc.waitFor(5, TimeUnit.SECONDS);
             if (finished && killProc.exitValue() == 0) {
@@ -203,9 +201,9 @@ public class PluginLifecycleManager {
         }
 
         try {
-            log.info("Auto-updating plugin packages (async)...");
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c",
-                    "cd " + projectRoot + "/plugins && bun update");
+            log.info("Auto-updating plugin packages...");
+            ProcessBuilder pb = new ProcessBuilder(bunPath, "update");
+            pb.directory(java.nio.file.Path.of(projectRoot, "plugins").toFile());
             pb.redirectErrorStream(true);
             Process process = pb.start();
             boolean finished = process.waitFor(60, TimeUnit.SECONDS);

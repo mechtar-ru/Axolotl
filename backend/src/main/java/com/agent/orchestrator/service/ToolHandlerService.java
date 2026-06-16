@@ -496,10 +496,9 @@ public class ToolHandlerService {
         }
 
         try (var session = neo4jDriver.session()) {
-            var result = session.run(query);
+            var records = session.executeRead(tx -> tx.run(query).list());
             List<String> rows = new ArrayList<>();
-            while (result.hasNext()) {
-                var record = result.next();
+            for (var record : records) {
                 StringBuilder sb = new StringBuilder();
                 for (var key : record.keys()) {
                     if (sb.length() > 0) sb.append(" | ");

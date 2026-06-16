@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
@@ -146,6 +147,7 @@ public class PipelineStageRunner {
                         .join();
             } catch (CompletionException e) {
                 if (e.getCause() instanceof TimeoutException) {
+                    cancelFlag.set(true);
                     throw new RuntimeException("Stage timed out after " + (stageTimeoutMs / 1000) + "s: "
                             + stage.getName(), e.getCause());
                 }
@@ -315,5 +317,10 @@ public class PipelineStageRunner {
     void persistResumeState(String schemaId, String runId, int resumeIndex) {
         statusManager.storeResumeState(schemaId, resumeIndex);
         executionRepository.updateRunResumeIndexOnly(runId, resumeIndex);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        pipelineExecutor.shutdownNow();
     }
 }

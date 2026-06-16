@@ -33,7 +33,12 @@ class PluginToolAdapterTest {
 
     @BeforeEach
     void setUp() {
+        setUpBridgeName();
         adapter = new PluginToolAdapter(bridge, toolExecutor);
+    }
+
+    private void setUpBridgeName() {
+        lenient().when(bridge.getName()).thenReturn("test-bridge");
     }
 
     // ─── registerSingleTool ───
@@ -50,15 +55,15 @@ class PluginToolAdapterTest {
         adapter.registerSingleTool(toolDef);
 
         assertEquals(1, adapter.getToolCount());
-        assertTrue(adapter.getPluginTools().containsKey("ctx_memory"));
+        assertTrue(adapter.getPluginTools().containsKey("test-bridge/ctx_memory"));
 
-        Tool registered = adapter.getPluginTools().get("ctx_memory");
-        assertEquals("ctx_memory", registered.getId());
+        Tool registered = adapter.getPluginTools().get("test-bridge/ctx_memory");
+        assertEquals("test-bridge/ctx_memory", registered.getId());
         assertEquals("Write Memory", registered.getName());
         assertEquals(Tool.ToolCategory.MEMORY, registered.getCategory());
 
         verify(toolExecutor).registerTool(any(Tool.class));
-        verify(toolExecutor).registerPluginHandler(eq("ctx_memory"), any());
+        verify(toolExecutor).registerPluginHandler(eq("test-bridge/ctx_memory"), any());
     }
 
     @Test
@@ -94,7 +99,7 @@ class PluginToolAdapterTest {
 
         adapter.registerSingleTool(toolDef);
 
-        Tool registered = adapter.getPluginTools().get("my_custom_tool");
+        Tool registered = adapter.getPluginTools().get("test-bridge/my_custom_tool");
         assertEquals(Tool.ToolCategory.CUSTOM, registered.getCategory());
     }
 
@@ -105,7 +110,7 @@ class PluginToolAdapterTest {
 
         adapter.registerSingleTool(toolDef);
 
-        assertEquals("my_tool", adapter.getPluginTools().get("my_tool").getName());
+        assertEquals("my_tool", adapter.getPluginTools().get("test-bridge/my_tool").getName());
     }
 
     @Test

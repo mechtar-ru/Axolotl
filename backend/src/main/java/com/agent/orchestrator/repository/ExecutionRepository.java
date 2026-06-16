@@ -515,6 +515,7 @@ public class ExecutionRepository {
         g.setEstimatedCost(r.getEstimatedCost());
         g.setError(r.getError());
         g.setResumesFrom(r.getResumesFrom());
+        g.setVersion(r.getVersion());
         g.setStartedAt(r.getStartedAt());
         g.setUpdatedAt(r.getUpdatedAt());
         g.setCompletedAt(r.getCompletedAt());
@@ -535,6 +536,7 @@ public class ExecutionRepository {
         r.setEstimatedCost(g.getEstimatedCost());
         r.setError(g.getError());
         r.setResumesFrom(g.getResumesFrom());
+        r.setVersion(g.getVersion());
         r.setStartedAt(g.getStartedAt());
         r.setUpdatedAt(g.getUpdatedAt());
         r.setCompletedAt(g.getCompletedAt());

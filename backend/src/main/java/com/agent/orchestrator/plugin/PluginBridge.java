@@ -256,6 +256,12 @@ public class PluginBridge implements AutoCloseable {
             return response;
         } catch (TimeoutException e) {
             pendingRequests.remove(id);
+            // Send cancellation notification to Bun side
+            try {
+                sendNotification("plugin/cancel", Map.of("requestId", id));
+            } catch (Exception cancelErr) {
+                log.debug("Failed to send cancel notification: {}", cancelErr.getMessage());
+            }
             throw new PluginException("Request '" + method + "' timed out after " + requestTimeoutMs + "ms");
         } catch (ExecutionException e) {
             pendingRequests.remove(id);

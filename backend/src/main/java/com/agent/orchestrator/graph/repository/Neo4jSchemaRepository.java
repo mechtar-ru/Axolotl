@@ -77,14 +77,25 @@ public class Neo4jSchemaRepository {
     public void save(WorkflowSchema schema) {
         try (Session session = driver.session()) {
             String json = mapper.writeValueAsString(schema);
-            // Single source of truth: only store the JSON blob, not duplicate properties as node attributes
             session.run("""
                 MERGE (s:WorkflowSchema {id: $id})
-                SET s.data = $data
+                SET s.data = $data,
+                    s.name = $name,
+                    s.userId = $userId,
+                    s.workspaceId = $workspaceId,
+                    s.createdAt = $createdAt,
+                    s.updatedAt = $updatedAt,
+                    s.lastRunAt = $lastRunAt
                 """,
                 org.neo4j.driver.Values.parameters(
                     "id", schema.getId(),
-                    "data", json
+                    "data", json,
+                    "name", schema.getName(),
+                    "userId", schema.getUserId(),
+                    "workspaceId", schema.getWorkspaceId(),
+                    "createdAt", schema.getCreatedAt() != null ? schema.getCreatedAt().toString() : null,
+                    "updatedAt", schema.getUpdatedAt() != null ? schema.getUpdatedAt().toString() : null,
+                    "lastRunAt", schema.getLastRunAt() != null ? schema.getLastRunAt().toString() : null
                 ));
         } catch (Exception e) {
             log.error("Error saving schema: {}", e.getMessage());

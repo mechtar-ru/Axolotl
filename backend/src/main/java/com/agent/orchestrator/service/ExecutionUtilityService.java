@@ -139,18 +139,30 @@ public class ExecutionUtilityService {
         if (expression == null || expression.isBlank()) {
             return false;
         }
-        try (Context ctx = Context.newBuilder("js")
-                .allowIO(false)
-                .allowCreateProcess(false)
-                .allowHostAccess(HostAccess.NONE)
-                .build()) {
-            org.graalvm.polyglot.Value bindings = ctx.getBindings("js");
-            context.forEach(bindings::putMember);
-            org.graalvm.polyglot.Value result = ctx.eval("js", "Boolean(" + expression + ")");
-            return result.asBoolean();
-        } catch (Exception e) {
-            log.error("Ошибка вычисления условия '{}': {}", expression, e.getMessage());
+        // Use executor-based timeout since GraalVM JS doesn't support js.timeout option on this version
+        java.util.concurrent.ExecutorService exec = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            java.util.concurrent.Future<Boolean> future = exec.submit(() -> {
+                try (Context ctx = Context.newBuilder("js")
+                        .allowIO(false)
+                        .allowCreateProcess(false)
+                        .allowHostAccess(HostAccess.NONE)
+                        .build()) {
+                    org.graalvm.polyglot.Value bindings = ctx.getBindings("js");
+                    context.forEach(bindings::putMember);
+                    org.graalvm.polyglot.Value result = ctx.eval("js", "Boolean(" + expression + ")");
+                    return result.asBoolean();
+                }
+            });
+            return future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            log.warn("JS condition evaluation timed out after 5s: {}", expression);
             return false;
+        } catch (Exception e) {
+            log.error("Failed to evaluate condition '{}': {}", expression, e.getMessage());
+            return false;
+        } finally {
+            exec.shutdownNow();
         }
     }
 
@@ -202,16 +214,8 @@ public class ExecutionUtilityService {
         String context = sb.toString().trim();
 
         if (context.length() > MAX_CONTEXT_CHARS) {
-            log.info("Сжатие контекста: {} символов → суммаризация", context.length());
-            try {
-                String summary = llmService.chat("ollama",
-                        "Ты компрессор контекста. Сжато передай суть, сохранив ключевые факты, числа, имена.",
-                        "Сожми следующий контекст, сохранив ключевые факты:\n\n" + context,
-                        null).text();
-                return "[СЖАТЫЙ КОНТЕКСТ]:\n" + summary;
-            } catch (Exception e) {
-                return context.substring(0, MAX_CONTEXT_CHARS) + "\n... [контекст обрезан]";
-            }
+            log.info("Сжатие контекста: {} символов → обрезка", context.length());
+            return context.substring(0, MAX_CONTEXT_CHARS) + "\n... [контекст обрезан]";
         }
 
         return context;
@@ -219,6 +223,9 @@ public class ExecutionUtilityService {
 
     // ────────────────────────── sleep with cancel ──────────────────────────
 
+    /**
+     * Sleep with cancel check. Runs on virtual thread (via VirtualThreadPerTaskExecutor), so Thread.sleep is safe.
+     */
     public boolean sleepWithCancel(long millis, AtomicBoolean cancelFlag) {
         if (cancelFlag.get()) {
             return false;
@@ -597,9 +604,9 @@ public class ExecutionUtilityService {
                     dir.mkdirs();
                 }
             }
-            java.io.FileWriter writer = new java.io.FileWriter(file, "append".equals(writeMode));
-            writer.write(content);
-            writer.close();
+            try (java.io.FileWriter writer = new java.io.FileWriter(file, "append".equals(writeMode))) {
+                writer.write(content);
+            }
 
             String result = "Записано в файл: " + filePath;
             if (webSocketHandler != null) {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, defineOptions } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { appApi, historyApi } from '@/services/api'
 import { useSchemaStore } from '@/stores/schemaStore'
 import type { AppInfo } from '@/services/api'
 import type { ExecutionRecord } from '@/services/api'
+
+defineOptions({ name: 'AppDashboardView' })
 
 const route = useRoute()
 const router = useRouter()

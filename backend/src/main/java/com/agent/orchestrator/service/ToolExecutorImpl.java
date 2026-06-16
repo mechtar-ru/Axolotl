@@ -201,6 +201,16 @@ public class ToolExecutorImpl implements ToolExecutor {
     }
 
     @Override
+    public void unregisterTool(String toolId) {
+        tools.remove(toolId);
+    }
+
+    @Override
+    public void unregisterPluginHandler(String toolId) {
+        handlers.remove(toolId);
+    }
+
+    @Override
     public List<Tool> getToolsByCategory(ToolCategory category) {
         return tools.values().stream()
             .filter(t -> t.getCategory() == category)

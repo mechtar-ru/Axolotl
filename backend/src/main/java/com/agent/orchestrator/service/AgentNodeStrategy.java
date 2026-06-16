@@ -642,14 +642,12 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 for (String dep : baseDeps) {
                     ProcessBuilder pb = new ProcessBuilder("bash", "-c",
                             "cd " + targetDir + " && flutter pub add " + dep + " 2>/dev/null");
-                    Process p = pb.start();
-                    p.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+                    SafeProcess.run(pb, 30, java.util.concurrent.TimeUnit.SECONDS);
                 }
                 // Run flutter pub get to ensure lockfile is fresh
                 ProcessBuilder pb = new ProcessBuilder("bash", "-c",
                         "cd " + targetDir + " && flutter pub get");
-                Process p = pb.start();
-                p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+                SafeProcess.run(pb, 60, java.util.concurrent.TimeUnit.SECONDS);
                 finalResponse += "\n\n[DEPENDENCIES] Auto-installed Flutter packages";
 
                 // Auto-fix Flutter compilation errors using the FixPassOrchestrator
@@ -667,7 +665,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Flutter post-processing failed (non-fatal): {}", e.getMessage());
+                log.warn("Flutter post-processing failed (non-fatal)", e);
             }
         }
 
@@ -837,54 +835,38 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
         try {
             // Check SDK binary exists
-            var whichProc = new ProcessBuilder("which", sdkCheck)
-                    .redirectErrorStream(true).start();
-            if (!whichProc.waitFor(5, TimeUnit.SECONDS) || whichProc.exitValue() != 0) {
+            ProcessBuilder whichPb = new ProcessBuilder("which", sdkCheck);
+            String whichOut = SafeProcess.run(whichPb, 5, TimeUnit.SECONDS);
+            if (whichOut == null) {
                 return "\n\n[BUILD CHECK] " + sdkCheck + " not found. Required for " + pt.getDisplayName() + " projects.";
             }
 
             // Run the main build command
             ProcessBuilder buildPb = new ProcessBuilder(buildCmd);
             buildPb.directory(new java.io.File(targetPath));
-            buildPb.redirectErrorStream(true);
-            Process buildProc = buildPb.start();
-            boolean finished = buildProc.waitFor(300, TimeUnit.SECONDS);
-            if (finished && buildProc.exitValue() == 0) {
+            String buildOut = SafeProcess.run(buildPb, 300, TimeUnit.SECONDS);
+            if (buildOut != null) {
                 results.add("✅ " + pt.getDisplayName() + " build succeeded");
             } else {
-                String out = finished
-                    ? new String(buildProc.getInputStream().readAllBytes())
-                    : "(timed out)";
-                results.add("❌ " + pt.getDisplayName() + " build failed");
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "error",
-                            "Main build failed:\n" + out, nodeId);
-                }
+                results.add("❌ " + pt.getDisplayName() + " build failed: timed out");
             }
 
             // For Flutter on macOS, also try iOS build (non-blocking)
             if (pt == com.agent.orchestrator.model.ProjectType.FLUTTER
                     && System.getProperty("os.name", "").toLowerCase().contains("mac")) {
-                try {
-                    var xcSelect = new ProcessBuilder("xcode-select", "-p")
-                        .redirectErrorStream(true).start();
-                    if (xcSelect.waitFor(5, TimeUnit.SECONDS) && xcSelect.exitValue() == 0) {
-                        var iosCmd = java.util.List.of("flutter", "build", "ios", "--no-codesign", "--debug");
-                        var iosPb = new ProcessBuilder(iosCmd)
-                            .directory(new java.io.File(targetPath))
-                            .redirectErrorStream(true);
-                        Process iosProc = iosPb.start();
-                        boolean iosDone = iosProc.waitFor(300, TimeUnit.SECONDS);
-                        if (iosDone && iosProc.exitValue() == 0) {
-                            results.add("✅ iOS build succeeded");
-                        } else {
-                            results.add("⚠️ iOS build: " + (iosDone ? "failed" : "timed out"));
-                        }
+                String xcOut = SafeProcess.run(new ProcessBuilder("xcode-select", "-p"), 5, TimeUnit.SECONDS);
+                if (xcOut != null) {
+                    var iosCmd = java.util.List.of("flutter", "build", "ios", "--no-codesign", "--debug");
+                    var iosPb = new ProcessBuilder(iosCmd)
+                            .directory(new java.io.File(targetPath));
+                    String iosOut = SafeProcess.run(iosPb, 300, TimeUnit.SECONDS);
+                    if (iosOut != null) {
+                        results.add("✅ iOS build succeeded");
                     } else {
-                        results.add("⚠️ iOS build: Xcode not found (skip)");
+                        results.add("⚠️ iOS build: timed out");
                     }
-                } catch (Exception e) {
-                    results.add("⚠️ iOS build: " + e.getMessage());
+                } else {
+                    results.add("⚠️ iOS build: Xcode not found (skip)");
                 }
             }
         } catch (Exception e) {

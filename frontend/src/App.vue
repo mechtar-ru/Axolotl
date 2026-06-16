@@ -4,7 +4,7 @@
     <main class="app-main">
       <router-view v-slot="{ Component, route }">
         <transition name="fade" mode="out-in">
-          <keep-alive include="dashboard,studio,app-dashboard,settings">
+          <keep-alive include="StudioView,DashboardView,AppDashboardView,SettingsView">
             <component :is="Component" :key="route.path" />
           </keep-alive>
         </transition>

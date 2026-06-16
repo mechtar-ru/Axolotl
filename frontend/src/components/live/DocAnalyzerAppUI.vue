@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onBeforeUnmount } from 'vue'
 
 const isDragging = ref(false)
 const isProcessing = ref(false)
 const progress = ref(0)
 const result = ref<string | null>(null)
 const fileName = ref('')
+
+let processInterval: ReturnType<typeof setInterval> | null = null
 
 function onDragOver(e: DragEvent) {
   e.preventDefault()
@@ -39,16 +41,27 @@ function processFile(file: File) {
   isProcessing.value = true
   progress.value = 0
   
+  // Clear any previous interval before starting new one
+  if (processInterval) clearInterval(processInterval)
+
   // Simulate processing with progress
-  const interval = setInterval(() => {
+  processInterval = setInterval(() => {
     progress.value += 10
     if (progress.value >= 100) {
-      clearInterval(interval)
+      if (processInterval) clearInterval(processInterval)
+      processInterval = null
       isProcessing.value = false
       result.value = `Analysis complete for "${file.name}".\n\nFile size: ${(file.size / 1024).toFixed(1)} KB\nType: ${file.type || 'unknown'}\n\nThis is where the AI analysis results will appear once WebSocket is connected.`
     }
   }, 200)
 }
+
+onBeforeUnmount(() => {
+  if (processInterval) {
+    clearInterval(processInterval)
+    processInterval = null
+  }
+})
 
 const acceptedTypes = '.txt,.md,.pdf,.csv,.json,.xml,.html,.py,.js,.ts,.java'
 </script>

@@ -323,6 +323,12 @@ async function handleRequest(id, method, params) {
       case "tool/list":
         await handleToolList(id);
         break;
+      case "plugin/cancel":
+        {
+          const reqId = params?.requestId;
+          log("info", `Cancelling pending request: ${reqId}`);
+        }
+        break;
       case "plugin/check_update":
         await handleCheckUpdate(id, params);
         break;
@@ -461,14 +467,11 @@ const rl = createInterface({
   terminal: false,
 });
 
-let buffer = "";
-
 rl.on("line", (line) => {
-  buffer += line;
-  // Handle accumulated lines (in case of split messages)
+  const trimmed = line.trim();
+  if (!trimmed) return;
   try {
-    const msg = JSON.parse(buffer);
-    buffer = ""; // Reset buffer on successful parse (#20)
+    const msg = JSON.parse(trimmed);
 
     const { id, method, params, error } = msg;
 
@@ -489,9 +492,8 @@ rl.on("line", (line) => {
     } else {
       log("warn", `Unrecognized message: ${line}`);
     }
-  } catch {
-    // Incomplete JSON — wait for more data
-    // NDJSON ensures complete messages on each line
+  } catch (err) {
+    log("warn", `Skipping invalid JSON (${trimmed.length} bytes): ${err.message}`);
   }
 });
 

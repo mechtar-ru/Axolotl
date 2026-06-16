@@ -24,6 +24,7 @@ public class PluginToolAdapter {
     private final PluginBridge bridge;
     private final ToolExecutor toolExecutor;
     private final Map<String, Tool> pluginTools = new ConcurrentHashMap<>();
+    private final Map<String, String> prefixedToRawId = new ConcurrentHashMap<>();
 
     public PluginToolAdapter(PluginBridge bridge, ToolExecutor toolExecutor) {
         this.bridge = bridge;
@@ -61,13 +62,16 @@ public class PluginToolAdapter {
      */
     public void registerSingleTool(JsonNode toolDef) {
         try {
-            String id = toolDef.path("id").asText();
-            if (id == null || id.isBlank()) {
+            String rawId = toolDef.path("id").asText();
+            if (rawId == null || rawId.isBlank()) {
                 log.warn("[{}] Plugin tool missing 'id', skipping", bridge.getName());
                 return;
             }
 
-            String name = toolDef.path("name").asText(id);
+            // Prefix tool ID with plugin namespace to prevent cross-plugin collisions
+            String id = bridge.getName() + "/" + rawId;
+
+            String name = toolDef.path("name").asText(rawId);
             String description = toolDef.path("description").asText("");
             String inputSchema = toolDef.path("inputSchema").toString();
             String categoryStr = toolDef.path("category").asText("CUSTOM");
@@ -81,6 +85,7 @@ public class PluginToolAdapter {
 
             Tool tool = new Tool(id, name, description, inputSchema, category);
             pluginTools.put(id, tool);
+            prefixedToRawId.put(id, rawId); // raw ID for bridge communication
 
             // Register tool definition in ToolExecutor
             toolExecutor.registerTool(tool);
@@ -101,9 +106,12 @@ public class PluginToolAdapter {
      */
     public ToolResult executePluginTool(String toolId, Map<String, Object> args) {
         try {
+            // Use raw tool ID for bridge communication (strip prefix)
+            String bridgeToolId = prefixedToRawId.getOrDefault(toolId, toolId);
+
             // Build execute params: { "toolId": "...", "args": {...} }
             Map<String, Object> executeParams = new LinkedHashMap<>();
-            executeParams.put("toolId", toolId);
+            executeParams.put("toolId", bridgeToolId);
             executeParams.put("args", args != null ? args : Map.of());
 
             long start = System.currentTimeMillis();

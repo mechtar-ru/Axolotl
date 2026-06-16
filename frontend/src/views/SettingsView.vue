@@ -110,13 +110,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue';
+import { ref, reactive, onMounted, computed, defineOptions } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settingsStore';
 import ThemeToggle from '@/components/ui/ThemeToggle.vue';
 import ProviderCard from '@/components/settings/ProviderCard.vue';
 import CustomEndpointList from '@/components/settings/CustomEndpointList.vue';
 import { settingsApi, customEndpointApi, type ProviderInfo, type CustomLlmEndpoint } from '../services/api';
+
+defineOptions({ name: 'SettingsView' });
 
 const router = useRouter();
 const settingsStore = useSettingsStore();

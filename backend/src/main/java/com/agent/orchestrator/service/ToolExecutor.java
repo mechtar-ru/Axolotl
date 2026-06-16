@@ -38,6 +38,10 @@ public interface ToolExecutor {
                        String schemaId, String nodeId, String schemaTargetPath,
                        String projectTypeStr);
 
+    void unregisterTool(String toolId);
+
+    void unregisterPluginHandler(String toolId);
+
     @FunctionalInterface
     interface ToolExecutorHandler {
         ToolResult execute(Map<String, Object> params, ToolPermission permission);

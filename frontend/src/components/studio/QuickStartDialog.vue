@@ -3,6 +3,19 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { appApi, schemaApi } from '@/services/api'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { WorkflowSchema, FlowNode, FlowEdge } from '@/types'
+import { isAxiosError } from 'axios'
+
+interface PipelineNode {
+  id: string
+  type: string
+  position: { x: number; y: number }
+  data: Record<string, any>
+}
+interface PipelineEdge {
+  id: string
+  source: string
+  target: string
+}
 
 const props = defineProps<{
   visible: boolean
@@ -299,25 +312,25 @@ function generateStandardPipeline(description: string): PipelineConfig {
     : 'You are a senior developer. Use the tools available to implement the described application. Write production-quality code.'
   return {
     nodes: [
-      { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
-      { id: 'review-1', type: 'review' as any, name: 'Review Plan', position: { x: 350, y: 200 }, data: makeReviewData({}, 'standard') },
-      { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 600, y: 200 }, data: makeAgentData(
+      { id: 'receive-1', type: 'source', name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
+      { id: 'review-1', type: 'review', name: 'Review Plan', position: { x: 350, y: 200 }, data: makeReviewData({}, 'standard') },
+      { id: 'think-1', type: 'agent', name: 'Agent', position: { x: 600, y: 200 }, data: makeAgentData(
           agentSystem, agentPrompt, 'coder', agentTools.value,
           isOpenRouterModel(selectedModel.value) ? findOllamaCoder() : undefined) },
-      { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 850, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
-      { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1100, y: 200 }, data: { config: {
+      { id: 'verify-1', type: 'verifier', name: 'Verify', position: { x: 850, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
+      { id: 'act-1', type: 'output', name: 'Output', position: { x: 1100, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
             includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
             generateReadme: true, generateArchitecture: false,
           } } as Record<string, any>,
       },
-    ],
+    ] as PipelineNode[],
     edges: [
-      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
-      { id: 'e2', source: 'review-1', target: 'think-1', type: 'data' as any },
-      { id: 'e3', source: 'think-1', target: 'verify-1', type: 'data' as any },
-      { id: 'e4', source: 'verify-1', target: 'act-1', type: 'data' as any },
-    ],
+      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' },
+      { id: 'e2', source: 'review-1', target: 'think-1', type: 'data' },
+      { id: 'e3', source: 'think-1', target: 'verify-1', type: 'data' },
+      { id: 'e4', source: 'verify-1', target: 'act-1', type: 'data' },
+    ] as PipelineEdge[],
   }
 }
 
@@ -341,38 +354,38 @@ function generateAppCreationPipeline(description: string): PipelineConfig {
     : 'You are a documentation agent. Update project docs based on the implementation.'
   return {
     nodes: [
-      { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 50, y: 200 }, data: makeSourceData(description) },
-      { id: 'review-1', type: 'review' as any, name: 'Design Review', position: { x: 300, y: 200 }, data: makeReviewData(
+      { id: 'receive-1', type: 'source', name: 'Receive', position: { x: 50, y: 200 }, data: makeSourceData(description) },
+      { id: 'review-1', type: 'review', name: 'Design Review', position: { x: 300, y: 200 }, data: makeReviewData(
           { checks: { premortem: true, prism: true, postmortem: true } }, 'design') },
-      { id: 'planner-1', type: 'planner' as any, name: 'Planner', position: { x: 550, y: 200 }, data: makeAgentData(
+      { id: 'planner-1', type: 'planner', name: 'Planner', position: { x: 550, y: 200 }, data: makeAgentData(
           plannerSystem, plannerPrompt, 'planner', ['file_read', 'file_write', 'directory_read']) },
-      { id: 'review-2', type: 'review' as any, name: 'Plan Review', position: { x: 800, y: 200 }, data: makeReviewData(
+      { id: 'review-2', type: 'review', name: 'Plan Review', position: { x: 800, y: 200 }, data: makeReviewData(
           { checks: { premortem: true, prism: false, postmortem: false } }, 'plan') },
-      { id: 'prep-1', type: 'prep' as any, name: 'Prep', position: { x: 1050, y: 200 }, data: makeAgentData(
+      { id: 'prep-1', type: 'prep', name: 'Prep', position: { x: 1050, y: 200 }, data: makeAgentData(
           prepSystem, prepPrompt, 'prep', ['file_read', 'file_write', 'directory_read']) },
-      { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 1300, y: 200 }, data: makeAgentData(
+      { id: 'think-1', type: 'agent', name: 'Agent', position: { x: 1300, y: 200 }, data: makeAgentData(
           agentSystem, agentPrompt, 'coder', agentTools.value,
           isOpenRouterModel(selectedModel.value) ? findOllamaCoder() : undefined) },
-      { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 1550, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
-      { id: 'doc-1', type: 'doc-agent' as any, name: 'Doc-Agent', position: { x: 1800, y: 200 }, data: makeAgentData(
+      { id: 'verify-1', type: 'verifier', name: 'Verify', position: { x: 1550, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
+      { id: 'doc-1', type: 'doc-agent', name: 'Doc-Agent', position: { x: 1800, y: 200 }, data: makeAgentData(
           docSystem, docPrompt, 'doc-agent', ['file_read', 'file_write', 'directory_read']) },
-      { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 2050, y: 200 }, data: { config: {
+      { id: 'act-1', type: 'output', name: 'Output', position: { x: 2050, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
             includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
             generateReadme: true, generateArchitecture: false,
           } } as Record<string, any>,
       },
-    ],
+    ] as PipelineNode[],
     edges: [
-      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' as any },
-      { id: 'e2', source: 'review-1', target: 'planner-1', type: 'data' as any },
-      { id: 'e3', source: 'planner-1', target: 'review-2', type: 'data' as any },
-      { id: 'e4', source: 'review-2', target: 'prep-1', type: 'data' as any },
-      { id: 'e5', source: 'prep-1', target: 'think-1', type: 'data' as any },
-      { id: 'e6', source: 'think-1', target: 'verify-1', type: 'data' as any },
-      { id: 'e7', source: 'verify-1', target: 'doc-1', type: 'data' as any },
-      { id: 'e8', source: 'doc-1', target: 'act-1', type: 'data' as any },
-    ],
+      { id: 'e1', source: 'receive-1', target: 'review-1', type: 'data' },
+      { id: 'e2', source: 'review-1', target: 'planner-1', type: 'data' },
+      { id: 'e3', source: 'planner-1', target: 'review-2', type: 'data' },
+      { id: 'e4', source: 'review-2', target: 'prep-1', type: 'data' },
+      { id: 'e5', source: 'prep-1', target: 'think-1', type: 'data' },
+      { id: 'e6', source: 'think-1', target: 'verify-1', type: 'data' },
+      { id: 'e7', source: 'verify-1', target: 'doc-1', type: 'data' },
+      { id: 'e8', source: 'doc-1', target: 'act-1', type: 'data' },
+    ] as PipelineEdge[],
   }
 }
 
@@ -383,23 +396,23 @@ function generateMinimalPipeline(description: string): PipelineConfig {
     : 'You are a senior developer. Use the tools to implement the described application.'
   return {
     nodes: [
-      { id: 'receive-1', type: 'source' as any, name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
-      { id: 'think-1', type: 'agent' as any, name: 'Agent', position: { x: 400, y: 200 }, data: makeAgentData(
+      { id: 'receive-1', type: 'source', name: 'Receive', position: { x: 100, y: 200 }, data: makeSourceData(description) },
+      { id: 'think-1', type: 'agent', name: 'Agent', position: { x: 400, y: 200 }, data: makeAgentData(
           agentSystem, agentPrompt, 'coder', agentTools.value,
           isOpenRouterModel(selectedModel.value) ? findOllamaCoder() : undefined) },
-      { id: 'verify-1', type: 'verifier' as any, name: 'Verify', position: { x: 700, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
-      { id: 'act-1', type: 'output' as any, name: 'Output', position: { x: 1000, y: 200 }, data: { config: {
+      { id: 'verify-1', type: 'verifier', name: 'Verify', position: { x: 700, y: 200 }, data: makeVerifierData(description, verifierChecks.value) },
+      { id: 'act-1', type: 'output', name: 'Output', position: { x: 1000, y: 200 }, data: { config: {
             mode: 'summary_report', reportPath: 'pipeline-report.md',
             includeReview: true, includeFiles: true, includeVerification: true, includeMetrics: true,
             generateReadme: true, generateArchitecture: false,
           } } as Record<string, any>,
       },
-    ],
+    ] as PipelineNode[],
     edges: [
-      { id: 'e1', source: 'receive-1', target: 'think-1', type: 'data' as any },
-      { id: 'e2', source: 'think-1', target: 'verify-1', type: 'data' as any },
-      { id: 'e3', source: 'verify-1', target: 'act-1', type: 'data' as any },
-    ],
+      { id: 'e1', source: 'receive-1', target: 'think-1', type: 'data' },
+      { id: 'e2', source: 'think-1', target: 'verify-1', type: 'data' },
+      { id: 'e3', source: 'verify-1', target: 'act-1', type: 'data' },
+    ] as PipelineEdge[],
   }
 }
 
@@ -454,8 +467,8 @@ async function generate() {
 
     // Generate pipeline from selected template
     const pipeline = getPipelineConfig(description)
-    schema.nodes = pipeline.nodes as any
-    schema.edges = pipeline.edges as any
+    schema.nodes = pipeline.nodes as PipelineNode[]
+    schema.edges = pipeline.edges as PipelineEdge[]
 
     const updated = await schemaApi.updateSchema(targetId, schema)
 
@@ -464,8 +477,12 @@ async function generate() {
     } else {
       error.value = 'Failed to save pipeline. Please try again.'
     }
-  } catch (e: any) {
-    error.value = e?.response?.data?.error || e?.message || 'Network error. Please try again.'
+  } catch (e: unknown) {
+    if (isAxiosError(e) && e.response?.data?.error) {
+      error.value = e.response.data.error
+    } else {
+      error.value = (e as Error)?.message || 'Network error. Please try again.'
+    }
   } finally {
     loading.value = false
   }

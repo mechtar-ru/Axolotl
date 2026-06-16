@@ -40,13 +40,11 @@ public class FlutterScaffoldHelper {
                         "--project-name", new java.io.File(targetPath).getName(),
                         "--platforms", "android,ios,macos",
                         targetPath);
-                fb.redirectErrorStream(true);
-                Process fp = fb.start();
-                fp.waitFor(120, TimeUnit.SECONDS);
-                log.info("flutter create exited with {}", fp.exitValue());
+                String fbOut = SafeProcess.run(fb, 120, TimeUnit.SECONDS);
+                log.info("flutter create completed: {}", fbOut != null ? "ok" : "timeout/failure");
                 Path mainDart = dir.resolve("lib/main.dart");
                 log.info("Scaffold created, main.dart exists: {}", Files.exists(mainDart));
-                return fp.exitValue() == 0;
+                return fbOut != null;
             } catch (Exception e) {
                 log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage());
                 return false;
@@ -84,11 +82,7 @@ public class FlutterScaffoldHelper {
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", "-c",
                     "cd " + targetDir + " && dart analyze lib/ 2>&1");
-            Process p = pb.start();
-            if (p.waitFor(120, TimeUnit.SECONDS)) {
-                return new String(p.getInputStream().readAllBytes());
-            }
-            return null;
+            return SafeProcess.run(pb, 120, TimeUnit.SECONDS);
         } catch (Exception e) {
             return null;
         }
@@ -100,8 +94,7 @@ public class FlutterScaffoldHelper {
     public void runBash(String dir, String cmd, int timeoutSec) {
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + dir + " && " + cmd);
-            Process p = pb.start();
-            p.waitFor(timeoutSec, TimeUnit.SECONDS);
+            SafeProcess.run(pb, timeoutSec, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("bash command failed: {} (dir={}, cmd={})", e.getMessage(), dir, cmd);
         }

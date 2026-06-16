@@ -15,7 +15,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
     List<GraphExecutionRun> findBySchemaIdOrderByStartedAtDesc(@Param("schemaId") String schemaId);
 
     @Query("""
-        MATCH (r:ExecutionRun {schemaId: $schemaId, status: $status})
+        MATCH (r:ExecutionRun {status: $status})
         RETURN r ORDER BY r.startedAt DESC LIMIT 1
         """)
     List<GraphExecutionRun> findByStatus(@Param("status") String status);
@@ -111,7 +111,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun)
-        WHERE r.startedAt < $cutoffTimestamp
+        WHERE toInteger(r.startedAt) < toInteger($cutoffTimestamp)
         WITH r
         MATCH (n:NodeExecution {runId: r.id})
         DETACH DELETE n

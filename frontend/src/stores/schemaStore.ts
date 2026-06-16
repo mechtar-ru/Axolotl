@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import type { WorkflowSchema } from '../types';
 import { schemaApi, api } from '../services/api';
 import type { SchemaValidationResult } from '../services/api';
+import { isAxiosError } from 'axios';
 import { useToast } from '../composables/useToast';
 import { useCanvasStore } from './useCanvasStore';
 
@@ -84,8 +85,8 @@ export const useSchemaStore = defineStore('schema', () => {
         throw new Error('Validation failed: ' + msgs);
       }
       return result;
-    } catch (err: any) {
-      if (err?.response?.data?.status === 'validation_error') {
+    } catch (err: unknown) {
+      if (isAxiosError(err) && err.response?.data?.status === 'validation_error') {
         const validation = err.response.data.validation;
         const msgs = validation?.errors?.map((e: any) => e.message).join('; ') || 'Schema validation failed';
         toastError(msgs);

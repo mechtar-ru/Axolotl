@@ -136,12 +136,11 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         }
 
         // Check for pending feedback or approval in execution state
+        Map<String, String> nodeResults = stateManager.getNodeResults().get(schemaId);
         String feedbackKey = schemaId + ":" + node.getId() + ":feedback";
-        String pendingFeedback = stateManager.getNodeResults().get(schemaId) != null
-                ? stateManager.getNodeResults().get(schemaId).get(feedbackKey) : null;
+        String pendingFeedback = nodeResults != null ? nodeResults.get(feedbackKey) : null;
         String approvedKey = schemaId + ":" + node.getId() + ":approved";
-        boolean isApproved = stateManager.getNodeResults().get(schemaId) != null
-                && "true".equals(stateManager.getNodeResults().get(schemaId).get(approvedKey));
+        boolean isApproved = nodeResults != null && "true".equals(nodeResults.remove(approvedKey));
 
         // If plan was already approved by user, skip re-review and output PASS
         if (isApproved) {
@@ -206,10 +205,9 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         }
 
         if (planText == null || planText.isBlank()) {
-            planText = "No content available for review planning.";
-            if (webSocketHandler != null) {
-                webSocketHandler.sendLog(schemaId, "warn", "Empty plan input, using placeholder", node.getId());
-            }
+            log.error("Review planning returned empty plan for schema {}", schemaId);
+            node.setStatus(Node.NodeStatus.FAILED);
+            return "";
         }
         return planText;
     }

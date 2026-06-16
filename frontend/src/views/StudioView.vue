@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch, defineOptions } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useCanvasStore } from '@/stores/useCanvasStore'
@@ -23,6 +23,8 @@ import ThoughtsPanel from '@/components/studio/ThoughtsPanel.vue'
 import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/useReviewStore'
 import { useToast } from '@/composables/useToast'
+
+defineOptions({ name: 'StudioView' })
 
 type StudioMode = 'blueprint' | 'timeline'
 
@@ -144,6 +146,7 @@ const startExecution = async (skipSave: boolean = false, sessionInput?: string):
     executionError.value = null
   nodeResults.value = {}
   nodeStatuses.value = {}
+  nodeReasonings.value = {}
   executionProgress.value = null
   execState.stepEvents.value = []
   nodeStartTimes.clear()
@@ -434,13 +437,23 @@ onMounted(async () => {
 
 // Watch route param changes — needed when navigating between schemas
 // while the component stays alive (same route, different :id)
-watch(() => route.params.id, (newId) => {
-  if (newId && newId !== appId.value) {
+watch(() => route.params.id, async (newId) => {
+  if (appId.value && newId && appId.value !== newId) {
+    // Save current state before switching
     try {
-      canvasStore.flushSave()
-    } catch (e) {
-      toast.error('Failed to save: ' + ((e as Error).message || e))
+      await canvasStore.flushSave()
+    } catch (err) {
+      console.error('Failed to save canvas state before schema switch:', err)
     }
+
+    // Reset execution state from previous schema
+    nodeResults.value = {}
+    nodeStatuses.value = {}
+    executionProgress.value = null
+    if (execState?.stepEvents) execState.stepEvents.value = []
+    nodeStartTimes.clear()
+    stepCounter = 0
+
     appId.value = newId as string
     const found = schemaStore.schemas.find(s => s.id === appId.value)
     if (found) {
@@ -474,10 +487,12 @@ function toggleRun() {
 onUnmounted(() => {
   isActive = false
   disconnect()
+  if (sessionGoalTimer) { clearTimeout(sessionGoalTimer); sessionGoalTimer = null }
 })
 
 // Flush pending saves + disconnect WebSocket when navigating away
 onDeactivated(() => {
+  if (sessionGoalTimer) { clearTimeout(sessionGoalTimer); sessionGoalTimer = null }
   try {
     canvasStore.flushSave()  // ensure dirty edits reach backend
   } catch (e) {

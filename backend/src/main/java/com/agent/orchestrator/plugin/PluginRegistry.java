@@ -202,7 +202,20 @@ public class PluginRegistry implements AutoCloseable {
      */
     public synchronized void stopPlugin(String name) {
         PluginBridge bridge = bridges.get(name);
+        PluginToolAdapter adapter = toolAdapters.get(name);
         if (bridge != null) {
+            // Unregister all tools for this plugin to prevent stale registrations
+            if (toolExecutor != null && adapter != null) {
+                for (String toolId : adapter.getPluginTools().keySet()) {
+                    try {
+                        toolExecutor.unregisterTool(toolId);
+                        toolExecutor.unregisterPluginHandler(toolId);
+                    } catch (Exception e) {
+                        log.warn("Failed to unregister tool {}: {}", toolId, e.getMessage());
+                    }
+                }
+            }
+
             bridge.stop();
             bridges.remove(name);
             toolAdapters.remove(name);
@@ -289,11 +302,10 @@ public class PluginRegistry implements AutoCloseable {
     private void updatePluginPackage(PluginConfig.PluginDefinition def) {
         try {
             String pkg = def.getName();
-            // Validate before constructing shell command
+            // Validate before using in command
             validateNpmPackageName(pkg);
-            String installCmd = String.format("cd %s/plugins && bun add %s@latest",
-                    projectRoot, pkg);
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", installCmd);
+            ProcessBuilder pb = new ProcessBuilder(config.getBunPath(), "add", pkg + "@latest");
+            pb.directory(java.nio.file.Path.of(projectRoot, "plugins").toFile());
             pb.redirectErrorStream(true);
             Process process = pb.start();
             boolean finished = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
@@ -312,9 +324,8 @@ public class PluginRegistry implements AutoCloseable {
      */
     private String installNpmPackage(String npmPackage) {
         try {
-            String installCmd = String.format("cd %s/plugins && bun add %s",
-                    projectRoot, npmPackage);
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", installCmd);
+            ProcessBuilder pb = new ProcessBuilder(config.getBunPath(), "add", npmPackage);
+            pb.directory(java.nio.file.Path.of(projectRoot, "plugins").toFile());
             pb.redirectErrorStream(true);
             Process process = pb.start();
             boolean finished = process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS);

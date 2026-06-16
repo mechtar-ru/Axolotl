@@ -21,6 +21,7 @@ public class ExecutionRun {
     private double estimatedCost;
     private String error;
     private String resumesFrom;  // nullable FK → parent run id
+    private Long version;
     private List<String> generatedFiles;
     private Instant startedAt;
     private Instant updatedAt;

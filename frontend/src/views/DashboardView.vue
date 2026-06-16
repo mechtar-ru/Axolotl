@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, defineOptions } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -14,6 +14,8 @@ import ProjectsFolderPrompt from '@/components/settings/ProjectsFolderPrompt.vue
 import { appApi, schemaApi } from '@/services/api'
 import { getTemplateById } from '@/templates'
 import type { WorkflowSchema } from '@/types'
+
+defineOptions({ name: 'DashboardView' })
 
 const router = useRouter()
 const schemaStore = useSchemaStore()
