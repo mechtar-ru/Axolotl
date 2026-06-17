@@ -144,70 +144,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             systemPrompt = utilityService.interpolateVariables(systemPrompt, currentSchema, predecessorResults);
         }
 
-        // Dynamic token budget: collect all additional context, prioritize and truncate
-        {
-            List<ContextBlock> ctxBlocks = new ArrayList<>();
-
-            // Try Magic Context RAG first, fall back to flat predecessor block
-            String mcQuery = (prompt != null && !prompt.isBlank() ? prompt : "task")
-                    + " " + (node.getName() != null ? node.getName() : "");
-            String mcContext = mcRetriever.retrieveRelevantContext(mcQuery, schemaId);
-            if (!mcContext.isEmpty()) {
-                ctxBlocks.add(new ContextBlock("mcContext", mcContext, ContextPriority.MEDIUM));
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Magic Context retrieval active (" + mcContext.length() + " chars)", node.getId());
-                }
-            } else if (!contextBlockText.isEmpty()) {
-                ctxBlocks.add(new ContextBlock("predecessorResults",
-                        "Контекст от предыдущих узлов:\n" + contextBlockText, ContextPriority.MEDIUM));
-            }
-
-            if (memPalaceClient.isEnabled()) {
-                String memoryCtx = memPalaceClient.buildGraphContext(prompt, 5);
-                if (!memoryCtx.isEmpty()) {
-                    ctxBlocks.add(new ContextBlock("mempalace", memoryCtx, ContextPriority.EXPERIMENTAL));
-                }
-            }
-
-            if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
-                try {
-                    String projectCtx = projectContextBuilder.buildContext(
-                            currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
-                    if (!projectCtx.isEmpty()) {
-                        ctxBlocks.add(new ContextBlock("projectContext",
-                                "=== Project Context ===\n" + projectCtx, ContextPriority.LOW));
-                    }
-                } catch (Exception e) {
-                    log.warn("Failed to build project context: {}", e.getMessage());
-                }
-            }
-
-            // Plan step context
-            String planCtx = buildPlanStepContext(schemaId);
-            if (!planCtx.isBlank()) {
-                ctxBlocks.add(new ContextBlock("planSteps", planCtx, ContextPriority.HIGH));
-            }
-
-            // Determine budget (0 = disabled = unlimited)
-            int budget = resolveBudget(node);
-
-            // Assemble with priority-based (budget > 0) or pass-through (budget = 0)
-            var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
-
-            // Append assembled context to system prompt
-            if (!ctxResult.text().isEmpty()) {
-                systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + ctxResult.text();
-            }
-
-            // WebSocket observability — send context stats
-            if (webSocketHandler != null) {
-                try {
-                    String statsJson = buildContextStatsJson(ctxResult);
-                    webSocketHandler.sendLog(schemaId, "info", "Context budget: " + statsJson, node.getId());
-                } catch (Exception ignored) {}
-            }
-        }
+        // Assemble context (Magic Context RAG, project context, plan steps)
+        systemPrompt = assembleAgentContext(node, currentSchema, schemaId, prompt, systemPrompt, contextBlockText, false, null, null);
 
         LlmUsage usage = new LlmUsage();
         LlmResponse streamingResp = llmService.streamingChat(model, systemPrompt, prompt, null,
@@ -320,164 +258,22 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             systemPrompt = utilityService.interpolateVariables(systemPrompt, currentSchema, predecessorResults);
         }
 
-        // Dynamic token budget: collect all additional context, prioritize and truncate
-        {
-            List<ContextBlock> ctxBlocks = new ArrayList<>();
-
-            // Try Magic Context RAG first, fall back to flat predecessor block
-            String mcQuery = (prompt != null && !prompt.isBlank() ? prompt : "task")
-                    + " " + (node.getName() != null ? node.getName() : "");
-            String mcContext = mcRetriever.retrieveRelevantContext(mcQuery, schemaId);
-            if (!mcContext.isEmpty()) {
-                ctxBlocks.add(new ContextBlock("mcContext", mcContext, ContextPriority.MEDIUM));
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Magic Context retrieval active (" + mcContext.length() + " chars)", node.getId());
-                }
-            } else if (!contextBlock.isEmpty()) {
-                ctxBlocks.add(new ContextBlock("predecessorResults",
-                        "Контекст от предыдущих узлов:\n" + contextBlock, ContextPriority.MEDIUM));
-            }
-
-            if (memPalaceClient.isEnabled()) {
-                String memoryCtx = memPalaceClient.buildGraphContext(prompt, 5);
-                if (!memoryCtx.isEmpty()) {
-                    ctxBlocks.add(new ContextBlock("mempalace", memoryCtx, ContextPriority.EXPERIMENTAL));
-                }
-            }
-
-            if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
-                try {
-                    String projectCtx = projectContextBuilder.buildContext(
-                            currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
-                    if (!projectCtx.isEmpty()) {
-                        ctxBlocks.add(new ContextBlock("projectContext",
-                                "=== Project Context ===\n" + projectCtx, ContextPriority.LOW));
-                    }
-                } catch (Exception e) {
-                    log.warn("Failed to build project context: {}", e.getMessage());
-                }
-            }
-
-            if (node.getData() != null && node.getData().getConfig() != null
-                    && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
-                ctxBlocks.add(new ContextBlock("diffReview",
-                        "IMPORTANT: Diff review mode enabled.\n"
-                        + "You MUST modify existing files using file_write on their current paths.\n"
-                        + "Do NOT create new files unless absolutely necessary.\n"
-                        + "After you finish, the pipeline will pause for human diff review.\n"
-                        + "Always read the existing file content first before modifying it.\n",
-                        ContextPriority.HIGH));
-            }
-
-            // Plan step context
-            String planCtx = buildPlanStepContext(schemaId);
-            if (!planCtx.isBlank()) {
-                ctxBlocks.add(new ContextBlock("planSteps", planCtx, ContextPriority.HIGH));
-            }
-
-            // Tool instructions — budgeted as HIGH priority (was previously unbounded before assembly)
-            if (!"doc-agent".equals(agentType)) {
-                String toolInstructions = toolExecutionService.buildToolInstructions(enabledTools);
-                if (toolInstructions != null && !toolInstructions.isBlank()) {
-                    ctxBlocks.add(new ContextBlock("toolInstructions", toolInstructions, ContextPriority.HIGH));
-                }
-            } else {
-                String docInstructions = buildDocAgentToolInstructions(enabledTools);
-                if (docInstructions != null && !docInstructions.isBlank()) {
-                    ctxBlocks.add(new ContextBlock("toolInstructions", docInstructions, ContextPriority.HIGH));
-                }
-            }
-
-            // Determine budget (0 = disabled = unlimited)
-            int budget = resolveBudget(node);
-
-            // Assemble with priority-based (budget > 0) or pass-through (budget = 0)
-            var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
-
-            // Append assembled context to system prompt
-            if (!ctxResult.text().isEmpty()) {
-                systemPrompt += "\n\n" + ctxResult.text();
-            }
-
-            // WebSocket observability — send context stats
-            if (webSocketHandler != null) {
-                try {
-                    String statsJson = buildContextStatsJson(ctxResult);
-                    webSocketHandler.sendLog(schemaId, "info", "Context budget: " + statsJson, node.getId());
-                } catch (Exception ignored) {}
-            }
-        }
+        // ── 1. Context assembly (Magic Context, project context, plan steps, tool instructions) ──
+        systemPrompt = assembleAgentContext(node, currentSchema, schemaId, prompt, systemPrompt, contextBlock, true, enabledTools, agentType);
 
         List<Node.Message> messages = new ArrayList<>();
         messages.add(new Node.Message("system", systemPrompt));
         messages.add(new Node.Message("user", prompt));
 
-                // Auto-scaffold for FLUTTER projects: run flutter create before agent starts
-                // to ensure pubspec.yaml and lib/ exist (prevents "lib/ not found" loops)
-                if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
-                        && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
-                    flutterScaffoldHelper.ensureFlutterScaffold(currentSchema.getTargetPath());
-                }
-
-                // Create architecture plan from planner model
-        String plannerModelBase = node.getData() != null ? node.getData().getPlannerModel() : null;
-        if (plannerModelBase == null && node.getData() != null && node.getData().getConfig() != null) {
-            Object pm = node.getData().getConfig().get("plannerModel");
-            if (pm instanceof String s) plannerModelBase = s;
+        // Auto-scaffold for FLUTTER projects: run flutter create before agent starts
+        // to ensure pubspec.yaml and lib/ exist (prevents "lib/ not found" loops)
+        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
+                && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+            flutterScaffoldHelper.ensureFlutterScaffold(currentSchema.getTargetPath());
         }
-        final String plannerModel = plannerModelBase;
-        boolean hasPlanner = plannerModel != null && !plannerModel.isBlank();
-        if (hasPlanner) {
-            java.util.concurrent.CompletableFuture<LlmResponse> future = null;
-            try {
-                // Architecture plan only (fast, ~60s). Executor implements via file_write.
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                        "Calling planner for architecture plan...", node.getId());
-                }
-                String plannerSysPrompt = "You are a senior Flutter architect. "
-                    + "List every file needed for the app (with path, purpose, key classes). "
-                    + "Keep it concise (under 3000 chars). For each file, say what it does and what goes in it.";
-                String plannerPrompt = "Design the architecture for:\n" + prompt;
 
-                // Hard timeout: 60s — OpenRouter free tier hangs on long requests
-                future =
-                    java.util.concurrent.CompletableFuture.supplyAsync(() ->
-                        llmService.chat(plannerModel, plannerSysPrompt, plannerPrompt, null, null), plannerExecutor);
-                LlmResponse plannerResp = future.get(60, java.util.concurrent.TimeUnit.SECONDS);
-                String archPlan = plannerResp != null ? plannerResp.text() : "";
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                        "Planner arch response: " + archPlan.length() + " chars", node.getId());
-                }
-
-                // Inject architecture plan as context for the executor
-                if (!archPlan.isBlank()) {
-                    String planContext = "## Architecture Plan (generated by " + plannerModel + ")\n"
-                        + archPlan.substring(0, Math.min(archPlan.length(), 4000))
-                        + "\n\n**Follow this plan. Implement ALL files using file_write.**";
-                    messages.add(new Node.Message("assistant", planContext));
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "info",
-                            "Architecture plan injected into executor context (" + archPlan.length() + " chars)", node.getId());
-                    }
-                }
-            } catch (java.util.concurrent.TimeoutException e) {
-                future.cancel(true);
-                log.warn("Planner arch call timed out (60s)");
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "warn",
-                        "Planner arch call timed out after 60s", node.getId());
-                }
-            } catch (Exception e) {
-                log.warn("Planner arch call failed: {}", e.getMessage());
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "warn",
-                        "Planner failed: " + e.getMessage(), node.getId());
-                }
-            }
-        }
+        // ── 2. Planner phase (dual-model architecture plan) ──
+        runPlannerPhase(node, schemaId, prompt, messages);
 
         // Build structured tools for LLM API request body
         Map<String, Object> chatConfig = null;
@@ -499,6 +295,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
+        // ── 3. Agent loop (tool-calling loop) ──
         StringBuilder fullResponse = new StringBuilder();
         int toolCallCount = 0;
         int iterationCount = 0;
@@ -615,6 +412,191 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
+        // ── 4. Post-processing (file changes, build check, FLUTTER deps) ──
+        finalResponse = postProcessToolAgent(node, currentSchema, schemaId, finalResponse);
+
+        return finalResponse;
+    }
+
+    // ─── Extracted helper: Context assembly ───
+
+    /**
+     * Assemble context blocks for the system prompt: Magic Context RAG, mempalace,
+     * project context, plan steps, diff review (tool-agent only), and tool instructions.
+     * Returns the modified systemPrompt with assembled context appended.
+     */
+    private String assembleAgentContext(
+            Node node, WorkflowSchema currentSchema, String schemaId,
+            String prompt, String systemPrompt, String contextBlockText,
+            boolean isToolAgent, List<String> enabledTools, String agentType) {
+        List<ContextBlock> ctxBlocks = new ArrayList<>();
+
+        // Try Magic Context RAG first, fall back to flat predecessor block
+        String mcQuery = (prompt != null && !prompt.isBlank() ? prompt : "task")
+                + " " + (node.getName() != null ? node.getName() : "");
+        String mcContext = mcRetriever.retrieveRelevantContext(mcQuery, schemaId);
+        if (!mcContext.isEmpty()) {
+            ctxBlocks.add(new ContextBlock("mcContext", mcContext, ContextPriority.MEDIUM));
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "info",
+                        "Magic Context retrieval active (" + mcContext.length() + " chars)", node.getId());
+            }
+        } else if (!contextBlockText.isEmpty()) {
+            ctxBlocks.add(new ContextBlock("predecessorResults",
+                    "Контекст от предыдущих узлов:\n" + contextBlockText, ContextPriority.MEDIUM));
+        }
+
+        if (memPalaceClient.isEnabled()) {
+            String memoryCtx = memPalaceClient.buildGraphContext(prompt, 5);
+            if (!memoryCtx.isEmpty()) {
+                ctxBlocks.add(new ContextBlock("mempalace", memoryCtx, ContextPriority.EXPERIMENTAL));
+            }
+        }
+
+        if (currentSchema != null && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+            try {
+                String projectCtx = projectContextBuilder.buildContext(
+                        currentSchema.getTargetPath(), currentSchema.getWorkspaceId(), schemaId);
+                if (!projectCtx.isEmpty()) {
+                    ctxBlocks.add(new ContextBlock("projectContext",
+                            "=== Project Context ===\n" + projectCtx, ContextPriority.LOW));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to build project context: {}", e.getMessage());
+            }
+        }
+
+        // Diff review block (tool-agent only)
+        if (isToolAgent && node.getData() != null && node.getData().getConfig() != null
+                && Boolean.TRUE.equals(node.getData().getConfig().get("requireDiffReview"))) {
+            ctxBlocks.add(new ContextBlock("diffReview",
+                    "IMPORTANT: Diff review mode enabled.\n"
+                    + "You MUST modify existing files using file_write on their current paths.\n"
+                    + "Do NOT create new files unless absolutely necessary.\n"
+                    + "After you finish, the pipeline will pause for human diff review.\n"
+                    + "Always read the existing file content first before modifying it.\n",
+                    ContextPriority.HIGH));
+        }
+
+        // Plan step context
+        String planCtx = buildPlanStepContext(schemaId);
+        if (!planCtx.isBlank()) {
+            ctxBlocks.add(new ContextBlock("planSteps", planCtx, ContextPriority.HIGH));
+        }
+
+        // Tool instructions — tool-agent only; choose builder by agent type
+        if (isToolAgent && !"doc-agent".equals(agentType)) {
+            String toolInstructions = toolExecutionService.buildToolInstructions(enabledTools);
+            if (toolInstructions != null && !toolInstructions.isBlank()) {
+                ctxBlocks.add(new ContextBlock("toolInstructions", toolInstructions, ContextPriority.HIGH));
+            }
+        } else if (isToolAgent) {
+            String docInstructions = buildDocAgentToolInstructions(enabledTools);
+            if (docInstructions != null && !docInstructions.isBlank()) {
+                ctxBlocks.add(new ContextBlock("toolInstructions", docInstructions, ContextPriority.HIGH));
+            }
+        }
+
+        // Determine budget (0 = disabled = unlimited)
+        int budget = resolveBudget(node);
+
+        // Assemble with priority-based (budget > 0) or pass-through (budget = 0)
+        var ctxResult = contextAssembler.assemble(ctxBlocks, budget);
+
+        // Append assembled context to system prompt
+        if (!ctxResult.text().isEmpty()) {
+            if (isToolAgent) {
+                systemPrompt += "\n\n" + ctxResult.text();
+            } else {
+                systemPrompt = (systemPrompt != null ? systemPrompt + "\n\n" : "") + ctxResult.text();
+            }
+        }
+
+        // WebSocket observability — send context stats
+        if (webSocketHandler != null) {
+            try {
+                String statsJson = buildContextStatsJson(ctxResult);
+                webSocketHandler.sendLog(schemaId, "info", "Context budget: " + statsJson, node.getId());
+            } catch (Exception ignored) {}
+        }
+
+        return systemPrompt;
+    }
+
+    // ─── Extracted helper: Planner phase ───
+
+    /**
+     * Run the dual-model planner phase: if a planner model is configured in the node,
+     * call it asynchronously (60s timeout) and inject the resulting architecture plan
+     * as an assistant message into the messages list.
+     */
+    private void runPlannerPhase(Node node, String schemaId, String prompt,
+                                  List<Node.Message> messages) {
+        String plannerModelBase = node.getData() != null ? node.getData().getPlannerModel() : null;
+        if (plannerModelBase == null && node.getData() != null && node.getData().getConfig() != null) {
+            Object pm = node.getData().getConfig().get("plannerModel");
+            if (pm instanceof String s) plannerModelBase = s;
+        }
+        final String plannerModel = plannerModelBase;
+        boolean hasPlanner = plannerModel != null && !plannerModel.isBlank();
+        if (hasPlanner) {
+            java.util.concurrent.CompletableFuture<LlmResponse> future = null;
+            try {
+                // Architecture plan only (fast, ~60s). Executor implements via file_write.
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                        "Calling planner for architecture plan...", node.getId());
+                }
+                String plannerSysPrompt = "You are a senior Flutter architect. "
+                    + "List every file needed for the app (with path, purpose, key classes). "
+                    + "Keep it concise (under 3000 chars). For each file, say what it does and what goes in it.";
+                String plannerPrompt = "Design the architecture for:\n" + prompt;
+
+                // Hard timeout: 60s — OpenRouter free tier hangs on long requests
+                future = java.util.concurrent.CompletableFuture.supplyAsync(() ->
+                    llmService.chat(plannerModel, plannerSysPrompt, plannerPrompt, null, null), plannerExecutor);
+                LlmResponse plannerResp = future.get(60, java.util.concurrent.TimeUnit.SECONDS);
+                String archPlan = plannerResp != null ? plannerResp.text() : "";
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                        "Planner arch response: " + archPlan.length() + " chars", node.getId());
+                }
+
+                // Inject architecture plan as context for the executor
+                if (!archPlan.isBlank()) {
+                    String planContext = "## Architecture Plan (generated by " + plannerModel + ")\n"
+                        + archPlan.substring(0, Math.min(archPlan.length(), 4000))
+                        + "\n\n**Follow this plan. Implement ALL files using file_write.**";
+                    messages.add(new Node.Message("assistant", planContext));
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "info",
+                            "Architecture plan injected into executor context (" + archPlan.length() + " chars)", node.getId());
+                    }
+                }
+            } catch (java.util.concurrent.TimeoutException e) {
+                if (future != null) future.cancel(true);
+                log.warn("Planner arch call timed out (60s)");
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warn",
+                        "Planner arch call timed out after 60s", node.getId());
+                }
+            } catch (Exception e) {
+                log.warn("Planner arch call failed: {}", e.getMessage());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "warn",
+                        "Planner failed: " + e.getMessage(), node.getId());
+                }
+            }
+        }
+    }
+
+    // ─── Extracted helper: Post-processing ───
+
+    /**
+     * Post-process the agent execution result: append file change summary,
+     * run auto-build check, and handle FLUTTER dependency installation.
+     */
+    private String postProcessToolAgent(Node node, WorkflowSchema schema, String schemaId, String finalResponse) {
         // Append file changes summary
         Map<String, String> changes = stateManager.getFileChanges(schemaId, node.getId());
         int actualFileCount = changes.size();
@@ -648,16 +630,16 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         // Auto build check — if enabled in stage config, run build_app after agent completes
         Map<String, Object> config = node.getData() != null ? node.getData().getConfig() : null;
         boolean autoBuild = config != null && Boolean.TRUE.equals(config.get("autoBuildCheck"));
-        if (autoBuild && currentSchema != null && currentSchema.getTargetPath() != null
-                && !currentSchema.getTargetPath().isBlank()) {
-            finalResponse += buildAndReport(currentSchema, schemaId, node.getId());
+        if (autoBuild && schema != null && schema.getTargetPath() != null
+                && !schema.getTargetPath().isBlank()) {
+            finalResponse += buildAndReport(schema, schemaId, node.getId());
         }
 
         // For FLUTTER projects, auto-install dependencies and verify build after agent completes
-        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
-                && currentSchema.getTargetPath() != null && !currentSchema.getTargetPath().isBlank()) {
+        if (schema != null && "FLUTTER".equals(schema.getAppType())
+                && schema.getTargetPath() != null && !schema.getTargetPath().isBlank()) {
             try {
-                String targetDir = currentSchema.getTargetPath();
+                String targetDir = schema.getTargetPath();
                 String[] baseDeps = {"provider", "go_router", "intl", "path_provider", "sqflite", "fl_chart", "http"};
                 for (String dep : baseDeps) {
                     ProcessBuilder pb = new ProcessBuilder("flutter", "pub", "add", dep);
@@ -674,7 +656,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
                 // Auto-fix Flutter compilation errors using the FixPassOrchestrator
                 FixPassOrchestrator.FixPassResult fixResult = fixPassOrchestrator.runFixPass(
-                        targetDir, node.getId(), schemaId, currentSchema.getName());
+                        targetDir, node.getId(), schemaId, schema.getName());
                 // Build result report from fix pass result
                 if (fixResult != null) {
                     if (fixResult.fixedFiles() != null && !fixResult.fixedFiles().isEmpty()) {

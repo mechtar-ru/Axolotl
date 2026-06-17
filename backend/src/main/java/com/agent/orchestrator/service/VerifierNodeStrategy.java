@@ -95,13 +95,10 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         int maxFileSizeKb = checks.get("maxFileSizeKb") instanceof Number
                 ? ((Number) checks.get("maxFileSizeKb")).intValue() : 500;
 
-        // New config: rewrite on fail
         boolean rewriteOnFail = config.get("rewriteOnFail") instanceof Boolean
                 ? (Boolean) config.get("rewriteOnFail") : false;
-
         int maxRewriteRetries = config.get("maxRewriteRetries") instanceof Number
                 ? ((Number) config.get("maxRewriteRetries")).intValue() : 3;
-
         boolean stubDetection = config.get("stubDetection") instanceof Boolean
                 ? (Boolean) config.get("stubDetection") : true;
         boolean premortemEnabled = checks.get("premortem") instanceof Boolean
@@ -125,96 +122,145 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                     null, null, null);
         }
 
-        // Step 1: Premortem predictions (if enabled)
-        List<String> premortemPredictions = new ArrayList<>();
-        if (premortemEnabled) {
-            if (webSocketHandler != null) {
-                webSocketHandler.sendLog(schemaId, "info", "Premortem: predicting failure scenarios", node.getId());
-            }
-            String premortemPrompt = "Analyze the following code and predict potential failure scenarios, bugs, or issues. "
-                    + "List each prediction as a separate line starting with '- '\\n\\nCode:\\n" + inputContent;
-            LlmResponse premortemResp = llmService.chat(model, null, premortemPrompt, null);
-            String premortemResult = premortemResp.text();
-            if (premortemResp.reasoning() != null) {
-                reasoningCapture.capture(node.getId(), premortemResp.reasoning());
-            }
-            if (premortemResult != null) {
-                for (String line : premortemResult.split("\\n")) {
-                    String trimmed = line.trim();
-                    if (trimmed.startsWith("- ")) {
-                        premortemPredictions.add(trimmed.substring(2).trim());
-                    }
-                }
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Premortem predictions: " + premortemPredictions.size(), node.getId());
-                }
-            }
-        }
+        // ── Step 1: Premortem risk analysis ──
+        List<String> premortemPredictions = runPremortemCheck(model, inputContent, schemaId, node.getId(), premortemEnabled);
 
-        // Step 1b: Design coverage check (reads design docs and checks against code)
-        List<Map<String, Object>> coverageCheckResults = new ArrayList<>();
-        if (coverageDesign || coveragePlan) {
-            WorkflowSchema schema = schemaRepository.findById(schemaId);
-            String targetPath = schema != null && schema.getTargetPath() != null ? schema.getTargetPath() : null;
-            if (targetPath != null) {
-                Path designDir = Path.of(targetPath, "design");
-                Path planDir = Path.of(targetPath, "plan");
-                StringBuilder coverageContext = new StringBuilder();
+        // ── Step 2: Design/plan coverage check ──
+        List<Map<String, Object>> coverageCheckResults = runCoverageCheck(schemaId, coverageDesign, coveragePlan);
 
-                Path targetPathObj = Path.of(targetPath);
-                if (coverageDesign && Files.isDirectory(designDir)) {
-                    try {
-                        Files.walk(designDir, 2)
-                                .filter(p -> p.toString().endsWith(".md"))
-                                .forEach(p -> {
-                                    try {
-                                        String content = Files.readString(p);
-                                        String relPath = targetPathObj.relativize(p).toString();
-                                        coverageContext.append("\n=== DESIGN DOC: ").append(relPath).append(" ===\n");
-                                        coverageContext.append(content.substring(0, Math.min(content.length(), 3000))).append("\n");
-                                    } catch (Exception ignored) {}
-                                });
-                    } catch (Exception ignored) {}
-                }
-
-                if (coveragePlan && planDir != null && Files.isDirectory(planDir)) {
-                    try {
-                        Path stepsDir = planDir.resolve("steps");
-                        if (Files.isDirectory(stepsDir)) {
-                            Files.walk(stepsDir, 1)
-                                    .filter(p -> p.toString().endsWith(".md"))
-                                    .forEach(p -> {
-                                        try {
-                                            String content = Files.readString(p);
-                                            String relPath = planDir.relativize(p).toString();
-                                            coverageContext.append("\n=== PLAN STEP: ").append(relPath).append(" ===\n");
-                                            coverageContext.append(content.substring(0, Math.min(content.length(), 2000))).append("\n");
-                                        } catch (Exception ignored) {}
-                                    });
-                        }
-                    } catch (Exception ignored) {}
-                }
-
-                if (!coverageContext.isEmpty()) {
-                    Map<String, Object> coverageCheck = new HashMap<>();
-                    coverageCheck.put("name", "coverage");
-                    coverageCheck.put("hasDesignDocs", Files.isDirectory(designDir));
-                    coverageCheck.put("hasPlanSteps", planDir != null && Files.isDirectory(planDir.resolve("steps")));
-                    coverageCheck.put("coverageContext", coverageContext.toString());
-                    coverageCheck.put("passed", true); // informational by default
-                    coverageCheckResults.add(coverageCheck);
-                }
-            }
-        }
-
-        // Steps 2-6: Run checks with optional rewrite loop
+        // ── Step 3: File write verification ──
         List<Map<String, Object>> allCheckResults = new ArrayList<>();
+        checkFileWriteCalls(predResults, inputContent, schemaId, node.getId(), allCheckResults);
 
-        // Step 2a: Check that upstream agent made at least one file_write call
-        // If predecessor results exist but zero files were written, add a pre-built check
+        // ── Step 4: Detect project type ──
+        ProjectInfo projectInfo = detectProjectType(schemaId);
+
+        // ── Step 5: Install Flutter dependencies if needed ──
+        runFlutterPubGet(projectInfo.projectType, projectInfo.targetPath);
+
+        // ── Step 6: Main verifier loop ──
+        VerifierLoopResult loopResult = runVerifierLoop(model, schemaId, node, resolvedModel,
+                inputContent, allCheckResults, premortemPredictions,
+                projectInfo.projectType, projectInfo.targetPath,
+                syntaxCheck, requiredPatterns, testCommand, stubDetection,
+                premortemEnabled, rewriteOnFail, maxRewriteRetries);
+
+        // ── Step 7: Build and return structured result ──
+        return buildVerifierResult(loopResult, allCheckResults, premortemPredictions,
+                coverageCheckResults, premortemEnabled, maxRewriteRetries, schemaId, node);
+    }
+
+    // ────────────────────── Extracted Step Methods ──────────────────────
+
+    /**
+     * Step 1: Predict failure scenarios (premortem) if enabled.
+     */
+    private List<String> runPremortemCheck(String model, String inputContent, String schemaId, String nodeId,
+                                            boolean premortemEnabled) {
+        List<String> predictions = new ArrayList<>();
+        if (!premortemEnabled) return predictions;
+
+        if (webSocketHandler != null) {
+            webSocketHandler.sendLog(schemaId, "info", "Premortem: predicting failure scenarios", nodeId);
+        }
+        String premortemPrompt = "Analyze the following code and predict potential failure scenarios, bugs, or issues. "
+                + "List each prediction as a separate line starting with '- '\\n\\nCode:\\n" + inputContent;
+        LlmResponse premortemResp = llmService.chat(model, null, premortemPrompt, null);
+        String premortemResult = premortemResp.text();
+        if (premortemResp.reasoning() != null) {
+            reasoningCapture.capture(nodeId, premortemResp.reasoning());
+        }
+        if (premortemResult != null) {
+            for (String line : premortemResult.split("\\n")) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("- ")) {
+                    predictions.add(trimmed.substring(2).trim());
+                }
+            }
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "info",
+                        "Premortem predictions: " + predictions.size(), nodeId);
+            }
+        }
+        return predictions;
+    }
+
+    /**
+     * Step 2: Check design/plan documents for coverage against generated code.
+     */
+    private List<Map<String, Object>> runCoverageCheck(String schemaId, boolean coverageDesign, boolean coveragePlan) {
+        List<Map<String, Object>> coverageCheckResults = new ArrayList<>();
+        if (!coverageDesign && !coveragePlan) return coverageCheckResults;
+
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        String targetPath = schema != null && schema.getTargetPath() != null ? schema.getTargetPath() : null;
+        if (targetPath == null) return coverageCheckResults;
+
+        Path designDir = Path.of(targetPath, "design");
+        Path planDir = Path.of(targetPath, "plan");
+        Path targetPathObj = Path.of(targetPath);
+        StringBuilder coverageContext = new StringBuilder();
+
+        if (coverageDesign && Files.isDirectory(designDir)) {
+            try {
+                Files.walk(designDir, 2)
+                        .filter(p -> p.toString().endsWith(".md"))
+                        .forEach(p -> {
+                            try {
+                                String content = Files.readString(p);
+                                String relPath = targetPathObj.relativize(p).toString();
+                                coverageContext.append("\n=== DESIGN DOC: ").append(relPath).append(" ===\n");
+                                coverageContext.append(content.substring(0, Math.min(content.length(), 3000))).append("\n");
+                            } catch (Exception e) {
+                                log.warn("Failed to read design doc {}: {}", p, e.getMessage());
+                            }
+                        });
+            } catch (Exception e) {
+                log.warn("Failed to walk design dir {}: {}", designDir, e.getMessage());
+            }
+        }
+
+        if (coveragePlan && planDir != null && Files.isDirectory(planDir)) {
+            try {
+                Path stepsDir = planDir.resolve("steps");
+                if (Files.isDirectory(stepsDir)) {
+                    Files.walk(stepsDir, 1)
+                            .filter(p -> p.toString().endsWith(".md"))
+                            .forEach(p -> {
+                                try {
+                                    String content = Files.readString(p);
+                                    String relPath = planDir.relativize(p).toString();
+                                    coverageContext.append("\n=== PLAN STEP: ").append(relPath).append(" ===\n");
+                                    coverageContext.append(content.substring(0, Math.min(content.length(), 2000))).append("\n");
+                                } catch (Exception e) {
+                                    log.warn("Failed to read plan step {}: {}", p, e.getMessage());
+                                }
+                            });
+                }
+            } catch (Exception e) {
+                log.warn("Failed to walk plan dir {}: {}", planDir, e.getMessage());
+            }
+        }
+
+        if (!coverageContext.isEmpty()) {
+            Map<String, Object> coverageCheck = new HashMap<>();
+            coverageCheck.put("name", "coverage");
+            coverageCheck.put("hasDesignDocs", Files.isDirectory(designDir));
+            coverageCheck.put("hasPlanSteps", planDir != null && Files.isDirectory(planDir.resolve("steps")));
+            coverageCheck.put("coverageContext", coverageContext.toString());
+            coverageCheck.put("passed", true);
+            coverageCheckResults.add(coverageCheck);
+        }
+        return coverageCheckResults;
+    }
+
+    /**
+     * Step 3: Check that the upstream agent made at least one file_write call.
+     */
+    private void checkFileWriteCalls(Map<String, Object> predResults, String inputContent,
+                                      String schemaId, String nodeId,
+                                      List<Map<String, Object>> allCheckResults) {
         int fileWriteCount = 0;
-        Map<String, Object> noFileCheck = new HashMap<>();
         if (!predResults.isEmpty()) {
             for (String predNodeId : predResults.keySet()) {
                 Map<String, String> changes = stateManager.getFileChanges(schemaId, predNodeId);
@@ -224,6 +270,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             }
         }
         if (!predResults.isEmpty() && fileWriteCount == 0 && !inputContent.isBlank()) {
+            Map<String, Object> noFileCheck = new HashMap<>();
             noFileCheck.put("name", "file_write_calls");
             noFileCheck.put("passed", false);
             noFileCheck.put("error", "Upstream agent made 0 file_write calls — no files were generated");
@@ -231,15 +278,28 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             allCheckResults.add(noFileCheck);
             if (webSocketHandler != null) {
                 webSocketHandler.sendLog(schemaId, "warning",
-                        "Zero file_write calls detected from upstream agent — no files generated", node.getId());
+                        "Zero file_write calls detected from upstream agent — no files generated", nodeId);
             }
         }
+    }
 
-        int rewriteRetries = 0;
-        String currentContent = inputContent;
-        String currentResult = "";
+    /**
+     * Inner class holding project type and target path.
+     */
+    private static class ProjectInfo {
+        final String projectType;
+        final String targetPath;
 
-        // Determine project type for Flutter-specific checks
+        ProjectInfo(String projectType, String targetPath) {
+            this.projectType = projectType;
+            this.targetPath = targetPath;
+        }
+    }
+
+    /**
+     * Step 4: Determine project type for Flutter-specific checks.
+     */
+    private ProjectInfo detectProjectType(String schemaId) {
         String projectType = null;
         String targetPath = null;
         try {
@@ -249,90 +309,76 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                 targetPath = ws.getTargetPath();
             }
         } catch (Exception e) {
-            log.debug("Could not determine project type: {}", e.getMessage());
+            log.warn("Could not determine project type for schema {}: {}", schemaId, e.getMessage());
         }
+        return new ProjectInfo(projectType, targetPath);
+    }
 
-        // For FLUTTER projects, ensure dependencies are installed before any checks
-        if ("FLUTTER".equals(projectType) && targetPath != null) {
-            try {
-                ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + targetPath + " && flutter pub get");
-                pb.redirectErrorStream(true);
-                Process p = pb.start();
-                boolean finished = p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
-                if (finished) {
-                    log.debug("flutter pub get completed in {}: exit={}", targetPath, p.exitValue());
-                } else {
-                    p.destroyForcibly();
-                    log.warn("flutter pub get timed out in {}", targetPath);
-                }
-            } catch (Exception e) {
-                log.warn("Failed to run flutter pub get in {}: {}", targetPath, e.getMessage());
+    /**
+     * Step 5: Install Flutter dependencies if project is FLUTTER type.
+     */
+    private void runFlutterPubGet(String projectType, String targetPath) {
+        if (!"FLUTTER".equals(projectType) || targetPath == null) return;
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + targetPath + " && flutter pub get");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            boolean finished = p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+            if (finished) {
+                log.debug("flutter pub get completed in {}: exit={}", targetPath, p.exitValue());
+            } else {
+                p.destroyForcibly();
+                log.warn("flutter pub get timed out in {}", targetPath);
             }
+        } catch (Exception e) {
+            log.warn("Failed to run flutter pub get in {}", targetPath, e);
         }
+    }
 
-        while (rewriteRetries <= maxRewriteRetries) {
+    /**
+     * Inner class holding verifier loop results.
+     */
+    private static class VerifierLoopResult {
+        final String currentResult;
+        final int rewriteRetries;
+        final boolean allPassed;
+
+        VerifierLoopResult(String currentResult, int rewriteRetries, boolean allPassed) {
+            this.currentResult = currentResult;
+            this.rewriteRetries = rewriteRetries;
+            this.allPassed = allPassed;
+        }
+    }
+
+    /**
+     * Step 6: Main LLM-based verifier loop with optional auto-rewrite on FAIL.
+     */
+    private VerifierLoopResult runVerifierLoop(String model, String schemaId, Node node, String resolvedModel,
+                                                String inputContent, List<Map<String, Object>> allCheckResults,
+                                                List<String> premortemPredictions,
+                                                String projectType, String targetPath,
+                                                boolean syntaxCheck, List<String> requiredPatterns,
+                                                String testCommand, boolean stubDetection,
+                                                boolean premortemEnabled, boolean rewriteOnFail,
+                                                int maxRewriteRetries) {
+        int rewriteRetries = 0;
+        String currentResult = "";
+        String currentContent = inputContent;
+        boolean allPassed = false;
+
+        while (rewriteRetries <= maxRewriteRetries && !allPassed) {
             // Build verification prompt for this iteration
-            StringBuilder verificationPrompt = new StringBuilder();
-            String checkTypes = stubDetection ? " на ошибки и наличие заглушек (stubs)" : " на ошибки";
-            verificationPrompt.append("Ты — верификатор кода. Проверь сгенерированный файл").append(checkTypes).append(".\\n\\n");
-            verificationPrompt.append("Инструкции:\\n");
-            verificationPrompt.append("1. Сначала прочитай содержимое файла через file_read\\n");
-            if (syntaxCheck) {
-                if ("FLUTTER".equals(projectType)) {
-                    verificationPrompt.append("2. Установи зависимости (bash 'flutter pub get'), затем запусти синтаксическую проверку (bash 'dart analyze <filepath>')\\n");
-                } else {
-                    verificationPrompt.append("2. Запусти синтаксическую проверку: bash 'python3 -m py_compile <filepath>'\\n");
-                }
-            }
-            if (stubDetection) {
-                verificationPrompt.append("3. Проверь файл на наличие заглушек (stubs):\\n");
-                verificationPrompt.append("   - Посчитай строки реального кода (без комментариев, пустых строк и import'ов)\\n");
-                verificationPrompt.append("   - Если строк кода < 15 для .dart/.py/.java/.ts/.js файла — это заглушка\\n");
-                verificationPrompt.append("   - Найди '// TODO', '// stub', '// placeholder', '// FIXME' — это заглушки\\n");
-                verificationPrompt.append("   - Найди пустые тела классов 'class Foo {}' или функций 'void foo() {}'\\n");
-                verificationPrompt.append("   - Найди 'return null;' в методах, которые должны возвращать данные\\n");
-                verificationPrompt.append("   - Найди 'throw UnimplementedError()' или 'throw UnsupportedOperationException'\\n");
-            }
-            if (!requiredPatterns.isEmpty()) {
-                verificationPrompt.append("4. Проверь наличие обязательных паттернов через bash grep:\\n");
-                for (String pattern : requiredPatterns) {
-                    verificationPrompt.append("   - \\\"").append(pattern).append("\\\"\\n");
-                }
-            }
-            if (testCommand != null && !testCommand.isBlank()) {
-                verificationPrompt.append("5. Запусти тестовую команду: bash '").append(testCommand).append("'\\n");
-            } else if ("FLUTTER".equals(projectType)) {
-                verificationPrompt.append("5. Если есть тестовые файлы (*.dart в test/ или *_test.dart), запусти: bash 'flutter test'\\n");
-            }
-            if (premortemEnabled && !premortemPredictions.isEmpty()) {
-                verificationPrompt.append("6. Проверь, какие из предсказанных сценариев отказа подтвердились:\\n");
-                for (String pred : premortemPredictions) {
-                    verificationPrompt.append("   - \\\"").append(pred).append("\\\"\\n");
-                }
-            }
-            verificationPrompt.append("\\nФормат ответа (строгий JSON, без markdown):\\n");
-            verificationPrompt.append("{\\n");
-            verificationPrompt.append("  \\\"status\\\": \\\"PASS\\\" или \\\"FAIL\\\",\\n");
-            verificationPrompt.append("  \\\"checks\\\": [\\n");
-            verificationPrompt.append("    {\\\"name\\\": \\\"syntax\\\", \\\"passed\\\": true/false},\\n");
-            verificationPrompt.append("    {\\\"name\\\": \\\"required_patterns\\\", \\\"passed\\\": true/false, \\\"found\\\": [...], \\\"missing\\\": [...]},\\n");
-            verificationPrompt.append("    {\\\"name\\\": \\\"test_command\\\", \\\"passed\\\": true/false, \\\"error\\\": \\\"...\\\"}\\n");
-            verificationPrompt.append("  ],\\n");
-            verificationPrompt.append("  \\\"summary\\\": \\\"Описание результата\\\"\\n");
-            verificationPrompt.append("}\\n");
-            verificationPrompt.append("\\nСодержимое файла для проверки:\\n").append(currentContent);
-
-            if (rewriteRetries > 0) {
-                verificationPrompt.append("\\n\\n=== Rewrite attempt ").append(rewriteRetries)
-                        .append(" of ").append(maxRewriteRetries).append(" ===");
-            }
+            String verificationPrompt = buildVerificationPrompt(currentContent, rewriteRetries, maxRewriteRetries,
+                    stubDetection, syntaxCheck, projectType, requiredPatterns, testCommand,
+                    premortemEnabled, premortemPredictions);
 
             // Build a temporary NodeData with verifier-specific settings
             Node.NodeData verifierData = node.getData() != null ? node.getData() : new Node.NodeData();
             verifierData.setAgentType("verifier");
             verifierData.setEnabledTools(List.of("file_read", "bash", "grep"));
             verifierData.setMaxToolCalls(10);
-            verifierData.setUserPrompt(verificationPrompt.toString());
+            verifierData.setUserPrompt(verificationPrompt);
             verifierData.setSystemPrompt("Ты — верификатор. Проверяй сгенерированный код и возвращай структурированный JSON с результатами проверок.");
             node.setData(verifierData);
             node.setType("agent"); // Temporarily treat as agent for tool execution
@@ -344,57 +390,20 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             node.setType("verifier");
 
             // Parse result
-            boolean allPassed = false;
-            StringBuilder errorsBuilder = new StringBuilder();
+            String errors = parseVerifierResult(currentResult, rewriteRetries, allCheckResults);
+            boolean iterationPassed = errors == null;
 
-            if (currentResult != null && !currentResult.isBlank()) {
-                try {
-                    String jsonStr = currentResult.trim();
-                    int jsonStart = jsonStr.indexOf('{');
-                    int jsonEnd = jsonStr.lastIndexOf('}');
-                    if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                        jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
-                    }
-
-                    ObjectMapper mapper = new ObjectMapper();
-                    JsonNode root = mapper.readTree(jsonStr);
-                    String status = root.has("status") ? root.get("status").asText() : "PASS";
-                    String summary = root.has("summary") ? root.get("summary").asText() : "";
-
-                    // Store check results
-                    if (root.has("checks")) {
-                        for (JsonNode check : root.get("checks")) {
-                            Map<String, Object> checkMap = new HashMap<>();
-                            checkMap.put("name", check.has("name") ? check.get("name").asText() : "unknown");
-                            checkMap.put("passed", check.has("passed") ? check.get("passed").asBoolean() : false);
-                            checkMap.put("iteration", rewriteRetries);
-                            allCheckResults.add(checkMap);
-
-                            if (!check.has("passed") || !check.get("passed").asBoolean()) {
-                                String errMsg = check.has("name") ? check.get("name").asText() + " failed" : "check failed";
-                                if (check.has("error")) {
-                                    errMsg += ": " + check.get("error").asText();
-                                }
-                                errorsBuilder.append(errMsg).append("\\n");
-                            }
-                        }
-                    }
-
-                    if ("PASS".equals(status)) {
-                        allPassed = true;
-                        if (webSocketHandler != null) {
-                            webSocketHandler.sendLog(schemaId, "success",
-                                    "Верификация PASS: " + summary + (rewriteRetries > 0 ? " (after " + rewriteRetries + " rewrite(s))" : ""), node.getId());
-                        }
-                        break;
-                    }
-                } catch (Exception e) {
-                    log.warn("Не удалось распарсить результат верификации: {}", e.getMessage());
+            if (iterationPassed) {
+                allPassed = true;
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "success",
+                            "Верификация PASS" + (rewriteRetries > 0 ? " (after " + rewriteRetries + " rewrite(s))" : ""), node.getId());
                 }
+                break;
             }
 
             // If FAIL and rewriteOnFail is enabled, try to fix
-            if (!allPassed && rewriteOnFail && rewriteRetries < maxRewriteRetries) {
+            if (rewriteOnFail && rewriteRetries < maxRewriteRetries) {
                 rewriteRetries++;
                 if (webSocketHandler != null) {
                     webSocketHandler.sendLog(schemaId, "warning",
@@ -403,52 +412,184 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                             30 + (rewriteRetries * 20), "Rewrite attempt " + rewriteRetries);
                 }
 
-                // Call LLM to fix the code
-                String fixPrompt = "The following code has issues that need to be fixed.\\n\\n"
-                        + "Original code:\\n" + currentContent + "\\n\\n"
-                        + "Errors found:\\n" + errorsBuilder.toString() + "\\n\\n"
-                        + "Fix the issues and return ONLY the corrected code. Do NOT include any explanations, markdown fences, or extra text.";
-
-                LlmResponse fixedResp = llmService.chat(model, null, fixPrompt, null);
-                String fixedCode = fixedResp.text();
-                if (fixedResp.reasoning() != null) {
-                    reasoningCapture.capture(node.getId(), fixedResp.reasoning());
-                }
-                if (fixedCode != null && !fixedCode.isBlank()) {
-                    // Clean up the response (remove markdown fences if present)
-                    String cleaned = fixedCode.trim();
-                    if (cleaned.startsWith("```")) {
-                        cleaned = cleaned.replaceFirst("^```\\\\w*\\\\n?", "").replaceFirst("\\\\n?```$", "").trim();
-                    }
-                    currentContent = cleaned;
-
-                    // Write the fixed code back (if there's a file path in the registry)
-                    String prefix = schemaId + ":";
-                    for (Map.Entry<String, String> entry : stateManager.getOutputFileRegistry().entrySet()) {
-                        if (entry.getKey().startsWith(prefix) && entry.getKey().endsWith(":" + node.getId())) {
-                            try {
-                                Files.writeString(Path.of(entry.getValue()), cleaned);
-                                if (webSocketHandler != null) {
-                                    webSocketHandler.sendLog(schemaId, "info",
-                                            "Fixed code written to: " + entry.getValue(), node.getId());
-                                }
-                            } catch (Exception e) {
-                                log.warn("Failed to write fixed code: {}", e.getMessage());
-                            }
-                        }
-                    }
-                }
-            } else if (!allPassed) {
+                currentContent = runRewriteFix(model, schemaId, node, currentContent, errors);
+            } else {
                 break;
             }
         }
 
+        return new VerifierLoopResult(currentResult, rewriteRetries, allPassed);
+    }
+
+    /**
+     * Build the verification prompt for a given iteration.
+     */
+    private String buildVerificationPrompt(String currentContent, int rewriteRetries, int maxRewriteRetries,
+                                            boolean stubDetection, boolean syntaxCheck, String projectType,
+                                            List<String> requiredPatterns, String testCommand,
+                                            boolean premortemEnabled, List<String> premortemPredictions) {
+        StringBuilder prompt = new StringBuilder();
+        String checkTypes = stubDetection ? " на ошибки и наличие заглушек (stubs)" : " на ошибки";
+        prompt.append("Ты — верификатор кода. Проверь сгенерированный файл").append(checkTypes).append(".\\n\\n");
+        prompt.append("Инструкции:\\n");
+        prompt.append("1. Сначала прочитай содержимое файла через file_read\\n");
+        if (syntaxCheck) {
+            if ("FLUTTER".equals(projectType)) {
+                prompt.append("2. Установи зависимости (bash 'flutter pub get'), затем запусти синтаксическую проверку (bash 'dart analyze <filepath>')\\n");
+            } else {
+                prompt.append("2. Запусти синтаксическую проверку: bash 'python3 -m py_compile <filepath>'\\n");
+            }
+        }
+        if (stubDetection) {
+            prompt.append("3. Проверь файл на наличие заглушек (stubs):\\n");
+            prompt.append("   - Посчитай строки реального кода (без комментариев, пустых строк и import'ов)\\n");
+            prompt.append("   - Если строк кода < 15 для .dart/.py/.java/.ts/.js файла — это заглушка\\n");
+            prompt.append("   - Найди '// TODO', '// stub', '// placeholder', '// FIXME' — это заглушки\\n");
+            prompt.append("   - Найди пустые тела классов 'class Foo {}' или функций 'void foo() {}'\\n");
+            prompt.append("   - Найди 'return null;' в методах, которые должны возвращать данные\\n");
+            prompt.append("   - Найди 'throw UnimplementedError()' или 'throw UnsupportedOperationException'\\n");
+        }
+        if (!requiredPatterns.isEmpty()) {
+            prompt.append("4. Проверь наличие обязательных паттернов через bash grep:\\n");
+            for (String pattern : requiredPatterns) {
+                prompt.append("   - \\\"").append(pattern).append("\\\"\\n");
+            }
+        }
+        if (testCommand != null && !testCommand.isBlank()) {
+            prompt.append("5. Запусти тестовую команду: bash '").append(testCommand).append("'\\n");
+        } else if ("FLUTTER".equals(projectType)) {
+            prompt.append("5. Если есть тестовые файлы (*.dart в test/ или *_test.dart), запусти: bash 'flutter test'\\n");
+        }
+        if (premortemEnabled && !premortemPredictions.isEmpty()) {
+            prompt.append("6. Проверь, какие из предсказанных сценариев отказа подтвердились:\\n");
+            for (String pred : premortemPredictions) {
+                prompt.append("   - \\\"").append(pred).append("\\\"\\n");
+            }
+        }
+        prompt.append("\\nФормат ответа (строгий JSON, без markdown):\\n");
+        prompt.append("{\\n");
+        prompt.append("  \\\"status\\\": \\\"PASS\\\" или \\\"FAIL\\\",\\n");
+        prompt.append("  \\\"checks\\\": [\\n");
+        prompt.append("    {\\\"name\\\": \\\"syntax\\\", \\\"passed\\\": true/false},\\n");
+        prompt.append("    {\\\"name\\\": \\\"required_patterns\\\", \\\"passed\\\": true/false, \\\"found\\\": [...], \\\"missing\\\": [...]},\\n");
+        prompt.append("    {\\\"name\\\": \\\"test_command\\\", \\\"passed\\\": true/false, \\\"error\\\": \\\"...\\\"}\\n");
+        prompt.append("  ],\\n");
+        prompt.append("  \\\"summary\\\": \\\"Описание результата\\\"\\n");
+        prompt.append("}\\n");
+        prompt.append("\\nСодержимое файла для проверки:\\n").append(currentContent);
+
+        if (rewriteRetries > 0) {
+            prompt.append("\\n\\n=== Rewrite attempt ").append(rewriteRetries)
+                    .append(" of ").append(maxRewriteRetries).append(" ===");
+        }
+        return prompt.toString();
+    }
+
+    /**
+     * Parse the verifier agent's JSON result. Returns an error string if checks failed, or null if all passed.
+     * Appends check results to allCheckResults.
+     */
+    private String parseVerifierResult(String currentResult, int rewriteRetries,
+                                        List<Map<String, Object>> allCheckResults) {
+        if (currentResult == null || currentResult.isBlank()) return "empty result";
+
+        try {
+            String jsonStr = currentResult.trim();
+            int jsonStart = jsonStr.indexOf('{');
+            int jsonEnd = jsonStr.lastIndexOf('}');
+            if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonStr);
+            String status = root.has("status") ? root.get("status").asText() : "PASS";
+
+            StringBuilder errorsBuilder = new StringBuilder();
+
+            if (root.has("checks")) {
+                for (JsonNode check : root.get("checks")) {
+                    Map<String, Object> checkMap = new HashMap<>();
+                    checkMap.put("name", check.has("name") ? check.get("name").asText() : "unknown");
+                    checkMap.put("passed", check.has("passed") ? check.get("passed").asBoolean() : false);
+                    checkMap.put("iteration", rewriteRetries);
+                    allCheckResults.add(checkMap);
+
+                    if (!check.has("passed") || !check.get("passed").asBoolean()) {
+                        String errMsg = check.has("name") ? check.get("name").asText() + " failed" : "check failed";
+                        if (check.has("error")) {
+                            errMsg += ": " + check.get("error").asText();
+                        }
+                        errorsBuilder.append(errMsg).append("\\n");
+                    }
+                }
+            }
+
+            if ("PASS".equals(status)) {
+                return null; // all passed
+            }
+            return errorsBuilder.length() > 0 ? errorsBuilder.toString() : "verification FAIL";
+        } catch (Exception e) {
+            log.warn("Не удалось распарсить результат верификации: {}", e.getMessage());
+            return "parse error: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Call LLM to fix code based on verification errors, then write the fix back.
+     */
+    private String runRewriteFix(String model, String schemaId, Node node, String currentContent, String errors) {
+        String fixPrompt = "The following code has issues that need to be fixed.\\n\\n"
+                + "Original code:\\n" + currentContent + "\\n\\n"
+                + "Errors found:\\n" + errors + "\\n\\n"
+                + "Fix the issues and return ONLY the corrected code. Do NOT include any explanations, markdown fences, or extra text.";
+
+        LlmResponse fixedResp = llmService.chat(model, null, fixPrompt, null);
+        String fixedCode = fixedResp.text();
+        if (fixedResp.reasoning() != null) {
+            reasoningCapture.capture(node.getId(), fixedResp.reasoning());
+        }
+        if (fixedCode == null || fixedCode.isBlank()) return currentContent;
+
+        // Clean up the response (remove markdown fences if present)
+        String cleaned = fixedCode.trim();
+        if (cleaned.startsWith("```")) {
+            cleaned = cleaned.replaceFirst("^```\\\\w*\\\\n?", "").replaceFirst("\\\\n?```$", "").trim();
+        }
+
+        // Write the fixed code back (if there's a file path in the registry)
+        String prefix = schemaId + ":";
+        for (Map.Entry<String, String> entry : stateManager.getOutputFileRegistry().entrySet()) {
+            if (entry.getKey().startsWith(prefix) && entry.getKey().endsWith(":" + node.getId())) {
+                try {
+                    Files.writeString(Path.of(entry.getValue()), cleaned);
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "info",
+                                "Fixed code written to: " + entry.getValue(), node.getId());
+                    }
+                } catch (Exception e) {
+                    log.warn("Failed to write fixed code: {}", e.getMessage());
+                }
+            }
+        }
+        return cleaned;
+    }
+
+    /**
+     * Step 7: Build structured JSON result with all check data and handle PASS/FAIL status.
+     */
+    private String buildVerifierResult(VerifierLoopResult loopResult, List<Map<String, Object>> allCheckResults,
+                                        List<String> premortemPredictions,
+                                        List<Map<String, Object>> coverageCheckResults,
+                                        boolean premortemEnabled, int maxRewriteRetries,
+                                        String schemaId, Node node) {
         // Build structured result with premortem predictions and rewrite count
         Map<String, Object> structuredResult = new HashMap<>();
-        structuredResult.put("status", allCheckResults.isEmpty() || allCheckResults.stream().allMatch(c -> Boolean.TRUE.equals(c.get("passed"))) ? "PASS" : "FAIL");
+        boolean finalPass = allCheckResults.isEmpty() || allCheckResults.stream().allMatch(c -> Boolean.TRUE.equals(c.get("passed")));
+        structuredResult.put("status", finalPass ? "PASS" : "FAIL");
         structuredResult.put("premortemPredictions", premortemPredictions);
         structuredResult.put("checkResults", allCheckResults);
-        structuredResult.put("rewriteRetries", rewriteRetries);
+        structuredResult.put("rewriteRetries", loopResult.rewriteRetries);
         structuredResult.put("premortemEnabled", premortemEnabled);
         if (!coverageCheckResults.isEmpty()) {
             structuredResult.put("coverage", coverageCheckResults);
@@ -459,27 +600,26 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         try {
             resultStr = mapper.writeValueAsString(structuredResult);
         } catch (Exception e) {
-            resultStr = currentResult != null ? currentResult : "{\"status\":\"FAIL\",\"summary\":\"Verification error\"}";
+            resultStr = loopResult.currentResult != null ? loopResult.currentResult : "{\"status\":\"FAIL\",\"summary\":\"Verification error\"}";
         }
 
         // If all passed or max retries hit, store the structured result
-        boolean finalPass = allCheckResults.stream().allMatch(c -> Boolean.TRUE.equals(c.get("passed")));
-        if (!finalPass && rewriteRetries >= maxRewriteRetries) {
+        if (!finalPass && loopResult.rewriteRetries >= maxRewriteRetries) {
             node.setStatus(Node.NodeStatus.FAILED);
             if (webSocketHandler != null) {
                 webSocketHandler.sendLog(schemaId, "error",
-                        "Верификация FAIL after " + rewriteRetries + " rewrite(s)", node.getId());
+                        "Верификация FAIL after " + loopResult.rewriteRetries + " rewrite(s)", node.getId());
                 webSocketHandler.sendProgress(schemaId, node.getId(), "FAILED", 100,
-                        "Failed after " + rewriteRetries + " rewrite(s)");
+                        "Failed after " + loopResult.rewriteRetries + " rewrite(s)");
             }
             stateManager.getNodeResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                     .put(node.getId(), resultStr);
-            throw new RuntimeException("Verifier failed after " + (rewriteRetries + 1) + " attempts: " + resultStr);
+            throw new RuntimeException("Verifier failed after " + (loopResult.rewriteRetries + 1) + " attempts: " + resultStr);
         }
 
         if (webSocketHandler != null) {
             webSocketHandler.sendLog(schemaId, "success",
-                    "Верификация PASS" + (rewriteRetries > 0 ? " after " + rewriteRetries + " rewrite(s)" : ""), node.getId());
+                    "Верификация PASS" + (loopResult.rewriteRetries > 0 ? " after " + loopResult.rewriteRetries + " rewrite(s)" : ""), node.getId());
         }
 
         return resultStr;

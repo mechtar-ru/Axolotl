@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { WorkflowSchema, FlowNode, FlowEdge } from '../types';
-import { schemaApi, settingsApi } from '../services/api';
+import { schemaApi, settingsApi, api } from '../services/api';
 import type { SchemaValidationResult } from '../services/api';
 import { isAxiosError } from 'axios';
 import { useToast } from '../composables/useToast';
@@ -177,6 +177,21 @@ export const useCanvasStore = defineStore('canvas', () => {
     }
   }
 
+  async function refreshCurrentSchema(schemaId: string) {
+    try {
+      const resp = await api.get(`/schemas/${schemaId}`)
+      if (resp.data) {
+        currentSchema.value = resp.data
+        const idx = schemas.value.findIndex(s => s.id === schemaId)
+        if (idx !== -1) {
+          schemas.value[idx] = resp.data
+        }
+      }
+    } catch {
+      console.warn('[canvasStore] Failed to refresh schema ' + schemaId);
+    }
+  }
+
   function updateCurrentSchema(schema: WorkflowSchema) {
     currentSchema.value = schema;
   }
@@ -303,6 +318,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     executeSchema,
     cancelExecution,
     updateCurrentSchema,
+    refreshCurrentSchema,
     // Lifecycle
     initialize,
     dispose,

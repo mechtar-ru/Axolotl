@@ -36,6 +36,7 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
     private static final Logger log = LoggerFactory.getLogger(SchemaBuilderNodeStrategy.class);
 
     private final ExecutionUtilityService utilityService;
+    private final NodeFileWriter nodeFileWriter;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final Neo4jSchemaRepository schemaRepository;
@@ -92,12 +93,14 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
             """;
 
     public SchemaBuilderNodeStrategy(ExecutionUtilityService utilityService,
-                                     LlmService llmService,
-                                     ExecutionWebSocketHandler webSocketHandler,
-                                     Neo4jSchemaRepository schemaRepository,
-                                     PlanService planService,
-                                     ReasoningCapture reasoningCapture) {
+                                      NodeFileWriter nodeFileWriter,
+                                      LlmService llmService,
+                                      ExecutionWebSocketHandler webSocketHandler,
+                                      Neo4jSchemaRepository schemaRepository,
+                                      PlanService planService,
+                                      ReasoningCapture reasoningCapture) {
         this.utilityService = utilityService;
+        this.nodeFileWriter = nodeFileWriter;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.schemaRepository = schemaRepository;
@@ -312,7 +315,7 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
                     mdContent += "- **" + n.getName() + "** (" + n.getType() + ")\n";
                 }
                 String mdPath = "plan_" + saved.getId().substring(0, 8) + ".md";
-                utilityService.writeOutput("file", mdPath, "markdown", mdContent);
+                nodeFileWriter.writeOutput("file", mdPath, "markdown", mdContent);
             } catch (Exception e) {
                 log.warn("Failed to write plan .md: {}", e.getMessage());
             }

@@ -27,6 +27,7 @@ public class NodeExecutor {
     private static final Logger log = LoggerFactory.getLogger(NodeExecutor.class);
 
     private final ExecutionUtilityService utilityService;
+    private final OutputReportingService outputReportingService;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final MemPalaceClient memPalaceClient;
@@ -48,6 +49,7 @@ public class NodeExecutor {
     private Map<String, NodeExecutionStrategy> strategyMap;
 
     public NodeExecutor(ExecutionUtilityService utilityService,
+                        OutputReportingService outputReportingService,
                         LlmService llmService,
                         ExecutionWebSocketHandler webSocketHandler,
                         MemPalaceClient memPalaceClient,
@@ -60,6 +62,7 @@ public class NodeExecutor {
                         ExecutionStateManager stateManager,
                         List<NodeExecutionStrategy> strategies) {
         this.utilityService = utilityService;
+        this.outputReportingService = outputReportingService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -202,14 +205,14 @@ public class NodeExecutor {
         return agentStrategy.analyzeAgentNode(node, schemaId);
     }
 
-    // ────────────────────────── output / command / filewrite (delegated to ExecutionUtilityService) ──────────────────────────
+    // ────────────────────────── output / command / filewrite (delegated) ──────────────────────────
 
     public String executeOutputNode(Node node, String schemaId, ExecutionMode mode) {
-        return utilityService.executeOutputNode(node, schemaId, mode);
+        return outputReportingService.executeOutputNode(node, schemaId, mode);
     }
 
     public String executeSummaryReportNode(Node node, String schemaId, Map<String, Object> config, String input) {
-        return utilityService.executeSummaryReportNode(node, schemaId, config, input);
+        return outputReportingService.executeSummaryReportNode(node, schemaId, config, input);
     }
 
     public String executeCommandNode(Node node, String schemaId) {
@@ -249,7 +252,7 @@ public class NodeExecutor {
     boolean evaluateConditionPublic(String expr, java.util.Map<String, Object> ctx) { return utilityService.evaluateCondition(expr, ctx); }
     String interpolateVariablesPublic(String text, WorkflowSchema schema, java.util.Map<String, Object> preds) { return utilityService.interpolateVariables(text, schema, preds); }
     String buildContextBlockPublic(java.util.Map<String, Object> preds) { return utilityService.buildContextBlock(preds); }
-    String writeOutputPublic(String outputType, String filePath, String fileFormat, String content) { return utilityService.writeOutput(outputType, filePath, fileFormat, content); }
+    String writeOutputPublic(String outputType, String filePath, String fileFormat, String content) { return outputReportingService.writeOutput(outputType, filePath, fileFormat, content); }
     boolean sleepWithCancelPublic(long millis, java.util.concurrent.atomic.AtomicBoolean cancelFlag) { return utilityService.sleepWithCancel(millis, cancelFlag); }
-    String executeOutputNodePublic(Node node, String schemaId, ExecutionMode mode) { return utilityService.executeOutputNode(node, schemaId, mode); }
+    String executeOutputNodePublic(Node node, String schemaId, ExecutionMode mode) { return outputReportingService.executeOutputNode(node, schemaId, mode); }
 }

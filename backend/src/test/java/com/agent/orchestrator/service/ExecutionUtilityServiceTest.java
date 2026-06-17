@@ -233,19 +233,7 @@ class ExecutionUtilityServiceTest {
         assertTrue(context.contains("[node2]"));
     }
 
-    // ── writeOutput ──
-
-    @Test
-    void writeOutput_returnsContent_whenNoFileType() {
-        String result = utilityService.writeOutput("log", null, null, "test content");
-        assertEquals("test content", result);
-    }
-
-    @Test
-    void writeOutput_returnsNoData_whenContentBlank() {
-        String result = utilityService.writeOutput("file", "/tmp/test.txt", "text", "");
-        assertEquals("Нет данных для вывода", result);
-    }
+    // ── handleSourceNode — file sourceType ──
 
     // ── handleSourceNode - file sourceType ──
 

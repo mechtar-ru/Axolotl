@@ -192,20 +192,30 @@ public class PipelineStageExecutionService {
         if (schema == null) {
             throw new RuntimeException("Schema not found: " + schemaId);
         }
-
         ExecutionRun failedRun = executionRepository.getLatestRunBySchemaAndStatus(schemaId, "failed");
         if (failedRun == null) {
             throw new RuntimeException("No failed execution run found for schema " + schemaId);
         }
+        executeRetryPipeline(schema, failedRun, schemaId);
+    }
 
-        // Derive stages from pipeline or canvas nodes
-        List<Stage> stages;
-        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null
-                && !schema.getPipeline().getStages().isEmpty()) {
-            stages = schema.getPipeline().getStages();
-        } else {
-            stages = PipelineFactory.createStagesFromNodes(schema);
+    public void retryPipeline(String schemaId, String runId) {
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        if (schema == null) {
+            throw new RuntimeException("Schema not found: " + schemaId);
         }
+        ExecutionRun failedRun = executionRepository.getRunById(runId);
+        if (failedRun == null) {
+            throw new RuntimeException("Execution run not found: " + runId);
+        }
+        if (!"failed".equals(failedRun.getStatus())) {
+            throw new RuntimeException("Run " + runId + " is not in failed status");
+        }
+        executeRetryPipeline(schema, failedRun, schemaId);
+    }
+
+    private void executeRetryPipeline(WorkflowSchema schema, ExecutionRun failedRun, String schemaId) {
+        List<Stage> stages = deriveStages(schema);
         if (stages.isEmpty()) {
             throw new RuntimeException("No stages to retry (no pipeline or canvas nodes found)");
         }
@@ -269,7 +279,7 @@ public class PipelineStageExecutionService {
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         statusManager.registerCancelAndResults(schemaId, cancelFlag);
 
-        // Re-run stages from first failed onwards — same logic as inner loop of runPipelineStages
+        // Re-run stages from first failed onwards
         Map<String, Node> nodeMap = new HashMap<>();
         if (schema.getNodes() != null) {
             for (Node n : schema.getNodes()) nodeMap.put(n.getId(), cloneNode(n));
@@ -293,8 +303,6 @@ public class PipelineStageExecutionService {
             if (i >= firstFailedIndex) {
                 Stage s = stages.get(i);
                 Stage copy = copyStage(s);
-                // Preserve ALL original dependencies regardless of status.
-                // The topological sorter will still respect the order.
                 List<String> filtered = new ArrayList<>();
                 if (s.getDependencies() != null) {
                     filtered.addAll(s.getDependencies());
@@ -330,177 +338,6 @@ public class PipelineStageExecutionService {
                 retryStageIndex++;
                 if (result == PipelineStageRunner.StageRunResult.FAILED) {
                     executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
-                    statusManager.unregisterPipeline(schemaId);
-                    return;
-                }
-                // PAUSED with skipApprovalCheck=true: the stage was force-completed.
-                // COMPLETED: normal success. Either way the stage is done.
-            }
-            completedRetry += level.size();
-        }
-
-        if (cancelFlag.get()) {
-            executionRepository.updateRunCompleted(runId, "cancelled", 0, 0.0);
-        } else {
-            executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
-            if (webSocketHandler != null) {
-                int totalCompleted = completedBefore.size() + completedRetry;
-                webSocketHandler.sendLog(schema.getId(), "success",
-                        "Pipeline retry completed: " + totalCompleted + "/" + stages.size()
-                                + " stages", null);
-                webSocketHandler.sendComplete(schema.getId(), 0, totalCompleted);
-                webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_completed",
-                        Map.of("status", "completed", "stagesCompleted", totalCompleted));
-            }
-        }
-
-        statusManager.unregisterPipeline(schemaId);
-    }
-
-    public void retryPipeline(String schemaId, String runId) {
-        WorkflowSchema schema = schemaRepository.findById(schemaId);
-        if (schema == null) {
-            throw new RuntimeException("Schema not found: " + schemaId);
-        }
-
-        ExecutionRun failedRun = executionRepository.getRunById(runId);
-        if (failedRun == null) {
-            throw new RuntimeException("Execution run not found: " + runId);
-        }
-        if (!"failed".equals(failedRun.getStatus())) {
-            throw new RuntimeException("Run " + runId + " is not in failed status");
-        }
-
-        // Derive stages from pipeline or canvas nodes
-        List<Stage> stages;
-        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null
-                && !schema.getPipeline().getStages().isEmpty()) {
-            stages = schema.getPipeline().getStages();
-        } else {
-            stages = PipelineFactory.createStagesFromNodes(schema);
-        }
-        if (stages.isEmpty()) {
-            throw new RuntimeException("No stages to retry (no pipeline or canvas nodes found)");
-        }
-
-        Map<String, String> persistedStatus = failedRun.getStageStatus();
-        int firstFailedIndex = -1;
-        for (int i = 0; i < stages.size(); i++) {
-            String sid = stages.get(i).getId();
-            String st = persistedStatus != null ? persistedStatus.get(sid) : null;
-            if ("failed".equals(st)) {
-                firstFailedIndex = i;
-                break;
-            }
-        }
-        if (firstFailedIndex == -1) {
-            throw new RuntimeException("No failed stages found in run " + failedRun.getId()
-                    + " — cannot retry");
-        }
-
-        // Create child run
-        String newRunId = UUID.randomUUID().toString();
-        ExecutionRun run = new ExecutionRun();
-        run.setId(newRunId);
-        run.setSchemaId(schemaId);
-        run.setStatus("running");
-        run.setMode(failedRun.getMode() != null ? failedRun.getMode() : "PIPELINE");
-        run.setResumesFrom(failedRun.getId());
-        run.setStartedAt(Instant.now());
-        run.setUpdatedAt(Instant.now());
-
-        // Copy stage status from failed run, resetting failed + downstream to pending
-        Map<String, String> newStatus = new HashMap<>();
-        for (Stage s : stages) {
-            String sid = s.getId();
-            String oldSt = persistedStatus != null ? persistedStatus.get(sid) : null;
-            boolean isFailedOrAfter = false;
-            for (int j = firstFailedIndex; j < stages.size(); j++) {
-                if (stages.get(j).getId().equals(sid)) {
-                    isFailedOrAfter = true;
-                    break;
-                }
-            }
-            if (isFailedOrAfter) {
-                newStatus.put(sid, "pending");
-            } else {
-                newStatus.put(sid, oldSt != null ? oldSt : "skipped");
-            }
-        }
-        run.setStageStatus(newStatus);
-        executionRepository.createRun(run);
-
-        // Notify
-        if (webSocketHandler != null) {
-            webSocketHandler.sendLog(schema.getId(), "info", "Retrying pipeline from stage "
-                    + stages.get(firstFailedIndex).getName(), null);
-            webSocketHandler.sendProgress(schema.getId(), "system", "PIPELINE_RETRY",
-                    (int) ((double) firstFailedIndex / stages.size() * 100),
-                    "Retrying from stage " + (firstFailedIndex + 1) + "/" + stages.size());
-        }
-
-        AtomicBoolean cancelFlag = new AtomicBoolean(false);
-        statusManager.registerCancelAndResults(schemaId, cancelFlag);
-
-        // Re-run stages from first failed onwards
-        Map<String, Node> nodeMap = new HashMap<>();
-        if (schema.getNodes() != null) {
-            for (Node n : schema.getNodes()) nodeMap.put(n.getId(), cloneNode(n));
-        }
-
-        // Track stages that were paused before the failure
-        Set<String> pausedBeforeFailure = new HashSet<>();
-        for (int i = 0; i < stages.size(); i++) {
-            if (i >= firstFailedIndex) break;
-            String sid = stages.get(i).getId();
-            String st = persistedStatus != null ? persistedStatus.get(sid) : null;
-            if ("paused".equals(st)) {
-                pausedBeforeFailure.add(sid);
-            }
-        }
-
-        List<Stage> retryStages = new ArrayList<>();
-        Set<String> completedBefore = new HashSet<>();
-        for (int i = 0; i < stages.size(); i++) {
-            if (i >= firstFailedIndex) {
-                Stage s = stages.get(i);
-                Stage copy = copyStage(s);
-                // Preserve ALL original dependencies regardless of status.
-                // The topological sorter will still respect the order.
-                List<String> filtered = new ArrayList<>();
-                if (s.getDependencies() != null) {
-                    filtered.addAll(s.getDependencies());
-                }
-                copy.setDependencies(filtered);
-                retryStages.add(copy);
-            } else {
-                completedBefore.add(stages.get(i).getId());
-            }
-        }
-
-        if (failedRun.getStageOutputs() != null) {
-            for (String completedId : completedBefore) {
-                String output = failedRun.getStageOutputs().get(completedId);
-                if (output != null) {
-                    statusManager.putStageResult(schemaId, completedId, output);
-                }
-            }
-        }
-
-        List<List<Stage>> retryLevels = topologicalSortStages(retryStages);
-        int completedRetry = 0;
-        int retryStageIndex = firstFailedIndex;
-        for (List<Stage> level : retryLevels) {
-            if (cancelFlag.get()) break;
-            for (Stage stage : level) {
-                if (cancelFlag.get()) break;
-
-                boolean retrySkipApproval = !pausedBeforeFailure.contains(stage.getId());
-                PipelineStageRunner.StageRunResult result = stageRunner.executeStage(stage, schema, newRunId, nodeMap,
-                        cancelFlag, schemaId, retryStageIndex, retrySkipApproval);
-                retryStageIndex++;
-                if (result == PipelineStageRunner.StageRunResult.FAILED) {
-                    executionRepository.updateRunCompleted(newRunId, "failed", 0, 0.0);
                     stateManager.removeSchema(schemaId);
                     statusManager.unregisterPipeline(schemaId);
                     return;
@@ -510,9 +347,9 @@ public class PipelineStageExecutionService {
         }
 
         if (cancelFlag.get()) {
-            executionRepository.updateRunCompleted(newRunId, "cancelled", 0, 0.0);
+            executionRepository.updateRunCompleted(runId, "cancelled", 0, 0.0);
         } else {
-            executionRepository.updateRunCompleted(newRunId, "completed", 0, 0.0);
+            executionRepository.updateRunCompleted(runId, "completed", 0, 0.0);
             if (webSocketHandler != null) {
                 int totalCompleted = completedBefore.size() + completedRetry;
                 webSocketHandler.sendLog(schema.getId(), "success",
@@ -579,68 +416,18 @@ public class PipelineStageExecutionService {
             }
         }
 
-        // Derive stages from pipeline or canvas nodes
-        List<Stage> stages;
-        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null
-                && !schema.getPipeline().getStages().isEmpty()) {
-            stages = schema.getPipeline().getStages();
-        } else {
-            stages = PipelineFactory.createStagesFromNodes(schema);
-        }
+        List<Stage> stages = deriveStages(schema);
         if (stages.isEmpty() || resumeIndex >= stages.size()) {
             log.warn("No stages to resume for schema {}", schemaId);
             return;
         }
 
-        // Set approval flag so review nodes are skipped
-        if (resumeIndex > 0) {
-            Stage previousStage = stages.get(resumeIndex - 1);
-            if ("review".equals(previousStage.getNodeType())) {
-                // Only auto-approve if the review actually completed (not paused/failed)
-                Map<String, String> stageStatus = run != null ? run.getStageStatus() : null;
-                String prevStatus = stageStatus != null ? stageStatus.get(previousStage.getId()) : null;
-                if ("completed".equals(prevStatus)) {
-                    String approvedKey = schemaId + ":" + previousStage.getId() + ":approved";
-                    stateManager.getNodeResults()
-                            .computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
-                            .put(approvedKey, "true");
-                    log.info("Set approval flag for completed review stage {}", previousStage.getId());
-                } else {
-                    log.info("Skipped auto-approval for review stage {} (status: {})",
-                            previousStage.getId(), prevStatus != null ? prevStatus : "unknown");
-                }
-            }
-        }
+        // Set approval flag so review stages completed before pause auto-approve on resume
+        setApprovalForResumedReview(resumeIndex, stages, run, schemaId);
 
         // Build remaining stages in-memory only (don't save truncated schema to Neo4j)
-        List<Stage> remainingStages = new ArrayList<>();
         Set<String> completedStageIds = new HashSet<>();
-        for (int i = 0; i < resumeIndex; i++) {
-            completedStageIds.add(stages.get(i).getId());
-        }
-        for (int i = resumeIndex; i < stages.size(); i++) {
-            Stage s = stages.get(i);
-            Stage copy = new Stage();
-            copy.setId(s.getId());
-            copy.setName(s.getName());
-            copy.setNodeType(s.getNodeType());
-            copy.setModel(s.getModel());
-            copy.setSystemPrompt(s.getSystemPrompt());
-            copy.setUserPrompt(s.getUserPrompt());
-            copy.setConfig(s.getConfig());
-            copy.setPositionX(s.getPositionX());
-            copy.setPositionY(s.getPositionY());
-            List<String> filteredDeps = new ArrayList<>();
-            if (s.getDependencies() != null) {
-                for (String dep : s.getDependencies()) {
-                    if (!completedStageIds.contains(dep)) {
-                        filteredDeps.add(dep);
-                    }
-                }
-            }
-            copy.setDependencies(filteredDeps);
-            remainingStages.add(copy);
-        }
+        List<Stage> remainingStages = buildRemainingStages(stages, resumeIndex, completedStageIds);
 
         Map<String, Node> nodeMap = new HashMap<>();
         if (schema.getNodes() != null) {
@@ -827,6 +614,69 @@ public class PipelineStageExecutionService {
             }
         }
         return genFiles;
+    }
+
+    private List<Stage> deriveStages(WorkflowSchema schema) {
+        if (schema.getPipeline() != null && schema.getPipeline().getStages() != null
+                && !schema.getPipeline().getStages().isEmpty()) {
+            return schema.getPipeline().getStages();
+        }
+        return PipelineFactory.createStagesFromNodes(schema);
+    }
+
+    private void setApprovalForResumedReview(int resumeIndex, List<Stage> stages, ExecutionRun run, String schemaId) {
+        if (resumeIndex > 0) {
+            Stage previousStage = stages.get(resumeIndex - 1);
+            if ("review".equals(previousStage.getNodeType())) {
+                Map<String, String> stageStatus = run != null ? run.getStageStatus() : null;
+                String prevStatus = stageStatus != null ? stageStatus.get(previousStage.getId()) : null;
+                if ("completed".equals(prevStatus)) {
+                    String approvedKey = schemaId + ":" + previousStage.getId() + ":approved";
+                    stateManager.getNodeResults()
+                            .computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
+                            .put(approvedKey, "true");
+                    log.info("Set approval flag for completed review stage {}", previousStage.getId());
+                } else {
+                    log.info("Skipped auto-approval for review stage {} (status: {})",
+                            previousStage.getId(), prevStatus != null ? prevStatus : "unknown");
+                }
+            }
+        }
+    }
+
+    private List<Stage> buildRemainingStages(List<Stage> stages, int resumeIndex, Set<String> completedStageIdsOut) {
+        Set<String> completed = new HashSet<>();
+        for (int i = 0; i < resumeIndex; i++) {
+            completed.add(stages.get(i).getId());
+        }
+        if (completedStageIdsOut != null) {
+            completedStageIdsOut.addAll(completed);
+        }
+        List<Stage> remainingStages = new ArrayList<>();
+        for (int i = resumeIndex; i < stages.size(); i++) {
+            Stage s = stages.get(i);
+            Stage copy = new Stage();
+            copy.setId(s.getId());
+            copy.setName(s.getName());
+            copy.setNodeType(s.getNodeType());
+            copy.setModel(s.getModel());
+            copy.setSystemPrompt(s.getSystemPrompt());
+            copy.setUserPrompt(s.getUserPrompt());
+            copy.setConfig(s.getConfig());
+            copy.setPositionX(s.getPositionX());
+            copy.setPositionY(s.getPositionY());
+            List<String> filteredDeps = new ArrayList<>();
+            if (s.getDependencies() != null) {
+                for (String dep : s.getDependencies()) {
+                    if (!completed.contains(dep)) {
+                        filteredDeps.add(dep);
+                    }
+                }
+            }
+            copy.setDependencies(filteredDeps);
+            remainingStages.add(copy);
+        }
+        return remainingStages;
     }
 
 }

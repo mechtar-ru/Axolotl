@@ -38,6 +38,15 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
     private final ExecutionRepository executionRepository;
     private final ReasoningCapture reasoningCapture;
 
+    // ── Inner class for iteration results ──
+
+    private static class ReviewIterationResult {
+        String status = "PASS";
+        String findings = "[]";
+        String summary = "";
+        String rewrittenPlan;
+    }
+
     public ReviewNodeStrategy(ExecutionUtilityService utilityService,
                               LlmService llmService,
                               ExecutionWebSocketHandler webSocketHandler,
@@ -288,6 +297,47 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         return result;
     }
 
+    /**
+     * Run a single review iteration: call LLM → parse JSON → return status/findings/summary/rewrittenPlan.
+     * Shared between auto and hybrid modes to eliminate code duplication.
+     */
+    private ReviewIterationResult runReviewIteration(String systemPrompt, String reviewPrompt,
+                                                      String schemaId, String model, Node node,
+                                                      String originalPlanText, String currentRewrittenPlan) {
+        ReviewIterationResult result = new ReviewIterationResult();
+        String iterationPrompt = reviewPrompt.replace(originalPlanText,
+                currentRewrittenPlan != null ? currentRewrittenPlan : originalPlanText);
+        LlmResponse resp = llmService.streamingChat(model, systemPrompt, iterationPrompt, null,
+                token -> {
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendToken(schemaId, node.getId(), token);
+                    }
+                });
+        String respText = resp.text();
+        if (resp.reasoning() != null) {
+            reasoningCapture.capture(node.getId(), resp.reasoning());
+        }
+        if (respText != null && !respText.isBlank()) {
+            try {
+                String jsonStr = respText.trim();
+                int jsonStart = jsonStr.indexOf('{');
+                int jsonEnd = jsonStr.lastIndexOf('}');
+                if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                    jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+                }
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(jsonStr);
+                result.status = root.has("status") ? root.get("status").asText() : "PASS";
+                if (root.has("findings")) result.findings = root.get("findings").toString();
+                if (root.has("summary")) result.summary = root.get("summary").asText();
+                if (root.has("rewrittenPlan")) result.rewrittenPlan = root.get("rewrittenPlan").asText();
+            } catch (Exception e) {
+                log.warn("Failed to parse re-review JSON: {}", e.getMessage());
+            }
+        }
+        return result;
+    }
+
     // ── Phase 3: Result Parsing & Mode Handling ──
 
     private Map<String, Object> parseAndHandleResult(String analysisResult, String planText,
@@ -377,66 +427,36 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 return resultMap;
             }
 
-            case "auto":
+            case "auto": {
                 // Auto-rewrite up to maxAutoIterations
-                int autoIteration = 0;
+                int iteration = 0;
                 String currentPlan = planText;
-                while (autoIteration < maxAutoIterations && planWasRewritten) {
-                    autoIteration++;
+                while (iteration < maxAutoIterations && planWasRewritten) {
+                    iteration++;
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schemaId, "info",
-                                "Auto review iteration " + autoIteration + "/" + maxAutoIterations, node.getId());
+                                "Auto review iteration " + iteration + "/" + maxAutoIterations, node.getId());
                     }
 
-                    // Re-run Phase 2 with rewritten plan
-                    String reReviewPrompt = reviewPromptStr
-                            .replace(planText, rewrittenPlan != null ? rewrittenPlan : planText);
-                    LlmResponse reResp = llmService.streamingChat(model, systemPrompt, reReviewPrompt, null,
-                            token -> {
-                                if (webSocketHandler != null) {
-                                    webSocketHandler.sendToken(schemaId, node.getId(), token);
-                                }
-                            });
-                    String reResult = reResp.text();
-                    if (reResp.reasoning() != null) {
-                        reasoningCapture.capture(node.getId(), reResp.reasoning());
+                    ReviewIterationResult iterResult = runReviewIteration(
+                            systemPrompt, reviewPromptStr, schemaId, model, node,
+                            planText, rewrittenPlan);
+
+                    findingsText = iterResult.findings;
+                    summary = iterResult.summary;
+
+                    if ("PASS".equals(iterResult.status)) {
+                        // PASS before max → COMPLETED
+                        resultMap.put("status", "PASS");
+                        resultMap.put("plan", rewrittenPlan);
+                        resultMap.put("rewriteIterations", iteration);
+                        resultMap.put("finalResult", buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, iteration));
+                        return resultMap;
                     }
 
-                    // Parse re-result
-                    if (reResult != null && !reResult.isBlank()) {
-                        try {
-                            String reJsonStr = reResult.trim();
-                            int reJsonStart = reJsonStr.indexOf('{');
-                            int reJsonEnd = reJsonStr.lastIndexOf('}');
-                            if (reJsonStart >= 0 && reJsonEnd > reJsonStart) {
-                                reJsonStr = reJsonStr.substring(reJsonStart, reJsonEnd + 1);
-                            }
-                            ObjectMapper mapper = new ObjectMapper();
-                            JsonNode reRoot = mapper.readTree(reJsonStr);
-                            String reStatus = reRoot.has("status") ? reRoot.get("status").asText() : "PASS";
-                            if (reRoot.has("findings")) {
-                                findingsText = reRoot.get("findings").toString();
-                            }
-                            if (reRoot.has("summary")) {
-                                summary = reRoot.get("summary").asText();
-                            }
-
-                            if ("PASS".equals(reStatus)) {
-                                // PASS before max → COMPLETED
-                                resultMap.put("status", "PASS");
-                                resultMap.put("plan", rewrittenPlan);
-                                resultMap.put("rewriteIterations", autoIteration);
-                                resultMap.put("finalResult", buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, autoIteration));
-                                return resultMap;
-                            }
-
-                            if (reRoot.has("rewrittenPlan")) {
-                                rewrittenPlan = reRoot.get("rewrittenPlan").asText();
-                                currentPlan = rewrittenPlan;
-                            }
-                        } catch (Exception e) {
-                            log.warn("Failed to parse auto re-review: {}", e.getMessage());
-                        }
+                    if (iterResult.rewrittenPlan != null) {
+                        rewrittenPlan = iterResult.rewrittenPlan;
+                        currentPlan = rewrittenPlan;
                     }
                 }
 
@@ -447,75 +467,49 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                         webSocketHandler.sendLog(schemaId, "error",
                                 "Max auto iterations (" + maxAutoIterations + ") reached without PASS", node.getId());
                     }
-                    resultMap.put("finalResult", buildResultJson("FAILED", findingsText, "Max auto iterations (" + maxAutoIterations + ") reached without PASS", currentPlan, null, autoIteration));
+                    resultMap.put("finalResult", buildResultJson("FAILED", findingsText,
+                            "Max auto iterations (" + maxAutoIterations + ") reached without PASS", currentPlan, null, iteration));
                     return resultMap;
                 }
 
                 finalResult = buildResultJson("PASS", findingsText, summary, currentPlan, null, null);
                 break;
+            }
 
             case "hybrid":
             default: {
                 // Auto-rewrite up to maxAutoIterations, then show human gate
-                int hybridIteration = 0;
+                int iteration = 0;
                 String hybridPlan = planText;
-                while (hybridIteration < maxAutoIterations && planWasRewritten) {
-                    hybridIteration++;
+                while (iteration < maxAutoIterations && planWasRewritten) {
+                    iteration++;
                     if (webSocketHandler != null) {
                         webSocketHandler.sendLog(schemaId, "info",
-                                "Hybrid review iteration " + hybridIteration + "/" + maxAutoIterations, node.getId());
+                                "Hybrid review iteration " + iteration + "/" + maxAutoIterations, node.getId());
                     }
 
-                    String hyReReviewPrompt = reviewPromptStr
-                            .replace(planText, rewrittenPlan != null ? rewrittenPlan : planText);
-                    LlmResponse hyResp = llmService.streamingChat(model, systemPrompt, hyReReviewPrompt, null,
-                            token -> {
-                                if (webSocketHandler != null) {
-                                    webSocketHandler.sendToken(schemaId, node.getId(), token);
-                                }
-                            });
-                    String hyResult = hyResp.text();
-                    if (hyResp.reasoning() != null) {
-                        reasoningCapture.capture(node.getId(), hyResp.reasoning());
+                    ReviewIterationResult iterResult = runReviewIteration(
+                            systemPrompt, reviewPromptStr, schemaId, model, node,
+                            planText, rewrittenPlan);
+
+                    findingsText = iterResult.findings;
+                    summary = iterResult.summary;
+
+                    if ("PASS".equals(iterResult.status)) {
+                        resultMap.put("status", "PASS");
+                        resultMap.put("plan", rewrittenPlan);
+                        resultMap.put("finalResult", buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, null));
+                        return resultMap;
                     }
 
-                    if (hyResult != null && !hyResult.isBlank()) {
-                        try {
-                            String hyJsonStr = hyResult.trim();
-                            int hyJsonStart = hyJsonStr.indexOf('{');
-                            int hyJsonEnd = hyJsonStr.lastIndexOf('}');
-                            if (hyJsonStart >= 0 && hyJsonEnd > hyJsonStart) {
-                                hyJsonStr = hyJsonStr.substring(hyJsonStart, hyJsonEnd + 1);
-                            }
-                            ObjectMapper mapper = new ObjectMapper();
-                            JsonNode hyRoot = mapper.readTree(hyJsonStr);
-                            String hyStatus = hyRoot.has("status") ? hyRoot.get("status").asText() : "PASS";
-                            if (hyRoot.has("findings")) {
-                                findingsText = hyRoot.get("findings").toString();
-                            }
-                            if (hyRoot.has("summary")) {
-                                summary = hyRoot.get("summary").asText();
-                            }
-
-                            if ("PASS".equals(hyStatus)) {
-                                resultMap.put("status", "PASS");
-                                resultMap.put("plan", rewrittenPlan);
-                                resultMap.put("finalResult", buildResultJson("PASS", findingsText, summary, rewrittenPlan, null, null));
-                                return resultMap;
-                            }
-
-                            if (hyRoot.has("rewrittenPlan")) {
-                                rewrittenPlan = hyRoot.get("rewrittenPlan").asText();
-                                hybridPlan = rewrittenPlan;
-                            }
-                        } catch (Exception e) {
-                            log.warn("Failed to parse hybrid re-review: {}", e.getMessage());
-                        }
+                    if (iterResult.rewrittenPlan != null) {
+                        rewrittenPlan = iterResult.rewrittenPlan;
+                        hybridPlan = rewrittenPlan;
                     }
                 }
 
                 // Max hit → show human gate dialog (same as manual)
-                if (planWasRewritten || hybridIteration >= maxAutoIterations) {
+                if (planWasRewritten || iteration >= maxAutoIterations) {
                     resultMap.put("requiresApproval", true);
                     resultMap.put("rewrittenPlan", rewrittenPlan != null ? rewrittenPlan : hybridPlan);
 
@@ -528,7 +522,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                         approvalPayload.put("findings", findingsNode);
                         approvalPayload.put("summary", summary);
                         approvalPayload.put("mode", "hybrid");
-                        approvalPayload.put("iterationInfo", "Iteration " + hybridIteration + " of " + maxAutoIterations);
+                        approvalPayload.put("iterationInfo", "Iteration " + iteration + " of " + maxAutoIterations);
                         webSocketHandler.sendLiveUpdate(schemaId, "review_awaiting_approval", approvalPayload);
                     }
 

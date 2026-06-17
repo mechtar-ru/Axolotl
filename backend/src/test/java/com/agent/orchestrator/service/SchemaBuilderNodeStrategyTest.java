@@ -30,10 +30,12 @@ import static org.mockito.Mockito.*;
 class SchemaBuilderNodeStrategyTest {
 
     @Mock ExecutionUtilityService utilityService;
+    @Mock NodeFileWriter nodeFileWriter;
     @Mock LlmService llmService;
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock Neo4jSchemaRepository schemaRepository;
     @Mock PlanService planService;
+    @Mock ReasoningCapture reasoningCapture;
 
     SchemaBuilderNodeStrategy strategy;
 
@@ -42,9 +44,8 @@ class SchemaBuilderNodeStrategyTest {
 
     @BeforeEach
     void setUp() {
-        strategy = new SchemaBuilderNodeStrategy(utilityService, llmService, webSocketHandler,
-                schemaRepository,                 planService,
-                null); // ReasoningCapture
+        strategy = new SchemaBuilderNodeStrategy(utilityService, nodeFileWriter, llmService, webSocketHandler,
+                schemaRepository, planService, reasoningCapture);
 
         node = new Node();
         node.setId("sb1");

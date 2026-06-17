@@ -42,6 +42,7 @@ public class NodeRouter {
     private static final Logger log = LoggerFactory.getLogger(NodeRouter.class);
 
     private final ExecutionUtilityService utilityService;
+    private final OutputReportingService outputReportingService;
     private final LlmService llmService;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final MemPalaceClient memPalaceClient;
@@ -61,6 +62,7 @@ public class NodeRouter {
     private final Executor nodeExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public NodeRouter(ExecutionUtilityService utilityService,
+                      OutputReportingService outputReportingService,
                       LlmService llmService,
                       ExecutionWebSocketHandler webSocketHandler,
                       MemPalaceClient memPalaceClient,
@@ -77,6 +79,7 @@ public class NodeRouter {
                        NodeOutputValidator outputValidator,
                        MagicContextIndexer mcIndexer) {
         this.utilityService = utilityService;
+        this.outputReportingService = outputReportingService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
@@ -162,7 +165,7 @@ public class NodeRouter {
                                 }
 
                             case "output":
-                                return utilityService.executeOutputNode(node, schemaId, mode);
+                                return outputReportingService.executeOutputNode(node, schemaId, mode);
 
                             case "command":
                                 return utilityService.executeCommandNode(node, schemaId);

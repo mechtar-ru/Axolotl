@@ -120,6 +120,10 @@ public class PlanStepService {
         return result;
     }
 
+    public void deleteAllBySchemaId(String schemaId) {
+        repository.deleteAllBySchemaId(schemaId);
+    }
+
     public void deleteSteps(String schemaId) {
         repository.deleteAllBySchemaId(schemaId);
     }

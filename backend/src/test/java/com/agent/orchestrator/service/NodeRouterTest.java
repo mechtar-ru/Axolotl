@@ -24,6 +24,7 @@ import static org.mockito.Mockito.*;
 class NodeRouterTest {
 
     @Mock ExecutionUtilityService utilityService;
+    @Mock OutputReportingService outputReportingService;
     @Mock LlmService llmService;
     @Mock ExecutionWebSocketHandler webSocketHandler;
     @Mock MemPalaceClient memPalaceClient;
@@ -48,7 +49,7 @@ class NodeRouterTest {
     @BeforeEach
     void setUp() {
         nodeRouter = new NodeRouter(
-                utilityService, llmService, webSocketHandler,
+                utilityService, outputReportingService, llmService, webSocketHandler,
                 memPalaceClient, toolExecutor, transformService, schemaRepository,
                 planService, projectContextBuilder, executionRepository,
                 stateManager, reasoningCapture,

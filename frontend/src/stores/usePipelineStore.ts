@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { api } from '@/services/api'
 import type { PipelineStatus } from '@/types/pipeline'
 import { useToast } from '@/composables/useToast'
-import { useCanvasStore } from './useCanvasStore'
+import { useCanvasStore } from '@/stores/useCanvasStore'
 
 const { error: toastError } = useToast()
 
