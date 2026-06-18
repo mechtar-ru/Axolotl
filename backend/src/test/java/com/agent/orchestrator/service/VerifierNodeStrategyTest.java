@@ -8,6 +8,7 @@ import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,8 +44,9 @@ class VerifierNodeStrategyTest {
     @BeforeEach
     void setUp() {
         strategy = new VerifierNodeStrategy(utilityService, agentStrategy, llmService,
-                webSocketHandler, schemaRepository,                 stateManager,
-                null); // ReasoningCapture
+                webSocketHandler, schemaRepository, stateManager,
+                null, // ReasoningCapture
+                new ObjectMapper());
 
         node = new Node();
         node.setId("v1");

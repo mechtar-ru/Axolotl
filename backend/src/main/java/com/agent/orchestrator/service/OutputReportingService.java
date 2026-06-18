@@ -34,19 +34,22 @@ public class OutputReportingService {
     private final ExecutionStateManager stateManager;
     private final NodeFileWriter nodeFileWriter;
     private final ExecutionUtilityService utilityService;
+    private final ObjectMapper objectMapper;
 
     public OutputReportingService(ExecutionWebSocketHandler webSocketHandler,
                                   MemPalaceClient memPalaceClient,
                                   Neo4jSchemaRepository schemaRepository,
                                   ExecutionStateManager stateManager,
                                   NodeFileWriter nodeFileWriter,
-                                  ExecutionUtilityService utilityService) {
+                                  ExecutionUtilityService utilityService,
+                                  ObjectMapper objectMapper) {
         this.webSocketHandler = webSocketHandler;
         this.memPalaceClient = memPalaceClient;
         this.schemaRepository = schemaRepository;
         this.stateManager = stateManager;
         this.nodeFileWriter = nodeFileWriter;
         this.utilityService = utilityService;
+        this.objectMapper = objectMapper;
     }
 
     // ────────────────────────── write output ──────────────────────────
@@ -169,8 +172,7 @@ public class OutputReportingService {
                         String reviewResult = nodeResultsMap.get(n.getId());
                         if (reviewResult != null && !reviewResult.isBlank()) {
                             try {
-                                ObjectMapper mapper = new ObjectMapper();
-                                JsonNode root = mapper.readTree(reviewResult);
+                                JsonNode root = objectMapper.readTree(reviewResult);
                                 int findingsCount = root.has("findings") && root.get("findings").isArray()
                                         ? root.get("findings").size() : 0;
                                 String approvedBy = "auto";
@@ -248,8 +250,7 @@ public class OutputReportingService {
                     String verResult = nodeResultsMap.get(n.getId());
                     if (verResult != null && !verResult.isBlank()) {
                         try {
-                            ObjectMapper mapper = new ObjectMapper();
-                            JsonNode root = mapper.readTree(verResult);
+                            JsonNode root = objectMapper.readTree(verResult);
                             String verStatus = root.has("status") ? root.get("status").asText() : "UNKNOWN";
                             report.append("- Syntax check: ").append(verStatus.equals("PASS") ? "PASS" : "FAIL").append("\n");
 
@@ -496,8 +497,7 @@ public class OutputReportingService {
         if (Files.exists(pkg)) {
             try {
                 String content = Files.readString(pkg);
-                ObjectMapper mapper = new ObjectMapper();
-                JsonNode root = mapper.readTree(content);
+                JsonNode root = objectMapper.readTree(content);
                 JsonNode scripts = root.get("scripts");
                 if (scripts != null) {
                     md.append("## Setup & Run\n\n");

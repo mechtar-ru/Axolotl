@@ -46,8 +46,9 @@ class DraftNodeStrategyTest {
     @BeforeEach
     void setUp(@TempDir Path tempDir) {
         this.tempDir = tempDir;
-        strategy = new DraftNodeStrategy(utilityService, llmService, webSocketHandler,                 schemaRepository,
-                null); // ReasoningCapture
+        strategy = new DraftNodeStrategy(utilityService, llmService, webSocketHandler, schemaRepository,
+                null, // ReasoningCapture
+                new ObjectMapper());
 
         node = new Node();
         node.setId("d1");

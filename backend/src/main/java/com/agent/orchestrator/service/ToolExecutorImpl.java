@@ -271,6 +271,15 @@ public class ToolExecutorImpl implements ToolExecutor {
         if ("ask_planner".equals(toolId)) {
             return handlerService.handleAskPlanner(params, permission, schemaId, nodeId);
         }
+        if ("file_read".equals(toolId)) {
+            return handlerService.handleFileReadWithSandbox(params, permission, schemaTargetPath);
+        }
+        if ("file_write".equals(toolId) || "write_file".equals(toolId) || "create_file".equals(toolId) || "save_file".equals(toolId)) {
+            return handlerService.handleFileWriteWithSandbox(params, permission, schemaTargetPath, schemaId, nodeId);
+        }
+        if ("directory_read".equals(toolId) || "list_dir".equals(toolId) || "ls".equals(toolId)) {
+            return handlerService.handleDirectoryReadWithSandbox(params, permission, schemaTargetPath);
+        }
 
         // Resolve relative paths against schemaTargetPath — handlers use Path.of()
         // which resolves relative to CWD (= backend/ during Maven execution).

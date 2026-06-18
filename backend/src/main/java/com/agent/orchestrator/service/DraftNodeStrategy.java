@@ -44,7 +44,7 @@ public class DraftNodeStrategy implements NodeExecutionStrategy {
     private final ReasoningCapture reasoningCapture;
 
     private static final String AXOLOTL_DIR = ".axolotl";
-    private static final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
     // ── System prompts per draft type ──
 
@@ -123,12 +123,14 @@ public class DraftNodeStrategy implements NodeExecutionStrategy {
                              LlmService llmService,
                              ExecutionWebSocketHandler webSocketHandler,
                              Neo4jSchemaRepository schemaRepository,
-                             ReasoningCapture reasoningCapture) {
+                             ReasoningCapture reasoningCapture,
+                             ObjectMapper mapper) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.schemaRepository = schemaRepository;
         this.reasoningCapture = reasoningCapture;
+        this.mapper = mapper;
     }
 
     @Override

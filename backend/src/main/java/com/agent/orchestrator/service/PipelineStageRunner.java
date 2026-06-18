@@ -33,7 +33,7 @@ public class PipelineStageRunner {
     private final DiffService diffService;
     private final ExecutionRepository executionRepository;
     private final ExecutorService pipelineExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
     private static final Duration STAGE_TIMEOUT = Duration.ofMinutes(20);
 
@@ -44,13 +44,15 @@ public class PipelineStageRunner {
                                ExecutionStateManager stateManager,
                                PipelineStatusManager statusManager,
                                DiffService diffService,
-                               ExecutionRepository executionRepository) {
+                               ExecutionRepository executionRepository,
+                               ObjectMapper mapper) {
         this.nodeRouter = nodeRouter;
         this.webSocketHandler = webSocketHandler;
         this.stateManager = stateManager;
         this.statusManager = statusManager;
         this.diffService = diffService;
         this.executionRepository = executionRepository;
+        this.mapper = mapper;
     }
 
     /**

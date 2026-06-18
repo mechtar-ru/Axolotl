@@ -36,11 +36,11 @@ public class MemPalaceClient {
     @Value("${axolotl.mempalace.enabled:false}")
     private boolean enabled;
 
-    public MemPalaceClient() {
+    public MemPalaceClient(ObjectMapper objectMapper) {
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
     }
 
     public boolean isEnabled() {

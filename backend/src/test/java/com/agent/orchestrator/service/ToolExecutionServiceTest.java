@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,7 +28,7 @@ class ToolExecutionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ToolExecutionService(toolExecutor, webSocketHandler, new ToolCallParser());
+        service = new ToolExecutionService(toolExecutor, webSocketHandler, new ToolCallParser(), new ObjectMapper());
     }
 
     // ── buildToolDefinitions ──

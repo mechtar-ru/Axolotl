@@ -4,6 +4,7 @@ import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,7 +47,8 @@ class SchemaExecutionServiceTest {
     @BeforeEach
     void setUp() {
         service = new SchemaExecutionService(schemaRepository, webSocketHandler, nodeExecutor,
-                executionRepository, pipelineService, stateManager, schemaValidator, metricsService);
+                executionRepository, pipelineService, stateManager, schemaValidator, metricsService,
+                new ObjectMapper());
 
         schema = new WorkflowSchema();
         schema.setId("test-schema-1");

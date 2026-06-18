@@ -33,9 +33,9 @@ public class CustomLlmProvider implements LlmProvider {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
-    public CustomLlmProvider(CustomLlmEndpointRepository endpointRepository) {
+    public CustomLlmProvider(CustomLlmEndpointRepository endpointRepository, ObjectMapper objectMapper) {
         this.endpointRepository = endpointRepository;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();

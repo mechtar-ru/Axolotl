@@ -67,11 +67,13 @@ public class ExecutionRepository {
             Neo4jExecutionRunRepository runRepo,
             Neo4jNodeExecutionRepository nodeExecRepo,
             Neo4jCheckpointRepository checkpointRepo,
-            Neo4jExecutionRecordRepository recordRepo) {
+            Neo4jExecutionRecordRepository recordRepo,
+            ObjectMapper jsonMapper) {
         this.runRepo = runRepo;
         this.nodeExecRepo = nodeExecRepo;
         this.checkpointRepo = checkpointRepo;
         this.recordRepo = recordRepo;
+        this.jsonMapper = jsonMapper;
         log.info("ExecutionRepository initialized (Neo4j-backed)");
     }
 
@@ -479,9 +481,9 @@ public class ExecutionRepository {
 
     // ────────── Mapping: POJO ↔ Graph entity ──────────
 
-    private static final ObjectMapper jsonMapper = new ObjectMapper();
+    private final ObjectMapper jsonMapper;
 
-    private static String mapToJson(Map<String, String> map) {
+    private String mapToJson(Map<String, String> map) {
         try {
             return jsonMapper.writeValueAsString(map != null ? map : new HashMap<>());
         } catch (JsonProcessingException e) {
@@ -490,7 +492,7 @@ public class ExecutionRepository {
         }
     }
 
-    private static String listToJson(List<String> list) {
+    private String listToJson(List<String> list) {
         try {
             return jsonMapper.writeValueAsString(list != null ? list : new ArrayList<>());
         } catch (JsonProcessingException e) {
@@ -499,7 +501,7 @@ public class ExecutionRepository {
         }
     }
 
-    private static Map<String, String> jsonToMap(String json) {
+    private Map<String, String> jsonToMap(String json) {
         try {
             return jsonMapper.readValue(json != null ? json : "{}",
                     jsonMapper.getTypeFactory().constructMapType(HashMap.class, String.class, String.class));
@@ -509,7 +511,7 @@ public class ExecutionRepository {
         }
     }
 
-    private static List<String> jsonToStringList(String json) {
+    private List<String> jsonToStringList(String json) {
         try {
             if (json == null || json.isBlank()) return new ArrayList<>();
             return jsonMapper.readValue(json,

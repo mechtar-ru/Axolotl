@@ -8,6 +8,7 @@ import com.agent.orchestrator.graph.repository.Neo4jExecutionRunRepository;
 import com.agent.orchestrator.graph.repository.Neo4jNodeExecutionRepository;
 import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.model.NodeExecution;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +48,7 @@ class ExecutionRepositoryTest {
 
     @BeforeEach
     void setUp() {
-        executionRepository = new ExecutionRepository(runRepo, nodeExecRepo, checkpointRepo, recordRepo);
+        executionRepository = new ExecutionRepository(runRepo, nodeExecRepo, checkpointRepo, recordRepo, new ObjectMapper());
     }
 
     // ── 1. saveRun ──

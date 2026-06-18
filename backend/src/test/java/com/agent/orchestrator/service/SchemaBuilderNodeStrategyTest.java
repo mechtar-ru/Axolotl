@@ -9,6 +9,7 @@ import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.Plan;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +46,7 @@ class SchemaBuilderNodeStrategyTest {
     @BeforeEach
     void setUp() {
         strategy = new SchemaBuilderNodeStrategy(utilityService, nodeFileWriter, llmService, webSocketHandler,
-                schemaRepository, planService, reasoningCapture);
+                schemaRepository, planService, reasoningCapture, new ObjectMapper());
 
         node = new Node();
         node.setId("sb1");

@@ -17,12 +17,14 @@ import java.util.*;
 public class Neo4jSchemaRepository {
     private static final Logger log = LoggerFactory.getLogger(Neo4jSchemaRepository.class);
     private final Driver driver;
-    private final ObjectMapper mapper = new ObjectMapper()
-            .registerModule(new JavaTimeModule())
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private final ObjectMapper mapper;
 
-    public Neo4jSchemaRepository(Driver driver) {
+    public Neo4jSchemaRepository(Driver driver, ObjectMapper mapper) {
         this.driver = driver;
+        this.mapper = mapper
+                .copy()
+                .registerModule(new JavaTimeModule())
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     public List<WorkflowSchema> findAll() {

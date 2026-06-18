@@ -27,7 +27,6 @@ import java.util.Map;
 public class ReviewNodeStrategy implements NodeExecutionStrategy {
 
     private static final Logger log = LoggerFactory.getLogger(ReviewNodeStrategy.class);
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private final ExecutionUtilityService utilityService;
     private final LlmService llmService;
@@ -37,6 +36,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
     private final PlanService planService;
     private final ExecutionRepository executionRepository;
     private final ReasoningCapture reasoningCapture;
+    private final ObjectMapper objectMapper;
 
     // ── Inner class for iteration results ──
 
@@ -54,7 +54,8 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                               ExecutionStateManager stateManager,
                               PlanService planService,
                               ExecutionRepository executionRepository,
-                              ReasoningCapture reasoningCapture) {
+                              ReasoningCapture reasoningCapture,
+                              ObjectMapper objectMapper) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -63,6 +64,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         this.planService = planService;
         this.executionRepository = executionRepository;
         this.reasoningCapture = reasoningCapture;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -119,7 +121,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
             }
             Map<String, Object> passResult = new HashMap<>();
             passResult.put("status", "PASS");
-            passResult.put("findings", JSON_MAPPER.createArrayNode());
+            passResult.put("findings", objectMapper.createArrayNode());
             passResult.put("summary", "Drafts auto-approved (autoApproveDrafts=true)");
             passResult.put("plan", inputContent);
             passResult.put("originalInput", inputContent);
@@ -156,7 +158,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
             log.info("Review node {} previously approved, skipping re-review", node.getId());
             Map<String, Object> passResult = new HashMap<>();
             passResult.put("status", "PASS");
-            passResult.put("findings", JSON_MAPPER.createArrayNode());
+            passResult.put("findings", objectMapper.createArrayNode());
             passResult.put("summary", "Plan was approved by user");
             passResult.put("plan", inputContent);
             passResult.put("originalInput", inputContent);
@@ -325,8 +327,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 if (jsonStart >= 0 && jsonEnd > jsonStart) {
                     jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
                 }
-                ObjectMapper mapper = new ObjectMapper();
-                JsonNode root = mapper.readTree(jsonStr);
+                JsonNode root = objectMapper.readTree(jsonStr);
                 result.status = root.has("status") ? root.get("status").asText() : "PASS";
                 if (root.has("findings")) result.findings = root.get("findings").toString();
                 if (root.has("summary")) result.summary = root.get("summary").asText();
@@ -358,8 +359,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 if (jsonStart >= 0 && jsonEnd > jsonStart) {
                     jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
                 }
-                ObjectMapper mapper = new ObjectMapper();
-                JsonNode root = mapper.readTree(jsonStr);
+                JsonNode root = objectMapper.readTree(jsonStr);
                 if (root.has("status")) {
                     reviewStatus = root.get("status").asText();
                 }
@@ -380,9 +380,9 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         // Parse findings string to JSON node for proper serialization
         JsonNode findingsNode;
         try {
-            findingsNode = JSON_MAPPER.readTree(findingsText);
+            findingsNode = objectMapper.readTree(findingsText);
         } catch (Exception e) {
-            findingsNode = JSON_MAPPER.createArrayNode();
+            findingsNode = objectMapper.createArrayNode();
         }
 
         // Build structured result
@@ -549,7 +549,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
             if (plan != null) map.put("plan", plan);
             if (rewrittenPlan != null && !rewrittenPlan.isBlank()) map.put("rewrittenPlan", rewrittenPlan);
             if (rewriteIterations != null) map.put("rewriteIterations", rewriteIterations);
-            return JSON_MAPPER.writeValueAsString(map);
+            return objectMapper.writeValueAsString(map);
         } catch (Exception e) {
             log.warn("Failed to build review JSON: {}", e.getMessage());
             return "{\"status\":\"" + status + "\"}";
@@ -558,7 +558,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
 
     private String serializeResult(Map<String, Object> resultMap) {
         try {
-            return JSON_MAPPER.writeValueAsString(resultMap);
+            return objectMapper.writeValueAsString(resultMap);
         } catch (Exception e) {
             log.warn("Failed to serialize review result: {}", e.getMessage());
             return "{\"status\":\"ERROR\"}";

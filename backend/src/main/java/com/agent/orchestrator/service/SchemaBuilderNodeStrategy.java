@@ -42,6 +42,7 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
     private final Neo4jSchemaRepository schemaRepository;
     private final PlanService planService;
     private final ReasoningCapture reasoningCapture;
+    private final ObjectMapper objectMapper;
 
     private static final String SCHEMA_BUILDER_SYSTEM_PROMPT = """
             You are a workflow architect. Given an analysis/result text, design an Axolotl workflow schema.
@@ -98,7 +99,8 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
                                       ExecutionWebSocketHandler webSocketHandler,
                                       Neo4jSchemaRepository schemaRepository,
                                       PlanService planService,
-                                      ReasoningCapture reasoningCapture) {
+                                      ReasoningCapture reasoningCapture,
+                                      ObjectMapper objectMapper) {
         this.utilityService = utilityService;
         this.nodeFileWriter = nodeFileWriter;
         this.llmService = llmService;
@@ -106,6 +108,7 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
         this.schemaRepository = schemaRepository;
         this.planService = planService;
         this.reasoningCapture = reasoningCapture;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -166,10 +169,9 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 60, "Parsing schema");
         }
 
-        ObjectMapper mapper = new ObjectMapper();
         JsonNode root;
         try {
-            root = mapper.readTree(jsonStr);
+            root = this.objectMapper.readTree(jsonStr);
         } catch (Exception e) {
             return "Error: failed to parse LLM response as JSON: " + e.getMessage();
         }
@@ -263,7 +265,7 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
                 String predStr = predVal.toString();
                 if (predStr.contains("\"tasks\"") && predStr.contains("\"title\"")) {
                     try {
-                        JsonNode taskRoot = mapper.readTree(predStr);
+                        JsonNode taskRoot = this.objectMapper.readTree(predStr);
                         if (taskRoot.has("tasks") && taskRoot.get("tasks").isArray()) {
                             for (JsonNode taskNode : taskRoot.get("tasks")) {
                                 String title = taskNode.has("title") ? taskNode.get("title").asText() : "Task";

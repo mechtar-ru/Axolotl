@@ -33,7 +33,7 @@ public class PipelineStageExecutionService {
     private final PlanService planService;
     private final PipelineStageRunner stageRunner;
     private final ExecutorService pipelineLevelExecutor = Executors.newVirtualThreadPerTaskExecutor();
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
     public PipelineStageExecutionService(Neo4jSchemaRepository schemaRepository,
                                           NodeRouter nodeRouter,
@@ -42,7 +42,8 @@ public class PipelineStageExecutionService {
                                           ExecutionStateManager stateManager,
                                           PipelineStatusManager statusManager,
                                           PlanService planService,
-                                          PipelineStageRunner stageRunner) {
+                                          PipelineStageRunner stageRunner,
+                                          ObjectMapper mapper) {
         this.schemaRepository = schemaRepository;
         this.nodeRouter = nodeRouter;
         this.webSocketHandler = webSocketHandler;
@@ -51,6 +52,7 @@ public class PipelineStageExecutionService {
         this.statusManager = statusManager;
         this.planService = planService;
         this.stageRunner = stageRunner;
+        this.mapper = mapper;
     }
 
     void clearStaleApprovals(String schemaId) {

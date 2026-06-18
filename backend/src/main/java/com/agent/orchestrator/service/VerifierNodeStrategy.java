@@ -38,6 +38,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
     private final Neo4jSchemaRepository schemaRepository;
     private final ExecutionStateManager stateManager;
     private final ReasoningCapture reasoningCapture;
+    private final ObjectMapper objectMapper;
 
     public VerifierNodeStrategy(ExecutionUtilityService utilityService,
                                 AgentNodeStrategy agentStrategy,
@@ -45,7 +46,8 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                                 ExecutionWebSocketHandler webSocketHandler,
                                 Neo4jSchemaRepository schemaRepository,
                                 ExecutionStateManager stateManager,
-                                ReasoningCapture reasoningCapture) {
+                                ReasoningCapture reasoningCapture,
+                                ObjectMapper objectMapper) {
         this.utilityService = utilityService;
         this.agentStrategy = agentStrategy;
         this.llmService = llmService;
@@ -53,6 +55,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         this.schemaRepository = schemaRepository;
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -501,8 +504,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                 jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
             }
 
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(jsonStr);
+            JsonNode root = objectMapper.readTree(jsonStr);
             String status = root.has("status") ? root.get("status").asText() : "PASS";
 
             StringBuilder errorsBuilder = new StringBuilder();
@@ -595,10 +597,9 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             structuredResult.put("coverage", coverageCheckResults);
         }
 
-        ObjectMapper mapper = new ObjectMapper();
         String resultStr;
         try {
-            resultStr = mapper.writeValueAsString(structuredResult);
+            resultStr = objectMapper.writeValueAsString(structuredResult);
         } catch (Exception e) {
             resultStr = loopResult.currentResult != null ? loopResult.currentResult : "{\"status\":\"FAIL\",\"summary\":\"Verification error\"}";
         }

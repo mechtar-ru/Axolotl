@@ -54,10 +54,10 @@ public class PlanningService {
     private final Neo4jSchemaRepository schemaRepository;
     private final ObjectMapper objectMapper;
 
-    public PlanningService(LlmService llmService, Neo4jSchemaRepository schemaRepository) {
+    public PlanningService(LlmService llmService, Neo4jSchemaRepository schemaRepository, ObjectMapper objectMapper) {
         this.llmService = llmService;
         this.schemaRepository = schemaRepository;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
     }
 
     public Map<String, Object> generateOutline(String schemaId, String prompt, String model) {

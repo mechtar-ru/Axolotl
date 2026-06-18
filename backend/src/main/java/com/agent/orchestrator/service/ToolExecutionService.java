@@ -27,13 +27,16 @@ public class ToolExecutionService {
     private final ToolExecutor toolExecutor;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final ToolCallParser toolCallParser;
+    private final ObjectMapper objectMapper;
 
     public ToolExecutionService(ToolExecutor toolExecutor,
                                 ExecutionWebSocketHandler webSocketHandler,
-                                ToolCallParser toolCallParser) {
+                                ToolCallParser toolCallParser,
+                                ObjectMapper objectMapper) {
         this.toolExecutor = toolExecutor;
         this.webSocketHandler = webSocketHandler;
         this.toolCallParser = toolCallParser;
+        this.objectMapper = objectMapper;
     }
 
     // ────────────────────────── tool definitions ──────────────────────────
@@ -164,8 +167,7 @@ public class ToolExecutionService {
         if (close < 0) return null;
         String json = candidate.substring(0, close + 1);
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(json, Map.class);
+            return objectMapper.readValue(json, Map.class);
         } catch (Exception e) {
             log.debug("Failed to parse generatedFiles JSON from agent response: {}", e.getMessage());
             return null;

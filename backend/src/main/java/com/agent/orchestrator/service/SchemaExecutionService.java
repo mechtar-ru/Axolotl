@@ -34,7 +34,7 @@ public class SchemaExecutionService {
     private final ExecutionStateManager stateManager;
     private final SchemaValidator schemaValidator;
     private final MetricsService metricsService;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
 
     private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
     private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
@@ -55,7 +55,8 @@ public class SchemaExecutionService {
                                    PipelineService pipelineService,
                                    ExecutionStateManager stateManager,
                                    SchemaValidator schemaValidator,
-                                   MetricsService metricsService) {
+                                   MetricsService metricsService,
+                                   ObjectMapper mapper) {
         this.schemaRepository = schemaRepository;
         this.webSocketHandler = webSocketHandler;
         this.nodeExecutor = nodeExecutor;
@@ -64,6 +65,7 @@ public class SchemaExecutionService {
         this.stateManager = stateManager;
         this.schemaValidator = schemaValidator;
         this.metricsService = metricsService;
+        this.mapper = mapper;
     }
 
     // ── Execution ──
@@ -500,7 +502,7 @@ public class SchemaExecutionService {
 
     public String computeConfigHash(Node node, WorkflowSchema schema) {
         try {
-            ObjectMapper hashMapper = new ObjectMapper();
+            ObjectMapper hashMapper = this.mapper;
             LinkedHashMap<String, Object> hashData = new LinkedHashMap<>();
             if (node.getData() != null) {
                 hashData.put("data", node.getData());
@@ -678,7 +680,7 @@ public class SchemaExecutionService {
                     }
                 }
             }
-            cp.setCompletedNodeIds(new ObjectMapper().writeValueAsString(completedIds));
+            cp.setCompletedNodeIds(mapper.writeValueAsString(completedIds));
             executionRepository.saveCheckpoint(cp);
         } catch (Exception e) {
             log.warn("Error saving checkpoint: {}", e.getMessage(), e);

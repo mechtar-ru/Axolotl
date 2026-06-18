@@ -9,6 +9,7 @@ import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.WorkflowSchema;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -46,8 +47,9 @@ class ReviewNodeStrategyTest {
     @BeforeEach
     void setUp() {
         strategy = new ReviewNodeStrategy(utilityService, llmService, webSocketHandler,
-                schemaRepository, stateManager, planService,                 executionRepository,
-                null); // ReasoningCapture
+                schemaRepository, stateManager, planService, executionRepository,
+                null, // ReasoningCapture
+                new ObjectMapper());
 
         node = new Node();
         node.setId("r1");

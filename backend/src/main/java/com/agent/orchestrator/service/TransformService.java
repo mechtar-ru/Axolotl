@@ -16,7 +16,11 @@ import java.util.regex.Pattern;
 @Service
 public class TransformService {
     private static final Logger log = LoggerFactory.getLogger(TransformService.class);
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper;
+
+    public TransformService(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
 
     public String applyTransforms(String input, List<TransformStep> transforms) {
         if (input == null) return null;

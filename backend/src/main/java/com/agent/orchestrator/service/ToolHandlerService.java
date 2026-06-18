@@ -413,11 +413,38 @@ public class ToolHandlerService {
             return ToolResult.error("Path contains invalid characters.");
         }
 
-        String includeArg = include != null && include.matches("^[a-zA-Z0-9_\\-\\.*]+$")
-            ? " --include=" + include
-            : "";
-        String cmd = "grep -rE" + includeArg + " \"" + pattern + "\" " + path + " 2>/dev/null | head -50";
-        return handleBash(Map.of("command", cmd, "timeout", 30), permission);
+        try {
+            List<String> cmdList = new ArrayList<>();
+            cmdList.add("grep");
+            cmdList.add("-rE");
+            if (include != null && include.matches("^[a-zA-Z0-9_\\-\\.*]+$")) {
+                cmdList.add("--include=" + include);
+            }
+            cmdList.add(pattern);
+            cmdList.add(path);
+
+            ProcessBuilder pb = new ProcessBuilder(cmdList);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String output;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                output = reader.lines().limit(50).collect(Collectors.joining("\n"));
+            }
+            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return ToolResult.error("Grep timed out");
+            }
+            if (process.exitValue() != 0 && output.isEmpty()) {
+                return ToolResult.error("No matches found");
+            }
+            return ToolResult.ok(output.isEmpty() ? "No matches found" : output);
+        } catch (IOException e) {
+            return ToolResult.error("Grep failed: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ToolResult.error("Grep interrupted");
+        }
     }
 
     // ── Git ──
@@ -437,8 +464,35 @@ public class ToolHandlerService {
         String safePath = repoPath != null && repoPath.matches("^[a-zA-Z0-9_\\-\\.\\/]+$")
             ? repoPath
             : ".";
-        String fullCmd = "cd " + safePath + " && git " + command;
-        return handleBash(Map.of("command", fullCmd, "timeout", 30), permission);
+
+        try {
+            List<String> cmdList = new ArrayList<>();
+            cmdList.add("git");
+            java.util.Collections.addAll(cmdList, command.split("\\s+"));
+
+            ProcessBuilder pb = new ProcessBuilder(cmdList);
+            pb.directory(new java.io.File(safePath));
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            String output;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                output = reader.lines().collect(Collectors.joining("\n"));
+            }
+            boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                return ToolResult.error("Git command timed out");
+            }
+            if (process.exitValue() != 0) {
+                return ToolResult.error("Git failed: exit code " + process.exitValue());
+            }
+            return ToolResult.ok(output.isEmpty() ? "Git command completed" : output);
+        } catch (IOException e) {
+            return ToolResult.error("Git failed: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return ToolResult.error("Git interrupted");
+        }
     }
 
     // ── Memory Search ──
