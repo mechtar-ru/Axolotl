@@ -108,7 +108,7 @@ public class ParallelCodebaseImporter {
                         fieldsLoaded.addAndGet(result.fields());
                     } catch (Exception e) {
                         errors.add(file.toString() + ": " + e.getMessage());
-                        log.warn("Error parsing {}: {}", file.getFileName(), e.getMessage());
+                        log.warn("Error parsing {}: {}", file.getFileName(), e.getMessage(), e);
                     }
                 }
             }, executor);

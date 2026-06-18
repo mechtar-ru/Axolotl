@@ -38,7 +38,7 @@ public class ExecutionLogCleanupService {
             executionRepository.deleteExecutionRecordsOlderThan(cutoff);
             log.info("Очистка записей выполнения завершена");
         } catch (Exception e) {
-            log.error("Ошибка при очистке записей выполнения: {}", e.getMessage());
+            log.error("Ошибка при очистке записей выполнения: {}", e.getMessage(), e);
         }
     }
 
@@ -48,7 +48,7 @@ public class ExecutionLogCleanupService {
             executionRepository.deleteRunsOlderThan(cutoff);
             log.info("Очистка ExecutionRun/NodeExecution завершена");
         } catch (Exception e) {
-            log.error("Ошибка при очистке ExecutionRun/NodeExecution: {}", e.getMessage());
+            log.error("Ошибка при очистке ExecutionRun/NodeExecution: {}", e.getMessage(), e);
         }
     }
 }

@@ -67,7 +67,7 @@ public class TransformService {
             JsonNode value = node.get(field);
             return value != null ? value.asText() : null;
         } catch (Exception e) {
-            log.warn("JSON field extraction failed for field {}: {}", field, e.getMessage());
+            log.warn("JSON field extraction failed for field {}: {}", field, e.getMessage(), e);
             return null;
         }
     }
@@ -116,7 +116,7 @@ public class TransformService {
             JsonNode result = node.at(path);
             return result.isMissingNode() ? null : result.toString();
         } catch (Exception e) {
-            log.warn("JSONPath extraction failed for path {}: {}", path, e.getMessage());
+            log.warn("JSONPath extraction failed for path {}: {}", path, e.getMessage(), e);
             return null;
         }
     }
@@ -132,7 +132,7 @@ public class TransformService {
             }
             return null;
         } catch (Exception e) {
-            log.warn("Regex extraction failed for pattern {}: {}", pattern, e.getMessage());
+            log.warn("Regex extraction failed for pattern {}: {}", pattern, e.getMessage(), e);
             return null;
         }
     }
@@ -176,7 +176,7 @@ public class TransformService {
             JsonNode node = mapper.readTree(input);
             return mapper.writeValueAsString(node);
         } catch (Exception e) {
-            log.warn("JSON parse failed: {}", e.getMessage());
+            log.warn("JSON parse failed: {}", e.getMessage(), e);
             return null;
         }
     }

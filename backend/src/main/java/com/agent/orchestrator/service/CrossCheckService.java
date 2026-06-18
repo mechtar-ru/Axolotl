@@ -91,7 +91,7 @@ public class CrossCheckService {
                 result.setSummary(node.get("summary").asText());
             }
         } catch (Exception e) {
-            log.warn("Failed to parse cross-check result: {}", e.getMessage());
+            log.warn("Failed to parse cross-check result: {}", e.getMessage(), e);
             result.setValid(true);
             result.setConfidence(0.5);
             result.setSummary("Parse failed, assuming valid");

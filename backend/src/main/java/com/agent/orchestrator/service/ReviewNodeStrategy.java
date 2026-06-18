@@ -333,7 +333,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 if (root.has("summary")) result.summary = root.get("summary").asText();
                 if (root.has("rewrittenPlan")) result.rewrittenPlan = root.get("rewrittenPlan").asText();
             } catch (Exception e) {
-                log.warn("Failed to parse re-review JSON: {}", e.getMessage());
+                log.warn("Failed to parse re-review JSON: {}", e.getMessage(), e);
             }
         }
         return result;
@@ -373,7 +373,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                     rewrittenPlan = root.get("rewrittenPlan").asText();
                 }
             } catch (Exception e) {
-                log.warn("Failed to parse review analysis JSON: {}", e.getMessage());
+                log.warn("Failed to parse review analysis JSON: {}", e.getMessage(), e);
             }
         }
 
@@ -551,7 +551,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
             if (rewriteIterations != null) map.put("rewriteIterations", rewriteIterations);
             return objectMapper.writeValueAsString(map);
         } catch (Exception e) {
-            log.warn("Failed to build review JSON: {}", e.getMessage());
+            log.warn("Failed to build review JSON: {}", e.getMessage(), e);
             return "{\"status\":\"" + status + "\"}";
         }
     }
@@ -560,7 +560,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
         try {
             return objectMapper.writeValueAsString(resultMap);
         } catch (Exception e) {
-            log.warn("Failed to serialize review result: {}", e.getMessage());
+            log.warn("Failed to serialize review result: {}", e.getMessage(), e);
             return "{\"status\":\"ERROR\"}";
         }
     }
@@ -573,7 +573,7 @@ public class ReviewNodeStrategy implements NodeExecutionStrategy {
                 nodeResults.remove(approvedKey);
             }
         } catch (Exception e) {
-            log.warn("Failed to clean approval flag: {}", e.getMessage());
+            log.warn("Failed to clean approval flag: {}", e.getMessage(), e);
         }
     }
 }

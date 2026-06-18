@@ -99,7 +99,7 @@ public class ToolCallParser {
             }
 
         } catch (Exception e) {
-            log.warn("Failed to parse tool calls: {}", e.getMessage());
+            log.warn("Failed to parse tool calls: {}", e.getMessage(), e);
         }
 
         // Ensure every tool call has a non-null id — guards against NPE downstream

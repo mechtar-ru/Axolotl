@@ -542,28 +542,49 @@ public final class PipelineFactory {
         }
 
         for (Node node : schema.getNodes()) {
+            // Guard: null node
+            if (node == null) {
+                log.warn("Null node in schema, skipping");
+                continue;
+            }
+
+            // Guard: null node id
+            String nodeId = node.getId();
+            if (nodeId == null) {
+                log.warn("Node has null id, skipping");
+                continue;
+            }
+            String shortId = nodeId.length() >= 8 ? nodeId.substring(0, 8) : nodeId;
+
+            // Guard: null data
+            var data = node.getData();
+            if (data == null) {
+                log.warn("Node {} has no data, skipping", shortId);
+                continue;
+            }
+
             Stage stage = new Stage();
-            stage.setId(node.getId());
-            stage.setName(node.getName() != null ? node.getName() : node.getType() + "-" + node.getId().substring(0, 8));
+            stage.setId(nodeId);
+            stage.setName(node.getName() != null ? node.getName() : node.getType() + "-" + shortId);
             stage.setNodeType(node.getType());
 
             // Copy model from node data if set
-            if (node.getData() != null && node.getData().getModel() != null) {
-                stage.setModel(node.getData().getModel());
+            if (data.getModel() != null) {
+                stage.setModel(data.getModel());
             }
 
             // Copy systemPrompt from node data
-            if (node.getData() != null && node.getData().getSystemPrompt() != null) {
-                stage.setSystemPrompt(node.getData().getSystemPrompt());
+            if (data.getSystemPrompt() != null) {
+                stage.setSystemPrompt(data.getSystemPrompt());
             }
 
             // Copy config into stage config
-            if (node.getData() != null && node.getData().getConfig() != null) {
-                stage.setConfig(new HashMap<>(node.getData().getConfig()));
+            if (data.getConfig() != null) {
+                stage.setConfig(new HashMap<>(data.getConfig()));
             }
 
             // Set dependencies from edge adjacency
-            List<String> deps = depMap.getOrDefault(node.getId(), List.of());
+            List<String> deps = depMap.getOrDefault(nodeId, List.of());
             if (!deps.isEmpty()) {
                 stage.setDependencies(new ArrayList<>(deps));
             }

@@ -79,7 +79,7 @@ public class PipelineStageExecutionService {
                             "Plan task created: " + taskTitle, null);
                 }
             } catch (Exception e) {
-                log.warn("Failed to create plan task for schema {}: {}", schema.getId(), e.getMessage());
+                log.warn("Failed to create plan task for schema {}: {}", schema.getId(), e.getMessage(), e);
             }
         }
 
@@ -192,7 +192,7 @@ public class PipelineStageExecutionService {
                     }
                 }
             } catch (Exception e) {
-                log.warn("Failed to persist generated files for run {}: {}", runId, e.getMessage());
+                log.warn("Failed to persist generated files for run {}: {}", runId, e.getMessage(), e);
             }
 
             stateManager.removeSchema(schema.getId());

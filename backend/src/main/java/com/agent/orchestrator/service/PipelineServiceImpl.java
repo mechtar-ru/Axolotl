@@ -163,7 +163,7 @@ public class PipelineServiceImpl implements PipelineService {
                     schemaRepository.save(s);
                 }
             } catch (Exception e) {
-                log.warn("Failed to update lastRunAt for schema {}: {}", schemaId, e.getMessage());
+                log.warn("Failed to update lastRunAt for schema {}: {}", schemaId, e.getMessage(), e);
             }
         });
     }

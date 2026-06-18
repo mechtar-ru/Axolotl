@@ -92,7 +92,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             replayMsg.put("eventCount", buffer.size());
             session.sendMessage(new TextMessage(toJson(replayMsg)));
         } catch (IOException e) {
-            log.error("Failed to send state_replay envelope: {}", e.getMessage());
+            log.error("Failed to send state_replay envelope: {}", e.getMessage(), e);
         }
         // Send each buffered event
         for (Map<String, Object> event : buffer) {
@@ -100,7 +100,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
                 try {
                     session.sendMessage(new TextMessage(toJson(event)));
                 } catch (IOException e) {
-                    log.error("Failed to replay event: {}", e.getMessage());
+                    log.error("Failed to replay event: {}", e.getMessage(), e);
                     break;
                 }
             }
@@ -128,12 +128,23 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         String schemaId = getSchemaIdFromSession(session);
         if (schemaId != null) {
-            List<WebSocketSession> sessionList = sessions.get(schemaId);
-            if (sessionList != null) {
-                sessionList.remove(session);
-                if (sessionList.isEmpty()) {
-                    sessions.remove(schemaId);
-                    sessionLocks.remove(schemaId);
+            ReentrantLock lock = sessionLocks.get(schemaId);
+            if (lock != null) {
+                lock.lock();
+            }
+            try {
+                List<WebSocketSession> sessionList = sessions.get(schemaId);
+                if (sessionList != null) {
+                    sessionList.remove(session);
+                    if (sessionList.isEmpty()) {
+                        sessions.remove(schemaId);
+                        sessionLocks.remove(schemaId);
+                        eventBuffer.remove(schemaId);
+                    }
+                }
+            } finally {
+                if (lock != null) {
+                    lock.unlock();
                 }
             }
             log.info("WebSocket отключен для схемы: {}", schemaId);
@@ -171,7 +182,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
                     try {
                         session.sendMessage(new TextMessage(jsonMessage));
                     } catch (IOException e) {
-                        log.error("Error sending WebSocket message: {}", e.getMessage());
+                        log.error("Error sending WebSocket message: {}", e.getMessage(), e);
                     }
                 }
             }
@@ -184,14 +195,14 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> event = objectMapper.readValue(jsonMessage, Map.class);
-            List<Map<String, Object>> buffer = eventBuffer.computeIfAbsent(schemaId, k -> new ArrayList<>());
+            List<Map<String, Object>> buffer = eventBuffer.computeIfAbsent(schemaId, k -> new CopyOnWriteArrayList<>());
             // Keep only the last 1000 events per schema to prevent OOM
             if (buffer.size() >= 1000) {
                 buffer.removeFirst();
             }
             buffer.add(event);
         } catch (Exception e) {
-            log.error("Failed to buffer event: {}", e.getMessage());
+            log.error("Failed to buffer event: {}", e.getMessage(), e);
         }
     }
 
@@ -206,7 +217,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         try {
             return objectMapper.writeValueAsString(msg);
         } catch (Exception e) {
-            log.error("JSON serialization failed: {}", e.getMessage());
+            log.error("JSON serialization failed: {}", e.getMessage(), e);
             return "{}";
         }
     }
@@ -239,7 +250,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         msg.put("error", error);
         msg.put("errorCategory", category.getCode());
         sendMessage(schemaId, toJson(msg));
-        log.error("Ошибка [{}/{}] [{}]: {}", schemaId, nodeId, category.getCode(), error);
+        log.error("Ошибка [{}/{}] [{}]: {}", schemaId, nodeId, category.getCode(), error != null ? error.replaceAll("[\\n\\r]", "_") : null);
     }
 
     public void sendComplete(String schemaId, long totalTime, int nodesCompleted) {
@@ -256,7 +267,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
         msg.put("totalNodes", totalNodes);
         msg.put("error", error);
         sendMessage(schemaId, toJson(msg));
-        log.info("Выполнение приостановлено [{}]: {}/{} узлов, ошибка: {}", schemaId, completedNodes, totalNodes, error);
+        log.info("Выполнение приостановлено [{}]: {}/{} узлов, ошибка: {}", schemaId, completedNodes, totalNodes, error != null ? error.replaceAll("[\\n\\r]", "_") : null);
     }
 
     public void sendMetrics(String schemaId, int totalNodes, int completedNodes, long elapsedTime,
@@ -388,7 +399,7 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             }
             log.info("План обновлён для workspace: {}", workspaceId);
         } catch (Exception e) {
-            log.error("Ошибка отправки plan_updated: {}", e.getMessage());
+            log.error("Ошибка отправки plan_updated: {}", e.getMessage(), e);
         }
     }
 

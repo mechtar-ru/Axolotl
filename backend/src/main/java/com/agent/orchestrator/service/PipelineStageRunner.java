@@ -115,7 +115,7 @@ public class PipelineStageRunner {
                                 List<String> toolList = (List<String>) tools;
                                 nd.setEnabledTools(toolList);
                             } catch (Exception e) {
-                                log.warn("Could not set enabledTools from stage config: {}", e.getMessage());
+                                log.warn("Could not set enabledTools from stage config: {}", e.getMessage(), e);
                             }
                         }
                     } else if (nd.getConfig() == null && "source".equals(stage.getNodeType())) {

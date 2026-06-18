@@ -62,7 +62,7 @@ public class StartupRecoveryService implements ApplicationListener<ApplicationRe
                 try {
                     runRepository.failRunningNodeExecutions(runId, RECOVERY_ERROR);
                 } catch (Exception e) {
-                    log.warn("Startup recovery: failed to fail node executions for run {}: {}", runId, e.getMessage());
+                    log.warn("Startup recovery: failed to fail node executions for run {}: {}", runId, e.getMessage(), e);
                 }
 
                 // Mark the run itself as failed

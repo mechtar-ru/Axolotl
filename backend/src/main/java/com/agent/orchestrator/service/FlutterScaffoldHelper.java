@@ -46,7 +46,7 @@ public class FlutterScaffoldHelper {
                 log.info("Scaffold created, main.dart exists: {}", Files.exists(mainDart));
                 return fbOut != null;
             } catch (Exception e) {
-                log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage());
+                log.warn("Auto-scaffold failed (non-fatal): {}", e.getMessage(), e);
                 return false;
             }
         }
@@ -125,7 +125,7 @@ public class FlutterScaffoldHelper {
                 count++;
             }
         } catch (Exception e) {
-            log.warn("Error applying fix files: {}", e.getMessage());
+            log.warn("Error applying fix files: {}", e.getMessage(), e);
         }
         return count;
     }

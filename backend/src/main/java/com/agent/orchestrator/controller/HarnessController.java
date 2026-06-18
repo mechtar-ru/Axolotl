@@ -59,7 +59,7 @@ public class HarnessController {
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error reading component: {}", e.getMessage());
+            log.error("Error reading component: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -82,7 +82,7 @@ public class HarnessController {
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error saving component: {}", e.getMessage());
+            log.error("Error saving component: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }

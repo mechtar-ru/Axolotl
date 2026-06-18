@@ -4,6 +4,7 @@ import com.agent.orchestrator.model.*;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.slf4j.Logger;
@@ -132,7 +133,8 @@ public class SchemaServiceImpl implements SchemaService {
                 schema.setDefaultModel(settingsService.getGlobalDefaultModel());
             }
         }
-        log.info("Creating schema: id={}, name={}, userId={}", schema.getId(), schema.getName(), schema.getUserId());
+        log.info("Creating schema: id={}, name={}, userId={}", schema.getId(),
+                schema.getName() != null ? schema.getName().replaceAll("[\\n\\r]", "_") : null, schema.getUserId());
         schemaRepository.save(schema);
         return schema;
     }
@@ -354,13 +356,54 @@ public class SchemaServiceImpl implements SchemaService {
 
     @Override
     public WorkflowSchema importSchema(WorkflowSchema schema, String userId) {
+        // Validate input
+        if (schema == null) {
+            throw new IllegalArgumentException("Schema cannot be null");
+        }
+        if (schema.getName() == null || schema.getName().isBlank()) {
+            throw new IllegalArgumentException("Schema name is required");
+        }
+        if (schema.getName().length() > 255) {
+            throw new IllegalArgumentException("Schema name too long (max 255 chars)");
+        }
+
+        // Size limits to prevent DoS
+        String json;
+        try {
+            json = new ObjectMapper().writeValueAsString(schema);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to serialize schema for validation", e);
+        }
+        if (json.length() > 10_000_000) { // 10MB max
+            throw new IllegalArgumentException("Schema too large (max 10MB)");
+        }
+
+        // Validate nodes
+        if (schema.getNodes() != null && schema.getNodes().size() > 1000) {
+            throw new IllegalArgumentException("Too many nodes (max 1000)");
+        }
+
+        // Sanitize: force owner
         if (schema.getId() == null) {
             schema.setId(UUID.randomUUID().toString());
         }
         schema.setUserId(userId);
         schema.setCreatedAt(Instant.now());
         schema.setUpdatedAt(Instant.now());
-        log.info("Importing schema: id={}, name={}", schema.getId(), schema.getName());
+        log.info("Importing schema: id={}, name={}", schema.getId(),
+                schema.getName() != null ? schema.getName().replaceAll("[\\n\\r]", "_") : null);
+
+        // Strip dangerous node config fields
+        if (schema.getNodes() != null) {
+            for (var node : schema.getNodes()) {
+                if (node != null && node.getData() != null && node.getData().getConfig() != null) {
+                    Map<String, Object> config = node.getData().getConfig();
+                    // Remove executor model config — must be set by server
+                    config.remove("executorModel");
+                }
+            }
+        }
+
         schemaRepository.save(schema);
         return schema;
     }

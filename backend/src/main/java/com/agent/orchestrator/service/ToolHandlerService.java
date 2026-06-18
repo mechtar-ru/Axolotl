@@ -939,7 +939,7 @@ public class ToolHandlerService {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to look up planner model: {}", e.getMessage());
+            log.warn("Failed to look up planner model: {}", e.getMessage(), e);
         }
 
         if (plannerModel == null || plannerModel.isBlank()) {

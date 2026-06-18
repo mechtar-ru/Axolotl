@@ -236,7 +236,7 @@ public final class OpenAiChatClient {
                     }
                 } catch (Exception e) {
                     // Skip malformed SSE events
-                    log.warn("SSE parse warning: {}", e.getMessage());
+                    log.warn("SSE parse warning: {}", e.getMessage(), e);
                 }
             }
         }
@@ -355,7 +355,7 @@ public final class OpenAiChatClient {
                 text = (text != null && !text.isBlank() ? text + "\n" : "") + toolCallsJson;
                 log.debug("Extracted {} tool_calls from response, appended to text", toolCallsNode.size());
             } catch (Exception e) {
-                log.warn("Failed to serialize tool_calls: {}", e.getMessage());
+                log.warn("Failed to serialize tool_calls: {}", e.getMessage(), e);
             }
         }
 

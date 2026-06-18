@@ -70,7 +70,7 @@ public class CodebaseLoader {
                     loadFile(file, basePackage);
                     loaded++;
                 } catch (Exception e) {
-                    log.warn("Error loading {}: {}", file.getFileName(), e.getMessage());
+                    log.warn("Error loading {}: {}", file.getFileName(), e.getMessage(), e);
                 }
             }
         }
@@ -206,7 +206,7 @@ public class CodebaseLoader {
         try {
             return loadDirectory(backendSrc, "com.agent.orchestrator");
         } catch (IOException e) {
-            log.error("Failed to load backend: {}", e.getMessage());
+            log.error("Failed to load backend: {}", e.getMessage(), e);
             return 0;
         }
     }

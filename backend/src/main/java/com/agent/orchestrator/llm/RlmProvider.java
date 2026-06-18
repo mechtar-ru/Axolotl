@@ -156,7 +156,7 @@ public class RlmProvider implements LlmProvider {
 
                     return textOnly(jsonOutput);
                 } catch (Exception e) {
-                    log.warn("Failed to parse RLM JSON output, returning raw: {}", e.getMessage());
+                    log.warn("Failed to parse RLM JSON output, returning raw: {}", e.getMessage(), e);
                     return textOnly(jsonOutput);
                 }
             }
@@ -193,7 +193,7 @@ public class RlmProvider implements LlmProvider {
             }
             return process.exitValue() == 0;
         } catch (Exception e) {
-            log.warn("RLM availability check failed: {}", e.getMessage());
+            log.warn("RLM availability check failed: {}", e.getMessage(), e);
             return false;
         }
     }

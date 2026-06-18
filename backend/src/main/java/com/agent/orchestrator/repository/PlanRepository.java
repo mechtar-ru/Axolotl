@@ -138,7 +138,7 @@ public class PlanRepository {
                         mapper.getTypeFactory().constructCollectionType(List.class, Task.class)));
             }
         } catch (Exception e) {
-            log.error("Error deserializing tasks: {}", e.getMessage());
+            log.error("Error deserializing tasks: {}", e.getMessage(), e);
         }
         if (g.getCreatedAt() != null) plan.setCreatedAt(Instant.parse(g.getCreatedAt()));
         if (g.getUpdatedAt() != null) plan.setUpdatedAt(Instant.parse(g.getUpdatedAt()));

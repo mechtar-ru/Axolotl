@@ -84,7 +84,7 @@ public class ProjectContextBuilder {
                     sb.append("\n**IMPORTANT**: You are continuing development. Read existing files with `directory_read` and `file_read` before creating new ones. Do NOT recreate what already exists — extend and modify.\n");
                 }
             } catch (Exception e) {
-                log.warn("Failed to read session context: {}", e.getMessage());
+                log.warn("Failed to read session context: {}", e.getMessage(), e);
             }
         }
 
@@ -104,7 +104,7 @@ public class ProjectContextBuilder {
                 sb.append("\n## This Session Goal\n\n").append(sessionGoal).append("\n");
             }
         } catch (Exception e) {
-            log.warn("Failed to read session goal: {}", e.getMessage());
+            log.warn("Failed to read session goal: {}", e.getMessage(), e);
         }
 
         // Session history (completed tasks from plan)
@@ -128,7 +128,7 @@ public class ProjectContextBuilder {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to read plan history: {}", e.getMessage());
+            log.warn("Failed to read plan history: {}", e.getMessage(), e);
         }
 
         // Truncate if too long (>2000 tokens ≈ 8000 chars)

@@ -168,7 +168,7 @@ public class AstDependencyResolver {
             dependencies.remove(clazz.getQualifiedName());
 
         } catch (Exception e) {
-            log.warn("AST resolution failed for {}: {}", clazz.getQualifiedName(), e.getMessage());
+            log.warn("AST resolution failed for {}: {}", clazz.getQualifiedName(), e.getMessage(), e);
         }
 
         return dependencies;

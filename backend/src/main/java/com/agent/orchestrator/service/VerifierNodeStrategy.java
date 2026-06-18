@@ -218,11 +218,11 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                                 coverageContext.append("\n=== DESIGN DOC: ").append(relPath).append(" ===\n");
                                 coverageContext.append(content.substring(0, Math.min(content.length(), 3000))).append("\n");
                             } catch (Exception e) {
-                                log.warn("Failed to read design doc {}: {}", p, e.getMessage());
+                                log.warn("Failed to read design doc {}: {}", p, e.getMessage(), e);
                             }
                         });
             } catch (Exception e) {
-                log.warn("Failed to walk design dir {}: {}", designDir, e.getMessage());
+                log.warn("Failed to walk design dir {}: {}", designDir, e.getMessage(), e);
             }
         }
 
@@ -239,12 +239,12 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                                     coverageContext.append("\n=== PLAN STEP: ").append(relPath).append(" ===\n");
                                     coverageContext.append(content.substring(0, Math.min(content.length(), 2000))).append("\n");
                                 } catch (Exception e) {
-                                    log.warn("Failed to read plan step {}: {}", p, e.getMessage());
+                                    log.warn("Failed to read plan step {}: {}", p, e.getMessage(), e);
                                 }
                             });
                 }
             } catch (Exception e) {
-                log.warn("Failed to walk plan dir {}: {}", planDir, e.getMessage());
+                log.warn("Failed to walk plan dir {}: {}", planDir, e.getMessage(), e);
             }
         }
 
@@ -315,7 +315,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                 targetPath = ws.getTargetPath();
             }
         } catch (Exception e) {
-            log.warn("Could not determine project type for schema {}: {}", schemaId, e.getMessage());
+            log.warn("Could not determine project type for schema {}: {}", schemaId, e.getMessage(), e);
         }
         return new ProjectInfo(projectType, targetPath);
     }
@@ -564,7 +564,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             }
             return errorsBuilder.length() > 0 ? errorsBuilder.toString() : "verification FAIL";
         } catch (Exception e) {
-            log.warn("Не удалось распарсить результат верификации: {}", e.getMessage());
+            log.warn("Не удалось распарсить результат верификации: {}", e.getMessage(), e);
             return "parse error: " + e.getMessage();
         }
     }
@@ -621,7 +621,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                 }
             }
         } catch (IOException e) {
-            log.error("Failed to write fixed file: {}", e.getMessage());
+            log.error("Failed to write fixed file: {}", e.getMessage(), e);
         }
         return cleaned;
     }

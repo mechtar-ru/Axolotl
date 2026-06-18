@@ -41,7 +41,7 @@ public class Neo4jIndexesInitializer {
 
             log.info("Neo4j indexes created successfully");
         } catch (Exception e) {
-            log.warn("Failed to create indexes (may already exist): {}", e.getMessage());
+            log.warn("Failed to create indexes (may already exist): {}", e.getMessage(), e);
         }
     }
 }

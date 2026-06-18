@@ -272,8 +272,9 @@ public class AgentController {
                 ? (List<Map<String, Object>>) body.get("history") : new ArrayList<>();
 
         schemaService.handleReviewFeedback(executionId, nodeId, feedback, history);
+        String sanitizedFeedback = feedback.replaceAll("[\\n\\r]", "_");
         log.info("Review feedback received for execution {} node {}: {}", executionId, nodeId,
-                feedback.length() > 50 ? feedback.substring(0, 50) + "..." : feedback);
+                sanitizedFeedback.length() > 50 ? sanitizedFeedback.substring(0, 50) + "..." : sanitizedFeedback);
 
         return Map.of("status", "ok", "message", "Feedback received and review node resumed");
     }
@@ -312,7 +313,7 @@ public class AgentController {
             return Map.of("status", "error", "message", "No deps specified");
         }
 
-        log.info("Installing deps for execution {}: {}", executionId, deps);
+        log.info("Installing deps for execution {}: {}", executionId, deps.toString().replaceAll("[\\n\\r]", "_"));
         List<Map<String, Object>> results = new ArrayList<>();
 
         for (String dep : deps) {
@@ -346,10 +347,10 @@ public class AgentController {
                 }
             } catch (IllegalArgumentException e) {
                 result.put("status", "error");
-                result.put("message", e.getMessage());
+                result.put("message", "Dependency installation failed");
             } catch (Exception e) {
                 result.put("status", "error");
-                result.put("message", e.getMessage());
+                result.put("message", "Dependency installation failed");
             }
             results.add(result);
         }
@@ -434,7 +435,7 @@ public class AgentController {
             result.put("duration_ms", duration);
         } catch (Exception e) {
             result.put("success", false);
-            result.put("error", e.getMessage());
+            result.put("error", "LLM test failed");
         }
         return result;
     }
@@ -587,7 +588,7 @@ public class AgentController {
             }
             return Map.of("status", "error", "error", "HTTP " + response.statusCode());
         } catch (Exception e) {
-            return Map.of("status", "error", "error", e.getMessage());
+            return Map.of("status", "error", "error", "URL fetch failed");
         }
     }
 

@@ -62,7 +62,8 @@ public class CircuitBreakerWrapperTest {
             cb.call("test-provider", () -> { throw new RuntimeException("fail2"); }));
         assertEquals(State.OPEN, cb.getState("test-provider"));
 
-        Thread.sleep(SHORT_DURATION_MS + 20);
+        long openObservedAt = System.currentTimeMillis();
+        waitForOpenDuration(openObservedAt);
 
         String result = cb.call("test-provider", () -> "recovered");
         assertEquals("recovered", result);
@@ -76,7 +77,8 @@ public class CircuitBreakerWrapperTest {
         assertThrows(RuntimeException.class, () ->
             cb.call("test-provider", () -> { throw new RuntimeException("fail2"); }));
 
-        Thread.sleep(SHORT_DURATION_MS + 20);
+        long openObservedAt = System.currentTimeMillis();
+        waitForOpenDuration(openObservedAt);
 
         assertThrows(RuntimeException.class, () ->
             cb.call("test-provider", () -> { throw new RuntimeException("half-open-fail"); }));
@@ -112,5 +114,20 @@ public class CircuitBreakerWrapperTest {
         assertEquals(2, states.size());
         assertEquals(State.CLOSED, states.get("p1"));
         assertEquals(State.CLOSED, states.get("p2"));
+    }
+
+    /**
+     * Poll until sufficient time has elapsed since the circuit was opened.
+     * Uses a generous 5s max timeout to avoid flakiness under load.
+     */
+    private void waitForOpenDuration(long openObservedAt) throws Exception {
+        long deadline = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < deadline) {
+            if (System.currentTimeMillis() - openObservedAt >= SHORT_DURATION_MS) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        fail("Circuit breaker open duration did not elapse within 5s timeout");
     }
 }

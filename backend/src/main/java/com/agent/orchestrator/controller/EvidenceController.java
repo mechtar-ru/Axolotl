@@ -40,12 +40,12 @@ public class EvidenceController {
                                   evidence.add(entry);
                               }
                           } catch (Exception e) {
-                              log.error("Error reading evidence file: {}", e.getMessage());
+                              log.error("Error reading evidence file: {}", e.getMessage(), e);
                           }
                       });
             }
         } catch (Exception e) {
-            log.error("Error listing evidence: {}", e.getMessage());
+            log.error("Error listing evidence: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
         
@@ -66,7 +66,7 @@ public class EvidenceController {
             
             return ResponseEntity.ok(data);
         } catch (Exception e) {
-            log.error("Error reading evidence: {}", e.getMessage());
+            log.error("Error reading evidence: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -101,7 +101,7 @@ public class EvidenceController {
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error saving evidence: {}", e.getMessage());
+            log.error("Error saving evidence: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -135,7 +135,7 @@ public class EvidenceController {
                                       .readValue(content, Map.class);
                               allEvidence.add(data);
                           } catch (Exception e) {
-                              log.error("Error processing evidence file: {}", e.getMessage());
+                              log.error("Error processing evidence file: {}", e.getMessage(), e);
                           }
                       });
             }
@@ -174,7 +174,7 @@ public class EvidenceController {
             aggregate.put("toolUsage", toolUsage);
             
         } catch (Exception e) {
-            log.error("Error aggregating evidence: {}", e.getMessage());
+            log.error("Error aggregating evidence: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
         }
         

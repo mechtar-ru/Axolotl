@@ -140,7 +140,7 @@ public class AnthropicProvider implements LlmProvider {
                 return models;
             }
         } catch (Exception e) {
-            log.warn("Anthropic models API unavailable: {}", e.getMessage());
+            log.warn("Anthropic models API unavailable: {}", e.getMessage(), e);
         }
         return List.of();
     }
@@ -205,7 +205,7 @@ public class AnthropicProvider implements LlmProvider {
 
                 @Override
                 public void onError(Throwable error) {
-                    log.error("Anthropic streaming error: {}", error.getMessage());
+                    log.error("Anthropic streaming error: {}", error.getMessage(), error);
                 }
             });
 

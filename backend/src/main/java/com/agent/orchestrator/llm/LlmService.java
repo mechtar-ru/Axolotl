@@ -93,7 +93,7 @@ public class LlmService {
                 log.info("  {} — unavailable", name);
             }
         } catch (Exception e) {
-            log.warn("  {} — error checking: {}", name, e.getMessage());
+            log.warn("  {} — error checking: {}", name, e.getMessage(), e);
             // Fall back to Neo4j
             List<String> dbModels = settingsService.getModels(name);
             providerCache.put(name, new CachedProviderInfo(false, dbModels));
@@ -193,9 +193,9 @@ public class LlmService {
                 return response;
             } catch (Exception e) {
                 if (m != null) {
-                    log.warn("Model {} failed: {}; trying fallback if available", m, e.getMessage());
+                    log.warn("Model {} failed: {}; trying fallback if available", m, e.getMessage(), e);
                 } else {
-                    log.warn("Model <null> failed: {}; trying fallback if available", e.getMessage());
+                    log.warn("Model <null> failed: {}; trying fallback if available", e.getMessage(), e);
                 }
                 lastException = e;
             }
@@ -239,9 +239,9 @@ public class LlmService {
                 return response;
             } catch (Exception e) {
                 if (m != null) {
-                    log.warn("Streaming model {} failed: {}; trying fallback", m, e.getMessage());
+                    log.warn("Streaming model {} failed: {}; trying fallback", m, e.getMessage(), e);
                 } else {
-                    log.warn("Streaming model <null> failed: {}; trying fallback", e.getMessage());
+                    log.warn("Streaming model <null> failed: {}; trying fallback", e.getMessage(), e);
                 }
                 lastException = e;
             }

@@ -32,7 +32,7 @@ public class CustomLlmEndpointRepository {
             }
             log.info("Loaded {} custom LLM endpoints from Neo4j", cache.size());
         } catch (Exception e) {
-            log.error("Error loading custom endpoints: {}", e.getMessage());
+            log.error("Error loading custom endpoints: {}", e.getMessage(), e);
         }
     }
 
@@ -72,7 +72,7 @@ public class CustomLlmEndpointRepository {
             neo4jRepo.save(g);
             cache.put(endpoint.getId(), endpoint);
         } catch (Exception ex) {
-            log.error("Error saving custom endpoint: {}", ex.getMessage());
+            log.error("Error saving custom endpoint: {}", ex.getMessage(), ex);
             throw new RuntimeException("Error saving custom endpoint: " + ex.getMessage(), ex);
         }
         return endpoint;
@@ -114,7 +114,7 @@ public class CustomLlmEndpointRepository {
             neo4jRepo.deleteById(id);
             cache.remove(id);
         } catch (Exception e) {
-            log.error("Error deleting custom endpoint: {}", e.getMessage());
+            log.error("Error deleting custom endpoint: {}", e.getMessage(), e);
         }
     }
 }

@@ -103,7 +103,7 @@ public class OpenAiProvider implements LlmProvider {
                 return models;
             }
         } catch (Exception e) {
-            log.warn("OpenAI models API unavailable: {}", e.getMessage());
+            log.warn("OpenAI models API unavailable: {}", e.getMessage(), e);
         }
         return List.of();
     }

@@ -50,7 +50,7 @@ public class EvolveController {
                 status.put("totalRuns", count);
             }
         } catch (Exception e) {
-            log.error("Error getting evolve status: {}", e.getMessage());
+            log.error("Error getting evolve status: {}", e.getMessage(), e);
         }
         
         return ResponseEntity.ok(status);
@@ -96,7 +96,7 @@ public class EvolveController {
             dashboard.put("manifestExists", Files.exists(manifestFile));
             
         } catch (Exception e) {
-            log.error("Error building dashboard: {}", e.getMessage());
+            log.error("Error building dashboard: {}", e.getMessage(), e);
         }
         
         return ResponseEntity.ok(dashboard);

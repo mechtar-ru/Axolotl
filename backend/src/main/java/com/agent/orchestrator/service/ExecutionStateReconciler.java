@@ -100,7 +100,7 @@ public class ExecutionStateReconciler {
                         }
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to reconcile node executions for run {}: {}", run.getId(), e.getMessage());
+                    log.warn("Failed to reconcile node executions for run {}: {}", run.getId(), e.getMessage(), e);
                 }
             }
 

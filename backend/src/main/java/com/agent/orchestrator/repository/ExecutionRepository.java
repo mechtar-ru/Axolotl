@@ -188,7 +188,7 @@ public class ExecutionRepository {
             return runRepo.findCompletedBySchemaId(schemaId, Math.min(limit, 10))
                     .stream().map(this::toPocoRun).toList();
         } catch (Exception e) {
-            log.error("Error reading completed runs for schema {}: {}", schemaId, e.getMessage());
+            log.error("Error reading completed runs for schema {}: {}", schemaId, e.getMessage(), e);
             return List.of();
         }
     }

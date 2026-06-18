@@ -454,7 +454,7 @@ public class PlanService {
                     .map(p -> new Task.GeneratedFile(root.relativize(p).toString(), ""))
                     .toList();
         } catch (IOException e) {
-            log.warn("Ошибка сканирования сгенерированных файлов: {}", e.getMessage());
+            log.warn("Ошибка сканирования сгенерированных файлов: {}", e.getMessage(), e);
             return new ArrayList<>();
         }
     }

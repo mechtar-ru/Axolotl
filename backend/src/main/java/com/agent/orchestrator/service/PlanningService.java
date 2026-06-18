@@ -170,7 +170,7 @@ public class PlanningService {
             }
             return result;
         } catch (Exception e) {
-            log.warn("Failed to parse LLM response as JSON, using raw text: {}", e.getMessage());
+            log.warn("Failed to parse LLM response as JSON, using raw text: {}", e.getMessage(), e);
             result.put("success", true);
             result.put("content", raw);
             return result;

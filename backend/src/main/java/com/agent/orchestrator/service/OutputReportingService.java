@@ -117,7 +117,7 @@ public class OutputReportingService {
                     targetPath = schema.getTargetPath();
                 }
             } catch (Exception e) {
-                log.warn("Could not resolve targetPath for schema {}: {}", schemaId, e.getMessage());
+                log.warn("Could not resolve targetPath for schema {}: {}", schemaId, e.getMessage(), e);
             }
             if (targetPath != null && !targetPath.isBlank()) {
                 filePath = targetPath.endsWith("/") ? targetPath + filePath : targetPath + "/" + filePath;
@@ -343,7 +343,7 @@ public class OutputReportingService {
                                 "README.md written to: " + readmePath, node.getId());
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to generate README.md: {}", e.getMessage());
+                    log.warn("Failed to generate README.md: {}", e.getMessage(), e);
                 }
             }
 
@@ -358,7 +358,7 @@ public class OutputReportingService {
                                 "architecture.md written to: " + archPath, node.getId());
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to generate architecture.md: {}", e.getMessage());
+                    log.warn("Failed to generate architecture.md: {}", e.getMessage(), e);
                 }
             }
 

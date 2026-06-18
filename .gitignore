@@ -18,6 +18,7 @@ frontend/release/
 frontend/jre/
 frontend/.env
 frontend/.env.local
+frontend/.env.sentry-build-plugin
 
 # Electron build output
 dist/

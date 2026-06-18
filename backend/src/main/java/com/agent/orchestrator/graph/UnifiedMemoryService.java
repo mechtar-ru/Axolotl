@@ -54,7 +54,7 @@ public class UnifiedMemoryService {
                 decisionRepo.save(decision);
                 log.debug("Stored execution in Neo4j: {}", nodeName);
             } catch (Exception e) {
-                log.warn("Failed to store in Neo4j: {}", e.getMessage());
+                log.warn("Failed to store in Neo4j: {}", e.getMessage(), e);
             }
         }
     }
@@ -76,7 +76,7 @@ public class UnifiedMemoryService {
                 d.setSource("agent");
                 decisionRepo.save(d);
             } catch (Exception e) {
-                log.warn("Failed to store trajectory: {}", e.getMessage());
+                log.warn("Failed to store trajectory: {}", e.getMessage(), e);
             }
         }
     }
@@ -99,7 +99,7 @@ public class UnifiedMemoryService {
                 d.setPriority("HIGH");
                 decisionRepo.save(d);
             } catch (Exception e) {
-                log.warn("Failed to store skill: {}", e.getMessage());
+                log.warn("Failed to store skill: {}", e.getMessage(), e);
             }
         }
     }

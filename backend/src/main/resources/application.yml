@@ -74,11 +74,8 @@ axolotl:
     codebase-path: ${AXOLOTL_GRAPH_CODEBASE_PATH:}
   tools:
     allowed-commands: >-
-      ls,cat,grep,find,git,cd,pwd,echo,head,tail,wc,sort,uniq,diff,patch,
-      mkdir,cp,mv,rm,touch,chmod,date,env,which,dirname,basename,readlink,
-      xargs,cut,tr,sed,awk,printf,tee,zip,unzip,tar,gzip,gunzip,make,mvn,
-      npm,node,python3,python,curl,wget,ping,nslookup,dig,ssh,scp,rsync,
-      flutter,dart,pub
+      bun,cargo,cat,dart,find,flutter,git,go,ls,make,node,npm,npx,pub,
+      python3,rustc
   reconciler:
     interval: 300000
 

@@ -139,7 +139,7 @@ public class ExecutionUtilityService {
             log.warn("JS condition evaluation timed out after 5s: {}", expression);
             return false;
         } catch (Exception e) {
-            log.error("Failed to evaluate condition '{}': {}", expression, e.getMessage());
+            log.error("Failed to evaluate condition '{}': {}", expression, e.getMessage(), e);
             return false;
         } finally {
             exec.shutdownNow();

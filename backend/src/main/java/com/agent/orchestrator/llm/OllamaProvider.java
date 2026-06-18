@@ -134,7 +134,7 @@ public class OllamaProvider implements LlmProvider {
 
                 @Override
                 public void onError(Throwable error) {
-                    log.error("Ollama streaming error: {}", error.getMessage());
+                    log.error("Ollama streaming error: {}", error.getMessage(), error);
                 }
             });
 
@@ -185,7 +185,7 @@ public class OllamaProvider implements LlmProvider {
                 return models;
             }
         } catch (Exception e) {
-            log.error("Ollama listModels error: {}", e.getMessage());
+            log.error("Ollama listModels error: {}", e.getMessage(), e);
         }
         return List.of();
     }

@@ -305,7 +305,7 @@ public class CustomLlmProvider implements LlmProvider {
             }
         } catch (Exception e) {
             if (attempt < MAX_RATE_LIMIT_RETRIES) {
-                log.warn("Custom LLM request failed (attempt {}), retrying: {}", attempt + 1, e.getMessage());
+                log.warn("Custom LLM request failed (attempt {}), retrying: {}", attempt + 1, e.getMessage(), e);
                 try { Thread.sleep(1000L * (attempt + 1)); } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
                 }

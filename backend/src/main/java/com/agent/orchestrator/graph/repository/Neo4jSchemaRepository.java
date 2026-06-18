@@ -58,7 +58,7 @@ public class Neo4jSchemaRepository {
                 result.add(schema);
             }
         } catch (Exception e) {
-            log.error("Error loading schemas by user: {}", e.getMessage());
+            log.error("Error loading schemas by user: {}", e.getMessage(), e);
         }
         return result;
     }
@@ -182,7 +182,7 @@ public class Neo4jSchemaRepository {
                         inconsistencies++;
                     }
                 } catch (Exception e) {
-                    log.warn("Cannot parse data blob for schema {}: {}", id, e.getMessage());
+                    log.warn("Cannot parse data blob for schema {}: {}", id, e.getMessage(), e);
                     inconsistencies++;
                 }
             }

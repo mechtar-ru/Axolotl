@@ -2,6 +2,7 @@ package com.agent.orchestrator.mcp;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,14 +44,19 @@ public class McpIntegrationTest {
     @BeforeEach
     void setUp() {
         mcpUrl = "http://localhost:" + port + "/mcp";
-        // Remove all stale Plan records from Neo4j to ensure test isolation.
-        // Root cause: Plan nodes accumulate when Plan.workspaceId is null in JSON
-        // but "default" in the Neo4j property — every save() using MERGE on p.id
-        // creates a new node instead of updating the original. Deleting all plans
-        // in @BeforeEach forces PlanService.getPlan("default") to auto-create
-        // a fresh, correct plan on first access.
+        // Remove test-created Plan nodes from Neo4j to ensure test isolation.
+        // Only targets plans whose data contains 'test-' prefix to avoid
+        // destroying plans created by other processes or manual use.
         try (var session = neo4jDriver.session()) {
-            session.run("MATCH (p:Plan) DETACH DELETE p");
+            session.run("MATCH (p:Plan) WHERE p.data CONTAINS 'test-' DETACH DELETE p");
+        }
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Clean up any Plan nodes created during the test
+        try (var session = neo4jDriver.session()) {
+            session.run("MATCH (p:Plan) WHERE p.data CONTAINS 'test-' DETACH DELETE p");
         }
     }
 

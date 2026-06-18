@@ -5,9 +5,9 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8082/api';
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem('axolotl_token'));
-  const username = ref<string | null>(localStorage.getItem('axolotl_username'));
-  const role = ref<string | null>(localStorage.getItem('axolotl_role'));
+  const token = ref<string | null>(sessionStorage.getItem('axolotl_token'));
+  const username = ref<string | null>(sessionStorage.getItem('axolotl_username'));
+  const role = ref<string | null>(sessionStorage.getItem('axolotl_role'));
 
   const isAuthenticated = computed(() => !!token.value);
   const isAdmin = computed(() => role.value === 'admin');
@@ -16,18 +16,18 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = data.token;
     username.value = data.username;
     role.value = data.role;
-    localStorage.setItem('axolotl_token', data.token);
-    localStorage.setItem('axolotl_username', data.username);
-    localStorage.setItem('axolotl_role', data.role);
+    sessionStorage.setItem('axolotl_token', data.token);
+    sessionStorage.setItem('axolotl_username', data.username);
+    sessionStorage.setItem('axolotl_role', data.role);
   }
 
   function logout() {
     token.value = null;
     username.value = null;
     role.value = null;
-    localStorage.removeItem('axolotl_token');
-    localStorage.removeItem('axolotl_username');
-    localStorage.removeItem('axolotl_role');
+    sessionStorage.removeItem('axolotl_token');
+    sessionStorage.removeItem('axolotl_username');
+    sessionStorage.removeItem('axolotl_role');
   }
 
   async function login(user: string, password: string) {

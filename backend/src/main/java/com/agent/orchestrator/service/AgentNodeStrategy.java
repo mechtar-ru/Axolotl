@@ -524,7 +524,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                             "=== Project Context ===\n" + projectCtx, ContextPriority.LOW));
                 }
             } catch (Exception e) {
-                log.warn("Failed to build project context: {}", e.getMessage());
+                log.warn("Failed to build project context: {}", e.getMessage(), e);
             }
         }
 
@@ -643,7 +643,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                         "Planner arch call timed out after 60s", node.getId());
                 }
             } catch (Exception e) {
-                log.warn("Planner arch call failed: {}", e.getMessage());
+                log.warn("Planner arch call failed: {}", e.getMessage(), e);
                 if (webSocketHandler != null) {
                     webSocketHandler.sendLog(schemaId, "warn",
                         "Planner failed: " + e.getMessage(), node.getId());

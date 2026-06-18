@@ -106,7 +106,7 @@ public class DeepSeekProvider implements LlmProvider {
                 return models;
             }
         } catch (Exception e) {
-            log.warn("DeepSeek models API unavailable: {}", e.getMessage());
+            log.warn("DeepSeek models API unavailable: {}", e.getMessage(), e);
         }
         return List.of();
     }

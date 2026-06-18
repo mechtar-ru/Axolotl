@@ -50,7 +50,7 @@ public class SettingsService {
                 log.info("Global default model already set: {}", global);
             }
         } catch (Exception e) {
-            log.warn("Unable to ensure global default model: {}", e.getMessage());
+            log.warn("Unable to ensure global default model: {}", e.getMessage(), e);
         }
     }
 
@@ -68,7 +68,7 @@ public class SettingsService {
             System.arraycopy(encrypted, 0, combined, iv.length, encrypted.length);
             return Base64.getEncoder().encodeToString(combined);
         } catch (Exception e) {
-            log.error("Encryption failed: {}", e.getMessage());
+            log.error("Encryption failed: {}", e.getMessage(), e);
             return plaintext;
         }
     }
@@ -105,7 +105,7 @@ public class SettingsService {
                 return settings;
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения настроек: {}", e.getMessage());
+            log.error("Ошибка чтения настроек: {}", e.getMessage(), e);
         }
         return null;
     }
@@ -140,7 +140,7 @@ public class SettingsService {
                 }
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения API ключа: {}", e.getMessage());
+            log.error("Ошибка чтения API ключа: {}", e.getMessage(), e);
         }
         // Fallback: env vars
         String envKey = switch (providerName) {
@@ -198,7 +198,7 @@ public class SettingsService {
                 result.add(settings);
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения всех настроек: {}", e.getMessage());
+            log.error("Ошибка чтения всех настроек: {}", e.getMessage(), e);
         }
         return result;
     }
@@ -213,7 +213,7 @@ public class SettingsService {
                 return disabled != null ? disabled : List.of();
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения disabledModels: {}", e.getMessage());
+            log.error("Ошибка чтения disabledModels: {}", e.getMessage(), e);
         }
         return List.of();
     }
@@ -230,7 +230,7 @@ public class SettingsService {
             g.setUpdatedAt(java.time.Instant.now().toString());
             neo4jRepo.save(g);
         } catch (Exception e) {
-            log.error("Ошибка сохранения disabledModels: {}", e.getMessage());
+            log.error("Ошибка сохранения disabledModels: {}", e.getMessage(), e);
         }
     }
 
@@ -247,7 +247,7 @@ public class SettingsService {
                 return models != null ? models : List.of();
             }
         } catch (Exception e) {
-            log.error("Ошибка чтения models: {}", e.getMessage());
+            log.error("Ошибка чтения models: {}", e.getMessage(), e);
         }
         return List.of();
     }
@@ -273,7 +273,7 @@ public class SettingsService {
             g.setUpdatedAt(java.time.Instant.now().toString());
             neo4jRepo.save(g);
         } catch (Exception e) {
-            log.error("Ошибка сохранения models: {}", e.getMessage());
+            log.error("Ошибка сохранения models: {}", e.getMessage(), e);
         }
     }
 
@@ -287,7 +287,7 @@ public class SettingsService {
                 return folder != null && !folder.isBlank() ? folder : null;
             }
         } catch (Exception e) {
-            log.error("Error reading projects folder: {}", e.getMessage());
+            log.error("Error reading projects folder: {}", e.getMessage(), e);
         }
         return null;
     }
@@ -301,7 +301,7 @@ public class SettingsService {
             neo4jRepo.save(g);
             log.info("Projects folder set to: {}", path);
         } catch (Exception e) {
-            log.error("Error saving projects folder: {}", e.getMessage());
+            log.error("Error saving projects folder: {}", e.getMessage(), e);
         }
     }
 

@@ -109,7 +109,7 @@ public class PluginLifecycleManager {
                     autoUpdatePackages(cfg);
                     log.info("Auto-update completed");
                 } catch (Exception e) {
-                    log.warn("Auto-update failed (non-fatal): {}", e.getMessage());
+                    log.warn("Auto-update failed (non-fatal): {}", e.getMessage(), e);
                 }
             }, "plugin-auto-update");
             updateThread.setDaemon(true);
@@ -122,7 +122,7 @@ public class PluginLifecycleManager {
             registry.initialize();
             log.info("Plugin system initialized with {} plugin(s)", registry.getPluginCount());
         } catch (Exception e) {
-            log.error("Failed to initialize plugin system: {}", e.getMessage());
+            log.error("Failed to initialize plugin system: {}", e.getMessage(), e);
         }
     }
 
@@ -229,7 +229,7 @@ public class PluginLifecycleManager {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to auto-update plugins: {}", e.getMessage());
+            log.warn("Failed to auto-update plugins: {}", e.getMessage(), e);
         }
     }
 }

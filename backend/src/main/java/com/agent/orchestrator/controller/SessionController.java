@@ -79,7 +79,7 @@ public class SessionController {
                 context.append("\n");
             }
         } catch (Exception e) {
-            log.warn("Failed to load plan for schema {}: {}", id, e.getMessage());
+            log.warn("Failed to load plan for schema {}: {}", id, e.getMessage(), e);
         }
 
         // Previous executions
@@ -103,7 +103,7 @@ public class SessionController {
                 context.append("\n");
             }
         } catch (Exception e) {
-            log.warn("Failed to load runs for schema {}: {}", id, e.getMessage());
+            log.warn("Failed to load runs for schema {}: {}", id, e.getMessage(), e);
         }
 
         // Target path files
@@ -138,7 +138,7 @@ public class SessionController {
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to scan files for schema {}: {}", id, e.getMessage());
+            log.warn("Failed to scan files for schema {}: {}", id, e.getMessage(), e);
         }
 
         context.append("\n### Your Role\n")
@@ -166,7 +166,7 @@ public class SessionController {
             try {
                 model = settingsService.getGlobalDefaultModel();
             } catch (Exception e) {
-                log.warn("Failed to get system model: {}", e.getMessage());
+                log.warn("Failed to get system model: {}", e.getMessage(), e);
             }
         }
 

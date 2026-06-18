@@ -128,7 +128,7 @@ public class PluginRegistry implements AutoCloseable {
                     // Find and restart the plugin via the registry (outside bridge lock)
                     restartPlugin(pluginName);
                 } catch (Exception e) {
-                    log.error("[{}] Auto-restart failed: {}", pluginName, e.getMessage());
+                    log.error("[{}] Auto-restart failed: {}", pluginName, e.getMessage(), e);
                 }
             });
 
@@ -155,7 +155,7 @@ public class PluginRegistry implements AutoCloseable {
                     pluginName, adapter.getToolCount(), bridge.getPluginVersion());
 
         } catch (Exception e) {
-            log.error("Failed to start plugin '{}': {}", pluginName, e.getMessage());
+            log.error("Failed to start plugin '{}': {}", pluginName, e.getMessage(), e);
 
             PluginConfig.PluginStatus status = new PluginConfig.PluginStatus();
             status.setName(pluginName);
@@ -215,7 +215,7 @@ public class PluginRegistry implements AutoCloseable {
                             toolExecutor.unregisterTool(toolId);
                             toolExecutor.unregisterPluginHandler(toolId);
                         } catch (Exception e) {
-                            log.warn("Failed to unregister tool {}: {}", toolId, e.getMessage());
+                            log.warn("Failed to unregister tool {}: {}", toolId, e.getMessage(), e);
                         }
                     }
                 }
@@ -320,7 +320,7 @@ public class PluginRegistry implements AutoCloseable {
                 log.warn("Failed to update plugin package: {}", def.getName());
             }
         } catch (Exception e) {
-            log.warn("Failed to auto-update plugin '{}': {}", def.getName(), e.getMessage());
+            log.warn("Failed to auto-update plugin '{}': {}", def.getName(), e.getMessage(), e);
         }
     }
 

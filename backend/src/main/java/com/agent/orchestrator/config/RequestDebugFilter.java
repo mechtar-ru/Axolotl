@@ -32,7 +32,7 @@ public class RequestDebugFilter implements Filter {
         try {
             chain.doFilter(request, response);
         } catch (Exception e) {
-            log.error("[RequestDebugFilter] filter chain threw for {} {} -> {}", method, uri, e.getMessage());
+            log.error("[RequestDebugFilter] filter chain threw for {} {} -> {}", method, uri, e.getMessage(), e);
             throw e;
         } finally {
             log.debug("[RequestDebugFilter] EXIT {} {} status={}", method, uri, res.getStatus());

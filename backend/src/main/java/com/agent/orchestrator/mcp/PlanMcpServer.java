@@ -85,7 +85,7 @@ public class PlanMcpServer {
 
             return jsonRpcSuccess(id, result);
         } catch (McpException e) {
-            log.warn("MCP error: code={}, message={}", e.getCode(), e.getMessage());
+            log.warn("MCP error: code={}, message={}", e.getCode(), e.getMessage(), e);
             return jsonRpcError(id, e.getCode(), e.getMessage(), e.getData());
         } catch (Exception e) {
             log.error("MCP internal error: {}", e.getMessage(), e);

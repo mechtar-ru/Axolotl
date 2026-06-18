@@ -84,7 +84,7 @@ public final class LangChainToolAdapter {
 
             return toolExecutor.execute(toolName, args, permission, schemaId, nodeId);
         } catch (Exception e) {
-            log.error("Tool execution via LangChain4j failed: {}", e.getMessage());
+            log.error("Tool execution via LangChain4j failed: {}", e.getMessage(), e);
             return ToolResult.error("LangChain4j tool execution error: " + e.getMessage());
         }
     }

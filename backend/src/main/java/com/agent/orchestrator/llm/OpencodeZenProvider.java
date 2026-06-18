@@ -69,7 +69,7 @@ public class OpencodeZenProvider implements LlmProvider {
                     systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
                     java.net.http.HttpClient.Version.HTTP_1_1);
         } catch (Exception e) {
-            log.warn("Zen chat error, retrying once: {}", e.getMessage());
+            log.warn("Zen chat error, retrying once: {}", e.getMessage(), e);
             try {
                 return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
                         systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
@@ -125,7 +125,7 @@ public class OpencodeZenProvider implements LlmProvider {
                 log.warn("Zen models API returned {}", response.statusCode());
             }
         } catch (Exception e) {
-            log.warn("Zen models API unavailable: {}", e.getMessage());
+            log.warn("Zen models API unavailable: {}", e.getMessage(), e);
         }
         return List.of();
     }
@@ -155,7 +155,7 @@ public class OpencodeZenProvider implements LlmProvider {
                     systemPrompt, userPrompt, onToken, TIMEOUT_SECONDS,
                     java.net.http.HttpClient.Version.HTTP_1_1);
         } catch (Exception e) {
-            log.warn("Zen streaming error, retrying once: {}", e.getMessage());
+            log.warn("Zen streaming error, retrying once: {}", e.getMessage(), e);
             try {
                 return OpenAiChatClient.streamingChat(getEffectiveApiKey(), baseUrl, effectiveModel,
                         systemPrompt, userPrompt, onToken, TIMEOUT_SECONDS,

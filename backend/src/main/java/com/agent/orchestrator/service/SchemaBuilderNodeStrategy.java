@@ -294,12 +294,12 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
                                 "Node in generated schema: " + saved.getName(),
                                 Priority.MEDIUM, null, null, null);
                     } catch (Exception e) {
-                        log.warn("Failed to create plan task for node {}: {}", schemaNode.getName(), e.getMessage());
+                        log.warn("Failed to create plan task for node {}: {}", schemaNode.getName(), e.getMessage(), e);
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to create subplan for generated schema: {}", e.getMessage());
+            log.warn("Failed to create subplan for generated schema: {}", e.getMessage(), e);
         }
 
         // Optionally write .md explanation
@@ -319,7 +319,7 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
                 String mdPath = "plan_" + saved.getId().substring(0, 8) + ".md";
                 nodeFileWriter.writeOutput("file", mdPath, "markdown", mdContent);
             } catch (Exception e) {
-                log.warn("Failed to write plan .md: {}", e.getMessage());
+                log.warn("Failed to write plan .md: {}", e.getMessage(), e);
             }
         }
 

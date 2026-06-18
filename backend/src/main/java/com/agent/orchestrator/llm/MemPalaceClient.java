@@ -88,7 +88,7 @@ public class MemPalaceClient {
                 return results;
             }
         } catch (Exception e) {
-            log.error("MemPalace search error: {}", e.getMessage());
+            log.error("MemPalace search error: {}", e.getMessage(), e);
         }
         return List.of();
     }
@@ -116,7 +116,7 @@ public class MemPalaceClient {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             return response.statusCode() == 200;
         } catch (Exception e) {
-            log.error("MemPalace add error: {}", e.getMessage());
+            log.error("MemPalace add error: {}", e.getMessage(), e);
             return false;
         }
     }
@@ -247,7 +247,7 @@ public class MemPalaceClient {
                 return taxonomy;
             }
         } catch (Exception e) {
-            log.error("MemPalace taxonomy error: {}", e.getMessage());
+            log.error("MemPalace taxonomy error: {}", e.getMessage(), e);
         }
         return Map.of();
     }
@@ -286,7 +286,7 @@ public class MemPalaceClient {
                 return results;
             }
         } catch (Exception e) {
-            log.error("MemPalace list drawers error: {}", e.getMessage());
+            log.error("MemPalace list drawers error: {}", e.getMessage(), e);
         }
         return List.of();
     }
@@ -330,7 +330,7 @@ public class MemPalaceClient {
                 return Map.of("tunnels", tunnels);
             }
         } catch (Exception e) {
-            log.error("MemPalace tunnels error: {}", e.getMessage());
+            log.error("MemPalace tunnels error: {}", e.getMessage(), e);
         }
         return Map.of("tunnels", List.of());
     }

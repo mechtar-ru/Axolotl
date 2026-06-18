@@ -33,7 +33,7 @@ public class Neo4jPlanRepository {
                 result.add(plan);
             }
         } catch (Exception e) {
-            log.error("Error loading plans: {}", e.getMessage());
+            log.error("Error loading plans: {}", e.getMessage(), e);
         }
         return result;
     }
@@ -84,7 +84,7 @@ public class Neo4jPlanRepository {
                 return mapper.readValue(rs.next().get("p.data").asString(), Plan.class);
             }
         } catch (Exception e) {
-            log.error("Error loading plan: {}", e.getMessage());
+            log.error("Error loading plan: {}", e.getMessage(), e);
         }
         return null;
     }
@@ -126,7 +126,7 @@ public class Neo4jPlanRepository {
             session.run("MATCH (p:Plan {id: $id}) DETACH DELETE p", 
                 org.neo4j.driver.Values.parameters("id", id));
         } catch (Exception e) {
-            log.error("Error deleting plan: {}", e.getMessage());
+            log.error("Error deleting plan: {}", e.getMessage(), e);
         }
     }
 

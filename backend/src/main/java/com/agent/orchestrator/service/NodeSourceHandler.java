@@ -125,7 +125,7 @@ public class NodeSourceHandler {
             } catch (java.nio.file.NoSuchFileException e) {
                 return "Файл не найден: " + filePath;
             } catch (Exception e) {
-                log.error("Ошибка чтения файла {}: {}", filePath, e.getMessage());
+                log.error("Ошибка чтения файла {}: {}", filePath, e.getMessage(), e);
                 return "Ошибка чтения файла: " + e.getMessage();
             }
         } else {

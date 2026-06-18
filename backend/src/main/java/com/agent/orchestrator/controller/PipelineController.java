@@ -75,7 +75,7 @@ public class PipelineController {
             pipelineService.retryPipeline(id);
             return Map.of("status", "ok", "message", "Pipeline retry started from first failed stage");
         } catch (Exception e) {
-            return Map.of("status", "error", "error", e.getMessage());
+            return Map.of("status", "error", "error", "Pipeline execution failed");
         }
     }
 

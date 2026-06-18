@@ -453,7 +453,7 @@ public class SchemaExecutionService {
                                 java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                         backup.delete();
                     } catch (IOException e) {
-                        log.error("Failed to restore backup for {}: {}", pd.filePath, e.getMessage());
+                        log.error("Failed to restore backup for {}: {}", pd.filePath, e.getMessage(), e);
                     }
                 }
             }

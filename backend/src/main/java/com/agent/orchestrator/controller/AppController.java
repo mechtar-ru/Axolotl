@@ -56,7 +56,7 @@ public class AppController {
         // Auto-create workspaceId if not provided (required for plan tracking)
         if (schema.getWorkspaceId() == null || schema.getWorkspaceId().isBlank()) {
             schema.setWorkspaceId(java.util.UUID.randomUUID().toString());
-            log.info("Auto-generated workspaceId={} for schema '{}'", schema.getWorkspaceId(), req.name());
+            log.info("Auto-generated workspaceId={} for schema '{}'", schema.getWorkspaceId(), req.name().replaceAll("[\\n\\r]", "_"));
         }
 
         // Compute target path
@@ -88,7 +88,7 @@ public class AppController {
                 Files.createDirectories(path);
                 schema.setTargetPathConflictAction("OVERWRITE");
             } catch (IOException e) {
-                log.warn("Failed to handle OVERWRITE for path {}: {}", targetPath, e.getMessage());
+                log.warn("Failed to handle OVERWRITE for path {}: {}", targetPath, e.getMessage(), e);
             }
         } else if ("CHANGE_PATH".equalsIgnoreCase(conflictAction)) {
             if (req.customTargetPath() != null && !req.customTargetPath().isBlank()) {
@@ -186,7 +186,7 @@ public class AppController {
             try {
                 appType = AppModel.AppType.valueOf(appTypeStr.toUpperCase());
             } catch (IllegalArgumentException e) {
-                log.warn("Unknown appType '{}', falling back to CUSTOM", appTypeStr);
+                log.warn("Unknown appType '{}', falling back to CUSTOM", appTypeStr.replaceAll("[\\n\\r]", "_"));
                 appType = AppModel.AppType.CUSTOM;
             }
         }
@@ -237,7 +237,7 @@ public class AppController {
                 }
             } catch (IOException e) {
                 log.error("Failed to handle target directory: {}", targetPath, e);
-                return ResponseEntity.status(500).body(Map.of("error", "Failed to handle target directory: " + e.getMessage()));
+                return ResponseEntity.status(500).body(Map.of("error", "Failed to handle target directory"));
             }
         }
 
@@ -411,11 +411,11 @@ public class AppController {
                     Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
                     log.info("Scaffold copied: {}", relative);
                 } catch (IOException e) {
-                    log.warn("Failed to copy scaffold file {}: {}", relative, e.getMessage());
+                    log.warn("Failed to copy scaffold file {}: {}", relative, e.getMessage(), e);
                 }
             });
         } catch (IOException e) {
-            log.warn("Failed to walk scaffold dir {}: {}", scaffoldDir, e.getMessage());
+            log.warn("Failed to walk scaffold dir {}: {}", scaffoldDir, e.getMessage(), e);
         }
     }
 

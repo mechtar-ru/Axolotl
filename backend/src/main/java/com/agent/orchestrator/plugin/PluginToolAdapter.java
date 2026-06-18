@@ -96,7 +96,7 @@ public class PluginToolAdapter {
 
             log.info("[{}] Registered plugin tool: {} ({})", bridge.getName(), id, name);
         } catch (Exception e) {
-            log.error("[{}] Failed to register plugin tool: {}", bridge.getName(), e.getMessage());
+            log.error("[{}] Failed to register plugin tool: {}", bridge.getName(), e.getMessage(), e);
         }
     }
 

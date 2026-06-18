@@ -12,7 +12,7 @@ export const api = axios.create({
 
 // Auto-attach JWT token to all requests
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('axolotl_token');
+  const token = sessionStorage.getItem('axolotl_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -38,7 +38,7 @@ function decodeJwt(token: string): Record<string, unknown> | null {
  * Returns false if no token, malformed token, or token has no exp.
  */
 function isTokenExpired(): boolean {
-  const token = localStorage.getItem('axolotl_token');
+  const token = sessionStorage.getItem('axolotl_token');
   if (!token) return false;
   const payload = decodeJwt(token);
   if (!payload || typeof payload.exp !== 'number') return false;
@@ -49,9 +49,9 @@ function isTokenExpired(): boolean {
  * Clear auth state and redirect to login page.
  */
 function clearAuthAndRedirect(): void {
-  localStorage.removeItem('axolotl_token');
-  localStorage.removeItem('axolotl_username');
-  localStorage.removeItem('axolotl_role');
+  sessionStorage.removeItem('axolotl_token');
+  sessionStorage.removeItem('axolotl_username');
+  sessionStorage.removeItem('axolotl_role');
   if (window.location.pathname !== '/login') {
     window.location.href = '/login';
   }

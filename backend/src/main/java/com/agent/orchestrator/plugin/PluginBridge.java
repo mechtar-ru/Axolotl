@@ -323,7 +323,7 @@ public class PluginBridge implements AutoCloseable {
                 stdin.flush();
                 return true;
             } catch (IOException e) {
-                log.error("[{}] Failed to send message: {}", name, e.getMessage());
+                log.error("[{}] Failed to send message: {}", name, e.getMessage(), e);
                 return false;
             }
         }
@@ -389,12 +389,12 @@ public class PluginBridge implements AutoCloseable {
 
                         handleMessage(msg);
                     } catch (Exception e) {
-                        log.warn("[{}] Failed to parse plugin message: {}", name, e.getMessage());
+                        log.warn("[{}] Failed to parse plugin message: {}", name, e.getMessage(), e);
                     }
                 }
             } catch (IOException e) {
                 if (running) {
-                    log.warn("[{}] stdout reader error: {}", name, e.getMessage());
+                    log.warn("[{}] stdout reader error: {}", name, e.getMessage(), e);
                 }
             } finally {
                 if (running) {
