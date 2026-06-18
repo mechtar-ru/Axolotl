@@ -22,7 +22,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -148,12 +151,26 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         systemPrompt = assembleAgentContext(node, currentSchema, schemaId, prompt, systemPrompt, contextBlockText, false, null, null);
 
         LlmUsage usage = new LlmUsage();
-        LlmResponse streamingResp = llmService.streamingChat(model, systemPrompt, prompt, null,
-                token -> {
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendToken(schemaId, node.getId(), token);
-                    }
-                }, usage);
+        // Final copies for lambda capture (variables above may be reassigned)
+        final String capturedModel = model;
+        final String capturedSystemPrompt = systemPrompt;
+        final String capturedPrompt = prompt;
+        LlmResponse streamingResp;
+        try {
+            streamingResp = CompletableFuture.supplyAsync(() ->
+                    llmService.streamingChat(capturedModel, capturedSystemPrompt, capturedPrompt, null,
+                            token -> {
+                                if (webSocketHandler != null) {
+                                    webSocketHandler.sendToken(schemaId, node.getId(), token);
+                                }
+                            }, usage))
+                    .orTimeout(120, TimeUnit.SECONDS).join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof TimeoutException) {
+                log.error("LLM streaming call timed out after 120s for node {}", node.getId());
+            }
+            throw e;
+        }
         String result = streamingResp.text();
         if (streamingResp.reasoning() != null) {
             reasoningCapture.capture(node.getId(), streamingResp.reasoning());
@@ -320,8 +337,22 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
 
             LlmUsage iterUsage = new LlmUsage();
-            LlmResponse iterResp = llmService.chat(model, null,
-                    toolExecutionService.buildMessagesForToolCall(messages), chatConfig, iterUsage);
+            // Final copies for lambda capture
+            final String capturedModel = model;
+            final List<Node.Message> capturedMessages = messages;
+            final Map<String, Object> capturedChatConfig = chatConfig;
+            LlmResponse iterResp;
+            try {
+                CompletableFuture<LlmResponse> llmFuture = CompletableFuture.supplyAsync(() ->
+                        llmService.chat(capturedModel, null,
+                                toolExecutionService.buildMessagesForToolCall(capturedMessages), capturedChatConfig, iterUsage));
+                iterResp = llmFuture.orTimeout(120, TimeUnit.SECONDS).join();
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TimeoutException) {
+                    log.error("LLM agent loop call timed out after 120s at iteration {}", iterationCount);
+                }
+                throw e;
+            }
             lastResponse = iterResp.text();
             if (iterResp.reasoning() != null) {
                 reasoningCapture.capture(schemaId, node.getId(), iterationCount, iterResp.reasoning());
@@ -394,6 +425,17 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
                 toolCallCount++;
                 toolsInThisIteration++;
+            }
+
+            // H42: Trim message history to prevent unbounded growth
+            int MAX_MESSAGES = 20;
+            if (messages.size() > MAX_MESSAGES) {
+                List<Node.Message> systemMsg = List.of(messages.get(0));
+                List<Node.Message> recentMessages = messages.subList(messages.size() - (MAX_MESSAGES - 1), messages.size());
+                List<Node.Message> trimmed = new ArrayList<>();
+                trimmed.addAll(systemMsg);
+                trimmed.addAll(recentMessages);
+                messages = trimmed;
             }
 
             long iterDuration = System.currentTimeMillis() - iterationStartTime;

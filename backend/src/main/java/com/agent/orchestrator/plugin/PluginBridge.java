@@ -191,14 +191,17 @@ public class PluginBridge implements AutoCloseable {
 
             log.warn("[{}] Restarting (attempt {}/{})", name, restartCount, maxRestartAttempts);
             stopInternal();
+        }
 
-            try {
-                Thread.sleep(restartBackoffMs * restartCount);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new PluginException("Interrupted during restart backoff", e);
-            }
+        // Sleep outside the lock to avoid blocking other operations
+        try {
+            Thread.sleep(restartBackoffMs * restartCount);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new PluginException("Interrupted during restart backoff", e);
+        }
 
+        synchronized (lock) {
             startInternal(initParams);
         }
     }
@@ -482,20 +485,23 @@ public class PluginBridge implements AutoCloseable {
     }
 
     private void handleDisconnect() {
-        if (!running) return;
+        synchronized (lock) {
+            if (!running) return;
 
-        disconnected.set(true);
-        // Notify pending requests that the process died
-        synchronized (pendingRequests) {
-            pendingRequests.forEach((id, future) -> future.completeExceptionally(new PluginException("Plugin process disconnected")));
-            pendingRequests.clear();
-        }
+            disconnected.set(true);
+            // Notify pending requests that the process died
+            synchronized (pendingRequests) {
+                pendingRequests.forEach((id, future) -> future.completeExceptionally(new PluginException("Plugin process disconnected")));
+                pendingRequests.clear();
+            }
 
-        // Schedule auto-restart
-        Runnable callback = onDisconnect;
-        if (callback != null) {
-            log.info("[{}] Scheduling auto-restart in {}ms", name, restartBackoffMs);
-            restartScheduler.schedule(callback, restartBackoffMs, TimeUnit.MILLISECONDS);
+            // Schedule auto-restart inside the lock to prevent stopInternal() racing
+            // and shutting down restartScheduler between the running check and schedule().
+            Runnable callback = onDisconnect;
+            if (callback != null) {
+                log.info("[{}] Scheduling auto-restart in {}ms", name, restartBackoffMs);
+                restartScheduler.schedule(callback, restartBackoffMs, TimeUnit.MILLISECONDS);
+            }
         }
     }
 

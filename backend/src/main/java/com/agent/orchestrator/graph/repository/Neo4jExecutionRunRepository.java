@@ -52,9 +52,10 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun {id: $runId})
-        SET r.status = $status
-        SET r.resumeIndex = $resumeIndex
-        SET r.updatedAt = datetime()
+        SET r.status = $status,
+            r.resumeIndex = $resumeIndex,
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         """)
     void updateStatusAndResumeIndex(@Param("runId") String runId,
                                      @Param("status") String status,
@@ -62,16 +63,18 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun {id: $runId})
-        SET r.resumeIndex = $resumeIndex
-        SET r.updatedAt = datetime()
+        SET r.resumeIndex = $resumeIndex,
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         """)
     void updateResumeIndexOnly(@Param("runId") String runId,
                                 @Param("resumeIndex") int resumeIndex);
 
     @Query("""
         MATCH (r:ExecutionRun {schemaId: $schemaId, status: 'paused'})
-        SET r.status = 'resuming'
-        SET r.updatedAt = datetime()
+        SET r.status = 'resuming',
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         RETURN r
         ORDER BY r.startedAt DESC LIMIT 1
         """)
@@ -79,15 +82,17 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun {schemaId: $schemaId, status: 'resuming'})
-        SET r.status = 'paused'
-        SET r.updatedAt = datetime()
+        SET r.status = 'paused',
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         """)
     void releasePausedRun(@Param("schemaId") String schemaId);
 
     @Query("""
         MATCH (r:ExecutionRun {schemaId: $schemaId, status: 'resuming'})
-        SET r.status = 'paused'
-        SET r.updatedAt = datetime()
+        SET r.status = 'paused',
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         RETURN count(r)
         """)
     long releaseStaleRuns(@Param("schemaId") String schemaId);
@@ -100,8 +105,9 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun {id: $runId, status: 'paused'})
-        SET r.status = 'resuming'
-        SET r.updatedAt = datetime()
+        SET r.status = 'resuming',
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         RETURN r
         """)
     Optional<GraphExecutionRun> claimSpecificRun(@Param("runId") String runId);
@@ -127,9 +133,10 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
 
     @Query("""
         MATCH (r:ExecutionRun {id: $runId})
-        SET r.status = $status
-        SET r.error = $error
-        SET r.updatedAt = datetime()
+        SET r.status = $status,
+            r.error = $error,
+            r.updatedAt = datetime(),
+            r.version = r.version + 1
         """)
     void forceUpdateRunStatus(@Param("runId") String runId,
                                @Param("status") String status,

@@ -148,16 +148,17 @@ public class PipelineStageRunner {
                     }
                 }
             }
+            CompletableFuture<Void> stageFuture = CompletableFuture.runAsync(executionTask, pipelineExecutor);
             try {
-                CompletableFuture.runAsync(executionTask, pipelineExecutor)
-                        .orTimeout(stageTimeoutMs, TimeUnit.MILLISECONDS)
-                        .join();
+                stageFuture.orTimeout(stageTimeoutMs, TimeUnit.MILLISECONDS).join();
             } catch (CompletionException e) {
                 if (e.getCause() instanceof TimeoutException) {
+                    stageFuture.cancel(true);
                     cancelFlag.set(true);
                     throw new RuntimeException("Stage timed out after " + (stageTimeoutMs / 1000) + "s: "
                             + stage.getName(), e.getCause());
                 }
+                stageFuture.cancel(true);
                 throw e;
             }
 

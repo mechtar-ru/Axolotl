@@ -206,13 +206,17 @@ public final class OpenAiChatClient {
                                           Consumer<String> onToken) throws Exception {
         StringBuilder contentBuilder = new StringBuilder();
         StringBuilder reasoningBuilder = new StringBuilder();
+        boolean lastLineWasDone = false;
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(inputStream))) {
             String line;
             while ((line = br.readLine()) != null) {
                 if (!line.startsWith("data: ")) continue;
                 String data = line.substring(6).trim();
-                if (data.equals("[DONE]")) break;
+                if (data.equals("[DONE]")) {
+                    lastLineWasDone = true;
+                    break;
+                }
                 if (data.isEmpty()) continue;
 
                 try {
@@ -235,6 +239,10 @@ public final class OpenAiChatClient {
                     log.warn("SSE parse warning: {}", e.getMessage());
                 }
             }
+        }
+
+        if (contentBuilder.length() > 0 && !lastLineWasDone) {
+            log.warn("SSE stream ended without [DONE] marker — response may be truncated");
         }
 
         String text = contentBuilder.toString();
@@ -369,4 +377,7 @@ public final class OpenAiChatClient {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
+
+    // TODO(H43): Add unit tests for SSE parsing, streaming failure,
+    // tool formatting, and retry logic
 }

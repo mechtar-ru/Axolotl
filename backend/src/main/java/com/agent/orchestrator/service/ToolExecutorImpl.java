@@ -242,7 +242,7 @@ public class ToolExecutorImpl implements ToolExecutor {
             long durationMs = System.currentTimeMillis() - startTime;
 
             if (schemaId != null && nodeId != null && webSocketHandler != null) {
-                String argsJson = params != null ? params.toString() : "";
+                String argsJson = params != null ? sanitizeParams(params) : "";
                 webSocketHandler.sendToolCall(schemaId, nodeId, toolId, argsJson, durationMs, result.isSuccess(), result.getOutput());
             }
 
@@ -250,7 +250,7 @@ public class ToolExecutorImpl implements ToolExecutor {
         } catch (Exception e) {
             long durationMs = System.currentTimeMillis() - startTime;
             if (schemaId != null && nodeId != null && webSocketHandler != null) {
-                webSocketHandler.sendToolCall(schemaId, nodeId, toolId, params != null ? params.toString() : "",
+                webSocketHandler.sendToolCall(schemaId, nodeId, toolId, params != null ? sanitizeParams(params) : "",
                         durationMs, false, e.getMessage());
             }
             return ToolResult.error(e.getMessage());
@@ -298,7 +298,7 @@ public class ToolExecutorImpl implements ToolExecutor {
             ToolResult result = handler.execute(params, permission);
             long durationMs = System.currentTimeMillis() - startTime;
             if (schemaId != null && nodeId != null && webSocketHandler != null) {
-                webSocketHandler.sendToolCall(schemaId, nodeId, toolId, params != null ? params.toString() : "",
+                webSocketHandler.sendToolCall(schemaId, nodeId, toolId, params != null ? sanitizeParams(params) : "",
                         durationMs, result.isSuccess(), result.getOutput());
             }
             return result;
@@ -324,6 +324,20 @@ public class ToolExecutorImpl implements ToolExecutor {
     @Override
     public ToolResult handleFileReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
         return handlerService.handleFileReadWithSandbox(params, permission, schemaTargetPath);
+    }
+
+    /**
+     * Sanitize tool parameters for WebSocket logging: mask known secret keys.
+     */
+    private String sanitizeParams(Map<String, Object> params) {
+        Set<String> secretKeys = Set.of("apiKey", "api_key", "token", "secret", "password", "authorization");
+        Map<String, Object> safe = new HashMap<>(params);
+        for (String key : safe.keySet()) {
+            if (secretKeys.contains(key)) {
+                safe.put(key, "***");
+            }
+        }
+        return safe.toString();
     }
 
     @Override

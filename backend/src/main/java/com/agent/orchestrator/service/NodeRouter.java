@@ -237,11 +237,7 @@ public class NodeRouter {
                                         "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
                             }
                             try {
-                                CompletableFuture.runAsync(() -> {}, 
-                                        CompletableFuture.delayedExecutor(waitMs, TimeUnit.MILLISECONDS))
-                                        .get(waitMs + 1000, TimeUnit.MILLISECONDS);
-                            } catch (TimeoutException | ExecutionException e) {
-                                // timeout is expected — we waited waitMs
+                                Thread.sleep(waitMs);
                             } catch (InterruptedException ie) {
                                 Thread.currentThread().interrupt();
                                 throw new RuntimeException("Retry interrupted", ie);

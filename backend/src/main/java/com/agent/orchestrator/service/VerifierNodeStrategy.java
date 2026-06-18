@@ -503,7 +503,11 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         prompt.append("  ],\\n");
         prompt.append("  \\\"summary\\\": \\\"Описание результата\\\"\\n");
         prompt.append("}\\n");
-        prompt.append("\\nСодержимое файла для проверки:\\n").append(currentContent);
+        String content = currentContent;
+        if (content != null && content.length() > 4000) {
+            content = content.substring(0, 4000) + "\\n[... truncated from " + content.length() + " chars]";
+        }
+        prompt.append("\\nСодержимое файла для проверки:\\n").append(content);
 
         if (rewriteRetries > 0) {
             prompt.append("\\n\\n=== Rewrite attempt ").append(rewriteRetries)

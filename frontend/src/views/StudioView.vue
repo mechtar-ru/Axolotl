@@ -408,6 +408,43 @@ async function handleRestart() {
     await schemaApi.executeSchema(appId.value, 'EXECUTE')
     setIsExecuting(true)
     executionError.value = null
+    await connectAsync(appId.value, {
+      onDisconnect: () => {
+        if (isActive) {
+          setIsExecuting(false)
+        }
+      },
+      onProgress: (data) => {
+        if (!isActive) return
+        nodeStatuses.value[data.nodeId] = data.status
+        if (!nodeStartTimes.has(data.nodeId)) {
+          nodeStartTimes.set(data.nodeId, Date.now())
+        }
+        if (data.status === 'running') {
+          addStepEvent(data.nodeId, 'running')
+        }
+        if (data.progress !== undefined) {
+          executionProgress.value = {
+            totalNodes: (data as any).totalNodes || 0,
+            completedNodes: (data as any).completedNodes || 0
+          }
+        }
+      },
+      onResult: (data) => {
+        if (!isActive) return
+        nodeResults.value[data.nodeId] = data.result
+        addStepEvent(data.nodeId, 'completed')
+      },
+      onComplete: () => {
+        if (!isActive) return
+        setIsExecuting(false)
+        addStepEvent('__execution__', 'completed', 'Execution finished')
+      },
+      onError: (data) => {
+        if (!isActive) return
+        nodeStatuses.value[data.nodeId] = 'failed'
+      }
+    })
   } catch (e) {
     toast.error('Failed to restart: ' + ((e as Error).message || e))
   }

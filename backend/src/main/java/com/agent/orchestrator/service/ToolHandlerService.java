@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.*;
 import java.util.stream.*;
 import java.time.Instant;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -211,6 +212,14 @@ public class ToolHandlerService {
             return ToolResult.error("Command chaining (&&, ||, ;, newline) is not allowed");
         }
 
+        // M51: Block shell metacharacters to prevent injection via bash -c
+        List<String> dangerous = List.of("$", "`", "(", ")", "|", "&", "<", ">");
+        for (String d : dangerous) {
+            if (command.contains(d)) {
+                return ToolResult.error("Command contains forbidden shell metacharacter: " + d);
+            }
+        }
+
         try {
             ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
             if (cwd != null) pb.directory(new File(cwd));
@@ -381,19 +390,33 @@ public class ToolHandlerService {
         String url = (String) params.get("url");
         if (url == null) return ToolResult.error("Missing url parameter");
 
+        // C20: SSRF protection — validate scheme and block private IPs
         try {
+            URI uri = URI.create(url);
+            String scheme = uri.getScheme();
+            if (scheme == null || !(scheme.equals("http") || scheme.equals("https"))) {
+                return ToolResult.error("URL scheme not allowed: " + scheme + ". Only http and https are permitted.");
+            }
+
+            InetAddress addr = InetAddress.getByName(uri.getHost());
+            if (addr.isSiteLocalAddress() || addr.isLoopbackAddress() || addr.isLinkLocalAddress()) {
+                return ToolResult.error("URL resolves to a private/internal address. Not allowed.");
+            }
+
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(15))
                     .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
+                    .uri(uri)
                     .timeout(Duration.ofSeconds(15))
                     .header("User-Agent", "Mozilla/5.0 (compatible; Axolotl-Bot)")
                     .GET()
                     .build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
             return ToolResult.ok(response.body());
+        } catch (IllegalArgumentException e) {
+            return ToolResult.error("Invalid URL: " + e.getMessage());
         } catch (Exception e) {
             return ToolResult.error("Web fetch failed: " + e.getMessage());
         }
@@ -831,8 +854,16 @@ public class ToolHandlerService {
     public ToolResult handleDirectoryReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
         String path = (String) params.get("path");
         if (path == null) path = schemaTargetPath;
+        if (path == null) return ToolResult.error("Missing path parameter and no schema target path configured");
 
-        try (Stream<Path> stream = Files.list(Path.of(path != null ? path : "."))) {
+        // M52: Validate path against sandbox before reading
+        try {
+            validateSandboxPath(path, permission, schemaTargetPath);
+        } catch (SecurityException e) {
+            return ToolResult.error(e.getMessage());
+        }
+
+        try (Stream<Path> stream = Files.list(Path.of(path))) {
             List<String> files = stream.map(p -> p.toString()).sorted().collect(Collectors.toList());
             return ToolResult.ok(String.join("\n", files));
         } catch (IOException e) {

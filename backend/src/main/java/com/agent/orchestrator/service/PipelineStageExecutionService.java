@@ -124,15 +124,16 @@ public class PipelineStageExecutionService {
                     }
                 }, pipelineLevelExecutor);
             }
+            CompletableFuture<Void> allDone = CompletableFuture.allOf(futures);
             try {
-                CompletableFuture.allOf(futures).orTimeout(30, TimeUnit.MINUTES).join();
+                allDone.orTimeout(30, TimeUnit.MINUTES).join();
             } catch (CompletionException e) {
                 if (e.getCause() instanceof TimeoutException) {
                     log.error("Pipeline stage execution timed out after 30 minutes");
-                    // Cancel all pending futures
-                    for (CompletableFuture<Void> f : futures) {
-                        if (f != null) f.cancel(true);
-                    }
+                }
+                // Cancel all raw futures on any failure — not just timeout
+                for (CompletableFuture<Void> f : futures) {
+                    if (f != null && !f.isDone()) f.cancel(true);
                 }
                 throw e;
             }

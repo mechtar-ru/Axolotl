@@ -71,7 +71,7 @@ public class Neo4jSchemaRepository {
                 return mapper.readValue(rs.next().get("s.data").asString(), WorkflowSchema.class);
             }
         } catch (Exception e) {
-            log.error("Error loading schema: {}", e.getMessage());
+            log.error("Error loading schema {}: {}", id, e.getMessage(), e);
         }
         return null;
     }
@@ -100,7 +100,8 @@ public class Neo4jSchemaRepository {
                     "lastRunAt", schema.getLastRunAt() != null ? schema.getLastRunAt().toString() : null
                 ));
         } catch (Exception e) {
-            log.error("Error saving schema: {}", e.getMessage());
+            log.error("Error saving schema: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to save schema " + schema.getId(), e);
         }
     }
 
@@ -109,13 +110,17 @@ public class Neo4jSchemaRepository {
             session.run("MATCH (s:WorkflowSchema {id: $id}) DETACH DELETE s", 
                 org.neo4j.driver.Values.parameters("id", id));
         } catch (Exception e) {
-            log.error("Error deleting schema: {}", e.getMessage());
+            log.error("Error deleting schema {}: {}", id, e.getMessage(), e);
+            throw new RuntimeException("Failed to delete schema " + id, e);
         }
     }
 
     public void deleteAll() {
         try (Session session = driver.session()) {
             session.run("MATCH (s:WorkflowSchema) DETACH DELETE s");
+        } catch (Exception e) {
+            log.error("Error deleting all schemas: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to delete all schemas", e);
         }
     }
 

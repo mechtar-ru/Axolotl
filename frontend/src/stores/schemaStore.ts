@@ -21,13 +21,15 @@ export const useSchemaStore = defineStore('schema', () => {
     try {
       await canvasStore.loadSchemas();
       // Use watch for live sync instead of one-time copy
-      if (!schemaWatcher) {
-        schemaWatcher = watch(
-          () => canvasStore.schemas,
-          (val) => { schemas.value = val },
-          { deep: true, immediate: true }
-        );
+      // Stop old watcher before creating a new one to prevent leaks
+      if (schemaWatcher) {
+        schemaWatcher();
       }
+      schemaWatcher = watch(
+        () => canvasStore.schemas,
+        (val) => { schemas.value = val },
+        { deep: true, immediate: true }
+      );
     } finally {
       loading.value = false;
     }

@@ -25,7 +25,7 @@ public class ExecutionLogCleanupService {
         this.executionRepository = executionRepository;
     }
 
-    @Scheduled(cron = "0 0 3 * * *")
+    @Scheduled(cron = "0 0 3 * * *", zone = "UTC")
     public void cleanupOldRecords() {
         long now = System.currentTimeMillis();
         cleanupRecords(now - FOURTEEN_DAYS_MS);

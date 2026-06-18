@@ -25,8 +25,8 @@ services:
       context: ./frontend
       args:
         # Build-time args for Vite — baked into the bundle
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
-        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8082/api}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8082/ws}
     ports:
       - "3000:80"
     depends_on:

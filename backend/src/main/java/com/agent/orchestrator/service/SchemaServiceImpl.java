@@ -179,7 +179,20 @@ public class SchemaServiceImpl implements SchemaService {
     @Override
     public void batchDeleteSchemas(List<String> ids) {
         for (String id : ids) {
-            schemaRepository.delete(id);
+            try {
+                // Clean up related execution data
+                executionRepository.getRunsBySchema(id).forEach(run ->
+                        executionRepository.deleteRun(run.getId()));
+                executionRepository.getExecutionRecordsBySchema(id).forEach(record ->
+                        executionRepository.deleteExecutionRecord(record.getId()));
+                // Clean up plan steps
+                planStepService.deleteAllBySchemaId(id);
+                // Then delete the schema itself
+                schemaRepository.delete(id);
+            } catch (Exception e) {
+                log.error("Error deleting schema {} in batch: {}", id, e.getMessage(), e);
+                // Continue with remaining schemas — don't let one failure abort the batch
+            }
         }
     }
 

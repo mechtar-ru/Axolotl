@@ -97,12 +97,20 @@ public class Neo4jPlanRepository {
             log.debug("Saving plan id={} ws={} tasks={} name={}", plan.getId(), plan.getWorkspaceId(), plan.getTasks().size(), plan.getName());
             session.run("""
                 MERGE (p:Plan {id: $id})
-                SET p.workspaceId = $workspaceId, p.name = $name, p.data = $data, p.createdAt = $createdAt, p.updatedAt = $updatedAt
-                """, 
+                SET p.workspaceId = $workspaceId,
+                    p.name = $name,
+                    p.data = $data,
+                    p.parentId = $parentId,
+                    p.schemaId = $schemaId,
+                    p.createdAt = $createdAt,
+                    p.updatedAt = $updatedAt
+                """,
                 org.neo4j.driver.Values.parameters(
                     "id", plan.getId(),
                     "workspaceId", plan.getWorkspaceId() != null ? plan.getWorkspaceId() : "default",
                     "name", plan.getName() != null ? plan.getName() : "",
+                    "parentId", plan.getParentId(),
+                    "schemaId", plan.getSchemaId(),
                     "data", json,
                     "createdAt", createdAt,
                     "updatedAt", updatedAt
@@ -147,19 +155,12 @@ public class Neo4jPlanRepository {
     public List<Plan> findByParentId(String parentId) {
         List<Plan> result = new ArrayList<>();
         try (Session session = driver.session()) {
-            // Use Jackson to properly escape parentId for JSON substring search
-            String searchFragment;
-            try {
-                searchFragment = "\"parentId\":" + mapper.writeValueAsString(parentId);
-            } catch (Exception e) {
-                searchFragment = "\"parentId\":\"" + parentId + "\"";
-            }
-            Result rs = session.run("MATCH (p:Plan) WHERE p.data CONTAINS $parentId RETURN p.data",
-                org.neo4j.driver.Values.parameters("parentId", searchFragment));
+            Result rs = session.run("MATCH (p:Plan {parentId: $parentId}) RETURN p.data",
+                org.neo4j.driver.Values.parameters("parentId", parentId));
             while (rs.hasNext()) {
                 try {
                     Plan plan = mapper.readValue(rs.next().get("p.data").asString(), Plan.class);
-                    if (parentId.equals(plan.getParentId())) result.add(plan);
+                    result.add(plan);
                 } catch (Exception ignored) {}
             }
         }
@@ -169,18 +170,12 @@ public class Neo4jPlanRepository {
     public List<Plan> findBySchemaId(String schemaId) {
         List<Plan> result = new ArrayList<>();
         try (Session session = driver.session()) {
-            String searchFragment;
-            try {
-                searchFragment = "\"schemaId\":" + mapper.writeValueAsString(schemaId);
-            } catch (Exception e) {
-                searchFragment = "\"schemaId\":\"" + schemaId + "\"";
-            }
-            Result rs = session.run("MATCH (p:Plan) WHERE p.data CONTAINS $schemaId RETURN p.data",
-                org.neo4j.driver.Values.parameters("schemaId", searchFragment));
+            Result rs = session.run("MATCH (p:Plan {schemaId: $schemaId}) RETURN p.data",
+                org.neo4j.driver.Values.parameters("schemaId", schemaId));
             while (rs.hasNext()) {
                 try {
                     Plan plan = mapper.readValue(rs.next().get("p.data").asString(), Plan.class);
-                    if (schemaId.equals(plan.getSchemaId())) result.add(plan);
+                    result.add(plan);
                 } catch (Exception ignored) {}
             }
         }

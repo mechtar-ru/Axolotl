@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
@@ -385,6 +386,7 @@ public class CustomLlmProvider implements LlmProvider {
 
                 if (sc == 200) {
                 InputStream in = rawResponse.body();
+                AtomicReference<Exception> readerError = new AtomicReference<>();
                 Thread reader = new Thread(() -> {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
                         String line;
@@ -410,12 +412,18 @@ public class CustomLlmProvider implements LlmProvider {
                             }
                         }
                     } catch (Exception e) {
+                        readerError.set(e);
                         log.error("Streaming read error", e);
                     }
                 });
                 reader.start();
                 try { reader.join(120000); } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                }
+
+                Exception readErr = readerError.get();
+                if (readErr != null) {
+                    throw new RuntimeException("SSE stream failed", readErr);
                 }
 
                 String reasoning = reasoningBuffer.length() > 0 ? reasoningBuffer.toString() : null;
