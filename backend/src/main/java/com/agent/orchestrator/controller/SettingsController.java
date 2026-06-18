@@ -49,11 +49,11 @@ public class SettingsController {
 
     @GetMapping("/{provider}/key")
     public ResponseEntity<Map<String, Object>> getProviderApiKey(@PathVariable String provider) {
-        String apiKey = settingsService.getApiKey(provider);
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("provider", provider);
-        response.put("apiKey", apiKey != null ? apiKey : "");
-        return ResponseEntity.ok(response);
+        String key = settingsService.getApiKey(provider);
+        return ResponseEntity.ok(Map.of(
+            "hasKey", key != null && !key.isBlank(),
+            "provider", provider
+        ));
     }
 
     @PutMapping("/{provider}")

@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Date;
+import java.util.UUID;
 
 @Component
 public class JwtUtil {
@@ -27,12 +28,12 @@ public class JwtUtil {
     @jakarta.annotation.PostConstruct
     void init() {
         if (secret == null || secret.isBlank()) {
+            log.error("JWT_SECRET not configured! Using random fallback — all tokens invalid after restart.");
+            log.error("Set axolotl.jwt.secret in application.yml or JWT_SECRET env var for production use.");
             SecureRandom random = new SecureRandom();
             byte[] bytes = new byte[64];
             random.nextBytes(bytes);
             secret = Base64.getEncoder().encodeToString(bytes);
-            // TODO(h26): axolotl.jwt.secret should be configured in production. Add startup guard.
-            log.error("JWT secret is not set — generated random secret. Tokens will not survive restart. Set axolotl.jwt.secret in properties.");
         }
     }
 
@@ -44,6 +45,7 @@ public class JwtUtil {
         return Jwts.builder()
                 .subject(username)
                 .claim("role", role)
+                .claim("jti", UUID.randomUUID().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expirationMs))
                 .signWith(getSigningKey())

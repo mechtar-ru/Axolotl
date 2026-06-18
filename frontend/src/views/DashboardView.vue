@@ -247,7 +247,7 @@ function continueDevelopment(app: any) {
 
 // Load apps on mount
 onMounted(async () => {
-  schemaStore.loadSchemas()
+  await schemaStore.loadSchemas()
   loadGroups()
   await settingsStore.loadProjectsFolder()
   if (!settingsStore.projectsFolder) {

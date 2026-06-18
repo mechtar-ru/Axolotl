@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { reactive, ref, watch, onUnmounted } from 'vue'
 import { customEndpointApi, type CustomLlmEndpoint } from '../../services/api'
 
 const props = defineProps<{
@@ -116,6 +116,7 @@ const editedKeys = reactive<Record<string, string>>({})
 const showKeys = reactive<Record<string, boolean>>({})
 const customCollapsed = reactive<Record<string, boolean>>({})
 const confirmDelete = reactive<Record<string, boolean>>({})
+const confirmTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 // ──── Internal mutated copy (all edits happen here) ────
 
@@ -143,7 +144,11 @@ function isCollapsed(id: string): boolean {
 }
 
 function scheduleClearConfirm(id: string) {
-  setTimeout(() => { confirmDelete[id] = false }, 4000)
+  const timer = setTimeout(() => {
+    confirmDelete[id] = false
+    confirmTimers.delete(id)
+  }, 4000)
+  confirmTimers.set(id, timer)
 }
 
 function addEndpoint() {
@@ -221,6 +226,10 @@ async function deleteEndpoint(id: string) {
     confirmDelete[id] = false
   }
 }
+
+onUnmounted(() => {
+  confirmTimers.forEach(clearTimeout)
+})
 </script>
 
 <style scoped>

@@ -90,6 +90,9 @@ public class BuildToolHandler {
                 Process proc = pb.start();
                 String pubOut = new String(proc.getInputStream().readAllBytes());
                 boolean pubOk = proc.waitFor(60, TimeUnit.SECONDS);
+                if (!pubOk) {
+                    proc.destroyForcibly();
+                }
                 if (pubOk && proc.exitValue() == 0) {
                     report.append("- ✅ `flutter pub get` succeeded\n");
                 } else {
@@ -110,8 +113,11 @@ public class BuildToolHandler {
                         .directory(projectDir.toFile())
                         .redirectErrorStream(true);
                 Process proc = pb.start();
-                boolean analyzed = proc.waitFor(60, TimeUnit.SECONDS);
                 String analysisOut = new String(proc.getInputStream().readAllBytes()).trim();
+                boolean analyzed = proc.waitFor(60, TimeUnit.SECONDS);
+                if (!analyzed) {
+                    proc.destroyForcibly();
+                }
                 if (analyzed && proc.exitValue() == 0) {
                     report.append("- ✅ `dart analyze` — no issues found\n");
                 } else {
@@ -133,8 +139,11 @@ public class BuildToolHandler {
                         .directory(projectDir.toFile())
                         .redirectErrorStream(true);
                 Process proc = pb.start();
-                boolean tested = proc.waitFor(120, TimeUnit.SECONDS);
                 String testOut = new String(proc.getInputStream().readAllBytes()).trim();
+                boolean tested = proc.waitFor(120, TimeUnit.SECONDS);
+                if (!tested) {
+                    proc.destroyForcibly();
+                }
                 if (tested && proc.exitValue() == 0) {
                     report.append("- ✅ `flutter test` passed\n");
                 } else {
@@ -166,10 +175,18 @@ public class BuildToolHandler {
 
     private void checkSdk(StringBuilder details, List<String> missing, String cmd, String label) {
         try {
-            Process proc = new ProcessBuilder("which", cmd)
-                    .redirectErrorStream(true)
-                    .start();
-            boolean found = proc.waitFor(5, TimeUnit.SECONDS) && proc.exitValue() == 0;
+            ProcessBuilder pb = new ProcessBuilder("which", cmd);
+            pb.redirectErrorStream(true);
+            Process proc = pb.start();
+            String output = new String(proc.getInputStream().readAllBytes());
+            boolean finished = proc.waitFor(5, TimeUnit.SECONDS);
+            if (!finished) {
+                proc.destroyForcibly();
+                details.append("- ❌ ").append(label).append(": check timed out\n");
+                missing.add(label);
+                return;
+            }
+            boolean found = proc.exitValue() == 0;
             if (found) {
                 details.append("- ✅ ").append(label).append(": installed\n");
             } else {

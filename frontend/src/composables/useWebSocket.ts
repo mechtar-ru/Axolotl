@@ -86,6 +86,10 @@ export function useWebSocket() {
   }
 
   function tryReconnect(schemaId: string, wsCallbacks: WebSocketCallbacks) {
+    if (reconnectTimeout !== null) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
     if (reconnectAttempts.value >= maxReconnectAttempts) {
       console.warn('🔌 WebSocket: max reconnect attempts reached');
       return;
@@ -99,6 +103,10 @@ export function useWebSocket() {
   }
 
   function connectInternal(schemaId: string, wsCallbacks: WebSocketCallbacks) {
+    if (reconnectTimeout !== null) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
     try {
       currentSchemaId = schemaId;
       callbacks = wsCallbacks;
@@ -254,6 +262,7 @@ export function useWebSocket() {
       connect(schemaId, wsCallbacks);
       setTimeout(() => {
         if (connectReject) {
+          disconnect();
           connectReject('WebSocket connection timeout');
           connectResolve = null;
           connectReject = null;

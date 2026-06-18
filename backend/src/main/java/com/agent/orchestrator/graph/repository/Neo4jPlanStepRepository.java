@@ -52,7 +52,7 @@ public interface Neo4jPlanStepRepository extends Neo4jRepository<GraphPlanStep, 
     @Query("""
         MATCH (s:PlanStep {schemaId: $schemaId, id: $stepId})
         SET s.status = $status
-        SET s.updatedAt = toString(datetime())
+        SET s.updatedAt = datetime()
         """)
     void updateStatus(@Param("schemaId") String schemaId,
                       @Param("stepId") String stepId,

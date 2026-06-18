@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import jakarta.annotation.PreDestroy;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -94,6 +95,7 @@ public class MagicContextIndexer {
     }
 
     /** Shutdown the executor — called by Spring lifecycle. */
+    @PreDestroy
     public void shutdown() {
         executor.shutdownNow();
     }

@@ -93,14 +93,37 @@ public final class OpenAiChatClient {
         addOpenRouterHeadersIfNeeded(builder, baseUrl);
         HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        int maxRetries = 2;
+        int retryDelay = 1000;
+        Exception lastException = null;
 
-        if (response.statusCode() != 200) {
-            throw new RuntimeException("HTTP " + response.statusCode() + ": " +
-                    truncate(response.body(), 500));
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() == 200) {
+                    return parseResponse(response.body(), usage);
+                }
+                if (response.statusCode() == 429 || response.statusCode() >= 500) {
+                    // retry on rate limit or server error
+                    if (attempt < maxRetries) {
+                        Thread.sleep(retryDelay * (attempt + 1));
+                        continue;
+                    }
+                    throw new RuntimeException("HTTP " + response.statusCode() + ": " +
+                            truncate(response.body(), 500));
+                }
+                throw new RuntimeException("HTTP " + response.statusCode() + ": " +
+                        truncate(response.body(), 500));
+            } catch (Exception e) {
+                lastException = e;
+                if (attempt < maxRetries) {
+                    Thread.sleep(retryDelay * (attempt + 1));
+                }
+            }
         }
-
-        return parseResponse(response.body(), usage);
+        if (lastException != null) throw new RuntimeException(lastException);
+        throw new RuntimeException("OpenAI API request failed after " + (maxRetries + 1) + " attempts");
     }
 
     // ──────────────────────────────────────────────
@@ -329,7 +352,11 @@ public final class OpenAiChatClient {
         }
 
         int tokens = !usageNode.isMissingNode() ? usageNode.path("total_tokens").asInt(0) : 0;
-        log.info("OpenAI response ({} tokens): {}", tokens, truncate(text, 100));
+        log.info("OpenAI response received: {} tokens", tokens);
+        // Response content logged only at TRACE level for debugging
+        if (log.isTraceEnabled()) {
+            log.trace("OpenAI response: {}", truncate(text, 100));
+        }
 
         if (reasoning != null && !reasoning.isBlank()) {
             log.info("  reasoning_content present ({} chars)", reasoning.length());

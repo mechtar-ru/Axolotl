@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import com.agent.orchestrator.model.WorkflowSchema;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,6 +22,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static com.agent.orchestrator.service.ToolCallParser.findMatchingBracket;
 
 /**
  * Strategy for executing verifier-type nodes.
@@ -324,7 +327,8 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         if (!"FLUTTER".equals(projectType) || targetPath == null) return;
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + targetPath + " && flutter pub get");
+            ProcessBuilder pb = new ProcessBuilder("flutter", "pub", "get");
+            pb.directory(new java.io.File(targetPath));
             pb.redirectErrorStream(true);
             Process p = pb.start();
             boolean finished = p.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
@@ -369,6 +373,8 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         String currentResult = "";
         String currentContent = inputContent;
         boolean allPassed = false;
+        String previousContent = null;
+        String previousErrors = null;
 
         while (rewriteRetries <= maxRewriteRetries && !allPassed) {
             // Build verification prompt for this iteration
@@ -396,6 +402,21 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             String errors = parseVerifierResult(currentResult, rewriteRetries, allCheckResults);
             boolean iterationPassed = errors == null;
 
+            // L08: Regression guard — roll back if fix made things worse
+            if (!iterationPassed && previousErrors != null) {
+                int currentErrorCount = countErrorEntries(errors);
+                int previousErrorCount = countErrorEntries(previousErrors);
+                if (currentErrorCount > previousErrorCount) {
+                    log.warn("Fix made things worse ({} -> {} errors), rolling back", previousErrorCount, currentErrorCount);
+                    currentContent = previousContent;
+                    if (webSocketHandler != null) {
+                        webSocketHandler.sendLog(schemaId, "warning",
+                                "Rewrite made things worse, rolling back", node.getId());
+                    }
+                    break;
+                }
+            }
+
             if (iterationPassed) {
                 allPassed = true;
                 if (webSocketHandler != null) {
@@ -415,6 +436,9 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                             30 + (rewriteRetries * 20), "Rewrite attempt " + rewriteRetries);
                 }
 
+                // Save state for regression guard
+                previousContent = currentContent;
+                previousErrors = errors;
                 currentContent = runRewriteFix(model, schemaId, node, currentContent, errors);
             } else {
                 break;
@@ -499,10 +523,14 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         try {
             String jsonStr = currentResult.trim();
             int jsonStart = jsonStr.indexOf('{');
-            int jsonEnd = jsonStr.lastIndexOf('}');
-            if (jsonStart >= 0 && jsonEnd > jsonStart) {
-                jsonStr = jsonStr.substring(jsonStart, jsonEnd + 1);
+            int jsonEnd = -1;
+            if (jsonStart >= 0) {
+                jsonEnd = findMatchingBracket(jsonStr, jsonStart) + 1;
             }
+            if (jsonStart < 0 || jsonEnd <= jsonStart) {
+                return "parse error: could not find valid JSON object";
+            }
+            jsonStr = jsonStr.substring(jsonStart, jsonEnd);
 
             JsonNode root = objectMapper.readTree(jsonStr);
             String status = root.has("status") ? root.get("status").asText() : "PASS";
@@ -559,20 +587,37 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             cleaned = cleaned.replaceFirst("^```\\\\w*\\\\n?", "").replaceFirst("\\\\n?```$", "").trim();
         }
 
-        // Write the fixed code back (if there's a file path in the registry)
-        String prefix = schemaId + ":";
-        for (Map.Entry<String, String> entry : stateManager.getOutputFileRegistry().entrySet()) {
-            if (entry.getKey().startsWith(prefix) && entry.getKey().endsWith(":" + node.getId())) {
-                try {
-                    Files.writeString(Path.of(entry.getValue()), cleaned);
-                    if (webSocketHandler != null) {
-                        webSocketHandler.sendLog(schemaId, "info",
-                                "Fixed code written to: " + entry.getValue(), node.getId());
+        // Write the fixed content directly to the schema target path
+        try {
+            WorkflowSchema ws = schemaRepository.findById(schemaId);
+            if (ws != null && ws.getTargetPath() != null) {
+                String targetPath = ws.getTargetPath();
+                // Try to determine relative file path from generated files registry
+                String relativeFilePath = "fix_output";
+                String registryKey = schemaId + ":" + node.getId();
+                String registeredPath = stateManager.getOutputFileRegistry().get(registryKey);
+                if (registeredPath != null) {
+                    Path registered = Path.of(registeredPath);
+                    if (registered.isAbsolute()) {
+                        Path target = Path.of(targetPath);
+                        try {
+                            relativeFilePath = target.relativize(registered).toString();
+                        } catch (Exception e) {
+                            relativeFilePath = registered.getFileName().toString();
+                        }
+                    } else {
+                        relativeFilePath = registeredPath;
                     }
-                } catch (Exception e) {
-                    log.warn("Failed to write fixed code: {}", e.getMessage());
+                }
+                java.nio.file.Files.writeString(java.nio.file.Path.of(targetPath, relativeFilePath), cleaned);
+                log.info("Wrote fixed file: {}/{}", targetPath, relativeFilePath);
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Fixed code written to: " + targetPath + "/" + relativeFilePath, node.getId());
                 }
             }
+        } catch (IOException e) {
+            log.error("Failed to write fixed file: {}", e.getMessage());
         }
         return cleaned;
     }
@@ -613,9 +658,16 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                 webSocketHandler.sendProgress(schemaId, node.getId(), "FAILED", 100,
                         "Failed after " + loopResult.rewriteRetries + " rewrite(s)");
             }
+            structuredResult.put("status", "FAILED");
+            structuredResult.put("error", "Verification failed after " + (loopResult.rewriteRetries + 1) + " attempts");
+            try {
+                resultStr = objectMapper.writeValueAsString(structuredResult);
+            } catch (Exception e) {
+                resultStr = "{\"status\":\"FAILED\",\"error\":\"Verification failed after " + (loopResult.rewriteRetries + 1) + " attempts\"}";
+            }
             stateManager.getNodeResults().computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                     .put(node.getId(), resultStr);
-            throw new RuntimeException("Verifier failed after " + (loopResult.rewriteRetries + 1) + " attempts: " + resultStr);
+            return resultStr;
         }
 
         if (webSocketHandler != null) {
@@ -624,5 +676,20 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         }
 
         return resultStr;
+    }
+
+    /**
+     * Count the number of error entries in the parseVerifierResult error string.
+     * Errors are separated by literal "\n" sequences.
+     */
+    private static int countErrorEntries(String errors) {
+        if (errors == null || errors.isBlank()) return 0;
+        int count = 1;
+        for (int i = 0; i < errors.length() - 1; i++) {
+            if (errors.charAt(i) == '\\' && errors.charAt(i + 1) == 'n') {
+                count++;
+            }
+        }
+        return count;
     }
 }

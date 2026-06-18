@@ -302,6 +302,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         long totalStartTime = System.currentTimeMillis();
         String lastResponse = null;
         LlmUsage totalUsage = new LlmUsage();
+        Set<String> previousToolSignatures = new HashSet<>();
+        int identicalCallCount = 0;
 
         while (toolCallCount < maxToolCalls) {
             if (cancelFlag != null && cancelFlag.get()) {
@@ -334,6 +336,24 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 if (webSocketHandler != null) {
                     webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, 0, 0);
                 }
+                break;
+            }
+
+            // L07: Deduplicate identical tool calls across iterations
+            boolean repeatedTooManyTimes = false;
+            for (Map<String, Object> toolCall : toolCalls) {
+                String signature = String.valueOf(toolCall.get("name")) + ":" + String.valueOf(toolCall.get("arguments"));
+                if (previousToolSignatures.contains(signature)) {
+                    if (++identicalCallCount >= 3) {
+                        log.warn("Agent repeated identical tool call 3 times, breaking loop: {}", signature);
+                        repeatedTooManyTimes = true;
+                        break;
+                    }
+                } else {
+                    previousToolSignatures.add(signature);
+                }
+            }
+            if (repeatedTooManyTimes) {
                 break;
             }
 

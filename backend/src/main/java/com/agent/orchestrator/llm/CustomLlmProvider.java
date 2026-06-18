@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
@@ -326,50 +327,63 @@ public class CustomLlmProvider implements LlmProvider {
 
     @SuppressWarnings("unchecked")
     private LlmResponse streamingChatWithOpenAiClient(CustomLlmEndpoint endpoint,
-                                                       String systemPrompt, String userPrompt,
-                                                       Consumer<String> tokenConsumer,
-                                                       List<Map<String, Object>> tools) {
-        try {
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", endpoint.getModelName());
+                                                        String systemPrompt, String userPrompt,
+                                                        Consumer<String> tokenConsumer,
+                                                        List<Map<String, Object>> tools) {
+        int maxRetries = 2;
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                Map<String, Object> requestBody = new HashMap<>();
+                requestBody.put("model", endpoint.getModelName());
 
-            List<Map<String, String>> messages = new ArrayList<>();
-            if (systemPrompt != null && !systemPrompt.isBlank()) {
-                messages.add(Map.of("role", "system", "content", systemPrompt));
-            }
-            messages.add(Map.of("role", "user", "content", userPrompt));
-            requestBody.put("messages", messages);
-            requestBody.put("stream", true);
+                List<Map<String, String>> messages = new ArrayList<>();
+                if (systemPrompt != null && !systemPrompt.isBlank()) {
+                    messages.add(Map.of("role", "system", "content", systemPrompt));
+                }
+                messages.add(Map.of("role", "user", "content", userPrompt));
+                requestBody.put("messages", messages);
+                requestBody.put("stream", true);
 
-            if (tools != null && !tools.isEmpty()) {
-                requestBody.put("tools", tools);
-            }
+                if (tools != null && !tools.isEmpty()) {
+                    requestBody.put("tools", tools);
+                }
 
-            String jsonBody = objectMapper.writeValueAsString(requestBody);
+                String jsonBody = objectMapper.writeValueAsString(requestBody);
 
-            HttpRequest.Builder builder = HttpRequest.newBuilder()
-                    .uri(URI.create(endpoint.getBaseUrl() + "/chat/completions"))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(120));
+                HttpRequest.Builder builder = HttpRequest.newBuilder()
+                        .uri(URI.create(endpoint.getBaseUrl() + "/chat/completions"))
+                        .header("Content-Type", "application/json")
+                        .timeout(Duration.ofSeconds(120));
 
-            if ("bearer".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
-                builder.header("Authorization", "Bearer " + endpoint.getApiKey());
-            } else if ("api-key".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
-                builder.header("X-API-Key", endpoint.getApiKey());
-            }
+                if ("bearer".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
+                    builder.header("Authorization", "Bearer " + endpoint.getApiKey());
+                } else if ("api-key".equals(endpoint.getAuthType()) && endpoint.getApiKey() != null) {
+                    builder.header("X-API-Key", endpoint.getApiKey());
+                }
 
-            // OpenRouter requires HTTP-Referer and X-Title headers
-            addOpenRouterHeadersIfNeeded(builder, endpoint.getBaseUrl());
+                // OpenRouter requires HTTP-Referer and X-Title headers
+                addOpenRouterHeadersIfNeeded(builder, endpoint.getBaseUrl());
 
-            HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
+                HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
 
-            StringBuilder fullResponse = new StringBuilder();
-            StringBuilder reasoningBuffer = new StringBuilder();
+                StringBuilder fullResponse = new StringBuilder();
+                StringBuilder reasoningBuffer = new StringBuilder();
 
-            HttpResponse<InputStream> rawResponse = httpClient.send(request,
-                    HttpResponse.BodyHandlers.ofInputStream());
+                HttpResponse<InputStream> rawResponse = httpClient.send(request,
+                        HttpResponse.BodyHandlers.ofInputStream());
 
-            if (rawResponse.statusCode() == 200) {
+                int sc = rawResponse.statusCode();
+                if (sc == 429 || sc >= 500) {
+                    if (attempt < maxRetries) {
+                        Thread.sleep(1000 * (attempt + 1));
+                        continue;
+                    }
+                    String error = "Error: HTTP " + sc;
+                    tokenConsumer.accept(error);
+                    return textOnly(error);
+                }
+
+                if (sc == 200) {
                 InputStream in = rawResponse.body();
                 Thread reader = new Thread(() -> {
                     try (BufferedReader br = new BufferedReader(new InputStreamReader(in))) {
@@ -416,12 +430,26 @@ public class CustomLlmProvider implements LlmProvider {
                 tokenConsumer.accept(error);
                 return textOnly(error);
             }
-        } catch (Exception e) {
-            log.error("Custom LLM streaming request failed", e);
-            String error = "Error: " + e.getMessage();
-            tokenConsumer.accept(error);
-            return textOnly(error);
+            } catch (IOException e) {
+                if (attempt < maxRetries && e.getMessage() != null &&
+                        (e.getMessage().contains("429") || e.getMessage().contains("5"))) {
+                    try { Thread.sleep(1000 * (attempt + 1)); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                    continue;
+                }
+                log.error("Custom LLM streaming request failed", e);
+                String error = "Error: " + e.getMessage();
+                tokenConsumer.accept(error);
+                return textOnly(error);
+            } catch (Exception e) {
+                log.error("Custom LLM streaming request failed", e);
+                String error = "Error: " + e.getMessage();
+                tokenConsumer.accept(error);
+                return textOnly(error);
+            }
         }
+        String error = "Error: streaming request failed after " + (maxRetries + 1) + " attempts";
+        tokenConsumer.accept(error);
+        return textOnly(error);
     }
 
     // Kept as raw HTTP — lightweight health check, no need for LangChain4j overhead

@@ -80,8 +80,8 @@ public class FlutterScaffoldHelper {
      */
     public String runDartAnalyze(String targetDir) {
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c",
-                    "cd " + targetDir + " && dart analyze lib/ 2>&1");
+            ProcessBuilder pb = new ProcessBuilder("dart", "analyze", "lib/");
+            pb.directory(new java.io.File(targetDir));
             return SafeProcess.run(pb, 120, TimeUnit.SECONDS);
         } catch (Exception e) {
             return null;
@@ -89,14 +89,15 @@ public class FlutterScaffoldHelper {
     }
 
     /**
-     * Run a bash command in the given directory with timeout.
+     * Run a command in the given directory with timeout.
      */
-    public void runBash(String dir, String cmd, int timeoutSec) {
+    public void runBash(String dir, java.util.List<String> cmdParts, int timeoutSec) {
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", "cd " + dir + " && " + cmd);
+            ProcessBuilder pb = new ProcessBuilder(cmdParts);
+            pb.directory(new java.io.File(dir));
             SafeProcess.run(pb, timeoutSec, TimeUnit.SECONDS);
         } catch (Exception e) {
-            log.warn("bash command failed: {} (dir={}, cmd={})", e.getMessage(), dir, cmd);
+            log.warn("bash command failed: {} (dir={}, cmd={})", e.getMessage(), dir, cmdParts);
         }
     }
 

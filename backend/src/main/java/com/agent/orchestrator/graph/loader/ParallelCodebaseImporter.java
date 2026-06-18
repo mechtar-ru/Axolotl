@@ -20,6 +20,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
+import jakarta.annotation.PreDestroy;
+
 @Component
 public class ParallelCodebaseImporter {
 
@@ -397,6 +399,7 @@ public class ParallelCodebaseImporter {
 
     public record ParsedFileResult(int classes, int methods, int fields) {}
 
+    @PreDestroy
     public void shutdown() {
         executor.shutdown();
     }

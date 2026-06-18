@@ -124,7 +124,18 @@ public class PipelineStageExecutionService {
                     }
                 }, pipelineLevelExecutor);
             }
-            CompletableFuture.allOf(futures).join();
+            try {
+                CompletableFuture.allOf(futures).orTimeout(30, TimeUnit.MINUTES).join();
+            } catch (CompletionException e) {
+                if (e.getCause() instanceof TimeoutException) {
+                    log.error("Pipeline stage execution timed out after 30 minutes");
+                    // Cancel all pending futures
+                    for (CompletableFuture<Void> f : futures) {
+                        if (f != null) f.cancel(true);
+                    }
+                }
+                throw e;
+            }
 
             if (levelFailed[0]) {
                 log.warn("Pipeline level failed, stopping pipeline for schema {}", schema.getId());

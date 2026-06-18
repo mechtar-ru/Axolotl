@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, inject, onDeactivated, onActivated } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, inject, onDeactivated, onActivated } from 'vue'
 import { schemaApi } from '@/services/api'
 import type { ExecutionRun, NodeExecution } from '@/services/api'
 import { useExecutionState } from '@/composables/useExecutionState'
@@ -32,6 +32,8 @@ const releasingStale = ref(false)
 const reRunning = ref(false)
 const errorMessage = ref<string | null>(null)
 const showSessionInput = ref(false)
+
+const deleteConfirmTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 async function reRun() {
   if (reRunning.value) return
@@ -249,11 +251,13 @@ async function deleteRun(runId: string) {
 function requestDeleteRun(runId: string) {
   confirmDeleteRunId.value = runId
   // Auto-cancel after 3 seconds
-  setTimeout(() => {
+  const timer = setTimeout(() => {
+    deleteConfirmTimers.delete(runId)
     if (confirmDeleteRunId.value === runId) {
       confirmDeleteRunId.value = null
     }
   }, 3000)
+  deleteConfirmTimers.set(runId, timer)
 }
 
 async function resumeRun(runId?: string) {
@@ -289,6 +293,9 @@ watch(() => props.schemaId, () => {
 })
 
 onMounted(fetchRuns)
+onUnmounted(() => {
+  deleteConfirmTimers.forEach(clearTimeout)
+})
 onActivated(() => {
   fetchRuns()
 })

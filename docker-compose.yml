@@ -7,11 +7,13 @@ services:
     environment:
       MEMPALACE_URL: ${MEMPALACE_URL:-http://mempalace:8765}
     ports:
-      - "8080:8080"
+      - "8082:8082"
+    depends_on:
+      - neo4j
     networks:
       - axolotl-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8082/api/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -62,9 +64,25 @@ services:
       timeout: 5s
       retries: 3
 
+  # Neo4j graph database
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/axolotl2026
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p axolotl2026 'RETURN 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 networks:
   axolotl-network:
     driver: bridge
 
 volumes:
   mempalace_data:
+  neo4j_data:

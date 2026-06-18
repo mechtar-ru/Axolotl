@@ -103,7 +103,7 @@ public class FixPassOrchestrator {
             if (fixResp != null && fixResp.text() != null) {
                 int fixed = flutterScaffoldHelper.applyMarkedFiles(targetDir, fixResp.text());
                 if (fixed > 0) {
-                    flutterScaffoldHelper.runBash(targetDir, "flutter pub get", 60);
+                    flutterScaffoldHelper.runBash(targetDir, java.util.List.of("flutter", "pub", "get"), 60);
                     fixMessages.add("[FIX PASS] Attempt " + attempt + ": fixed " + fixed + " files");
                 }
             }

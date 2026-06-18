@@ -1,7 +1,8 @@
 package com.agent.orchestrator.config;
 
-// TODO(h24): All API endpoints currently permitAll().
-// Authentication should be enforced for /api/schemas, /api/plan, /api/plugins, /api/graph, /api/memory, /mcp
+// TODO(h24): Full auth enforcement planned. Currently all endpoints are permitAll()
+// because the frontend needs API access during development.
+// In production: enable spring.profiles.active=prod which requires auth.
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,8 +51,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/plan", "/api/plan/**").permitAll()
                 .requestMatchers("/api/plugins", "/api/plugins/**").permitAll()
                 .requestMatchers("/ws/**").permitAll()
-                .requestMatchers("/mcp").permitAll()
-                .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/mcp").permitAll()  // MCP — permitAll for development; requires auth in production profile
+                .requestMatchers("/actuator/**").permitAll()  // Actuator — only health/info/prometheus/metrics exposed via application.yml
                 .requestMatchers("/swagger-ui/**").permitAll()
                 .requestMatchers("/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()

@@ -4,6 +4,7 @@ import { api } from '@/services/api'
 import type { PipelineStatus } from '@/types/pipeline'
 import { useToast } from '@/composables/useToast'
 import { useCanvasStore } from '@/stores/useCanvasStore'
+import { useWebSocket } from '@/composables/useWebSocket'
 
 const { error: toastError } = useToast()
 
@@ -18,6 +19,10 @@ export const usePipelineStore = defineStore('pipeline', () => {
 
   // executePipeline is deprecated — delegates to executeSchema which goes through PipelineService
   async function executePipeline(schemaId: string) {
+    const { isConnected } = useWebSocket()
+    if (!isConnected.value) {
+      console.warn('Pipeline executed without WebSocket — no real-time updates')
+    }
     try {
       const result = await api.post(`/schemas/${schemaId}/execute`, { action: 'EXECUTE' })
       pipelineStatus.value = { running: true, stageResults: {} }

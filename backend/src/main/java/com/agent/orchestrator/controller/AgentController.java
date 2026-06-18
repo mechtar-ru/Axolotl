@@ -320,15 +320,15 @@ public class AgentController {
             result.put("dep", dep);
             result.put("status", "installing");
             try {
-                String command = buildInstallCommand(dep);
-                if (command == null) {
+                List<String> cmd = buildInstallCommand(dep);
+                if (cmd.isEmpty()) {
                     result.put("status", "error");
                     result.put("message", "Unknown dependency: " + dep);
                     results.add(result);
                     continue;
                 }
-                log.info("Running install command: {}", command);
-                ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+                log.info("Running install command: {}", String.join(" ", cmd));
+                ProcessBuilder pb = new ProcessBuilder(cmd);
                 pb.redirectErrorStream(true);
                 Process proc = pb.start();
                 boolean finished = proc.waitFor(300, TimeUnit.SECONDS);
@@ -342,8 +342,11 @@ public class AgentController {
                     result.put("message", "Install timed out after 300s");
                 } else {
                     result.put("status", "error");
-                    result.put("message", output);
+                    result.put("message", output.trim());
                 }
+            } catch (IllegalArgumentException e) {
+                result.put("status", "error");
+                result.put("message", e.getMessage());
             } catch (Exception e) {
                 result.put("status", "error");
                 result.put("message", e.getMessage());
@@ -378,27 +381,32 @@ public class AgentController {
         return Map.of("status", "ok", "message", "File changes rejected, original files restored");
     }
 
-    private String buildInstallCommand(String dep) {
+    private List<String> buildInstallCommand(String dep) {
+        if (dep == null || dep.isBlank()) return List.of();
+        // Validate dep name — only allow package-name chars
+        if (!dep.matches("^[a-zA-Z0-9_\\-]+$")) {
+            throw new IllegalArgumentException("Invalid dependency name: " + dep);
+        }
         if (dep.toLowerCase().contains("flutter")) {
-            // Try multiple install methods
-            return "which brew >/dev/null 2>&1 && brew install flutter || "
-                 + "(which flutter >/dev/null 2>&1 && echo 'already installed' || "
-                 + "echo 'Please install Flutter SDK manually from https://docs.flutter.dev/get-started/install')";
+            return List.of("which", "flutter");
         }
         if (dep.toLowerCase().contains("android") || dep.toLowerCase().contains("sdkmanager")) {
-            return "echo 'Android SDK requires manual setup. Install Android Studio from https://developer.android.com/studio'";
+            return List.of("echo", "Android SDK requires manual setup. Install Android Studio from https://developer.android.com/studio");
         }
         if (dep.toLowerCase().contains("xcode")) {
-            return "xcode-select -p >/dev/null 2>&1 && echo 'Xcode.app already installed' || "
-                 + "(xcode-select --install 2>/dev/null; "
-                 + "open 'https://apps.apple.com/app/xcode/id497799835' 2>/dev/null; "
-                 + "echo 'Xcode may take 10+ minutes to download via App Store. "
-                 + "Install full Xcode.app from https://developer.apple.com/xcode/')";
+            // Show the App Store URL for manual install
+            try {
+                new ProcessBuilder("open", "https://apps.apple.com/app/xcode/id497799835")
+                    .start();
+            } catch (Exception ignored) {
+                // non-fatal
+            }
+            return List.of("xcode-select", "-p");
         }
         if (dep.toLowerCase().contains("cocoapods") || dep.toLowerCase().contains("pod")) {
-            return "sudo gem install cocoapods 2>/dev/null || brew install cocoapods";
+            return List.of("which", "pod");
         }
-        return null;
+        return List.of();
     }
 
     @GetMapping("/health")
@@ -545,6 +553,21 @@ public class AgentController {
         String url = body.get("url");
         if (url == null || url.isBlank()) {
             return Map.of("status", "error", "error", "URL is required");
+        }
+        // P14: SSRF protection — only http/https schemes
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            return Map.of("status", "error", "error", "Only http/https URLs allowed");
+        }
+        // P14: Block private IP ranges
+        try {
+            java.net.URI uri = new java.net.URI(url);
+            String host = uri.getHost();
+            if (host == null || host.equals("localhost") || host.equals("127.0.0.1")
+                    || host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("172.16.")) {
+                return Map.of("status", "error", "error", "Access to private networks blocked");
+            }
+        } catch (Exception e) {
+            return Map.of("status", "error", "error", "Invalid URL");
         }
         try {
             java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()

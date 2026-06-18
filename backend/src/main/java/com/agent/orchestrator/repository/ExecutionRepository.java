@@ -437,7 +437,7 @@ public class ExecutionRepository {
 
     public void deleteExecutionRecordsOlderThan(long cutoffTimestamp) {
         withRetry(() -> {
-            recordRepo.deleteRecordsOlderThan(cutoffTimestamp);
+            recordRepo.deleteRecordsOlderThan(cutoffTimestamp / 1000);
             log.info("Deleted execution records older than cutoff={}", cutoffTimestamp);
         });
     }

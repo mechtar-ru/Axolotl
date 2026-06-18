@@ -41,7 +41,7 @@ const activeMode = ref<StudioMode>('blueprint')
 const appId = ref('')
 
 // WebSocket for real-time execution events
-const { connect, disconnect } = useWebSocket()
+const { connect, connectAsync, disconnect } = useWebSocket()
 
 // Guard against stale updates after unmount
 let isActive = true
@@ -159,7 +159,7 @@ const startExecution = async (skipSave: boolean = false, sessionInput?: string):
     return
   }
 
-  connect(appId.value, {
+  await connectAsync(appId.value, {
     onDisconnect: () => {
       if (isActive) {
         setIsExecuting(false)
@@ -397,16 +397,17 @@ async function handleResume() {
 }
 
 async function handleRestart() {
+  disconnect()
+  nodeResults.value = {}
+  nodeStatuses.value = {}
+  executionProgress.value = null
+  execState.stepEvents.value = []
+  nodeStartTimes.clear()
+  stepCounter = 0
   try {
     await schemaApi.executeSchema(appId.value, 'EXECUTE')
     setIsExecuting(true)
     executionError.value = null
-    nodeResults.value = {}
-    nodeStatuses.value = {}
-    executionProgress.value = null
-    execState.stepEvents.value = []
-    nodeStartTimes.clear()
-    stepCounter = 0
   } catch (e) {
     toast.error('Failed to restart: ' + ((e as Error).message || e))
   }
@@ -439,6 +440,10 @@ onMounted(async () => {
 // while the component stays alive (same route, different :id)
 watch(() => route.params.id, async (newId) => {
   if (appId.value && newId && appId.value !== newId) {
+    if (isRunning.value) {
+      disconnect()
+      setIsExecuting(false)
+    }
     // Save current state before switching
     try {
       await canvasStore.flushSave()

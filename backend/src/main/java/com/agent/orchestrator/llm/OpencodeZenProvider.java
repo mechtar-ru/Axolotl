@@ -1,6 +1,7 @@
 package com.agent.orchestrator.llm;
 
 import com.agent.orchestrator.service.SettingsService;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -20,7 +21,7 @@ public class OpencodeZenProvider implements LlmProvider {
     private static final Logger log = LoggerFactory.getLogger(OpencodeZenProvider.class);
 
     static final String DEFAULT_BASE_URL = "https://opencode.ai/zen/v1";
-    private static final int TIMEOUT_SECONDS = 3600;
+    private static final int TIMEOUT_SECONDS = 300;
 
     private final SettingsService settingsService;
 
@@ -35,6 +36,13 @@ public class OpencodeZenProvider implements LlmProvider {
 
     public OpencodeZenProvider(SettingsService settingsService) {
         this.settingsService = settingsService;
+    }
+
+    @PostConstruct
+    public void checkConfig() {
+        if (apiKey == null || apiKey.isBlank()) {
+            log.warn("Zen API key not configured. Set ZEN_API_KEY env var to use Zen provider.");
+        }
     }
 
     private String getEffectiveApiKey() {

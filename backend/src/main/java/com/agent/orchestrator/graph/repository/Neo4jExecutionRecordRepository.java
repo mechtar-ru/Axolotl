@@ -15,6 +15,6 @@ public interface Neo4jExecutionRecordRepository extends Neo4jRepository<GraphExe
 
     List<GraphExecutionRecord> findTop50ByOrderByStartTimeDesc();
 
-    @Query("MATCH (r:ExecutionRecord) WHERE r.startTime < $cutoff DETACH DELETE r")
-    void deleteRecordsOlderThan(@Param("cutoff") long cutoffTimestamp);
+    @Query("MATCH (r:ExecutionRecord) WHERE r.startTime < datetime({epochSeconds: toInteger($cutoffSeconds)}) DETACH DELETE r")
+    void deleteRecordsOlderThan(@Param("cutoffSeconds") long cutoffSeconds);
 }

@@ -25,8 +25,13 @@ public class NodeCommandExecutor {
     private List<String> allowedWriteDirs;
 
     private static final Set<String> BLOCKED_COMMAND_PATTERNS = Set.of(
-            "rm -rf /", "mkfs", "dd if=", ":(){ :|:&", "> /dev/sd", "format ", "del /f /s /q c:",
-            "shutdown", "reboot", "init 0", "init 6", "halt", "poweroff");
+            "rm -rf", "mkfs", "dd if=", ">:",
+            ":(){", "forkbomb",
+            "chmod 777", "chown",
+            "wget", "curl",
+            "python3", "python", "node", "perl",
+            "socat", "nc ", "ncat",
+            "passwd", "sudo", "su ");
 
     public NodeCommandExecutor(ExecutionWebSocketHandler webSocketHandler) {
         this.webSocketHandler = webSocketHandler;
@@ -58,7 +63,9 @@ public class NodeCommandExecutor {
         }
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+            // Split command into list form to avoid shell injection
+            List<String> cmdParts = List.of(command.split("\\s+"));
+            ProcessBuilder pb = new ProcessBuilder(cmdParts);
             if (workingDir != null && !workingDir.isBlank()) {
                 pb.directory(new java.io.File(workingDir));
             }

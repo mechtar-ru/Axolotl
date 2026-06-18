@@ -126,6 +126,10 @@ public class SettingsService {
     }
 
     public String getApiKey(String providerName) {
+        // NOTE: API keys are read from two sources:
+        // 1. application.yml (via @Value) for built-in providers (OpenAI, etc.)
+        // 2. System.getenv() here for legacy/fallback support
+        // TODO: Unify to a single source of truth (application.yml + env mapping)
         // Check DB first
         try {
             Optional<GraphProviderSetting> opt = neo4jRepo.findByProviderName(providerName);

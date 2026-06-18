@@ -1,5 +1,6 @@
 package com.agent.orchestrator.graph.model;
 
+import org.springframework.data.annotation.Version;
 import org.springframework.data.neo4j.core.schema.*;
 import java.time.Instant;
 import lombok.Getter;
@@ -66,9 +67,8 @@ public class GraphNodeExecution {
     @Property("reasoning")
     private String reasoning;
 
-
-
-
+    @Version
+    private Long version;
 
 
 

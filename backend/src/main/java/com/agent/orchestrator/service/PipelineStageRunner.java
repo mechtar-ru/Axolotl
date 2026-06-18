@@ -75,6 +75,11 @@ public class PipelineStageRunner {
         AtomicReference<Node> scratchRef = new AtomicReference<>();
 
         try {
+            if (cancelFlag.get()) {
+                log.warn("Pipeline cancelled before stage: {}", stage.getName());
+                return StageRunResult.FAILED;
+            }
+
             executionRepository.updateRunStageStatus(runId, stage.getId(), "running");
 
             if (webSocketHandler != null) {

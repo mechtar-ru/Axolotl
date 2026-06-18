@@ -9,6 +9,7 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -39,6 +40,7 @@ public class PluginBridge implements AutoCloseable {
     private volatile boolean running;
     private volatile boolean started;
     private final AtomicInteger requestIdCounter = new AtomicInteger(1);
+    private final AtomicBoolean disconnected = new AtomicBoolean(false);
 
     // ─── I/O ───
     private BufferedWriter stdin;
@@ -98,6 +100,7 @@ public class PluginBridge implements AutoCloseable {
     }
 
     private void startInternal(Map<String, Object> initParams) throws PluginException {
+        disconnected.set(false);
         // Recreate restart scheduler if it was shut down by a previous stop/restart
         if (restartScheduler == null || restartScheduler.isShutdown()) {
             restartScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -205,10 +208,10 @@ public class PluginBridge implements AutoCloseable {
         running = false;
 
         // Fail all pending requests
-        for (CompletableFuture<PluginMessage.ParsedMessage> future : pendingRequests.values()) {
-            future.completeExceptionally(new PluginException("Plugin stopped"));
+        synchronized (pendingRequests) {
+            pendingRequests.forEach((id, future) -> future.completeExceptionally(new PluginException("Plugin stopped")));
+            pendingRequests.clear();
         }
-        pendingRequests.clear();
 
         // Shutdown restart scheduler so no stale restarts fire after stop
         restartScheduler.shutdownNow();
@@ -241,14 +244,19 @@ public class PluginBridge implements AutoCloseable {
      * Send a request and wait for response.
      */
     public PluginMessage.ParsedMessage sendRequest(String method, Map<String, Object> params) throws PluginException {
+        if (disconnected.get()) {
+            throw new PluginException("Plugin is disconnected");
+        }
         int id = nextId();
         String msg = PluginMessage.buildRequest(method, params, id);
         CompletableFuture<PluginMessage.ParsedMessage> future = new CompletableFuture<>();
-        pendingRequests.put(id, future);
+        synchronized (pendingRequests) {
+            pendingRequests.put(id, future);
+        }
 
         try {
             if (!sendRaw(msg)) {
-                pendingRequests.remove(id);
+                synchronized (pendingRequests) { pendingRequests.remove(id); }
                 throw new PluginException("Cannot send request '" + method + "': stdin closed");
             }
             PluginMessage.ParsedMessage response = future.get(requestTimeoutMs, TimeUnit.MILLISECONDS);
@@ -260,7 +268,7 @@ public class PluginBridge implements AutoCloseable {
             }
             return response;
         } catch (TimeoutException e) {
-            pendingRequests.remove(id);
+            synchronized (pendingRequests) { pendingRequests.remove(id); }
             // Send cancellation notification to Bun side
             try {
                 sendNotification("plugin/cancel", Map.of("requestId", id));
@@ -269,11 +277,11 @@ public class PluginBridge implements AutoCloseable {
             }
             throw new PluginException("Request '" + method + "' timed out after " + requestTimeoutMs + "ms");
         } catch (ExecutionException e) {
-            pendingRequests.remove(id);
+            synchronized (pendingRequests) { pendingRequests.remove(id); }
             throw new PluginException("Request '" + method + "' failed: " +
                     (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()), e);
         } catch (Exception e) {
-            pendingRequests.remove(id);
+            synchronized (pendingRequests) { pendingRequests.remove(id); }
             if (e instanceof PluginException) throw (PluginException) e;
             throw new PluginException("Request '" + method + "' failed: " + e.getMessage(), e);
         }
@@ -411,7 +419,10 @@ public class PluginBridge implements AutoCloseable {
 
     private void handleMessage(PluginMessage.ParsedMessage msg) {
         if (msg.isResponse()) {
-            CompletableFuture<PluginMessage.ParsedMessage> future = pendingRequests.remove(msg.id());
+            CompletableFuture<PluginMessage.ParsedMessage> future;
+            synchronized (pendingRequests) {
+                future = pendingRequests.remove(msg.id());
+            }
             if (future != null) {
                 future.complete(msg);
             } else {
@@ -439,18 +450,23 @@ public class PluginBridge implements AutoCloseable {
 
     private PluginMessage.ParsedMessage waitForResponse(int id, int timeoutMs) throws PluginException {
         CompletableFuture<PluginMessage.ParsedMessage> future = new CompletableFuture<>();
-        pendingRequests.put(id, future);
+        if (disconnected.get()) {
+            throw new PluginException("Plugin is disconnected");
+        }
+        synchronized (pendingRequests) {
+            pendingRequests.put(id, future);
+        }
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            pendingRequests.remove(id);
+            synchronized (pendingRequests) { pendingRequests.remove(id); }
             throw new PluginException("Initialization timed out after " + timeoutMs + "ms");
         } catch (ExecutionException e) {
-            pendingRequests.remove(id);
+            synchronized (pendingRequests) { pendingRequests.remove(id); }
             throw new PluginException("Initialization failed: " +
                     (e.getCause() != null ? e.getCause().getMessage() : e.getMessage()), e);
         } catch (Exception e) {
-            pendingRequests.remove(id);
+            synchronized (pendingRequests) { pendingRequests.remove(id); }
             if (e instanceof PluginException) throw (PluginException) e;
             throw new PluginException("Initialization failed: " + e.getMessage(), e);
         }
@@ -459,11 +475,12 @@ public class PluginBridge implements AutoCloseable {
     private void handleDisconnect() {
         if (!running) return;
 
+        disconnected.set(true);
         // Notify pending requests that the process died
-        for (CompletableFuture<PluginMessage.ParsedMessage> future : pendingRequests.values()) {
-            future.completeExceptionally(new PluginException("Plugin process disconnected"));
+        synchronized (pendingRequests) {
+            pendingRequests.forEach((id, future) -> future.completeExceptionally(new PluginException("Plugin process disconnected")));
+            pendingRequests.clear();
         }
-        pendingRequests.clear();
 
         // Schedule auto-restart
         Runnable callback = onDisconnect;

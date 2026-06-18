@@ -224,7 +224,16 @@ public class NodeRouter {
                                 webSocketHandler.sendLog(schemaId, "warning",
                                         "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
                             }
-                            try { Thread.sleep(waitMs); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                            try {
+                                CompletableFuture.runAsync(() -> {}, 
+                                        CompletableFuture.delayedExecutor(waitMs, TimeUnit.MILLISECONDS))
+                                        .get(waitMs + 1000, TimeUnit.MILLISECONDS);
+                            } catch (TimeoutException | ExecutionException e) {
+                                // timeout is expected — we waited waitMs
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                throw new RuntimeException("Retry interrupted", ie);
+                            }
                             if (Thread.currentThread().isInterrupted()) {
                                 log.warn("Node execution interrupted during retry wait");
                                 break;

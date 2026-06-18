@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import type { WorkflowSchema } from '../types';
 import { api } from '../services/api';
 import type { SchemaValidationResult } from '../services/api';
@@ -11,6 +11,7 @@ export type { ReviewData, ReviewFinding } from './useReviewStore';
 export const useSchemaStore = defineStore('schema', () => {
   const schemas = ref<WorkflowSchema[]>([]);
   const loading = ref(false);
+  let schemaWatcher: (() => void) | null = null;
 
   // ─── Schema CRUD (delegated to canvasStore) ──────────────────────
 
@@ -19,7 +20,14 @@ export const useSchemaStore = defineStore('schema', () => {
     loading.value = true;
     try {
       await canvasStore.loadSchemas();
-      schemas.value = canvasStore.schemas;
+      // Use watch for live sync instead of one-time copy
+      if (!schemaWatcher) {
+        schemaWatcher = watch(
+          () => canvasStore.schemas,
+          (val) => { schemas.value = val },
+          { deep: true, immediate: true }
+        );
+      }
     } finally {
       loading.value = false;
     }
@@ -58,19 +66,9 @@ export const useSchemaStore = defineStore('schema', () => {
   // ─── Re-fetch (kept local for backward compat) ──────────────────
 
   async function refreshCurrentSchema(schemaId: string) {
-    try {
-      const resp = await api.get(`/schemas/${schemaId}`)
-      if (resp.data) {
-        const canvasStore = useCanvasStore()
-        canvasStore.currentSchema = resp.data
-        const idx = schemas.value.findIndex(s => s.id === schemaId)
-        if (idx !== -1) {
-          schemas.value[idx] = resp.data
-        }
-      }
-    } catch {
-      console.warn('[schemaStore] Failed to refresh schema ' + schemaId);
-    }
+    const canvasStore = useCanvasStore()
+    await canvasStore.refreshCurrentSchema(schemaId)
+    // schemaStore's schemas are synced via the watcher from loadSchemas
   }
 
   return {

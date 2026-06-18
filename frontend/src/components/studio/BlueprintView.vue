@@ -80,7 +80,14 @@ function buildVueFlowNodes(schema: any): Node[] {
         model: n.data?.model || '',
         systemPrompt: n.data?.systemPrompt || '',
       },
-      status: n.status
+      status: n.status,
+      sourceType: (n.data as any)?.sourceType,
+      sourceContent: (n.data as any)?.sourceContent,
+      filePath: (n.data as any)?.filePath,
+      url: (n.data as any)?.url,
+      projectPath: (n.data as any)?.projectPath,
+      maxDepth: (n.data as any)?.maxDepth,
+      maxFiles: (n.data as any)?.maxFiles,
     }
   }))
 }
@@ -256,7 +263,14 @@ function syncFlowToStore() {
       data: {
         model: m || '',
         systemPrompt: sp || '',
-        config: restConfig
+        config: restConfig,
+        sourceType: (n.data as any)?.sourceType,
+        sourceContent: (n.data as any)?.sourceContent,
+        filePath: (n.data as any)?.filePath,
+        url: (n.data as any)?.url,
+        projectPath: (n.data as any)?.projectPath,
+        maxDepth: (n.data as any)?.maxDepth,
+        maxFiles: (n.data as any)?.maxFiles,
       }
     }
   })

@@ -33,13 +33,12 @@ public class ToolExecutorImpl implements ToolExecutor {
     // ── Package-visible for ToolHandlerService ──
 
     static final Set<String> DEFAULT_ALLOWED_COMMANDS = Set.of(
-        "ls", "cat", "grep", "find", "git", "cd", "pwd", "echo", "head", "tail",
-        "wc", "sort", "uniq", "diff", "patch", "mkdir", "cp", "mv", "rm", "touch",
-        "chmod", "date", "env", "which", "dirname", "basename", "readlink",
-        "xargs", "cut", "tr", "sed", "awk", "printf", "tee", "zip", "unzip",
-        "tar", "gzip", "gunzip", "make", "mvn", "npm", "node", "python3", "python",
-        "curl", "wget", "ping", "nslookup", "dig", "ssh", "scp", "rsync",
-        "flutter", "dart", "pub"
+        "cat", "ls", "find", "grep", "flutter", "dart", "pub",
+        "cargo", "rustc", "npm", "npx", "bun", "git", "make", "go",
+        "head", "tail", "sort", "wc", "echo", "cp", "mv", "mkdir", "touch", "date",
+        "cd", "pwd", "which", "dirname", "basename", "readlink",
+        "unzip", "zip", "tar", "gzip", "gunzip", "diff", "patch",
+        "cut", "tr", "printf", "tee", "env", "xargs", "uniq", "mvn"
     );
 
     public ToolExecutorImpl() {

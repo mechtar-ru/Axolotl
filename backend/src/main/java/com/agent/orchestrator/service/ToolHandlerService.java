@@ -83,8 +83,21 @@ public class ToolHandlerService {
         if (path == null) path = (String) params.get("filePath");
         if (path == null) return ToolResult.error("Missing path parameter");
 
+        // P09: Path traversal protection — allow relative paths, restrict absolute paths to known safe dirs
+        Path resolvedPath = Path.of(path).normalize();
+        String resolvedStr = resolvedPath.toString();
+        if (resolvedPath.isAbsolute()) {
+            String tmpDir = System.getProperty("java.io.tmpdir", "/tmp");
+            String projectDir = System.getProperty("user.dir");
+            if (!resolvedStr.startsWith(projectDir) && !resolvedStr.startsWith(tmpDir)
+                    && !resolvedStr.startsWith("/Users/Shared/Axolotl")
+                    && !resolvedStr.startsWith("/tmp")) {
+                return ToolResult.error("Access denied: path outside allowed directories");
+            }
+        }
+
         try {
-            String content = Files.readString(Path.of(path));
+            String content = Files.readString(resolvedPath);
             return ToolResult.ok(content);
         } catch (IOException e) {
             return ToolResult.error("Failed to read file: " + e.getMessage());
@@ -103,8 +116,21 @@ public class ToolHandlerService {
         if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
+        // P09: Path traversal protection — allow relative paths, restrict absolute paths to known safe dirs
+        Path resolvedPath = Path.of(path).normalize();
+        String resolvedStr = resolvedPath.toString();
+        if (resolvedPath.isAbsolute()) {
+            String tmpDir = System.getProperty("java.io.tmpdir", "/tmp");
+            String projectDir = System.getProperty("user.dir");
+            if (!resolvedStr.startsWith(projectDir) && !resolvedStr.startsWith(tmpDir)
+                    && !resolvedStr.startsWith("/Users/Shared/Axolotl")
+                    && !resolvedStr.startsWith("/tmp")) {
+                return ToolResult.error("Access denied: path outside allowed directories");
+            }
+        }
+
         try {
-            java.nio.file.Path targetPath = Path.of(path);
+            java.nio.file.Path targetPath = resolvedPath;
             Files.createDirectories(targetPath.getParent());
             Files.writeString(targetPath, content);
             return ToolResult.ok("File written: " + path);
@@ -121,7 +147,20 @@ public class ToolHandlerService {
         String path = (String) params.get("path");
         if (path == null) path = ".";
 
-        try (Stream<Path> stream = Files.list(Path.of(path))) {
+        // P09: Path traversal protection — allow relative paths, restrict absolute paths to known safe dirs
+        Path resolvedPath = Path.of(path).normalize();
+        String resolvedStr = resolvedPath.toString();
+        if (resolvedPath.isAbsolute()) {
+            String tmpDir = System.getProperty("java.io.tmpdir", "/tmp");
+            String projectDir = System.getProperty("user.dir");
+            if (!resolvedStr.startsWith(projectDir) && !resolvedStr.startsWith(tmpDir)
+                    && !resolvedStr.startsWith("/Users/Shared/Axolotl")
+                    && !resolvedStr.startsWith("/tmp")) {
+                return ToolResult.error("Access denied: path outside allowed directories");
+            }
+        }
+
+        try (Stream<Path> stream = Files.list(resolvedPath)) {
             List<String> files = stream.map(p -> p.toString()).sorted().collect(Collectors.toList());
             return ToolResult.ok(String.join("\n", files));
         } catch (IOException e) {
@@ -500,6 +539,10 @@ public class ToolHandlerService {
     public ToolResult handleMemorySearch(Map<String, Object> params, ToolPermission permission) {
         String query = (String) params.get("query");
         Integer limit = params.get("limit") != null ? (Integer) params.get("limit") : 10;
+        // P16: Cap limit to prevent abuse
+        if (limit > 100) {
+            limit = 100;
+        }
         if (query == null || query.isBlank()) {
             return ToolResult.error("Missing required parameter: query");
         }
@@ -556,13 +599,17 @@ public class ToolHandlerService {
 
         // Validate that only read-only Cypher queries are allowed
         String trimmed = query.trim();
+        // P15: Block multi-statement queries
+        if (trimmed.contains(";")) {
+            return ToolResult.error("graph_query: multi-statement queries not allowed");
+        }
         java.util.regex.Pattern ALLOWED_CYPHER =
             java.util.regex.Pattern.compile("^\\s*(MATCH|RETURN|WHERE|WITH|ORDER|LIMIT|SKIP|UNWIND|\\()",
                 java.util.regex.Pattern.CASE_INSENSITIVE | java.util.regex.Pattern.MULTILINE);
         if (!ALLOWED_CYPHER.matcher(trimmed).find()) {
             return ToolResult.error("graph_query: only read-only MATCH/RETURN queries allowed");
         }
-        if (trimmed.toUpperCase().matches(".*\\b(CREATE|DELETE|SET|REMOVE|MERGE)\\b.*")) {
+        if (trimmed.toUpperCase().matches(".*\\b(CREATE|DELETE|SET|REMOVE|MERGE|CALL|DETACH|INDEX|CONSTRAINT|LOAD|FOREACH)\\b.*")) {
             return ToolResult.error("graph_query: write operations not allowed");
         }
 

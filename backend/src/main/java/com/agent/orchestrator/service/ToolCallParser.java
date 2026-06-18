@@ -111,7 +111,7 @@ public class ToolCallParser {
         return calls;
     }
 
-    private int findMatchingBracket(String json, int startIdx) {
+    public static int findMatchingBracket(String json, int startIdx) {
         char openBracket = json.charAt(startIdx);
         char closeBracket = (openBracket == '[') ? ']' : '}';
         int depth = 0;
