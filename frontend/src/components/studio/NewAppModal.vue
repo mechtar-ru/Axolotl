@@ -45,7 +45,7 @@ async function create() {
       }
     }
   } catch (error) {
-    console.error('Failed to create app:', error)
+    console.error('NewAppModal: Failed to create app:', error)
   }
 }
 </script>

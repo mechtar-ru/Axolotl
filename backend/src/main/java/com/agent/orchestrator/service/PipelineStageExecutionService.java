@@ -107,20 +107,20 @@ public class PipelineStageExecutionService {
             // Run stages within a level concurrently
             @SuppressWarnings("unchecked")
             CompletableFuture<Void>[] futures = new CompletableFuture[level.size()];
-            boolean[] levelPaused = { false };
-            boolean[] levelFailed = { false };
+            AtomicBoolean levelPaused = new AtomicBoolean(false);
+            AtomicBoolean levelFailed = new AtomicBoolean(false);
 
             for (int si = 0; si < level.size(); si++) {
                 Stage stage = level.get(si);
                 int stageIdx = completedStages + si;
                 futures[si] = CompletableFuture.runAsync(() -> {
-                    if (cancelFlag.get() || levelPaused[0] || levelFailed[0]) return;
+                    if (cancelFlag.get() || levelPaused.get() || levelFailed.get()) return;
                     PipelineStageRunner.StageRunResult result = stageRunner.executeStage(stage, schema, runId, nodeMap,
                             cancelFlag, schema.getId(), stageIdx, false);
                     if (result == PipelineStageRunner.StageRunResult.PAUSED) {
-                        synchronized (levelPaused) { levelPaused[0] = true; }
+                        levelPaused.set(true);
                     } else if (result == PipelineStageRunner.StageRunResult.FAILED) {
-                        synchronized (levelFailed) { levelFailed[0] = true; }
+                        levelFailed.set(true);
                     }
                 }, pipelineLevelExecutor);
             }
@@ -137,12 +137,12 @@ public class PipelineStageExecutionService {
                 throw e;
             }
 
-            if (levelFailed[0]) {
+            if (levelFailed.get()) {
                 log.warn("Pipeline level failed, stopping pipeline for schema {}", schema.getId());
                 executionRepository.updateRunCompleted(runId, "failed", 0, 0.0);
                 break;
             }
-            if (levelPaused[0]) break;
+            if (levelPaused.get()) break;
 
             completedStages += level.size();
             int progress = (int) ((double) completedStages / totalStages * 100);
@@ -461,6 +461,13 @@ public class PipelineStageExecutionService {
                 String output = run.getStageOutputs().get(completedId);
                 if (output != null) {
                     statusManager.putStageResult(schemaId, completedId, output);
+                }
+            }
+            // Also carry forward outputs from non-completed stages (stages before resume point
+            // that may not have been marked completed but had partial output)
+            for (var entry : run.getStageOutputs().entrySet()) {
+                if (!completedStageIds.contains(entry.getKey())) {
+                    statusManager.putStageResult(schemaId, entry.getKey(), entry.getValue());
                 }
             }
         }

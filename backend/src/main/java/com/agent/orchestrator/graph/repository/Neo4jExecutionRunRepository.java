@@ -69,8 +69,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
                                 @Param("resumeIndex") int resumeIndex);
 
     @Query("""
-        MATCH (r:ExecutionRun {schemaId: $schemaId})
-        WHERE r.status = 'paused'
+        MATCH (r:ExecutionRun {schemaId: $schemaId, status: 'paused'})
         SET r.status = 'resuming'
         SET r.updatedAt = datetime()
         RETURN r
@@ -79,16 +78,14 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
     Optional<GraphExecutionRun> claimPausedRun(@Param("schemaId") String schemaId);
 
     @Query("""
-        MATCH (r:ExecutionRun {schemaId: $schemaId})
-        WHERE r.status = 'resuming'
+        MATCH (r:ExecutionRun {schemaId: $schemaId, status: 'resuming'})
         SET r.status = 'paused'
         SET r.updatedAt = datetime()
         """)
     void releasePausedRun(@Param("schemaId") String schemaId);
 
     @Query("""
-        MATCH (r:ExecutionRun {schemaId: $schemaId})
-        WHERE r.status = 'resuming'
+        MATCH (r:ExecutionRun {schemaId: $schemaId, status: 'resuming'})
         SET r.status = 'paused'
         SET r.updatedAt = datetime()
         RETURN count(r)
@@ -102,8 +99,7 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
     void deleteNodeExecutionsByRunId(@Param("runId") String runId);
 
     @Query("""
-        MATCH (r:ExecutionRun {id: $runId})
-        WHERE r.status = 'paused'
+        MATCH (r:ExecutionRun {id: $runId, status: 'paused'})
         SET r.status = 'resuming'
         SET r.updatedAt = datetime()
         RETURN r
@@ -136,8 +132,8 @@ public interface Neo4jExecutionRunRepository extends Neo4jRepository<GraphExecut
         SET r.updatedAt = datetime()
         """)
     void forceUpdateRunStatus(@Param("runId") String runId,
-                              @Param("status") String status,
-                              @Param("error") String error);
+                               @Param("status") String status,
+                               @Param("error") String error);
 
     @Query("""
         MATCH (n:NodeExecution {runId: $runId, status: 'running'})

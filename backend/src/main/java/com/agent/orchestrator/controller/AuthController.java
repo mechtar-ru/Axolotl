@@ -33,6 +33,8 @@ public class AuthController {
 
     private synchronized void ensureDefaultAdmin() {
         if (adminInitialized) return;
+        // DEV ONLY: hardcoded credentials for local development
+        // In production, use a proper auth provider
         if (userRepository.findByUsername("admin") == null) {
             AppUser admin = new AppUser(
                     UUID.randomUUID().toString(),
@@ -41,9 +43,10 @@ public class AuthController {
                     "admin"
             );
             userRepository.save(admin);
-            log.info("Default admin user created (admin:admin)");
+            log.warn("Default admin user created (admin:admin) — DEV ONLY, insecure for production");
         }
         if (userRepository.findByUsername("tech") == null) {
+            // DEV ONLY: hardcoded credentials for local development
             AppUser tech = new AppUser(
                     UUID.randomUUID().toString(),
                     "tech",
@@ -51,7 +54,7 @@ public class AuthController {
                     "tech"
             );
             userRepository.save(tech);
-            log.info("Tech user created (tech:tech)");
+            log.warn("Tech user created (tech:tech) — DEV ONLY, insecure for production");
         }
         adminInitialized = true;
     }

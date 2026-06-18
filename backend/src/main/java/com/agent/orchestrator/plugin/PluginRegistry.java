@@ -204,14 +204,19 @@ public class PluginRegistry implements AutoCloseable {
         PluginBridge bridge = bridges.get(name);
         PluginToolAdapter adapter = toolAdapters.get(name);
         if (bridge != null) {
-            // Unregister all tools for this plugin to prevent stale registrations
-            if (toolExecutor != null && adapter != null) {
-                for (String toolId : adapter.getPluginTools().keySet()) {
-                    try {
-                        toolExecutor.unregisterTool(toolId);
-                        toolExecutor.unregisterPluginHandler(toolId);
-                    } catch (Exception e) {
-                        log.warn("Failed to unregister tool {}: {}", toolId, e.getMessage());
+            // Before unregistering tools on crash, check if execution is in progress
+            if (isAnyExecutionRunning()) {
+                log.warn("Plugin '{}' stopping during active execution — deferring tool unregistration to avoid mid-execution disruption", name);
+            } else {
+                // Unregister all tools for this plugin to prevent stale registrations
+                if (toolExecutor != null && adapter != null) {
+                    for (String toolId : adapter.getPluginTools().keySet()) {
+                        try {
+                            toolExecutor.unregisterTool(toolId);
+                            toolExecutor.unregisterPluginHandler(toolId);
+                        } catch (Exception e) {
+                            log.warn("Failed to unregister tool {}: {}", toolId, e.getMessage());
+                        }
                     }
                 }
             }
@@ -382,6 +387,16 @@ public class PluginRegistry implements AutoCloseable {
 
     public int getPluginCount() {
         return bridges.size();
+    }
+
+    /**
+     * Check if any execution is currently in progress.
+     * Used to prevent mid-execution tool unregistration during plugin crashes.
+     * Stub — will query ExecutionStateManager in production implementation.
+     */
+    private boolean isAnyExecutionRunning() {
+        // TODO: Query ExecutionStateManager or NodeRouter for active executions
+        return false; // Stub — prevents crash-path unregister from removing tools mid-execution
     }
 
     // ─── Shutdown ───

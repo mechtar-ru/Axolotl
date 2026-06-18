@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, defineOptions } from 'vue';
+import { ref, reactive, onMounted, onActivated, computed, defineOptions } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settingsStore';
 import ThemeToggle from '@/components/ui/ThemeToggle.vue';
@@ -217,7 +217,7 @@ async function refreshCustomEndpoints() {
   try {
     customEndpoints.value = await customEndpointApi.list();
   } catch (e: any) {
-    console.error('Failed to load custom endpoints:', e);
+    console.error('SettingsView: Failed to load custom endpoints:', e);
   }
 }
 
@@ -319,6 +319,16 @@ onMounted(async () => {
     userDefaultModel.value = await settingsApi.getUserDefaultModel();
   } catch {}
   // Build model options using store (respects disabledModels filter)
+  rebuildModelOptions();
+});
+
+// Reload settings when re-activated from keep-alive cache
+onActivated(async () => {
+  await refreshProviders();
+  await refreshCustomEndpoints();
+  try {
+    userDefaultModel.value = await settingsApi.getUserDefaultModel();
+  } catch {}
   rebuildModelOptions();
 });
 </script>

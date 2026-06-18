@@ -230,7 +230,7 @@ async function toggleShowKey() {
       const key = await settingsApi.getProviderApiKey(props.provider.name)
       if (key) editedKey.value = key
     } catch (e) {
-      console.error('Failed to fetch API key:', e)
+      console.error('ProviderCard: Failed to fetch API key:', e)
     }
   }
 }

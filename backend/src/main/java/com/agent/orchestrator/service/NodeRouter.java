@@ -18,8 +18,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -60,6 +62,7 @@ public class NodeRouter {
     private final MagicContextIndexer mcIndexer;
     private Map<String, NodeExecutionStrategy> strategyRegistry;
     private final Executor nodeExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final Set<String> runningExecutions = new HashSet<>();
 
     public NodeRouter(ExecutionUtilityService utilityService,
                       OutputReportingService outputReportingService,
@@ -95,10 +98,6 @@ public class NodeRouter {
         this.agentStrategy = agentStrategy;
         this.outputValidator = outputValidator;
         this.mcIndexer = mcIndexer;
-    }
-
-    @PostConstruct
-    public void initStrategyRegistry() {
         Map<String, NodeExecutionStrategy> registry = new HashMap<>();
         for (NodeExecutionStrategy strategy : strategies) {
             registry.put(strategy.supportedNodeType(), strategy);
@@ -118,6 +117,19 @@ public class NodeRouter {
             if (cancelFlag.get()) {
                 node.setStatus(Node.NodeStatus.FAILED);
                 return;
+            }
+
+            // Duplicate execution guard — prevent executing the same nodeId+runId combination
+            String runIdCheck = stateManager.getCurrentRunId(schemaId);
+            if (runIdCheck != null) {
+                String executionKey = runIdCheck + ":" + node.getId();
+                synchronized (runningExecutions) {
+                    if (!runningExecutions.add(executionKey)) {
+                        log.warn("Node {} already running for run {}, skipping duplicate execution",
+                                node.getId(), runIdCheck);
+                        return;
+                    }
+                }
             }
 
             node.setStatus(Node.NodeStatus.RUNNING);
@@ -362,6 +374,14 @@ public class NodeRouter {
                             nodeExecutionId, "failed", null, tokensUsed, 0L, 0, e.getMessage());
                 } catch (Exception ex) {
                     log.warn("Не удалось сохранить ошибку узла в БД", ex);
+                }
+            }
+        } finally {
+            String runIdCleanup = stateManager.getCurrentRunId(schemaId);
+            if (runIdCleanup != null) {
+                String executionKey = runIdCleanup + ":" + node.getId();
+                synchronized (runningExecutions) {
+                    runningExecutions.remove(executionKey);
                 }
             }
         }

@@ -659,9 +659,50 @@ public class ToolHandlerService {
                     + " not in node's allowedPaths: " + permission.getAllowedPaths());
         }
 
+        // L7: Absolute paths must be validated against sandbox first
+        Path inputResolved = Path.of(requestedPath);
+        if (inputResolved.isAbsolute()) {
+            String normalized = inputResolved.normalize().toString();
+            if (schemaTargetPath != null && !schemaTargetPath.isBlank()) {
+                String normalizedTarget = Path.of(schemaTargetPath).normalize().toAbsolutePath().toString().replace("\\", "/");
+                if (!normalizedTarget.endsWith("/")) normalizedTarget += "/";
+                if (normalized.startsWith(normalizedTarget)) {
+                    return normalized;
+                }
+            }
+            // Absolute path that doesn't match schemaTargetPath — allow if it's a known safe dir
+            String tmpDir = System.getProperty("java.io.tmpdir", "/tmp");
+            String projectDir = System.getProperty("user.dir");
+            if (normalized.startsWith(projectDir + "/") || normalized.startsWith(tmpDir + "/")
+                    || normalized.startsWith("/Users/Shared/Axolotl") || normalized.startsWith("/tmp/")) {
+                return normalized;
+            }
+            throw new SecurityException("File write blocked: absolute path " + requestedPath
+                    + " is outside allowed directories");
+        }
+
         if (schemaTargetPath != null && !schemaTargetPath.isBlank()) {
-            String normalizedRequested = Path.of(requestedPath).normalize().toAbsolutePath().toString().replace("\\", "/");
-            String normalizedTarget = Path.of(schemaTargetPath).normalize().toAbsolutePath().toString().replace("\\", "/");
+            Path basePath = Path.of(schemaTargetPath).normalize().toAbsolutePath();
+            Path resolvedPath = basePath.resolve(requestedPath).normalize();
+
+            // L6: Follow symlinks to prevent bypass via symlink
+            try {
+                if (Files.isSymbolicLink(resolvedPath)) {
+                    resolvedPath = Files.readSymbolicLink(resolvedPath);
+                    if (!resolvedPath.isAbsolute()) {
+                        resolvedPath = basePath.resolve(resolvedPath).normalize();
+                    }
+                    if (!resolvedPath.startsWith(basePath)) {
+                        throw new SecurityException("File write blocked: symlink target " + resolvedPath
+                                + " is outside schema targetPath: " + schemaTargetPath);
+                    }
+                }
+            } catch (IOException e) {
+                // If can't check symlink, proceed with normalized path
+            }
+
+            String normalizedRequested = resolvedPath.toString().replace("\\", "/");
+            String normalizedTarget = basePath.toString().replace("\\", "/");
             if (!normalizedTarget.endsWith("/")) normalizedTarget += "/";
             if (normalizedRequested.startsWith(normalizedTarget)) {
                 return normalizedRequested;

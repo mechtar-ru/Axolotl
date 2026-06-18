@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, defineOptions } from 'vue'
+import { ref, computed, watch, onMounted, onActivated, defineOptions } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -156,7 +156,7 @@ async function loadTestSchemas() {
   try {
     testSchemas.value = await schemaApi.getTestSchemas()
   } catch (e) {
-    console.error('Failed to load test schemas:', e)
+    console.error('DashboardView: Failed to load test schemas:', e)
   }
 }
 
@@ -255,6 +255,14 @@ onMounted(async () => {
   }
 })
 
+// Refresh when re-activated from keep-alive cache
+onActivated(() => {
+  if (schemaStore.schemas.length === 0) {
+    schemaStore.loadSchemas()
+  }
+  loadGroups()
+})
+
 /** After creating a schema from a template, push the template's nodes and edges into it.
  *  Returns the updated full schema, or undefined if template has no nodes to apply.
  *  Retries getSchema up to 3 times with backoff to handle Neo4j async replication delay.
@@ -271,16 +279,16 @@ async function applyTemplateToSchema(schemaId: string, templateId: string): Prom
     await new Promise(r => setTimeout(r, 200 * (attempt + 1)))
   }
   if (!schema) {
-    console.error('Failed to fetch schema after retries:', schemaId)
+    console.error('DashboardView: Failed to fetch schema after retries:', schemaId)
     return
   }
 
   schema.nodes = fullTemplate.defaultNodes.map(n => ({
     id: n.id,
-    type: n.type as any,
+    type: n.type as any, // @ts-expect-error: improve typing — TemplateNode type differs
     name: n.name,
     position: { x: n.position.x, y: n.position.y },
-    data: { ...n.data } as any,
+    data: { ...n.data } as any, // @ts-expect-error: improve typing
   }))
   schema.edges = fullTemplate.defaultEdges.map(e => ({
     id: e.id,
@@ -326,11 +334,11 @@ async function createFromTemplate(templateId: string) {
       schemaStore.schemas.push(updated)
     } else {
       // Template has no nodes (e.g. blank); still need to add to store
-      schemaStore.schemas.push(appInfo as unknown as WorkflowSchema)
+      schemaStore.schemas.push(appInfo as WorkflowSchema)
     }
     router.push(`/app/${appInfo.id}`)
   } catch (error) {
-    console.error('Failed to create app from template:', error)
+    console.error('DashboardView: Failed to create app from template:', error)
   }
 }
 
@@ -356,14 +364,14 @@ async function onConflictResolve(action: 'CONTINUE' | 'OVERWRITE' | 'CHANGE_PATH
       if (updated) {
         schemaStore.schemas.push(updated)
       } else {
-        schemaStore.schemas.push(appInfo as unknown as WorkflowSchema)
+        schemaStore.schemas.push(appInfo as WorkflowSchema)
       }
       showConflictModal.value = false
       pendingTemplate.value = null
       router.push(`/app/${appInfo.id}`)
     }
   } catch (error) {
-    console.error('Failed to resolve conflict:', error)
+    console.error('DashboardView: Failed to resolve conflict:', error)
   }
 }
 
@@ -392,7 +400,7 @@ async function loadGroups() {
   try {
     schemaGroups.value = await schemaApi.getSchemaGroups()
   } catch (e) {
-    console.error('Failed to load schema groups:', e)
+    console.error('DashboardView: Failed to load schema groups:', e)
   }
 }
 
@@ -407,7 +415,7 @@ async function onGroupSelect(schema: WorkflowSchema, groupName: string | null) {
     }
     await loadGroups()
   } catch (e) {
-    console.error('Failed to update group:', e)
+    console.error('DashboardView: Failed to update group:', e)
   }
 }
 
@@ -467,7 +475,7 @@ async function confirmBatchDelete() {
     await loadGroups()
     await loadTestSchemas()
   } catch (e) {
-    console.error('Batch delete failed:', e)
+    console.error('DashboardView: Batch delete failed:', e)
   } finally {
     isDeleting.value = false
   }
@@ -494,10 +502,11 @@ async function onDrop(e: DragEvent, targetGroup: string) {
     return
   }
   try {
-    await schemaApi.updateSchema(schemaId, { projectGroup: targetGroup || '' } as any)
+    const updatePayload: Record<string, any> = { projectGroup: targetGroup || '' }
+    await schemaApi.updateSchema(schemaId, updatePayload)
     await loadGroups()
   } catch (e) {
-    console.error('Failed to move schema:', e)
+    console.error('DashboardView: Failed to move schema:', e)
   }
   dragSchemaId.value = null
 }
@@ -545,7 +554,7 @@ async function onImportFile(event: Event) {
       router.push(`/app/${created.id}`)
     }
   } catch (err) {
-    console.error('Import failed:', err)
+    console.error('DashboardView: Import failed:', err)
   }
   input.value = ''
 }

@@ -121,7 +121,7 @@ async function loadFullSchema() {
       nextTick(() => fitView({ padding: 0.2 }))
     }
   } catch (err) {
-    console.error('Failed to load full schema:', err)
+    console.error('BlueprintView: Failed to load full schema:', err)
   }
 }
 
@@ -208,7 +208,7 @@ function onDropHandler(event: DragEvent) {
       syncFlowToStore()
     }
   } catch (e) {
-    console.error('Failed to parse drop data', e)
+    console.error('BlueprintView: Failed to parse drop data', e)
   }
 }
 

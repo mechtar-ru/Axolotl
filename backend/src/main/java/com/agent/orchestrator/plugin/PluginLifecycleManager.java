@@ -157,7 +157,7 @@ public class PluginLifecycleManager {
     private void cleanupOrphanedBunProcesses() {
         try {
             Process killProc = Runtime.getRuntime().exec(new String[]{
-                "pkill", "-f", "^bun.* plugin-bridge\\.js$"
+                "pkill", "-f", "plugin-bridge\\.js$"
             });
             boolean finished = killProc.waitFor(5, TimeUnit.SECONDS);
             if (finished && killProc.exitValue() == 0) {

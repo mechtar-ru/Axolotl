@@ -74,7 +74,7 @@ const copyToClipboard = async () => {
       copyStatus.value = null;
     }, 2000);
   } catch (err) {
-    console.error('Failed to copy:', err);
+    console.error('ThoughtsPanel: Failed to copy:', err);
     copyStatus.value = 'Failed';
   }
 };

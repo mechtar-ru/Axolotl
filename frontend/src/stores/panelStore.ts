@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 
+// panelStore uses Options API style for legacy reasons — consistent with Pinia conventions
 export const usePanelStore = defineStore('panel', {
   state: () => ({
     visible: false as boolean,

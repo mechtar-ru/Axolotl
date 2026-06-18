@@ -77,7 +77,7 @@ async function handleApprove() {
       method: 'POST',
     });
   } catch (e) {
-    console.error('Approve diffs failed:', e);
+    console.error('DiffReviewDialog: Approve diffs failed:', e);
   }
   processing.value = false;
   emit('close');
@@ -90,7 +90,7 @@ async function handleReject() {
       method: 'POST',
     });
   } catch (e) {
-    console.error('Reject diffs failed:', e);
+    console.error('DiffReviewDialog: Reject diffs failed:', e);
   }
   processing.value = false;
   emit('close');

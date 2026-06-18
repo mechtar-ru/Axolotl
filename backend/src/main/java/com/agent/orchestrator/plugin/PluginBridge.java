@@ -69,6 +69,9 @@ public class PluginBridge implements AutoCloseable {
     /** Callback invoked when the bridge disconnects unexpectedly. May trigger restart. */
     private volatile Runnable onDisconnect;
 
+    /** Dedicated lock object for all synchronization (avoids lock ordering issues with `this` or `stdin`) */
+    private final Object lock = new Object();
+
     public PluginBridge(String name, String bunPath, String bridgeJsPath,
                          int startupTimeoutMs, int requestTimeoutMs,
                          int maxRestartAttempts, long restartBackoffMs) {
@@ -89,14 +92,16 @@ public class PluginBridge implements AutoCloseable {
      * @param initParams parameters to pass in the initialize request
      * @throws PluginException if startup fails
      */
-    public synchronized void start(Map<String, Object> initParams) throws PluginException {
-        if (started) {
-            log.warn("[{}] Plugin already started, restarting", name);
-            stopInternal();
+    public void start(Map<String, Object> initParams) throws PluginException {
+        synchronized (lock) {
+            if (started) {
+                log.warn("[{}] Plugin already started, restarting", name);
+                stopInternal();
+            }
+            started = true;
+            restartCount = 0;
+            startInternal(initParams);
         }
-        started = true;
-        restartCount = 0;
-        startInternal(initParams);
     }
 
     private void startInternal(Map<String, Object> initParams) throws PluginException {
@@ -177,31 +182,35 @@ public class PluginBridge implements AutoCloseable {
     /**
      * Restart the plugin. Clears pending requests and respawns the process.
      */
-    public synchronized void restart(Map<String, Object> initParams) throws PluginException {
-        restartCount++;
-        if (restartCount > maxRestartAttempts) {
-            throw new PluginException("Plugin '" + name + "' failed after " + maxRestartAttempts + " restart attempts");
+    public void restart(Map<String, Object> initParams) throws PluginException {
+        synchronized (lock) {
+            restartCount++;
+            if (restartCount > maxRestartAttempts) {
+                throw new PluginException("Plugin '" + name + "' failed after " + maxRestartAttempts + " restart attempts");
+            }
+
+            log.warn("[{}] Restarting (attempt {}/{})", name, restartCount, maxRestartAttempts);
+            stopInternal();
+
+            try {
+                Thread.sleep(restartBackoffMs * restartCount);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new PluginException("Interrupted during restart backoff", e);
+            }
+
+            startInternal(initParams);
         }
-
-        log.warn("[{}] Restarting (attempt {}/{})", name, restartCount, maxRestartAttempts);
-        stopInternal();
-
-        try {
-            Thread.sleep(restartBackoffMs * restartCount);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new PluginException("Interrupted during restart backoff", e);
-        }
-
-        startInternal(initParams);
     }
 
     /**
      * Graceful stop: sends shutdown notification, then kills process.
      */
-    public synchronized void stop() {
-        log.info("[{}] Stopping plugin", name);
-        stopInternal();
+    public void stop() {
+        synchronized (lock) {
+            log.info("[{}] Stopping plugin", name);
+            stopInternal();
+        }
     }
 
     private void stopInternal() {
@@ -301,19 +310,19 @@ public class PluginBridge implements AutoCloseable {
      * @return true if sent successfully, false if stdin is closed
      */
     public boolean sendRaw(String message) {
-        if (stdin == null) {
-            log.warn("[{}] Cannot send: stdin closed", name);
-            return false;
-        }
-        try {
-            synchronized (stdin) {
+        synchronized (lock) {
+            if (stdin == null) {
+                log.warn("[{}] Cannot send: stdin closed", name);
+                return false;
+            }
+            try {
                 stdin.write(message);
                 stdin.flush();
+                return true;
+            } catch (IOException e) {
+                log.error("[{}] Failed to send message: {}", name, e.getMessage());
+                return false;
             }
-            return true;
-        } catch (IOException e) {
-            log.error("[{}] Failed to send message: {}", name, e.getMessage());
-            return false;
         }
     }
 

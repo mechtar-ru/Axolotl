@@ -49,7 +49,7 @@ async function onChatExecute(planText: string) {
     const input = planText?.trim() || undefined
     await startExecution(true, input)
   } catch (e) {
-    console.error('Failed to execute:', e)
+    console.error('TimelineView: Failed to execute:', e)
     errorMessage.value = 'Failed to start execution'
   } finally {
     reRunning.value = false
@@ -166,7 +166,7 @@ async function fetchRuns() {
     // Fetch node statuses for flow dots on visible runs
     fetchNodeStatuses()
   } catch (e) {
-    console.error('Failed to fetch runs:', e)
+    console.error('TimelineView: Failed to fetch runs:', e)
     errorMessage.value = 'Failed to load run history'
   } finally {
     loading.value = false
@@ -206,7 +206,7 @@ async function expandRun(runId: string) {
   try {
     expandedRunNodes.value = await schemaApi.getRunNodes(props.schemaId, runId)
   } catch (e) {
-    console.error('Failed to fetch run nodes:', e)
+    console.error('TimelineView: Failed to fetch run nodes:', e)
     errorMessage.value = 'Failed to load node details'
     expandedRunNodes.value = []
   } finally {
@@ -224,7 +224,7 @@ async function releaseStale() {
     await schemaApi.cleanupRuns(props.schemaId)
     await fetchRuns()
   } catch (e) {
-    console.error('Failed to release stale runs:', e)
+    console.error('TimelineView: Failed to release stale runs:', e)
     errorMessage.value = 'Failed to release stale runs'
   } finally {
     releasingStale.value = false
@@ -242,7 +242,7 @@ async function deleteRun(runId: string) {
       expandedRunNodes.value = []
     }
   } catch (e) {
-    console.error('Failed to delete run:', e)
+    console.error('TimelineView: Failed to delete run:', e)
     errorMessage.value = 'Failed to delete run'
   }
   confirmDeleteRunId.value = null
@@ -266,7 +266,7 @@ async function resumeRun(runId?: string) {
     await schemaApi.resumeSchema(props.schemaId, runId)
     await fetchRuns()
   } catch (e) {
-    console.error('Failed to resume:', e)
+    console.error('TimelineView: Failed to resume:', e)
     errorMessage.value = 'Failed to resume run'
   }
 }

@@ -46,7 +46,7 @@ public class NodeExecutor {
     private static final int MAX_CONTEXT_CHARS = 4000;
     private static final int MAX_SUBAGENT_DEPTH = 5;
 
-    private Map<String, NodeExecutionStrategy> strategyMap;
+    private volatile Map<String, NodeExecutionStrategy> strategyMap;
 
     public NodeExecutor(ExecutionUtilityService utilityService,
                         OutputReportingService outputReportingService,

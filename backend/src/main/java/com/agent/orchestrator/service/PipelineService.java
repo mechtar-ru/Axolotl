@@ -66,25 +66,21 @@ public interface PipelineService {
     /**
      * Retry a failed pipeline from the latest run.
      */
-    @Transactional
     void retryPipeline(String schemaId);
 
     /**
      * Retry a failed pipeline from a specific run.
      */
-    @Transactional
     void retryPipeline(String schemaId, String runId);
 
     /**
      * Resume a paused pipeline from the latest run.
      */
-    @Transactional
     void resumePipeline(String schemaId);
 
     /**
      * Resume a paused pipeline from a specific run.
      */
-    @Transactional
     void resumePipeline(String schemaId, String runId);
 
     /**

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, defineOptions } from 'vue'
+import { ref, onMounted, onActivated, defineOptions } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { appApi, historyApi } from '@/services/api'
 import { useSchemaStore } from '@/stores/schemaStore'
@@ -71,7 +71,7 @@ async function handleRename() {
     const schema = schemaStore.schemas.find(s => s.id === appId)
     if (schema) schema.name = newName.value.trim()
   } catch (e: any) {
-    console.error('Failed to rename:', e)
+    console.error('AppDashboardView: Failed to rename:', e)
   }
 }
 
@@ -106,6 +106,11 @@ function statusColor(status: string): string {
 }
 
 onMounted(loadApp)
+
+// Refresh when re-activated from keep-alive cache
+onActivated(() => {
+  loadApp()
+})
 </script>
 
 <template>

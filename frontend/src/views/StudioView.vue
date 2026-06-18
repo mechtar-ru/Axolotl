@@ -51,16 +51,16 @@ const app = computed(() => {
   return schemaStore.schemas.find(s => s.id === appId.value) || canvasStore.currentSchema
 })
 
-  const isRunning = ref(false)
+const isRunning = ref(false)
 const executionError = ref<string | null>(null)
 const sessionGoal = ref('')
 const sessionGoalOpen = ref(false)
 let sessionGoalTimer: ReturnType<typeof setTimeout> | null = null
-  // Sync execState.isExecuting alongside isRunning so TimelineView can auto-refresh
-  function setIsExecuting(val: boolean) {
-    isRunning.value = val
-    if (execState) execState.isExecuting.value = val
-  }
+// Sync execState.isExecuting alongside isRunning so TimelineView can auto-refresh
+function setIsExecuting(val: boolean) {
+  isRunning.value = val
+  if (execState) execState.isExecuting.value = val
+}
 
 // Execution state from WebSocket events
 const nodeResults = ref<Record<string, any>>({})      // nodeId → result content
@@ -100,7 +100,7 @@ async function checkFailedRun() {
   try {
     const runs = await schemaApi.getRuns(appId.value)
     hasFailedRun.value = runs.some((r: any) => r.status === 'failed')
-  } catch { /* ignore */ }
+  } catch (err) { console.warn('StudioView: Failed to check failed runs:', err) }
 }
 
 async function handleRetry() {
@@ -138,12 +138,12 @@ provide('executionProgress', executionProgress)
  * @param skipSave — if true, skip schemaStore.updateSchema (caller already saved)
  */
 const startExecution = async (skipSave: boolean = false, sessionInput?: string): Promise<void> => {
-    if (isRunning.value) {
-      console.warn('Execution already in progress')
-      return
-    }
-    setIsExecuting(true)
-    executionError.value = null
+  if (isRunning.value) {
+    console.warn('Execution already in progress')
+    return
+  }
+  setIsExecuting(true)
+  executionError.value = null
   nodeResults.value = {}
   nodeStatuses.value = {}
   nodeReasonings.value = {}
@@ -316,7 +316,7 @@ async function handleExportSchema() {
     a.click()
     URL.revokeObjectURL(url)
   } catch (err) {
-    console.error('Export failed:', err)
+    console.error('StudioView: Export failed:', err)
   }
 }
 
@@ -448,7 +448,7 @@ watch(() => route.params.id, async (newId) => {
     try {
       await canvasStore.flushSave()
     } catch (err) {
-      console.error('Failed to save canvas state before schema switch:', err)
+      console.error('StudioView: Failed to save canvas state before schema switch:', err)
     }
 
     // Reset execution state from previous schema
@@ -594,7 +594,7 @@ function onSessionGoalInput() {
   if (sessionGoalTimer) clearTimeout(sessionGoalTimer)
   sessionGoalTimer = setTimeout(() => {
     if (appId.value) {
-      planApi.setSessionGoal(sessionGoal.value).catch(() => {})
+      planApi.setSessionGoal(sessionGoal.value).catch(err => console.warn('Failed to save session goal:', err))
     }
   }, 800)
 }

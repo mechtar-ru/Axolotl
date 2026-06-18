@@ -2,6 +2,7 @@ package com.agent.orchestrator.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
@@ -19,6 +20,7 @@ public class PipelineStatusManager {
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> pipelineResumeTimestamps = new ConcurrentHashMap<>();
 
     /** Returns an unmodifiable view. Callers cannot mutate internal state. */
     public Map<String, CompletableFuture<?>> getRunningPipelines() {
@@ -111,6 +113,7 @@ public class PipelineStatusManager {
     /** Store resume state for a schema. */
     public void storeResumeState(String schemaId, int index) {
         pipelineResumeState.put(schemaId, index);
+        pipelineResumeTimestamps.put(schemaId, System.currentTimeMillis());
     }
 
     /** Consume and remove resume state, returning the stored index. */
@@ -121,5 +124,21 @@ public class PipelineStatusManager {
     /** Check if pipeline is currently running for the schema. */
     public CompletableFuture<?> getRunningFuture(String schemaId) {
         return runningPipelines.get(schemaId);
+    }
+
+    /**
+     * Periodically clean stale pipeline resume state and stage results.
+     * Runs every hour and removes entries older than 24 hours.
+     */
+    @Scheduled(fixedRate = 3600000)
+    public void cleanupStaleState() {
+        long cutoff = System.currentTimeMillis() - 86400000; // 24 hours
+        pipelineResumeTimestamps.entrySet().removeIf(e -> e.getValue() < cutoff);
+        // Sync pipelineResumeState with cleaned timestamps
+        pipelineResumeState.keySet().removeIf(k -> !pipelineResumeTimestamps.containsKey(k));
+        // Also clean stageResults — remove entries whose schema has no resume state
+        stageResults.entrySet().removeIf(e -> {
+            return !pipelineResumeState.containsKey(e.getKey());
+        });
     }
 }

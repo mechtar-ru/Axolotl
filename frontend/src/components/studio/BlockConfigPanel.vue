@@ -254,7 +254,7 @@ function onFilePicked(e: Event) {
     saveConfig()
   }
   reader.onerror = () => {
-    console.error('Failed to read file:', file.name)
+    console.error('BlockConfigPanel: Failed to read file:', file.name)
   }
   reader.readAsText(file)
   input.value = ''

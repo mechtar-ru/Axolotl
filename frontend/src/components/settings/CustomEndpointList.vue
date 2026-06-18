@@ -221,7 +221,7 @@ async function deleteEndpoint(id: string) {
     localEndpoints.value = localEndpoints.value.filter(e => e.id !== id)
     emit('changed', [...localEndpoints.value])
   } catch (e: any) {
-    console.error('Failed to delete custom endpoint:', e)
+    console.error('CustomEndpointList: Failed to delete custom endpoint:', e)
   } finally {
     confirmDelete[id] = false
   }

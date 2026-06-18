@@ -4,8 +4,8 @@ import { ref, computed, onMounted, onUnmounted, type Ref } from 'vue'
  * Selective clone — only the fields needed for undo/restore.
  * Avoids cloning VueFlow internal state (reactive proxies, _marker, __vnode).
  */
-function snapshotNodes(nodes: any[]): any[] {
-  return nodes.map(n => ({
+function snapshotNodes<T = any>(nodes: T[]): any[] {
+  return (nodes as any[]).map(n => ({
     id: n.id,
     type: n.type,
     position: { x: n.position?.x ?? 0, y: n.position?.y ?? 0 },
@@ -14,8 +14,8 @@ function snapshotNodes(nodes: any[]): any[] {
   }))
 }
 
-function snapshotEdges(edges: any[]): any[] {
-  return edges.map(e => ({
+function snapshotEdges<T = any>(edges: T[]): any[] {
+  return (edges as any[]).map(e => ({
     id: e.id,
     source: e.source,
     target: e.target,
@@ -26,14 +26,15 @@ function snapshotEdges(edges: any[]): any[] {
   }))
 }
 
-export function useUndoRedo(
-  setNodes: (nodes: any[]) => void,
-  setEdges: (edges: any[]) => void,
-  nodesRef: Ref<any[]>,
-  edgesRef: Ref<any[]>
+export function useUndoRedo<TNode = any, TEdge = any>(
+  setNodes: (nodes: TNode[]) => void,
+  setEdges: (edges: TEdge[]) => void,
+  nodesRef: Ref<TNode[]>,
+  edgesRef: Ref<TEdge[]>
 ) {
-  const past = ref<{ nodes: any[]; edges: any[] }[]>([])
-  const future = ref<{ nodes: any[]; edges: any[] }[]>([])
+  type Snapshot = { nodes: any[]; edges: any[] }
+  const past = ref<Snapshot[]>([])
+  const future = ref<Snapshot[]>([])
   const maxHistory = 50
   let skipCapture = false
   let captureTimer: ReturnType<typeof setTimeout> | null = null

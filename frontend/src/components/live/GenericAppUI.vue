@@ -96,7 +96,7 @@ async function fetchGeneratedFiles() {
     const files = await appApi.getGeneratedFiles(props.schemaId)
     generatedFiles.value = files
   } catch (error) {
-    console.error('Failed to fetch generated files:', error)
+    console.error('GenericAppUI: Failed to fetch generated files:', error)
   } finally {
     loadingFiles.value = false
   }
