@@ -68,3 +68,7 @@ screenshot-*.png
 # Plugins (npm packages installed by plugin system)
 plugins/node_modules/
 plugin-bridge.log
+
+# Generated pipeline artifacts
+backend/eios/
+eios/
