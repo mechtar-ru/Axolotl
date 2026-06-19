@@ -297,13 +297,15 @@ public class ToolExecutorImpl implements ToolExecutor {
                     : appConfig.getBasePath() + "/" + schemaTargetPath.replaceAll("^/*", "");
             String path = (String) params.get("path");
             if (path != null && !path.startsWith("/")) {
+                // Strip leading "./" that models often emit
+                String cleanPath = path.startsWith("./") ? path.substring(2) : path;
                 // Strip target dir prefix if model already included it
                 String targetDir = schemaTargetPath.contains("/")
                         ? schemaTargetPath.substring(schemaTargetPath.lastIndexOf('/') + 1)
                         : schemaTargetPath;
-                String cleanPath = path.startsWith(targetDir + "/")
-                        ? path.substring(targetDir.length() + 1)
-                        : path;
+                if (cleanPath.startsWith(targetDir + "/")) {
+                    cleanPath = cleanPath.substring(targetDir.length() + 1);
+                }
                 params.put("path", absTarget.replaceAll("/+$", "") + "/" + cleanPath);
             }
             // Also ensure bash commands run in the target directory

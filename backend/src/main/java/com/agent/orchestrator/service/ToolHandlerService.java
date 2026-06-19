@@ -750,17 +750,21 @@ public class ToolHandlerService {
      * Resolve model-provided path against schemaTargetPath, stripping the target
      * directory name from path if the model already included it (e.g. schema path
      * = "eios", model writes "eios/docs/..." -> "docs/...").
+     * Also strips leading "./" prefix that models often emit.
      */
     private static String resolveAgainstTarget(String schemaTargetPath, String modelPath) {
         if (schemaTargetPath == null || schemaTargetPath.isBlank() || modelPath == null || modelPath.startsWith("/")) {
             return modelPath;
         }
+        // Strip leading "./" that models often emit
+        String clean = modelPath.startsWith("./") ? modelPath.substring(2) : modelPath;
         String targetDir = schemaTargetPath.contains("/")
                 ? schemaTargetPath.substring(schemaTargetPath.lastIndexOf('/') + 1)
                 : schemaTargetPath;
-        String clean = modelPath.startsWith(targetDir + "/")
-                ? modelPath.substring(targetDir.length() + 1)
-                : modelPath;
+        // Strip leading target dir if model already included it
+        if (clean.startsWith(targetDir + "/")) {
+            clean = clean.substring(targetDir.length() + 1);
+        }
         return schemaTargetPath.replaceAll("/+$", "") + "/" + clean;
     }
 
