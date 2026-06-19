@@ -155,6 +155,11 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         final String capturedModel = model;
         final String capturedSystemPrompt = systemPrompt;
         final String capturedPrompt = prompt;
+        // Smart per-call timeout: use node timeoutSeconds (capped at 1h) or default 600
+        int perCallTimeout = 600;
+        if (node != null && node.getData() != null && node.getData().getTimeoutSeconds() != null) {
+            perCallTimeout = Math.min(node.getData().getTimeoutSeconds(), 3600);
+        }
         LlmResponse streamingResp;
         try {
             streamingResp = CompletableFuture.supplyAsync(() ->
@@ -164,10 +169,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                                     webSocketHandler.sendToken(schemaId, node.getId(), token);
                                 }
                             }, usage))
-                    .orTimeout(120, TimeUnit.SECONDS).join();
+                    .orTimeout(perCallTimeout, TimeUnit.SECONDS).join();
         } catch (CompletionException e) {
             if (e.getCause() instanceof TimeoutException) {
-                log.error("LLM streaming call timed out after 120s for node {}", node.getId());
+                log.error("LLM streaming call timed out for node {}", node.getId());
             }
             throw e;
         }
@@ -346,7 +351,11 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 CompletableFuture<LlmResponse> llmFuture = CompletableFuture.supplyAsync(() ->
                         llmService.chat(capturedModel, null,
                                 toolExecutionService.buildMessagesForToolCall(capturedMessages), capturedChatConfig, iterUsage));
-                iterResp = llmFuture.orTimeout(120, TimeUnit.SECONDS).join();
+                int perCallTimeout = 600;
+                if (node != null && node.getData() != null && node.getData().getTimeoutSeconds() != null) {
+                    perCallTimeout = Math.min(node.getData().getTimeoutSeconds(), 3600);
+                }
+                iterResp = llmFuture.orTimeout(perCallTimeout, TimeUnit.SECONDS).join();
             } catch (CompletionException e) {
                 if (e.getCause() instanceof TimeoutException) {
                     log.error("LLM agent loop call timed out after 120s at iteration {}", iterationCount);
