@@ -126,6 +126,9 @@ public class PipelineServiceImpl implements PipelineService {
         PipelineFactory.initializeRunStageStatus(run, stages);
         executionRepository.createRun(run);
 
+        // Register in state-manager so the reconciler knows this run is active on this JVM
+        stateManager.setCurrentRunId(schemaId, runId);
+
         AtomicBoolean cancelFlag = new AtomicBoolean(false);
         clearStaleApprovals(schemaId);
 
@@ -142,11 +145,13 @@ public class PipelineServiceImpl implements PipelineService {
         CompletableFuture<?> future = CompletableFuture.runAsync(
                 () -> stageExecutionService.runPipelineStages(stages, schema, runId, cancelFlag),
                 pipelineExecutor);
-        statusManager.registerPipeline(schemaId, future, cancelFlag);
+                statusManager.registerPipeline(schemaId, future, cancelFlag);
 
         future.whenComplete((result, ex) -> {
             statusManager.removeFuture(schemaId);
             statusManager.removeCancelFlag(schemaId);
+            // Clear from state-manager so reconciler doesn't skip checking this in future
+            stateManager.setCurrentRunId(schemaId, null);
             if (ex != null) {
                 if (ex instanceof CancellationException || ex.getCause() instanceof CancellationException) {
                     log.info("Execution cancelled for schema {}", schemaId);

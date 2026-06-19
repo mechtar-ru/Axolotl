@@ -19,7 +19,7 @@ public class ExecutionStateReconciler {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionStateReconciler.class);
 
-    private static final long RECONCILE_GRACE_PERIOD_SECONDS = 300;
+    private static final long RECONCILE_GRACE_PERIOD_SECONDS = 600;
 
     private final ExecutionRepository executionRepository;
     private final ExecutionStateManager stateManager;
