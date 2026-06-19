@@ -297,7 +297,14 @@ public class ToolExecutorImpl implements ToolExecutor {
                     : appConfig.getBasePath() + "/" + schemaTargetPath.replaceAll("^/*", "");
             String path = (String) params.get("path");
             if (path != null && !path.startsWith("/")) {
-                params.put("path", absTarget.replaceAll("/+$", "") + "/" + path);
+                // Strip target dir prefix if model already included it
+                String targetDir = schemaTargetPath.contains("/")
+                        ? schemaTargetPath.substring(schemaTargetPath.lastIndexOf('/') + 1)
+                        : schemaTargetPath;
+                String cleanPath = path.startsWith(targetDir + "/")
+                        ? path.substring(targetDir.length() + 1)
+                        : path;
+                params.put("path", absTarget.replaceAll("/+$", "") + "/" + cleanPath);
             }
             // Also ensure bash commands run in the target directory
             if ("bash".equals(toolId) && !params.containsKey("cwd")) {

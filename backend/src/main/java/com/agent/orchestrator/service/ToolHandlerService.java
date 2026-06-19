@@ -746,12 +746,30 @@ public class ToolHandlerService {
         return path.matches(regex);
     }
 
+    /**
+     * Resolve model-provided path against schemaTargetPath, stripping the target
+     * directory name from path if the model already included it (e.g. schema path
+     * = "eios", model writes "eios/docs/..." -> "docs/...").
+     */
+    private static String resolveAgainstTarget(String schemaTargetPath, String modelPath) {
+        if (schemaTargetPath == null || schemaTargetPath.isBlank() || modelPath == null || modelPath.startsWith("/")) {
+            return modelPath;
+        }
+        String targetDir = schemaTargetPath.contains("/")
+                ? schemaTargetPath.substring(schemaTargetPath.lastIndexOf('/') + 1)
+                : schemaTargetPath;
+        String clean = modelPath.startsWith(targetDir + "/")
+                ? modelPath.substring(targetDir.length() + 1)
+                : modelPath;
+        return schemaTargetPath.replaceAll("/+$", "") + "/" + clean;
+    }
+
     public ToolResult handleFileReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
         String path = (String) params.get("path");
         if (path == null) return ToolResult.error("Missing path parameter");
 
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
-            path = schemaTargetPath.replaceAll("/+$", "") + "/" + path;
+            path = resolveAgainstTarget(schemaTargetPath, path);
         }
 
         try {
@@ -775,7 +793,7 @@ public class ToolHandlerService {
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
-            path = schemaTargetPath.replaceAll("/+$", "") + "/" + path;
+            path = resolveAgainstTarget(schemaTargetPath, path);
         }
 
         try {
