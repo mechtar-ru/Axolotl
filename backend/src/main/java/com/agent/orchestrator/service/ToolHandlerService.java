@@ -770,6 +770,8 @@ public class ToolHandlerService {
 
     public ToolResult handleFileReadWithSandbox(Map<String, Object> params, ToolPermission permission, String schemaTargetPath) {
         String path = (String) params.get("path");
+        if (path == null) path = (String) params.get("file_path");
+        if (path == null) path = (String) params.get("filePath");
         if (path == null) return ToolResult.error("Missing path parameter");
 
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
@@ -793,7 +795,12 @@ public class ToolHandlerService {
     public ToolResult handleFileWriteWithSandbox(Map<String, Object> params, ToolPermission permission,
                                                    String schemaTargetPath, String schemaId, String nodeId) {
         String path = (String) params.get("path");
+        if (path == null) path = (String) params.get("file_path");
+        if (path == null) path = (String) params.get("filePath");
         String content = (String) params.get("content");
+        if (content == null) content = (String) params.get("code");
+        if (content == null) content = (String) params.get("body");
+        if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
