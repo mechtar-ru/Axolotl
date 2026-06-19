@@ -15,12 +15,17 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Tool executor with registration, dispatch, and sandbox-aware wrappers.
  * Handler implementations are delegated to {@link ToolHandlerService}.
  */
 @Service
 public class ToolExecutorImpl implements ToolExecutor {
+
+    private static final Logger log = LoggerFactory.getLogger(ToolExecutorImpl.class);
 
     private final Map<String, Tool> tools = new ConcurrentHashMap<>();
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
@@ -271,7 +276,10 @@ public class ToolExecutorImpl implements ToolExecutor {
         }
         // Normalize schemaTargetPath to absolute path (not relative to JVM CWD)
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !schemaTargetPath.startsWith("/")) {
-            schemaTargetPath = appConfig.getBasePath() + "/" + schemaTargetPath.replaceAll("^/*", "");
+            String basePath = appConfig.getBasePath();
+            schemaTargetPath = basePath + "/" + schemaTargetPath.replaceAll("^/*", "");
+            log.debug("ToolExecutorImpl schemaTargetPath: basePath='{}' resolved='{}'",
+                    basePath, schemaTargetPath);
         }
         if ("build_app".equals(toolId)) {
             return buildToolHandler.handleBuildApp(params, permission, schemaTargetPath);

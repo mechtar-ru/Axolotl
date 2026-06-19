@@ -111,6 +111,7 @@ public class ToolHandlerService {
         String path = (String) params.get("path");
         if (path == null) path = (String) params.get("file_path");
         if (path == null) path = (String) params.get("filePath");
+        if (path == null) path = (String) params.get("filename"); // llama models use filename
         String content = (String) params.get("content");
         if (content == null) content = (String) params.get("code");
         if (content == null) content = (String) params.get("body");
@@ -797,6 +798,7 @@ public class ToolHandlerService {
         String path = (String) params.get("path");
         if (path == null) path = (String) params.get("file_path");
         if (path == null) path = (String) params.get("filePath");
+        if (path == null) path = (String) params.get("filename"); // llama models use filename
         String content = (String) params.get("content");
         if (content == null) content = (String) params.get("code");
         if (content == null) content = (String) params.get("body");
