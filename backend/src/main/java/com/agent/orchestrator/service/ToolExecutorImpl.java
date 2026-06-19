@@ -269,6 +269,10 @@ public class ToolExecutorImpl implements ToolExecutor {
         if (toolId == null) {
             return ToolResult.error("Tool ID is null — malformed tool call from agent");
         }
+        // Normalize schemaTargetPath to absolute path (not relative to JVM CWD)
+        if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !schemaTargetPath.startsWith("/")) {
+            schemaTargetPath = appConfig.getBasePath() + "/" + schemaTargetPath.replaceAll("^/*", "");
+        }
         if ("build_app".equals(toolId)) {
             return buildToolHandler.handleBuildApp(params, permission, schemaTargetPath);
         }
