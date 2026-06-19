@@ -5,6 +5,7 @@ import com.agent.orchestrator.model.Tool.ToolCategory;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.ProjectType;
+import com.agent.orchestrator.config.AppConfig;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import com.agent.orchestrator.llm.LlmService;
 import org.neo4j.driver.Driver;
@@ -25,6 +26,7 @@ public class ToolExecutorImpl implements ToolExecutor {
     private final Map<String, ToolExecutorHandler> handlers = new ConcurrentHashMap<>();
     private final ToolHandlerService handlerService;
     private final BuildToolHandler buildToolHandler;
+    private final AppConfig appConfig;
     private LlmService llmService;
     private ExecutionWebSocketHandler webSocketHandler;
     private ExecutionStateManager stateManager;
@@ -44,6 +46,7 @@ public class ToolExecutorImpl implements ToolExecutor {
     public ToolExecutorImpl() {
         this.handlerService = new ToolHandlerService(null, null, null, null, null);
         this.buildToolHandler = new BuildToolHandler();
+        this.appConfig = new AppConfig();
         registerDefaultTools();
     }
 
@@ -54,13 +57,15 @@ public class ToolExecutorImpl implements ToolExecutor {
                             @org.springframework.beans.factory.annotation.Autowired(required = false)
                             Driver neo4jDriver,
                             ToolHandlerService handlerService,
-                            BuildToolHandler buildToolHandler) {
+                            BuildToolHandler buildToolHandler,
+                            AppConfig appConfig) {
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
         this.stateManager = stateManager;
         this.neo4jDriver = neo4jDriver;
         this.handlerService = handlerService;
         this.buildToolHandler = buildToolHandler;
+        this.appConfig = appConfig;
         registerDefaultTools();
     }
 
@@ -280,16 +285,19 @@ public class ToolExecutorImpl implements ToolExecutor {
             return handlerService.handleDirectoryReadWithSandbox(params, permission, schemaTargetPath);
         }
 
-        // Resolve relative paths against schemaTargetPath — handlers use Path.of()
-        // which resolves relative to CWD (= backend/ during Maven execution).
+        // Resolve relative paths against schemaTargetPath resolved to project root
+        // (not JVM CWD which is backend/ during Maven execution).
         if (params != null && schemaTargetPath != null && !schemaTargetPath.isBlank()) {
+            // Resolve schemaTargetPath to absolute path against project basePath
+            String absTarget = schemaTargetPath.startsWith("/") ? schemaTargetPath
+                    : appConfig.getBasePath() + "/" + schemaTargetPath.replaceAll("^/*", "");
             String path = (String) params.get("path");
             if (path != null && !path.startsWith("/")) {
-                params.put("path", schemaTargetPath.replaceAll("/+$", "") + "/" + path);
+                params.put("path", absTarget.replaceAll("/+$", "") + "/" + path);
             }
-            // Also ensure bash commands run in the project directory
+            // Also ensure bash commands run in the target directory
             if ("bash".equals(toolId) && !params.containsKey("cwd")) {
-                params.put("cwd", schemaTargetPath);
+                params.put("cwd", absTarget.replaceAll("/+$", ""));
             }
         }
 
