@@ -198,6 +198,11 @@ public class AppController {
         if (appType != null) {
             schema.setAppType(appType.name());
         }
+        // Auto-create workspaceId if not provided (required for plan tracking and multi-session)
+        if (workspaceId == null || workspaceId.isBlank()) {
+            workspaceId = java.util.UUID.randomUUID().toString();
+            log.info("Auto-generated workspaceId={} for schema '{}'", workspaceId, name.replaceAll("[\\n\\r]", "_"));
+        }
         schema.setWorkspaceId(workspaceId);
 
         // Set userId from auth context for model resolution

@@ -30,6 +30,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.SocketTimeoutException;
 import java.util.Collections;
+import java.util.UUID;
+import java.time.Instant;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -146,6 +148,17 @@ public class NodeRouter {
                         nodeExecutionId = ne.getId();
                         executionRepository.updateNodeExecution(
                                 ne.getId(), "running", null, 0L, 0L, 0, null);
+                    } else {
+                        NodeExecution newNe = new NodeExecution();
+                        newNe.setId(UUID.randomUUID().toString());
+                        newNe.setRunId(runIdForStart);
+                        newNe.setNodeId(node.getId());
+                        newNe.setNodeType(node.getType());
+                        newNe.setStatus("running");
+                        newNe.setStartedAt(Instant.now());
+                        newNe.setNodeName(node.getName());
+                        executionRepository.createNodeExecution(newNe);
+                        nodeExecutionId = newNe.getId();
                     }
                 } catch (Exception e) {
                     log.warn("Не удалось обновить статус узла в БД", e);

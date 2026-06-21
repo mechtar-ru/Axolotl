@@ -5,12 +5,12 @@
     "": {
       "name": "axolotl-plugins",
       "dependencies": {
-        "@cortexkit/opencode-magic-context": "^0.22.5",
+        "@cortexkit/opencode-magic-context": "^0.26.0",
       },
     },
   },
   "packages": {
-    "@cortexkit/opencode-magic-context": ["@cortexkit/opencode-magic-context@0.22.5", "", { "dependencies": { "@huggingface/transformers": "^4.1.0", "@opencode-ai/plugin": "^1.15.13", "@opencode-ai/sdk": "^1.15.13", "ai-tokenizer": "^1.0.6", "comment-json": "^4.2.5", "zod": "^4.1.8" } }, "sha512-3NbXcBvqpOw0REu0EVUuttQ9cHQrR2QvAxtTAb8JB1DLIhlkaWnS86eHGkvEHAmA5ly5xGqKqtPtHSHPN0lysA=="],
+    "@cortexkit/opencode-magic-context": ["@cortexkit/opencode-magic-context@0.26.0", "", { "dependencies": { "@huggingface/transformers": "^4.1.0", "@opencode-ai/plugin": "^1.15.13", "@opencode-ai/sdk": "^1.15.13", "ai-tokenizer": "^1.0.6", "comment-json": "^4.2.5", "zod": "^4.1.8" } }, "sha512-xmp5M7Zjrv/LEb8JLiE9lkVcATSn3CGfxRKDXn8m3ct3hDUOZm9rv1STyqE1zqfEou8RMaXWbLISlfn1uveaww=="],
 
     "@emnapi/runtime": ["@emnapi/runtime@1.10.0", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-ewvYlk86xUoGI0zQRNq/mC+16R1QeDlKQy21Ki3oSYXNgLb45GV1P6A0M+/s6nyCuNDqe5VpaY84BzXGwVbwFA=="],
 

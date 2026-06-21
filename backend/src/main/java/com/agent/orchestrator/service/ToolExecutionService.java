@@ -5,13 +5,10 @@ import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.ToolPermission;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -27,16 +24,13 @@ public class ToolExecutionService {
     private final ToolExecutor toolExecutor;
     private final ExecutionWebSocketHandler webSocketHandler;
     private final ToolCallParser toolCallParser;
-    private final ObjectMapper objectMapper;
 
     public ToolExecutionService(ToolExecutor toolExecutor,
                                 ExecutionWebSocketHandler webSocketHandler,
-                                ToolCallParser toolCallParser,
-                                ObjectMapper objectMapper) {
+                                ToolCallParser toolCallParser) {
         this.toolExecutor = toolExecutor;
         this.webSocketHandler = webSocketHandler;
         this.toolCallParser = toolCallParser;
-        this.objectMapper = objectMapper;
     }
 
     // ────────────────────────── tool definitions ──────────────────────────
@@ -141,37 +135,6 @@ public class ToolExecutionService {
 
         ToolResult result = toolExecutor.execute(toolId, args, permission, schemaId, node.getId(), schemaTargetPath, projectType);
         return result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
-    }
-
-    // ────────────────────────── generated files extraction ──────────────────────────
-
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> extractGeneratedFiles(String response) {
-        if (response == null || response.isBlank()) return null;
-        String tail = response.substring(Math.max(0, response.length() - 500));
-        int idx = tail.lastIndexOf("\"generatedFiles\"");
-        if (idx < 0) return null;
-        int brace = tail.lastIndexOf('{', idx);
-        if (brace < 0) return null;
-        String candidate = tail.substring(brace);
-        int depth = 0;
-        int close = -1;
-        for (int i = 0; i < candidate.length(); i++) {
-            char c = candidate.charAt(i);
-            if (c == '{') depth++;
-            else if (c == '}') {
-                depth--;
-                if (depth == 0) { close = i; break; }
-            }
-        }
-        if (close < 0) return null;
-        String json = candidate.substring(0, close + 1);
-        try {
-            return objectMapper.readValue(json, Map.class);
-        } catch (Exception e) {
-            log.debug("Failed to parse generatedFiles JSON from agent response: {}", e.getMessage());
-            return null;
-        }
     }
 
     // ────────────────────────── user approval ──────────────────────────

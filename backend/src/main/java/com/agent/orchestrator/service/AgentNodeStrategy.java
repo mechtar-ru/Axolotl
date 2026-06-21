@@ -191,9 +191,9 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         }
 
         if (result != null && !result.isBlank()) {
-            Map<String, Object> extracted = toolExecutionService.extractGeneratedFiles(result);
-            if (extracted != null) {
-                stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), extracted);
+            List<Map<String, String>> writtenFiles = collectWrittenFiles(schemaId, node.getId());
+            if (!writtenFiles.isEmpty()) {
+                stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), writtenFiles);
             }
         }
 
@@ -259,12 +259,14 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
                 && !systemPrompt.contains("FLUTTER WORKFLOW")) {
             systemPrompt += "\n\n" + """
-                    ==== FLUTTER WORKFLOW ====
-                    1. Create all files for the app via file_write (lib/main.dart must exist)
-                    2. Write COMPLETE implementations (not stubs) via file_write
-                    3. File structure: lib/{main.dart, app.dart, screens/*.dart, models/*.dart, services/*.dart}
-                    4. After writing all files, run: flutter pub add provider go_router sqflite intl
-                    5. Verify with build_app
+                     ==== FLUTTER WORKFLOW ====
+                     1. Create all files for the app via file_write (lib/main.dart must exist)
+                     2. Write COMPLETE implementations (not stubs) via file_write
+                     3. File structure: lib/{main.dart, app.dart, screens/*.dart, models/*.dart, services/*.dart}
+                     4. After writing all files, run: flutter pub add provider go_router sqflite intl
+                     5. Verify with build_app
+                     6. Report: output JSON with generated files list:
+                        {"generatedFiles": [{"path": "lib/main.dart", "description": "app entry point"}, ...]}
                     """.trim();
         }
 
@@ -477,9 +479,9 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
         String finalResponse = lastResponse != null ? lastResponse : fullResponse.toString();
         if (finalResponse != null && !finalResponse.isBlank()) {
-            Map<String, Object> extracted = toolExecutionService.extractGeneratedFiles(finalResponse);
-            if (extracted != null) {
-                stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), extracted);
+            List<Map<String, String>> writtenFiles = collectWrittenFiles(schemaId, node.getId());
+            if (!writtenFiles.isEmpty()) {
+                stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), writtenFiles);
             }
         }
 
@@ -487,6 +489,24 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         finalResponse = postProcessToolAgent(node, currentSchema, schemaId, finalResponse);
 
         return finalResponse;
+    }
+
+    // ─── Collect written files from stateManager ───
+
+    /**
+     * Collects files written during this node's execution from the stateManager's
+     * fileChanges registry (populated by ToolHandlerService.handleFileWrite for
+     * every file_write operation). This is more reliable than parsing the LLM's
+     * text response for generatedFiles JSON.
+     */
+    private List<Map<String, String>> collectWrittenFiles(String schemaId, String nodeId) {
+        Map<String, String> changes = stateManager.getFileChanges(schemaId, nodeId);
+        if (changes == null || changes.isEmpty()) return List.of();
+        List<Map<String, String>> files = new ArrayList<>();
+        for (Map.Entry<String, String> entry : changes.entrySet()) {
+            files.add(Map.of("path", entry.getKey(), "action", entry.getValue()));
+        }
+        return files;
     }
 
     // ─── Extracted helper: Context assembly ───

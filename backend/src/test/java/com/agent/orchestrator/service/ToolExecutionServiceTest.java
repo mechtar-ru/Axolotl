@@ -4,7 +4,6 @@ import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.Tool;
 import com.agent.orchestrator.model.Tool.ToolResult;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +27,7 @@ class ToolExecutionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ToolExecutionService(toolExecutor, webSocketHandler, new ToolCallParser(), new ObjectMapper());
+        service = new ToolExecutionService(toolExecutor, webSocketHandler, new ToolCallParser());
     }
 
     // ── buildToolDefinitions ──
@@ -113,26 +112,6 @@ class ToolExecutionServiceTest {
         String result = service.executeToolCall("bash", Map.of("command", "unknown"), node, "s1");
 
         assertTrue(result.startsWith("Error"));
-    }
-
-    // ── extractGeneratedFiles ──
-
-    @Test
-    void extractGeneratedFiles_returnsNull_whenResponseEmpty() {
-        assertNull(service.extractGeneratedFiles(""));
-    }
-
-    @Test
-    void extractGeneratedFiles_returnsNull_whenNoGeneratedFiles() {
-        assertNull(service.extractGeneratedFiles("Just a normal response without the magic key"));
-    }
-
-    @Test
-    void extractGeneratedFiles_parsesGeneratedFiles() {
-        String response = "Some text before {\"generatedFiles\": {\"file1.txt\": 150}}";
-        Map<String, Object> result = service.extractGeneratedFiles(response);
-        assertNotNull(result);
-        assertTrue(result.containsKey("generatedFiles"));
     }
 
     // ── parseToolCalls ──
