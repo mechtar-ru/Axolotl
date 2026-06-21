@@ -26,20 +26,30 @@ public class FlutterScaffoldHelper {
     }
 
     /**
+     * Resolve a potentially relative targetPath against the configured base path.
+     * Ensures consistent absolute resolution regardless of JVM working directory.
+     */
+    Path resolvePath(String targetPath) {
+        Path p = Path.of(targetPath);
+        if (p.isAbsolute()) return p;
+        return Path.of(appConfig.getBasePath(), targetPath).normalize();
+    }
+
+    /**
      * Run flutter create if targetPath doesn't have a pubspec.yaml yet.
      * Returns true if scaffold was created or already exists.
      */
     public boolean ensureFlutterScaffold(String targetPath) {
         if (targetPath == null || targetPath.isBlank()) return false;
-        Path dir = Path.of(targetPath);
+        Path dir = resolvePath(targetPath);
         if (!Files.exists(dir.resolve("pubspec.yaml"))) {
             try {
-                log.info("Auto-scaffolding FLUTTER project in {}", targetPath);
+                log.info("Auto-scaffolding FLUTTER project at {}", dir);
                 Files.createDirectories(dir);
                 ProcessBuilder fb = new ProcessBuilder("flutter", "create",
-                        "--project-name", new java.io.File(targetPath).getName(),
+                        "--project-name", dir.getFileName().toString(),
                         "--platforms", "android,ios,macos",
-                        targetPath);
+                        dir.toString());
                 String fbOut = SafeProcess.run(fb, 120, TimeUnit.SECONDS);
                 log.info("flutter create completed: {}", fbOut != null ? "ok" : "timeout/failure");
                 Path mainDart = dir.resolve("lib/main.dart");
@@ -135,6 +145,6 @@ public class FlutterScaffoldHelper {
      */
     public boolean needsFlutterScaffold(String targetPath) {
         if (targetPath == null || targetPath.isBlank()) return false;
-        return !Files.exists(Paths.get(targetPath, "pubspec.yaml"));
+        return !Files.exists(resolvePath(targetPath).resolve("pubspec.yaml"));
     }
 }
