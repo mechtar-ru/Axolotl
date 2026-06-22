@@ -118,6 +118,10 @@ public class ToolHandlerService {
         if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
+        // Strip leading/trailing double-quotes — qwen/llama models wrap file content in quotes
+        if (content.startsWith("\"")) content = content.substring(1);
+        if (content.endsWith("\"")) content = content.substring(0, content.length() - 1);
+
         // P09: Path traversal protection — allow relative paths, restrict absolute paths to known safe dirs
         Path resolvedPath = Path.of(path).normalize();
         String resolvedStr = resolvedPath.toString();
@@ -175,7 +179,7 @@ public class ToolHandlerService {
     public ToolResult handleBash(Map<String, Object> params, ToolPermission permission) {
         String command = (String) params.get("command");
         String cwd = (String) params.get("cwd");
-        Integer timeout = params.get("timeout") != null ? (Integer) params.get("timeout") : 30;
+        Integer timeout = params.get("timeout") != null ? (Integer) params.get("timeout") : 120;
 
         if (command == null) return ToolResult.error("Missing command parameter");
 
@@ -805,6 +809,10 @@ public class ToolHandlerService {
         if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
+        // Strip leading/trailing double-quotes — qwen/llama models wrap file content in quotes
+        if (content.startsWith("\"")) content = content.substring(1);
+        if (content.endsWith("\"")) content = content.substring(0, content.length() - 1);
+
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
             path = resolveAgainstTarget(schemaTargetPath, path);
         }
@@ -889,7 +897,8 @@ public class ToolHandlerService {
 
         // M52: Validate path against sandbox before reading
         try {
-            validateSandboxPath(path, permission, schemaTargetPath);
+            String validated = validateSandboxPath(path, permission, schemaTargetPath);
+            if (validated != null) path = validated;
         } catch (SecurityException e) {
             return ToolResult.error(e.getMessage());
         }

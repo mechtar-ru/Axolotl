@@ -580,7 +580,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
         // Tool instructions — tool-agent only; choose builder by agent type
         if (isToolAgent && !"doc-agent".equals(agentType)) {
-            String toolInstructions = toolExecutionService.buildToolInstructions(enabledTools);
+            String toolDefinitions = toolExecutionService.buildToolDefinitions(enabledTools);
+            String toolInstructions = toolDefinitions + "\n" + toolExecutionService.buildToolInstructions(enabledTools);
             if (toolInstructions != null && !toolInstructions.isBlank()) {
                 ctxBlocks.add(new ContextBlock("toolInstructions", toolInstructions, ContextPriority.HIGH));
             }
