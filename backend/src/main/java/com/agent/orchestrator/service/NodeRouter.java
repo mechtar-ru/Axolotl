@@ -360,8 +360,23 @@ public class NodeRouter {
                         toolCalls = estimateToolCalls(result);
                     }
                     String reasoning = reasoningCapture.consume(node.getId());
+                    // Collect files written by this node from the state manager
+                    String filesWrittenJson = null;
+                    Map<String, String> fileChanges = stateManager.getFileChanges(schemaId, node.getId());
+                    if (fileChanges != null && !fileChanges.isEmpty()) {
+                        StringBuilder sb = new StringBuilder("[");
+                        boolean first = true;
+                        for (String path : fileChanges.keySet()) {
+                            if (!first) sb.append(",");
+                            sb.append("\"").append(escapeJson(path)).append("\"");
+                            first = false;
+                        }
+                        sb.append("]");
+                        filesWrittenJson = sb.toString();
+                    }
                     executionRepository.updateNodeExecution(
-                            nodeExecutionId, "completed", result, tokensUsed, 0L, toolCalls, null, reasoning);
+                            nodeExecutionId, "completed", result, tokensUsed, 0L, toolCalls,
+                            filesWrittenJson, null, reasoning);
                 } catch (Exception e) {
                     log.warn("Не удалось сохранить результат узла в БД", e);
                 }
@@ -423,6 +438,31 @@ public class NodeRouter {
             return Math.max(0, Math.min(n, 5)); // cap at 5
         }
         return 0;
+    }
+
+    /**
+     * Escape a string for inclusion in a JSON string value.
+     */
+    private static String escapeJson(String s) {
+        if (s == null) return "";
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '\\': sb.append("\\\\"); break;
+                case '"':  sb.append("\\\""); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        return sb.toString();
     }
 
     /**

@@ -115,6 +115,9 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     // ─── Agent execution ───
 
     public String executeAgentNode(Node node, String schemaId, String resolvedModel, AtomicBoolean cancelFlag) {
+        // Clear stale file changes from any previous run of this node
+        stateManager.clearFileChanges(schemaId, node.getId());
+
         boolean useTools = node.getData() != null && node.getData().getEnabledTools() != null
                 && !node.getData().getEnabledTools().isEmpty();
 
@@ -715,7 +718,6 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 changeSummary.append("  ").append(status).append(": ").append(entry.getKey()).append("\n");
             }
             finalResponse += changeSummary.toString();
-            stateManager.clearFileChanges(schemaId, node.getId());
         }
 
         // Auto build check — if enabled in stage config, run build_app after agent completes

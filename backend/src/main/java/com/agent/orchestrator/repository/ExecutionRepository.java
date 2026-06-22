@@ -347,6 +347,23 @@ public class ExecutionRepository {
         }));
     }
 
+    public void updateNodeExecution(String id, String status, String outputSummary,
+                                      long tokensUsed, long durationMs, int toolCalls,
+                                      String filesWritten, String error, String reasoning) {
+        withRetry(() -> nodeExecRepo.findById(id).ifPresent(graph -> {
+            graph.setStatus(status);
+            graph.setOutputSummary(outputSummary);
+            graph.setTokensUsed(tokensUsed);
+            graph.setDurationMs(durationMs);
+            graph.setToolCalls(toolCalls);
+            graph.setFilesWritten(filesWritten);
+            graph.setError(error);
+            graph.setReasoning(reasoning);
+            graph.setCompletedAt(java.time.Instant.now());
+            nodeExecRepo.save(graph);
+        }));
+    }
+
     public void updateNodeExecutionWithFiles(String id, String status, String outputSummary,
                                               long tokensUsed, long durationMs, int toolCalls,
                                               String filesWritten, String error) {
