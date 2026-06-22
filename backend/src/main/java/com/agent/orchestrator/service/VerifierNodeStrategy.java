@@ -79,8 +79,23 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
 
     public String executeVerifierNode(Node node, String schemaId, String resolvedModel) {
         // Collect predecessor results (the generated file content from upstream)
-        Map<String, Object> predResults = utilityService.collectPredecessorResults(
-                schemaRepository.findById(schemaId), node.getId());
+        WorkflowSchema schema = schemaRepository.findById(schemaId);
+        Map<String, Object> predResults = utilityService.collectPredecessorResults(schema, node.getId());
+        // Build a lookup map from predecessor node names to their actual IDs for file-change queries
+        Map<String, String> predNameToId = new HashMap<>();
+        if (schema != null && schema.getEdges() != null && schema.getNodes() != null) {
+            for (Edge edge : schema.getEdges()) {
+                if (node.getId().equals(edge.getTarget())) {
+                    String sourceId = edge.getSource();
+                    for (Node n : schema.getNodes()) {
+                        if (sourceId.equals(n.getId()) && n.getName() != null) {
+                            predNameToId.put(n.getName(), sourceId);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         String inputContent = predResults.values().stream()
                 .findFirst().map(Object::toString).orElse("");
 
@@ -136,7 +151,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
 
         // ── Step 3: File write verification ──
         List<Map<String, Object>> allCheckResults = new ArrayList<>();
-        checkFileWriteCalls(predResults, inputContent, schemaId, node.getId(), allCheckResults);
+        checkFileWriteCalls(predResults, inputContent, schemaId, node.getId(), allCheckResults, predNameToId);
 
         // ── Step 4: Detect project type ──
         ProjectInfo projectInfo = detectProjectType(schemaId);
@@ -265,11 +280,14 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
      */
     private void checkFileWriteCalls(Map<String, Object> predResults, String inputContent,
                                       String schemaId, String nodeId,
-                                      List<Map<String, Object>> allCheckResults) {
+                                      List<Map<String, Object>> allCheckResults,
+                                      Map<String, String> predNameToId) {
         int fileWriteCount = 0;
         if (!predResults.isEmpty()) {
-            for (String predNodeId : predResults.keySet()) {
-                Map<String, String> changes = stateManager.getFileChanges(schemaId, predNodeId);
+            for (String predName : predResults.keySet()) {
+                // Look up the actual node ID from the name-to-ID map
+                String actualNodeId = predNameToId.getOrDefault(predName, predName);
+                Map<String, String> changes = stateManager.getFileChanges(schemaId, actualNodeId);
                 if (changes != null) {
                     fileWriteCount += changes.size();
                 }
