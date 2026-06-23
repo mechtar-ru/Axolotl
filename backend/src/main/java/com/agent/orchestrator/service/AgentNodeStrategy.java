@@ -353,9 +353,16 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             final Map<String, Object> capturedChatConfig = chatConfig;
             LlmResponse iterResp;
             try {
+                // Extract system prompt from messages[0] so OllamaProvider gets a proper SystemMessage every iteration
+                final String capturedSystem = (!capturedMessages.isEmpty() && "system".equals(capturedMessages.get(0).getRole()))
+                        ? capturedMessages.get(0).getContent() : null;
+                // Build conversation excluding the system message (passed as separate param)
+                List<Node.Message> convMessages = capturedMessages.size() > 1 && capturedSystem != null
+                        ? capturedMessages.subList(1, capturedMessages.size())
+                        : capturedMessages;
                 CompletableFuture<LlmResponse> llmFuture = CompletableFuture.supplyAsync(() ->
-                        llmService.chat(capturedModel, null,
-                                toolExecutionService.buildMessagesForToolCall(capturedMessages), capturedChatConfig, iterUsage));
+                        llmService.chat(capturedModel, capturedSystem,
+                                toolExecutionService.buildMessagesForToolCall(convMessages), capturedChatConfig, iterUsage));
                 int perCallTimeout = 600;
                 if (node != null && node.getData() != null && node.getData().getTimeoutSeconds() != null) {
                     perCallTimeout = Math.min(node.getData().getTimeoutSeconds(), 3600);

@@ -69,8 +69,8 @@ public class SchemaServiceImpl implements SchemaService {
     @Override
     public List<WorkflowSchema> getSchemasByUserId(String userId) {
         if (userId == null || userId.isBlank()) {
-            log.warn("getSchemasByUserId called with null/blank userId");
-            return List.of();
+            // Anonymous users see schemas with null userId (created via UI)
+            return schemaRepository.findByUserId(null);
         }
         return schemaRepository.findByUserId(userId);
     }
@@ -157,6 +157,8 @@ public class SchemaServiceImpl implements SchemaService {
         if (incoming.getEdges() != null) existing.setEdges(incoming.getEdges());
         if (incoming.getDefaultModel() != null) existing.setDefaultModel(incoming.getDefaultModel());
         if (incoming.getUserId() != null) existing.setUserId(incoming.getUserId());
+        if (incoming.getWorkspaceId() != null) existing.setWorkspaceId(incoming.getWorkspaceId());
+        if (incoming.getAppType() != null) existing.setAppType(incoming.getAppType());
         if (incoming.getPipeline() != null) existing.setPipeline(incoming.getPipeline());
         if (incoming.getVersion() != null) existing.setVersion(incoming.getVersion());
         if (incoming.getTargetPath() != null) existing.setTargetPath(incoming.getTargetPath());

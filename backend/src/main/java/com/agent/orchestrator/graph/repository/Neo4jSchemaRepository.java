@@ -50,8 +50,11 @@ public class Neo4jSchemaRepository {
     public List<WorkflowSchema> findByUserId(String userId) {
         List<WorkflowSchema> result = new ArrayList<>();
         try (Session session = driver.session()) {
-            Result rs = session.run("MATCH (s:WorkflowSchema {userId: $userId}) RETURN s.data", 
-                org.neo4j.driver.Values.parameters("userId", userId));
+            String query = (userId == null)
+                ? "MATCH (s:WorkflowSchema) WHERE s.userId IS NULL RETURN s.data"
+                : "MATCH (s:WorkflowSchema {userId: $userId}) RETURN s.data";
+            Result rs = session.run(query,
+                userId != null ? org.neo4j.driver.Values.parameters("userId", userId) : org.neo4j.driver.Values.parameters());
             while (rs.hasNext()) {
                 var record = rs.next();
                 WorkflowSchema schema = mapper.readValue(record.get("s.data").asString(), WorkflowSchema.class);

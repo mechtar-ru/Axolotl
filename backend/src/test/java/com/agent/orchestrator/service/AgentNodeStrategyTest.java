@@ -180,7 +180,7 @@ class AgentNodeStrategyTest {
         when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
         when(stateManager.getFileChanges(anyString(), anyString())).thenReturn(Map.of());
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(llmService.chat(anyString(), nullable(String.class), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
@@ -189,7 +189,7 @@ class AgentNodeStrategyTest {
         assertNotNull(result);
         verify(toolExecutionService).buildToolInstructions(anyList());
         verify(toolExecutionService).buildMessagesForToolCall(anyList());
-        verify(llmService).chat(anyString(), isNull(), anyString(), isNull(), any());
+        verify(llmService).chat(anyString(), nullable(String.class), anyString(), isNull(), any());
     }
 
     @Test
@@ -216,7 +216,7 @@ class AgentNodeStrategyTest {
                 .thenReturn(List.of());
         when(toolExecutionService.executeToolCall(anyString(), anyMap(), eq(toolNode), anyString(), nullable(String.class), nullable(String.class)))
                 .thenReturn("file1.txt\nfile2.txt");
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any()))
+        when(llmService.chat(anyString(), nullable(String.class), anyString(), isNull(), any()))
                 .thenReturn(textOnly("{\"tool_calls\": [{\"name\": \"bash\", \"arguments\": {\"command\": \"ls\"}}]}"))
                 .thenReturn(textOnly("Final result after tools"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
@@ -294,7 +294,7 @@ class AgentNodeStrategyTest {
         when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
         when(stateManager.getFileChanges(anyString(), anyString())).thenReturn(Map.of());
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool result"));
+        when(llmService.chat(anyString(), nullable(String.class), anyString(), isNull(), any())).thenReturn(textOnly("Tool result"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(memPalaceClient.isEnabled()).thenReturn(false);
 
@@ -319,7 +319,7 @@ class AgentNodeStrategyTest {
         when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
         when(stateManager.getFileChanges(anyString(), anyString())).thenReturn(Map.of());
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(llmService.chat(anyString(), nullable(String.class), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of("f1.py", "created"));
         when(memPalaceClient.isEnabled()).thenReturn(false);
@@ -349,7 +349,7 @@ class AgentNodeStrategyTest {
         when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
         when(stateManager.getFileChanges(anyString(), anyString())).thenReturn(Map.of());
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(llmService.chat(anyString(), nullable(String.class), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2")))
                 .thenReturn(Map.of("f1.py", "created", "f2.py", "created"));
@@ -375,7 +375,7 @@ class AgentNodeStrategyTest {
         when(toolExecutionService.buildMessagesForToolCall(anyList())).thenReturn("<message>...</message>");
         when(toolExecutionService.parseToolCalls(anyString())).thenReturn(List.of());
         when(stateManager.getFileChanges(anyString(), anyString())).thenReturn(Map.of());
-        when(llmService.chat(anyString(), isNull(), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
+        when(llmService.chat(anyString(), nullable(String.class), anyString(), isNull(), any())).thenReturn(textOnly("Tool response"));
         when(stateManager.getGeneratedFilesRegistry()).thenReturn(new ConcurrentHashMap<>());
         when(stateManager.getFileChanges(eq("schema-1"), eq("n2"))).thenReturn(Map.of());
         when(memPalaceClient.isEnabled()).thenReturn(false);
