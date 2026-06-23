@@ -220,13 +220,37 @@ public class ToolCallParser {
         }
         if (contentKeyStart > 0) {
             int colonIdx = argsJson.indexOf(":", contentKeyStart);
+            // Models often wrap file content in double-quotes inside the JSON value:
+            // "content": ""import 'package:flutter/material.dart';..."
+            // This invalid JSON causes Jackson to fail, hitting the regex fallback.
+            // Skip past the `"` that opens the JSON value AND the `"` that wraps the content.
             int quoteStart = argsJson.indexOf("\"", colonIdx);
             if (quoteStart > colonIdx) {
+                int contentStart = quoteStart + 1;
+                if (contentStart < argsJson.length() && argsJson.charAt(contentStart) == '"') {
+                    contentStart++; // skip content's own opening "
+                }
+                // Find content end: the closing JSON string delimiter.
+                // The model may or may not close the JSON properly; search for the last `"`
+                // before the args object closes (before the first unmatched `}`).
                 int endMarker = argsJson.lastIndexOf("\"");
-                if (endMarker > quoteStart) {
-                    String content = argsJson.substring(quoteStart + 1, endMarker);
+                if (endMarker <= contentStart) {
+                    // No closing quote found — use the trailing `}` boundary
+                    endMarker = argsJson.lastIndexOf("}") - 1;
+                    if (endMarker < contentStart) endMarker = argsJson.length();
+                } else {
+                    // Walk backward past zero or more trailing `"` chars that are content-quoting
+                    while (endMarker > contentStart && argsJson.charAt(endMarker - 1) == '"') {
+                        endMarker--;
+                    }
+                }
+                if (endMarker > contentStart) {
+                    String content = argsJson.substring(contentStart, endMarker);
                     content = content.replace("\\n", "\n").replace("\\t", "\t")
                             .replace("\\\"", "\"").replace("\\\\", "\\");
+                    // Final guard: strip any remaining wrapping quotes
+                    while (content.startsWith("\"")) content = content.substring(1);
+                    while (content.endsWith("\"")) content = content.substring(0, content.length() - 1);
                     args.put("content", content);
                 }
             }
