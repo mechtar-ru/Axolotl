@@ -118,9 +118,13 @@ public class ToolHandlerService {
         if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
-        // Strip leading/trailing double-quotes — qwen/llama models wrap file content in quotes
-        if (content.startsWith("\"")) content = content.substring(1);
-        if (content.endsWith("\"")) content = content.substring(0, content.length() - 1);
+        // Strip leading/trailing double-quotes and whitespace — models wrap file content in quotes
+        while (content.startsWith("\"") || content.startsWith("\n") || content.startsWith("\r")) {
+            content = content.substring(1);
+        }
+        while (content.endsWith("\"") || content.endsWith("\n") || content.endsWith("\r")) {
+            content = content.substring(0, content.length() - 1);
+        }
 
         // P09: Path traversal protection — allow relative paths, restrict absolute paths to known safe dirs
         Path resolvedPath = Path.of(path).normalize();
@@ -809,9 +813,17 @@ public class ToolHandlerService {
         if (content == null) content = (String) params.get("data");
         if (path == null || content == null) return ToolResult.error("Missing path or content");
 
-        // Strip leading/trailing double-quotes — qwen/llama models wrap file content in quotes
-        if (content.startsWith("\"")) content = content.substring(1);
-        if (content.endsWith("\"")) content = content.substring(0, content.length() - 1);
+        // Strip leading/trailing double-quotes and whitespace — models wrap file content in quotes
+        String rawContent = content;
+        while (content.startsWith("\"") || content.startsWith("\n") || content.startsWith("\r")) {
+            content = content.substring(1);
+        }
+        while (content.endsWith("\"") || content.endsWith("\n") || content.endsWith("\r")) {
+            content = content.substring(0, content.length() - 1);
+        }
+        if (!rawContent.equals(content)) {
+            log.debug("Stripped {} chars from file_write content for path={}", rawContent.length() - content.length(), path);
+        }
 
         if (schemaTargetPath != null && !schemaTargetPath.isBlank() && !path.startsWith("/")) {
             path = resolveAgainstTarget(schemaTargetPath, path);
