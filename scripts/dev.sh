@@ -15,20 +15,45 @@ set -euo pipefail
 
 case "$1" in
   start)
-    pkill -f "spring-boot:run" 2>/dev/null || true
-    sleep 1
+    # Use PID file to avoid killing unrelated processes
+    if [ -f /tmp/axolotl-backend.pid ]; then
+      OLD_PID=$(cat /tmp/axolotl-backend.pid)
+      if kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "Stopping existing backend (PID $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        sleep 1
+      fi
+    fi
     echo "Starting backend on :8082..."
     cd "$(dirname "$0")/../backend" && nohup mvn spring-boot:run -Dserver.port=8082 > /tmp/axolotl-backend.log 2>&1 &
+    echo $! > /tmp/axolotl-backend.pid
     echo "PID: $!"
     echo "Logs: tail -f /tmp/axolotl-backend.log"
     ;;
   start-fg)
-    pkill -f "spring-boot:run" 2>/dev/null || true
-    sleep 1
+    # stop existing before foreground
+    if [ -f /tmp/axolotl-backend.pid ]; then
+      OLD_PID=$(cat /tmp/axolotl-backend.pid)
+      if kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "Stopping existing backend (PID $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        sleep 1
+      fi
+    fi
     cd "$(dirname "$0")/../backend" && mvn spring-boot:run -Dserver.port=8082
     ;;
   stop)
-    pkill -f "spring-boot:run" 2>/dev/null && echo "Backend stopped" || echo "No backend process found"
+    if [ -f /tmp/axolotl-backend.pid ]; then
+      PID=$(cat /tmp/axolotl-backend.pid)
+      if kill -0 "$PID" 2>/dev/null; then
+        kill "$PID" 2>/dev/null && echo "Backend stopped (PID $PID)" || echo "Failed to stop backend"
+      else
+        echo "No backend process found (PID $PID not running)"
+      fi
+      rm -f /tmp/axolotl-backend.pid
+    else
+      pkill -f "spring-boot:run" 2>/dev/null && echo "Backend stopped (fallback pkill)" || echo "No backend process found"
+    fi
     ;;
   logs)
     N=${2:-50}
