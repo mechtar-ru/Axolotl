@@ -103,7 +103,7 @@ public class PipelineServiceImpl implements PipelineService {
 
     @Transactional
     @Override
-    public void executeDerivedStages(String schemaId, WorkflowSchema schema, List<Stage> stages) {
+    public void executeDerivedStages(String schemaId, WorkflowSchema schema, List<Stage> stages, String sessionInput) {
         CompletableFuture<?> existing = statusManager.getRunningFuture(schemaId);
         if (existing != null && !existing.isDone()) {
             log.warn("Pipeline already running: {}", schemaId);
@@ -121,6 +121,7 @@ public class PipelineServiceImpl implements PipelineService {
         run.setSchemaId(schemaId);
         run.setStatus("running");
         run.setMode("EXECUTE");
+        run.setSessionInput(sessionInput);
         run.setStartedAt(Instant.now());
         run.setUpdatedAt(Instant.now());
         PipelineFactory.initializeRunStageStatus(run, stages);

@@ -111,7 +111,7 @@ class SchemaExecutionServiceTest {
         verify(schemaRepository).findById("test-schema-1");
         verify(schemaValidator).validate(schema);
         verify(metricsService).recordSchemaExecutionStart();
-        verify(pipelineService).executeDerivedStages(eq("test-schema-1"), eq(schema), stagesCaptor.capture());
+        verify(pipelineService).executeDerivedStages(eq("test-schema-1"), eq(schema), stagesCaptor.capture(), isNull());
 
         List<Stage> capturedStages = stagesCaptor.getValue();
         assertThat(capturedStages).isNotEmpty();
@@ -131,7 +131,7 @@ class SchemaExecutionServiceTest {
         assertThrows(SchemaValidationException.class, () -> service.executeSchema("test-schema-1"));
 
         verify(metricsService, never()).recordSchemaExecutionStart();
-        verify(pipelineService, never()).executeDerivedStages(anyString(), any(), anyList());
+        verify(pipelineService, never()).executeDerivedStages(anyString(), any(), anyList(), any());
     }
 
     // ── 3. findExecutionRuns (getSchemaStatus equivalent) ──
@@ -254,7 +254,7 @@ class SchemaExecutionServiceTest {
 
         service.executeSchema("test-schema-1", "session-specific input");
 
-        verify(pipelineService).executeDerivedStages(eq("test-schema-1"), eq(schema), anyList());
+        verify(pipelineService).executeDerivedStages(eq("test-schema-1"), eq(schema), anyList(), eq("session-specific input"));
 
         // Verify source node's config was updated with session input
         Node sourceNode = schema.getNodes().get(0);
@@ -270,7 +270,7 @@ class SchemaExecutionServiceTest {
 
         service.executeSchema("test-schema-1", "   ");
 
-        verify(pipelineService).executeDerivedStages(eq("test-schema-1"), eq(schema), anyList());
+        verify(pipelineService).executeDerivedStages(eq("test-schema-1"), eq(schema), anyList(), isNull());
     }
 
     // ── 8. computeConfigHash ──
@@ -328,7 +328,7 @@ class SchemaExecutionServiceTest {
 
         assertThat(ex.getStatusCode().value()).isEqualTo(404);
         assertThat(ex.getReason()).contains("not found");
-        verify(pipelineService, never()).executeDerivedStages(anyString(), any(), anyList());
+        verify(pipelineService, never()).executeDerivedStages(anyString(), any(), anyList(), any());
     }
 
     @Test

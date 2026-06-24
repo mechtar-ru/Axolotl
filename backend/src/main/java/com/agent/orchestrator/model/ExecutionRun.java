@@ -29,4 +29,5 @@ public class ExecutionRun {
     private Map<String, String> stageStatus = new HashMap<>();
     private Map<String, String> stageOutputs = new HashMap<>();
     private int resumeIndex = -1;     // -1 = not set; stores the stage index to resume from
+    private String sessionInput;       // user-provided input for this session run
 }

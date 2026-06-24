@@ -474,6 +474,7 @@ export interface ExecutionRun {
   startedAt: string;
   updatedAt: string;
   completedAt: string | null;
+  sessionInput?: string;
 }
 
 export interface NodeExecution {

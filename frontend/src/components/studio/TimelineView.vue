@@ -62,6 +62,13 @@ const visibleRuns = computed(() => runs.value.slice(0, displayLimit.value))
 const hasMore = computed(() => runs.value.length > displayLimit.value)
 const hasStaleRuns = computed(() => staleRunCount.value > 0)
 const latestPausedRunId = computed(() => runs.value.find(r => r.status === 'paused')?.id ?? null)
+const latestRunId = computed(() => runs.value[0]?.id ?? null)
+
+function runLabel(run: ExecutionRun): string {
+  const runNum = runs.value.length - runs.value.indexOf(run)
+  const intention = run.sessionInput
+  return intention ? `Run ${runNum}: "${intention}"` : `Run ${runNum}`
+}
 
 const liveEventsCapped = computed(() => {
   const ev = liveEvents.value
@@ -156,10 +163,10 @@ async function fetchRuns() {
     const all = await schemaApi.getRuns(props.schemaId)
     staleRunCount.value = all.filter(r => r.status === 'resuming').length
     runs.value = all.filter(r => r.status !== 'resuming')
-    // Auto-expand latest running/completed run on initial load
-    if (!expandedRunId.value) {
+    // Auto-expand latest run on initial load
+    if (!expandedRunId.value && runs.value.length > 0) {
       const latest = runs.value[0]
-      if (latest && (latest.status === 'running' || latest.status === 'completed')) {
+      if (latest && latest.status !== 'resuming') {
         expandRun(latest.id)
       }
     }
@@ -365,7 +372,10 @@ onActivated(() => {
         v-for="run in visibleRuns"
         :key="run.id"
         class="tl-card"
-        :class="{ expanded: expandedRunId === run.id }"
+        :class="{
+          expanded: expandedRunId === run.id,
+          'tl-card-older': run.id !== latestRunId
+        }"
       >
         <!-- Collapsed header -->
         <div class="tl-card-header" @click="expandRun(run.id)">
@@ -383,7 +393,7 @@ onActivated(() => {
           </div>
 
           <span class="tl-mode">{{ run.mode }}</span>
-          <span class="tl-session">Session {{ runs.length - runs.indexOf(run) }}</span>
+          <span class="tl-session">{{ runLabel(run) }}</span>
           <span class="tl-date">{{ formatDate(run.startedAt) }}</span>
           <span class="tl-time">{{ formatTime(run.startedAt) }}</span>
           <span class="tl-duration">{{ formatDuration(run) }}</span>
@@ -648,6 +658,12 @@ onActivated(() => {
 }
 .tl-card:hover { border-color: var(--accent); }
 .tl-card.expanded { border-color: var(--accent); }
+.tl-card-older {
+  opacity: 0.85;
+  border-left: 3px solid var(--border-color);
+}
+.tl-card-older.tl-card:hover { border-left-color: var(--accent); }
+.tl-card-older.expanded { border-left-color: var(--accent); opacity: 1; }
 
 .tl-card-header {
   display: flex;
@@ -695,6 +711,10 @@ onActivated(() => {
   border-radius: 8px;
   min-width: 64px;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
 }
 
 .tl-date { color: var(--text-muted); min-width: 56px; }

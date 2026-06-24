@@ -110,7 +110,7 @@ public class SchemaExecutionService {
         if (stages.isEmpty()) {
             throw new RuntimeException("No stages derived from canvas nodes for schema " + id);
         }
-        pipelineService.executeDerivedStages(id, schema, stages);
+        pipelineService.executeDerivedStages(id, schema, stages, null);
     }
 
     public void executeSchema(String id, String sessionInput) {
@@ -170,7 +170,7 @@ public class SchemaExecutionService {
         if (stages.isEmpty()) {
             throw new RuntimeException("No stages derived from canvas nodes for schema " + id);
         }
-        pipelineService.executeDerivedStages(id, schema, stages);
+        pipelineService.executeDerivedStages(id, schema, stages, sessionInput);
     }
 
     public void cancelExecution(String id) {

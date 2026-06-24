@@ -61,7 +61,7 @@ public interface PipelineService {
      * Execute derived stages for a schema.
      */
     @Transactional
-    void executeDerivedStages(String schemaId, WorkflowSchema schema, List<Stage> stages);
+    void executeDerivedStages(String schemaId, WorkflowSchema schema, List<Stage> stages, String sessionInput);
 
     /**
      * Retry a failed pipeline from the latest run.

@@ -553,6 +553,7 @@ public class ExecutionRepository {
         g.setStageOutputsJson(mapToJson(r.getStageOutputs()));
         g.setResumeIndex(r.getResumeIndex());
         g.setGeneratedFilesJson(listToJson(r.getGeneratedFiles()));
+        g.setSessionInput(r.getSessionInput());
         return g;
     }
 
@@ -574,6 +575,7 @@ public class ExecutionRepository {
         r.setStageOutputs(jsonToMap(g.getStageOutputsJson()));
         r.setResumeIndex(g.getResumeIndex());
         r.setGeneratedFiles(jsonToStringList(g.getGeneratedFilesJson()));
+        r.setSessionInput(g.getSessionInput());
         return r;
     }
 

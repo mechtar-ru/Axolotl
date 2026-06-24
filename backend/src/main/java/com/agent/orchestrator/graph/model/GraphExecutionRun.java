@@ -67,6 +67,8 @@ public class GraphExecutionRun {
     @Property("generatedFiles")
     private String generatedFilesJson = "[]";
 
+    @Property("sessionInput")
+    private String sessionInput;
 
     public GraphExecutionRun(String id, String schemaId, String status, String mode) {
         this.id = id;
