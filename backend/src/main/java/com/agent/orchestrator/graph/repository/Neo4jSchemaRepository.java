@@ -50,8 +50,9 @@ public class Neo4jSchemaRepository {
     public List<WorkflowSchema> findByUserId(String userId) {
         List<WorkflowSchema> result = new ArrayList<>();
         try (Session session = driver.session()) {
+            // When userId is null (unauthenticated endpoint), return all schemas
             String query = (userId == null)
-                ? "MATCH (s:WorkflowSchema) WHERE s.userId IS NULL RETURN s.data"
+                ? "MATCH (s:WorkflowSchema) RETURN s.data"
                 : "MATCH (s:WorkflowSchema {userId: $userId}) RETURN s.data";
             Result rs = session.run(query,
                 userId != null ? org.neo4j.driver.Values.parameters("userId", userId) : org.neo4j.driver.Values.parameters());
