@@ -88,7 +88,7 @@ axolotl:
     max-restart-attempts: 3
     restart-backoff-ms: 1000
     auto-update: true
-    auto-update-on-start: true
+    auto-update-on-start: false
     # Comma-separated list of npm packages to load as plugins
     # e.g.: @cortexkit/opencode-magic-context
     list: "@cortexkit/opencode-magic-context"
