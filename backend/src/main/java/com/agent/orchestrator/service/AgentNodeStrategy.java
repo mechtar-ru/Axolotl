@@ -212,15 +212,29 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     public String executeToolAgentNode(Node node, String schemaId, String resolvedModel, AtomicBoolean cancelFlag) {
         String agentType = node.getData().getAgentType() != null ? node.getData().getAgentType() : "code-agent";
         List<String> enabledTools = node.getData().getEnabledTools();
-        int maxToolCalls = node.getData().getMaxToolCalls() > 0 ? node.getData().getMaxToolCalls() : 10;
+        int maxToolCalls = node.getData().getMaxToolCalls() >= 0 ? node.getData().getMaxToolCalls() : 10;
 
         if (webSocketHandler != null) {
             webSocketHandler.sendProgress(schemaId, node.getId(), "RUNNING", 10, "Инициализация агента с инструментами");
             webSocketHandler.sendLog(schemaId, "info", "Агент типа: " + agentType + ", инструменты: " + enabledTools, node.getId());
         }
 
-        // Default tools per agent type
-        if (enabledTools == null || enabledTools.isEmpty()) {
+        // minIterations: keep agent loop alive even with 0 tool calls (for thinking then acting)
+        int minIterations = 0;
+        Map<String, Object> nodeConfig = node.getData().getConfig();
+
+        // Default tools per agent type — only if user didn't explicitly set tools
+        boolean userSetTools = false;
+        if (nodeConfig != null && nodeConfig.containsKey("tools") && nodeConfig.get("tools") instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<String> configTools = (List<String>) nodeConfig.get("tools");
+            enabledTools = new ArrayList<>(configTools);
+            node.getData().setEnabledTools(enabledTools);
+            userSetTools = true;
+        } else if (enabledTools != null && !enabledTools.isEmpty()) {
+            userSetTools = true;
+        }
+        if (!userSetTools) {
             switch (agentType) {
                 case "doc-agent":
                     enabledTools = List.of("file_read", "file_write", "directory_read");
@@ -234,6 +248,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                     break;
             }
             node.getData().setEnabledTools(enabledTools);
+        }
+
+        if (nodeConfig != null && nodeConfig.get("minIterations") instanceof Number) {
+            minIterations = ((Number) nodeConfig.get("minIterations")).intValue();
         }
 
         String prompt = node.getData().getUserPrompt();
@@ -257,9 +275,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
 
-        // Append FLUTTER workflow instructions for code agents on FLUTTER projects
+        // Append FLUTTER workflow instructions — opt-in via config.flutterWorkflow
         WorkflowSchema currentSchema = schemaRepository.findById(schemaId);
-        if (currentSchema != null && "FLUTTER".equals(currentSchema.getAppType())
+        boolean flutterWorkflow = nodeConfig != null && Boolean.TRUE.equals(nodeConfig.get("flutterWorkflow"));
+        if (currentSchema != null && flutterWorkflow
                 && !systemPrompt.contains("FLUTTER WORKFLOW")) {
             systemPrompt += "\n\n" + """
                      ==== FLUTTER WORKFLOW ====
@@ -269,8 +288,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                      4. After writing all files, run: flutter pub add provider go_router sqflite intl
                      5. Verify with build_app
                      6. Report: output JSON with generated files list:
-                        {"generatedFiles": [{"path": "lib/main.dart", "description": "app entry point"}, ...]}
-                    """.trim();
+                         {"generatedFiles": [{"path": "lib/main.dart", "description": "app entry point"}, ...]}
+                     """.trim();
         }
 
         String model = resolvedModel;
@@ -382,13 +401,32 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             messages.add(new Node.Message("assistant", lastResponse));
             fullResponse.append(lastResponse).append("\n");
 
+            String finishReason = iterResp.finishReason();
+            if ("stop".equals(finishReason)) {
+                long iterDuration = System.currentTimeMillis() - iterationStartTime;
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, 0, 0);
+                }
+                log.info("Agent iteration {} finished with finish_reason=stop, breaking", iterationCount);
+                break;
+            }
+
             List<Map<String, Object>> toolCalls = toolExecutionService.parseToolCalls(lastResponse);
             if (toolCalls.isEmpty()) {
                 long iterDuration = System.currentTimeMillis() - iterationStartTime;
                 if (webSocketHandler != null) {
                     webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, 0, 0);
                 }
-                break;
+                if ("tool_calls".equals(finishReason)) {
+                    log.info("Agent iteration {} finish_reason=tool_calls but parser found no tools; retrying", iterationCount);
+                    continue;
+                }
+                if (iterationCount >= minIterations) {
+                    log.info("Agent iteration {} produced no tool calls; minIterations={} reached, breaking", iterationCount, minIterations);
+                    break;
+                }
+                log.info("Agent iteration {} produced no tool calls; below minIterations={}, continuing", iterationCount, minIterations);
+                continue;
             }
 
             // L07: Deduplicate identical tool calls across iterations

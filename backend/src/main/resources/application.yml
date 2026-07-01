@@ -73,9 +73,9 @@ axolotl:
     batch-size: ${AXOLOTL_GRAPH_BATCH_SIZE:20}
     codebase-path: ${AXOLOTL_GRAPH_CODEBASE_PATH:}
   tools:
-    allowed-commands: >-
-      bun,cargo,cat,dart,find,flutter,git,go,ls,make,node,npm,npx,pub,
-      python3,rustc
+  allowed-commands: >-
+    bun,cargo,cat,cp,dart,echo,find,flutter,git,go,grep,head,ls,make,
+    mkdir,mv,node,npm,npx,printf,pub,python3,pwd,rustc,tail,touch,unzip,zip
   reconciler:
     interval: 300000
 

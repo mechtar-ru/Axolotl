@@ -223,11 +223,17 @@ public final class OpenAiChatClient {
                     JsonNode node = MAPPER.readTree(data);
 
                     String reasoning = node.at("/choices/0/delta/reasoning_content").asText("");
+                    if (reasoning.isEmpty()) {
+                        reasoning = node.at("/choices/0/delta/reasoning").asText("");
+                    }
                     if (!reasoning.isEmpty()) {
                         reasoningBuilder.append(reasoning);
                     }
 
                     String content = node.at("/choices/0/delta/content").asText("");
+                    if (content.isEmpty()) {
+                        content = node.at("/choices/0/delta/reasoning").asText("");
+                    }
                     if (!content.isEmpty()) {
                         contentBuilder.append(content);
                         if (onToken != null) {
@@ -249,7 +255,7 @@ public final class OpenAiChatClient {
         String reasoning = reasoningBuilder.length() > 0 ? reasoningBuilder.toString() : null;
 
         if (reasoning != null && !reasoning.isBlank()) {
-            return new LlmResponse(text, reasoning);
+            return LlmResponse.full(text, reasoning, null);
         }
         return LlmResponse.textOnly(text);
     }
@@ -339,12 +345,21 @@ public final class OpenAiChatClient {
             throw new RuntimeException("No choices in response: " + truncate(rawBody, 500));
         }
 
+        String finishReason = choice.path("finish_reason").asText(null);
+
         JsonNode message = choice.path("message");
         // content may be null when tool_calls are present — treat as empty text
         String text = message.has("content") && !message.path("content").isNull()
                 ? message.path("content").asText()
                 : "";
         String reasoning = message.path("reasoning_content").asText(null);
+        if (reasoning == null) {
+            reasoning = message.path("reasoning").asText(null);
+        }
+        // If content is null but reasoning exists, use reasoning as content
+        if ((text == null || text.isBlank()) && reasoning != null && !reasoning.isBlank()) {
+            text = reasoning;
+        }
 
         // Extract tool_calls if present (OpenAI-compatible structured format)
         JsonNode toolCallsNode = message.path("tool_calls");
@@ -368,9 +383,9 @@ public final class OpenAiChatClient {
 
         if (reasoning != null && !reasoning.isBlank()) {
             log.info("  reasoning_content present ({} chars)", reasoning.length());
-            return new LlmResponse(text, reasoning);
+            return LlmResponse.full(text, reasoning, finishReason);
         }
-        return LlmResponse.textOnly(text);
+        return finishReason != null ? LlmResponse.full(text, null, finishReason) : LlmResponse.textOnly(text);
     }
 
     private static String truncate(String s, int maxLen) {

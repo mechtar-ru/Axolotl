@@ -103,6 +103,59 @@ Quick Start creates schemas with a **fixed pipeline template**: Receive → Revi
 ### Database Architecture
 - **Neo4j** — primary storage for schemas, plans, execution history, code graph, auth
 
+## Recent Fixes (Agent Node Strategy)
+
+### `executeToolAgentNode` — Key Behaviors
+
+**maxToolCalls**: `>= 0` (was `> 0`). Setting `0` means no tool loop (single LLM call).
+
+**minIterations** (config key): keeps the agent loop alive even when the model returns 0 tool calls. Default `0` = exit immediately on no tools. Set to `2+` to let the model "think" in one iteration and "act" in the next.
+
+**Tools from config**: The code now reads `config.tools` from the node config map. If explicitly set (even to `[]`), default tools are NOT injected. The `PipelineStageRunner` also reads `config.tools` as fallback if `config.enabledTools` is absent.
+
+**FLUTTER workflow**: No longer appended automatically for FLUTTER appType schemas. Must be opted-in with `config.flutterWorkflow: true`.
+
+### Bash Sandbox
+
+Bash tool restricts working directory to the schema's `targetPath`:
+- `cwd` auto-injected if not provided by agent (set to resolved `targetPath`)
+- Agent-provided `cwd` validated against resolved `targetPath` — escape is blocked
+- `ToolHandlerService.handleBash()` receives the validated cwd
+
+Allowed commands (configured in `application.yml`):
+```
+bun, cargo, cat, cp, dart, echo, find, flutter, git, go, grep, head, ls,
+make, mkdir, mv, node, npm, npx, pub, python3, pwd, rustc, tail, touch, unzip, zip
+```
+
+### Zen Model Routing
+
+Free Zen models must be in `LlmService.resolveProvider()` routing table:
+- `deepseek-v4*` → zen
+- `north-mini-*` → zen
+- `mimo-*` → zen
+- `nemotron-*` → zen
+- `qwen3.*` → zen
+
+Use `zen:` prefix for explicit routing: `model: zen:north-mini-code-free`
+
+### Magic Context
+
+Enabled by default via plugin `@cortexkit/opencode-magic-context`. Used when:
+1. Plugin system is enabled (`axolotl.plugins.enabled: true`)
+2. Plugin registered `ctx_search` and `ctx_memory` tools
+3. `ToolExecutorImpl.getTool()` now searches by short name (e.g. `"ctx_search"`) for plugin tools stored under prefixed IDs
+
+## Known Gaps
+
+### Free Zen models don't reliably create files via tools
+- deepseek-v4-flash-free, mimo-v2.5-free, nemotron-3-ultra-free, north-mini-code-free all prefer reading/analyzing over writing
+- Even with explicit `file_write` instructions and no other tools available, models read instead of write
+- bash with `echo >` redirect allowed but models don't use it for file creation
+- `minIterations` keeps loop alive but model returns text without tools eventually
+- `emotion.dart` was created successfully once (first run), but subsequent attempts failed
+- Possible fix: better model (paid), stronger prompting, or shorter atomic steps
+
 ## Architecture
 
 ### Backend (Spring Boot, Java 21)

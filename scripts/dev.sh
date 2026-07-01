@@ -25,9 +25,15 @@ case "$1" in
       fi
     fi
     echo "Starting backend on :8082..."
-    cd "$(dirname "$0")/../backend" && nohup mvn spring-boot:run -Dserver.port=8082 > /tmp/axolotl-backend.log 2>&1 &
-    echo $! > /tmp/axolotl-backend.pid
-    echo "PID: $!"
+    JAR=$(ls -t "$(dirname "$0")/../backend/target/axolotl-*.jar" 2>/dev/null | head -1)
+    if [ -n "$JAR" ]; then
+      cd "$(dirname "$0")/../backend" && nohup java -jar "$JAR" --server.port=8082 > /tmp/axolotl-backend.log 2>&1 &
+      echo $! > /tmp/axolotl-backend.pid
+      echo "PID: $!"
+    else
+      cd "$(dirname "$0")/../backend" && nohup mvn spring-boot:run -Dserver.port=8082 > /tmp/axolotl-backend.log 2>&1 &
+      echo $! > /tmp/axolotl-backend.pid
+    fi
     echo "Logs: tail -f /tmp/axolotl-backend.log"
     ;;
   start-fg)
@@ -40,7 +46,12 @@ case "$1" in
         sleep 1
       fi
     fi
-    cd "$(dirname "$0")/../backend" && mvn spring-boot:run -Dserver.port=8082
+    JAR=$(ls -t "$(dirname "$0")/../backend/target/axolotl-*.jar" 2>/dev/null | head -1)
+    if [ -n "$JAR" ]; then
+      cd "$(dirname "$0")/../backend" && java -jar "$JAR" --server.port=8082
+    else
+      cd "$(dirname "$0")/../backend" && mvn spring-boot:run -Dserver.port=8082
+    fi
     ;;
   stop)
     if [ -f /tmp/axolotl-backend.pid ]; then
@@ -52,7 +63,8 @@ case "$1" in
       fi
       rm -f /tmp/axolotl-backend.pid
     else
-      pkill -f "spring-boot:run" 2>/dev/null && echo "Backend stopped (fallback pkill)" || echo "No backend process found"
+      pkill -f "axolotl-.*\.jar" 2>/dev/null && echo "Backend stopped (jar)" || true
+      pkill -f "spring-boot:run" 2>/dev/null && echo "Backend stopped (spring-boot)" || echo "No backend process found"
     fi
     ;;
   logs)

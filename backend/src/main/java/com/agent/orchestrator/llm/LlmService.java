@@ -310,7 +310,8 @@ public class LlmService {
                 if (stripped.startsWith("llama") || stripped.startsWith("gemma") || stripped.startsWith("mistral") || stripped.startsWith("qwen")) yield "ollama";
                 if (stripped.endsWith("-pickle") || stripped.startsWith("minimax-") || stripped.startsWith("kimi-") ||
                     stripped.startsWith("glm-") || stripped.startsWith("qwen3.") || stripped.startsWith("trinity-") ||
-                    stripped.startsWith("hy3-") || stripped.startsWith("ling-") || stripped.startsWith("nemotron-")) yield "zen";
+                    stripped.startsWith("hy3-") || stripped.startsWith("ling-") || stripped.startsWith("nemotron-") ||
+                    stripped.startsWith("north-mini-") || stripped.startsWith("mimo-")) yield "zen";
                 yield "ollama";
             }
         };

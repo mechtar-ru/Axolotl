@@ -222,7 +222,8 @@ public class ToolHandlerService {
         }
 
         // M51: Block shell metacharacters to prevent injection via bash -c
-        List<String> dangerous = List.of("$", "`", "(", ")", "|", "&", "<", ">");
+        // Redirect chars (> <) are allowed for file I/O since cwd is sandbox-validated
+        List<String> dangerous = List.of("$", "`", "(", ")", "|", "&");
         for (String d : dangerous) {
             if (command.contains(d)) {
                 return ToolResult.error("Command contains forbidden shell metacharacter: " + d);

@@ -430,7 +430,7 @@ public class CustomLlmProvider implements LlmProvider {
                 String text = fullResponse.toString();
 
                 if (reasoning != null && !reasoning.isBlank()) {
-                    return new LlmResponse(text, reasoning);
+                    return LlmResponse.full(text, reasoning, null);
                 }
                 return textOnly(text);
             } else {

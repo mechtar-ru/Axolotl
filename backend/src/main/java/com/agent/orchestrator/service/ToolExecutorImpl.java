@@ -11,6 +11,7 @@ import com.agent.orchestrator.llm.LlmService;
 import org.neo4j.driver.Driver;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.*;
@@ -201,7 +202,13 @@ public class ToolExecutorImpl implements ToolExecutor {
 
     @Override
     public Tool getTool(String toolId) {
-        return tools.get(toolId);
+        Tool tool = tools.get(toolId);
+        if (tool != null) return tool;
+        // Fallback: search by short name (for plugin tools stored under prefixed ID)
+        for (Tool t : tools.values()) {
+            if (t.getName() != null && t.getName().equals(toolId)) return t;
+        }
+        return null;
     }
 
     @Override
@@ -236,6 +243,15 @@ public class ToolExecutorImpl implements ToolExecutor {
         long startTime = System.currentTimeMillis();
         Tool tool = tools.get(toolId);
         if (tool == null) {
+            // Fallback: search by short name (for plugin tools stored under prefixed ID)
+            for (Tool t : tools.values()) {
+                if (t.getName() != null && t.getName().equals(toolId)) {
+                    tool = t;
+                    break;
+                }
+            }
+        }
+        if (tool == null) {
             return ToolResult.error("Unknown tool: " + toolId);
         }
         if (permission != null && !permission.isEnabled()) {
@@ -243,6 +259,9 @@ public class ToolExecutorImpl implements ToolExecutor {
         }
 
         ToolExecutorHandler handler = handlers.get(toolId);
+        if (handler == null && tool != null) {
+            handler = handlers.get(tool.getId());
+        }
         if (handler == null) {
             return ToolResult.error("No handler for tool: " + toolId);
         }
@@ -317,8 +336,18 @@ public class ToolExecutorImpl implements ToolExecutor {
                 params.put("path", absTarget.replaceAll("/+$", "") + "/" + cleanPath);
             }
             // Also ensure bash commands run in the target directory
-            if ("bash".equals(toolId) && !params.containsKey("cwd")) {
-                params.put("cwd", absTarget.replaceAll("/+$", ""));
+            if ("bash".equals(toolId)) {
+                String bashCwd = (String) params.get("cwd");
+                if (bashCwd == null || bashCwd.isBlank()) {
+                    params.put("cwd", absTarget.replaceAll("/+$", ""));
+                } else {
+                    // Validate agent-provided cwd stays within sandbox
+                    String normalizedCwd = Paths.get(bashCwd).normalize().toAbsolutePath().toString().replace("\\", "/");
+                    String normalizedTarget = Paths.get(absTarget).normalize().toAbsolutePath().toString().replace("\\", "/");
+                    if (!normalizedCwd.equals(normalizedTarget) && !normalizedCwd.startsWith(normalizedTarget + "/")) {
+                        return ToolResult.error("cwd is outside schema targetPath: " + normalizedCwd);
+                    }
+                }
             }
         }
 

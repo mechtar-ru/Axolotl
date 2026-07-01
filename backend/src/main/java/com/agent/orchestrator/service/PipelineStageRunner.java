@@ -108,7 +108,11 @@ public class PipelineStageRunner {
                         merged.putAll(stage.getConfig());
                         nd.setConfig(merged);
                         // Extract enabledTools from stage config if present
+                        // Supports both "enabledTools" and "tools" keys
                         Object tools = stage.getConfig().get("enabledTools");
+                        if (tools == null) {
+                            tools = stage.getConfig().get("tools");
+                        }
                         if (tools instanceof List) {
                             try {
                                 @SuppressWarnings("unchecked")
