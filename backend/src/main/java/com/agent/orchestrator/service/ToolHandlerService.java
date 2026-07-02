@@ -210,8 +210,8 @@ public class ToolHandlerService {
                 segment = segment.trim();
                 if (segment.isEmpty()) continue;
                 String segCmd = segment.split("\\s+")[0];
-                if (!ToolExecutorImpl.DEFAULT_ALLOWED_COMMANDS.contains(segCmd)) {
-                    return ToolResult.error("Pipe chain blocked: '" + segCmd + "' not in allowed set: " + ToolExecutorImpl.DEFAULT_ALLOWED_COMMANDS);
+                if (!getAllowedCommands().contains(segCmd)) {
+                    return ToolResult.error("Pipe chain blocked: '" + segCmd + "' not in allowed set: " + getAllowedCommands());
                 }
             }
         }
@@ -223,7 +223,9 @@ public class ToolHandlerService {
 
         // M51: Block shell metacharacters to prevent injection via bash -c
         // Redirect chars (> <) are allowed for file I/O since cwd is sandbox-validated
-        List<String> dangerous = List.of("$", "`", "(", ")", "|", "&");
+        // Pipe (|) is allowed — validated by the pipe chain check above
+        // Parentheses (()) are allowed — validated by command allowlist
+        List<String> dangerous = List.of("$", "`", "&");
         for (String d : dangerous) {
             if (command.contains(d)) {
                 return ToolResult.error("Command contains forbidden shell metacharacter: " + d);

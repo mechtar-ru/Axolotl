@@ -125,8 +125,13 @@ Bash tool restricts working directory to the schema's `targetPath`:
 Allowed commands (configured in `application.yml`):
 ```
 bun, cargo, cat, cp, dart, echo, find, flutter, git, go, grep, head, ls,
-make, mkdir, mv, node, npm, npx, pub, python3, pwd, rustc, tail, touch, unzip, zip
+make, mkdir, mv, node, npm, npx, printf, pub, python3, pwd, rustc, sort,
+tail, tee, touch, uniq, unzip, zip
 ```
+
+Pipes (`|`) are validated per-segment against the allowed command list.
+Redirects (`>`, `<`) and parentheses (`()`) are allowed for file I/O and sub-expressions.
+Command substitution (`$()`, `` ` ``) and chaining (`&&`, `||`, `;`) remain blocked.
 
 ### Zen Model Routing
 

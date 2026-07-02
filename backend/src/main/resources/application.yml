@@ -75,7 +75,8 @@ axolotl:
   tools:
   allowed-commands: >-
     bun,cargo,cat,cp,dart,echo,find,flutter,git,go,grep,head,ls,make,
-    mkdir,mv,node,npm,npx,printf,pub,python3,pwd,rustc,tail,touch,unzip,zip
+    mkdir,mv,node,npm,npx,printf,pub,python3,pwd,rustc,sort,tail,tee,
+    touch,uniq,unzip,zip
   reconciler:
     interval: 300000
 
