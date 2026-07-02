@@ -156,9 +156,9 @@ Enabled by default via plugin `@cortexkit/opencode-magic-context`. Used when:
 ### Free Zen models don't reliably create files via tools
 - deepseek-v4-flash-free, mimo-v2.5-free, nemotron-3-ultra-free, north-mini-code-free all prefer reading/analyzing over writing
 - Even with explicit `file_write` instructions and no other tools available, models read instead of write
-- bash with `echo >` redirect allowed but models don't use it for file creation
+- bash with `echo >` redirect (now unblocked) also not used by the model for file creation
 - `minIterations` keeps loop alive but model returns text without tools eventually
-- `emotion.dart` was created successfully once (first run), but subsequent attempts failed
+- `emotion.dart` was created once (first run), but subsequent attempts failed
 - Possible fix: better model (paid), stronger prompting, or shorter atomic steps
 
 ## Architecture

@@ -512,20 +512,16 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             fullResponse.append(lastResponse).append("\n");
 
             String finishReason = iterResp.finishReason();
-            if ("stop".equals(finishReason)) {
-                long iterDuration = System.currentTimeMillis() - iterationStartTime;
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, 0, 0);
-                }
-                log.info("Agent iteration {} finished with finish_reason=stop, breaking", iterationCount);
-                break;
-            }
 
             // If we already parsed toolCalls from LangChain4j path, skip text parsing
             if (toolCalls.isEmpty()) {
                 long iterDuration = System.currentTimeMillis() - iterationStartTime;
                 if (webSocketHandler != null) {
                     webSocketHandler.sendIteration(schemaId, node.getId(), iterationCount, iterDuration, 0, 0);
+                }
+                if ("stop".equals(finishReason)) {
+                    log.info("Agent iteration {} finished with finish_reason=stop and no tool calls, breaking", iterationCount);
+                    break;
                 }
                 if ("tool_calls".equals(finishReason)) {
                     log.info("Agent iteration {} finish_reason=tool_calls but parser found no tools; retrying", iterationCount);
@@ -537,6 +533,11 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 }
                 log.info("Agent iteration {} produced no tool calls; below minIterations={}, continuing", iterationCount, minIterations);
                 continue;
+            }
+
+            // stop with tool calls: execute them before possibly breaking
+            if ("stop".equals(finishReason)) {
+                log.info("Agent iteration {} finish_reason=stop but has {} tool calls, executing then breaking", iterationCount, toolCalls.size());
             }
 
             // L07: Deduplicate identical tool calls across iterations
@@ -613,7 +614,14 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
 
             if (toolCalls.isEmpty() || toolCallCount >= maxToolCalls) {
+                if (iterationCount < minIterations && "stop".equals(finishReason)) {
+                    log.info("Agent iteration {} finish_reason=stop but below minIterations={}, continuing", iterationCount, minIterations);
+                    continue;
+                }
                 break;
+            }
+            if (iterationCount < minIterations && "stop".equals(finishReason)) {
+                log.info("Agent iteration {} finish_reason=stop but below minIterations={}, continuing for next iteration", iterationCount, minIterations);
             }
         }
 
