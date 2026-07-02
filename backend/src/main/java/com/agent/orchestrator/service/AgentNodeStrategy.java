@@ -330,10 +330,26 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             for (String toolName : enabledTools) {
                 com.agent.orchestrator.model.Tool toolDef = toolExecutor.getTool(toolName);
                 if (toolDef != null) {
+                    Map<String, Object> func = new HashMap<>();
+                    String rawName = toolDef.getName();
+                    // Ensure name matches OpenAI pattern ^[a-zA-Z0-9_-]+$
+                    String safeName = rawName.replaceAll("[^a-zA-Z0-9_-]", "_").toLowerCase();
+                    func.put("name", safeName);
+                    func.put("description", toolDef.getDescription() != null ? toolDef.getDescription() : "");
+                    // Parse input_schema from JSON string to Map
+                    String schemaStr = toolDef.getInputSchema();
+                    if (schemaStr != null && !schemaStr.isBlank()) {
+                        try {
+                            Object schemaObj = new com.fasterxml.jackson.databind.ObjectMapper().readValue(schemaStr, Map.class);
+                            func.put("parameters", schemaObj);
+                        } catch (Exception e) {
+                            log.warn("Failed to parse tool schema for {}: {}", toolDef.getName(), e.getMessage());
+                            func.put("parameters", Map.of("type", "object"));
+                        }
+                    }
                     Map<String, Object> def = new HashMap<>();
-                    def.put("name", toolDef.getName());
-                    def.put("description", toolDef.getDescription());
-                    def.put("input_schema", toolDef.getInputSchema());
+                    def.put("type", "function");
+                    def.put("function", func);
                     structuredToolDefs.add(def);
                     // Also build LangChain4j ToolSpecification
                     toolSpecs.add(buildToolSpecification(toolDef));
@@ -385,8 +401,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             List<Map<String, Object>> toolCalls = new ArrayList<>();
 
             try {
-                boolean useLc4j = lcModel != null && !toolSpecs.isEmpty()
-                        && nodeConfig != null && Boolean.TRUE.equals(nodeConfig.get("useLangChain4j"));
+                boolean useLc4j = lcModel != null && !toolSpecs.isEmpty();
                 log.info("Agent loop iteration {}: useLc4j={} lcModel={} toolSpecs={}", iterationCount, useLc4j, lcModel != null, toolSpecs.size());
                 if (useLc4j) {
                     // ── LangChain4j path (structured tool specs) ──
@@ -439,7 +454,19 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                             Map<String, Object> tc = new HashMap<>();
                             tc.put("id", req.id() != null ? req.id() : java.util.UUID.randomUUID().toString());
                             tc.put("name", req.name());
-                            tc.put("arguments", req.arguments());
+                            // Parse arguments from JSON string to Map
+                            String argsStr = req.arguments();
+                            if (argsStr != null && !argsStr.isBlank()) {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> parsedArgs = new com.fasterxml.jackson.databind.ObjectMapper().readValue(argsStr, Map.class);
+                                    tc.put("arguments", parsedArgs);
+                                } catch (Exception e) {
+                                    tc.put("arguments", argsStr);
+                                }
+                            } else {
+                                tc.put("arguments", Map.of());
+                            }
                             toolCalls.add(tc);
                         }
                     }

@@ -49,6 +49,7 @@ public class OpenAiProvider implements LlmProvider {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public LlmResponse chat(String model, String systemPrompt, String userPrompt,
                        Map<String, Object> config, LlmUsage usage) {
         String effectiveModel = resolveModel(model);
@@ -56,9 +57,17 @@ public class OpenAiProvider implements LlmProvider {
             return textOnly("OpenAI: API key not configured");
         }
 
+        List<Map<String, Object>> toolsList = null;
+        if (config != null) {
+            Object tools = config.get("_tools");
+            if (tools == null) tools = config.get("tools");
+            if (tools instanceof List) toolsList = (List<Map<String, Object>>) tools;
+        }
+
         try {
             return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
-                    systemPrompt, userPrompt, usage, timeoutSeconds);
+                    systemPrompt, userPrompt, usage, timeoutSeconds,
+                    java.net.http.HttpClient.Version.HTTP_2, toolsList);
         } catch (Exception e) {
             String error = "OpenAI error: " + e.getMessage();
             log.error(error, e);

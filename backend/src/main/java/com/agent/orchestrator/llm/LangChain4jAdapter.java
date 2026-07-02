@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.ChatLanguageModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.request.ChatRequestParameters;
+import dev.langchain4j.model.chat.request.json.*;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.output.FinishReason;
 import org.slf4j.Logger;
@@ -62,19 +63,62 @@ public class LangChain4jAdapter implements ChatLanguageModel {
         return config;
     }
 
+    @SuppressWarnings("unchecked")
     private Map<String, Object> toolSpecToMap(ToolSpecification spec) {
-        Map<String, Object> def = new HashMap<>();
-        def.put("name", spec.name());
-        def.put("description", spec.description() != null ? spec.description() : "");
+        Map<String, Object> function = new HashMap<>();
+        // OpenAI requires ^[a-zA-Z0-9_-]+$ for function names
+        String rawName = spec.name();
+        String safeName = rawName.replaceAll("[^a-zA-Z0-9_-]", "_").toLowerCase();
+        function.put("name", safeName);
+        function.put("description", spec.description() != null ? spec.description() : "");
         if (spec.parameters() != null) {
-            Map<String, Object> schema = new HashMap<>();
-            schema.put("type", "object");
-            Map<String, Object> props = new HashMap<>();
-            props.put("_raw", Map.of("type", "string", "description", spec.parameters().toString()));
-            schema.put("properties", props);
-            def.put("input_schema", schema);
+            function.put("parameters", jsonSchemaToMap(spec.parameters()));
         }
-        return def;
+        // OpenAI-compatible tool format: {"type": "function", "function": {...}}
+        Map<String, Object> tool = new HashMap<>();
+        tool.put("type", "function");
+        tool.put("function", function);
+        return tool;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> jsonSchemaToMap(JsonSchemaElement element) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (element instanceof JsonObjectSchema obj) {
+            result.put("type", "object");
+            if (obj.description() != null) result.put("description", obj.description());
+            Map<String, Object> props = new LinkedHashMap<>();
+            if (obj.properties() != null) {
+                obj.properties().forEach((name, prop) -> props.put(name, jsonSchemaToMap(prop)));
+            }
+            if (!props.isEmpty()) result.put("properties", props);
+            if (obj.required() != null && !obj.required().isEmpty()) {
+                result.put("required", new ArrayList<>(obj.required()));
+            }
+            if (obj.additionalProperties() != null) {
+                result.put("additionalProperties", obj.additionalProperties());
+            }
+        } else if (element instanceof JsonStringSchema str) {
+            result.put("type", "string");
+            if (str.description() != null) result.put("description", str.description());
+        } else if (element instanceof JsonIntegerSchema num) {
+            result.put("type", "integer");
+            if (num.description() != null) result.put("description", num.description());
+        } else if (element instanceof JsonBooleanSchema bool) {
+            result.put("type", "boolean");
+            if (bool.description() != null) result.put("description", bool.description());
+        } else if (element instanceof JsonArraySchema arr) {
+            result.put("type", "array");
+            if (arr.description() != null) result.put("description", arr.description());
+            if (arr.items() != null) result.put("items", jsonSchemaToMap(arr.items()));
+        } else if (element instanceof JsonEnumSchema enm) {
+            result.put("type", "string");
+            if (enm.description() != null) result.put("description", enm.description());
+            if (enm.enumValues() != null) result.put("enum", new ArrayList<>(enm.enumValues()));
+        } else {
+            result.put("type", "string");
+        }
+        return result;
     }
 
     private String extractSystemPrompt(List<ChatMessage> messages) {

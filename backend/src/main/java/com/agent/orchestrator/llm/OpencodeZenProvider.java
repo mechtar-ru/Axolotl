@@ -64,16 +64,17 @@ public class OpencodeZenProvider implements LlmProvider {
             return textOnly("Zen: API key not configured");
         }
 
+        List<Map<String, Object>> toolsList = extractTools(config);
         try {
             return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
                     systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
-                    java.net.http.HttpClient.Version.HTTP_1_1);
+                    java.net.http.HttpClient.Version.HTTP_1_1, toolsList);
         } catch (Exception e) {
             log.warn("Zen chat error, retrying once: {}", e.getMessage(), e);
             try {
                 return OpenAiChatClient.chat(getEffectiveApiKey(), baseUrl, effectiveModel,
                         systemPrompt, userPrompt, usage, TIMEOUT_SECONDS,
-                        java.net.http.HttpClient.Version.HTTP_1_1);
+                        java.net.http.HttpClient.Version.HTTP_1_1, toolsList);
             } catch (Exception e2) {
                 String error = "Zen error: " + e2.getMessage();
                 log.error(error, e2);
@@ -176,5 +177,16 @@ public class OpencodeZenProvider implements LlmProvider {
 
     private boolean isProviderName(String model) {
         return "zen".equalsIgnoreCase(model) || "opencode".equalsIgnoreCase(model);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractTools(Map<String, Object> config) {
+        if (config == null) return null;
+        Object tools = config.get("_tools");
+        if (tools == null) tools = config.get("tools");
+        if (tools instanceof List) {
+            return (List<Map<String, Object>>) tools;
+        }
+        return null;
     }
 }
