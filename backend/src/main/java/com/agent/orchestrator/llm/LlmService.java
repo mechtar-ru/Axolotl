@@ -329,6 +329,20 @@ public class LlmService {
     }
 
     /**
+     * Get a LangChain4j ChatLanguageModel for the given model string.
+     * Wraps the underlying LlmProvider via LangChain4jAdapter for tool specification support.
+     */
+    public dev.langchain4j.model.chat.ChatLanguageModel getChatLanguageModel(String model) {
+        String providerName = resolveProvider(model);
+        LlmProvider provider = providers.get(providerName);
+        if (provider == null) {
+            throw new RuntimeException("Provider not found: " + providerName);
+        }
+        String strippedModel = stripProviderPrefix(model);
+        return new LangChain4jAdapter(provider, strippedModel);
+    }
+
+    /**
      * Get info for all providers (built-in + custom endpoints).
      * Uses cache if fresh, otherwise live-fetches with DB persistence.
      */
