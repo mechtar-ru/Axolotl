@@ -334,11 +334,13 @@ public class LlmService {
      */
     public dev.langchain4j.model.chat.ChatLanguageModel getChatLanguageModel(String model) {
         String providerName = resolveProvider(model);
+        log.info("getChatLanguageModel: model={} provider={}", model, providerName);
         LlmProvider provider = providers.get(providerName);
         if (provider == null) {
             throw new RuntimeException("Provider not found: " + providerName);
         }
         String strippedModel = stripProviderPrefix(model);
+        log.info("LangChain4jAdapter created: provider={} strippedModel={}", providerName, strippedModel);
         return new LangChain4jAdapter(provider, strippedModel);
     }
 

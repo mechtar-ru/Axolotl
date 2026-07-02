@@ -3,6 +3,7 @@ package com.agent.orchestrator.service;
 import com.agent.orchestrator.context.ContextAssembler;
 import com.agent.orchestrator.context.ContextBlock;
 import com.agent.orchestrator.context.ContextPriority;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.LlmResponse;
@@ -323,6 +324,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
 
         // Build structured tools for LLM API request body
         Map<String, Object> chatConfig = null;
+        List<dev.langchain4j.agent.tool.ToolSpecification> toolSpecs = new ArrayList<>();
         if (enabledTools != null && !enabledTools.isEmpty()) {
             List<Map<String, Object>> structuredToolDefs = new ArrayList<>();
             for (String toolName : enabledTools) {
@@ -333,12 +335,21 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                     def.put("description", toolDef.getDescription());
                     def.put("input_schema", toolDef.getInputSchema());
                     structuredToolDefs.add(def);
+                    // Also build LangChain4j ToolSpecification
+                    toolSpecs.add(buildToolSpecification(toolDef));
                 }
             }
             if (!structuredToolDefs.isEmpty()) {
                 chatConfig = new HashMap<>();
                 chatConfig.put("_tools", structuredToolDefs);
             }
+        }
+        // Create LangChain4j ChatLanguageModel for this agent run
+        dev.langchain4j.model.chat.ChatLanguageModel lcModel = null;
+        try {
+            lcModel = llmService.getChatLanguageModel(model);
+        } catch (Exception e) {
+            log.warn("Failed to create LangChain4j model for {}, falling back to LlmService: {}", model, e.getMessage());
         }
 
         // ── 3. Agent loop (tool-calling loop) ──
@@ -371,27 +382,99 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             final List<Node.Message> capturedMessages = messages;
             final Map<String, Object> capturedChatConfig = chatConfig;
             LlmResponse iterResp;
+            List<Map<String, Object>> toolCalls = new ArrayList<>();
+
             try {
-                // Extract system prompt from messages[0] so OllamaProvider gets a proper SystemMessage every iteration
-                final String capturedSystem = (!capturedMessages.isEmpty() && "system".equals(capturedMessages.get(0).getRole()))
-                        ? capturedMessages.get(0).getContent() : null;
-                // Build conversation excluding the system message (passed as separate param)
-                List<Node.Message> convMessages = capturedMessages.size() > 1 && capturedSystem != null
-                        ? capturedMessages.subList(1, capturedMessages.size())
-                        : capturedMessages;
-                CompletableFuture<LlmResponse> llmFuture = CompletableFuture.supplyAsync(() ->
-                        llmService.chat(capturedModel, capturedSystem,
-                                toolExecutionService.buildMessagesForToolCall(convMessages), capturedChatConfig, iterUsage));
-                int perCallTimeout = 600;
-                if (node != null && node.getData() != null && node.getData().getTimeoutSeconds() != null) {
-                    perCallTimeout = Math.min(node.getData().getTimeoutSeconds(), 3600);
+                boolean useLc4j = lcModel != null && !toolSpecs.isEmpty()
+                        && nodeConfig != null && Boolean.TRUE.equals(nodeConfig.get("useLangChain4j"));
+                log.info("Agent loop iteration {}: useLc4j={} lcModel={} toolSpecs={}", iterationCount, useLc4j, lcModel != null, toolSpecs.size());
+                if (useLc4j) {
+                    // ── LangChain4j path (structured tool specs) ──
+                    String systemText = (!capturedMessages.isEmpty() && "system".equals(capturedMessages.get(0).getRole()))
+                            ? capturedMessages.get(0).getContent() : "";
+                    List<dev.langchain4j.data.message.ChatMessage> lcMessages = new ArrayList<>();
+                    if (!systemText.isBlank()) {
+                        lcMessages.add(dev.langchain4j.data.message.SystemMessage.from(systemText));
+                    }
+                    for (int i = (systemText.isBlank() ? 0 : 1); i < capturedMessages.size(); i++) {
+                        Node.Message m = capturedMessages.get(i);
+                        if ("user".equals(m.getRole())) {
+                            String userContent = m.getContent() != null ? m.getContent() : "";
+                            if (!userContent.isBlank()) {
+                                lcMessages.add(dev.langchain4j.data.message.UserMessage.from(userContent));
+                            }
+                        } else if ("assistant".equals(m.getRole())) {
+                            String content = m.getContent() != null ? m.getContent() : "";
+                            lcMessages.add(dev.langchain4j.data.message.AiMessage.from(content));
+                        } else if ("tool".equals(m.getRole())) {
+                            lcMessages.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(UUID.randomUUID().toString(), "tool", m.getContent()));
+                        }
+                    }
+
+                    dev.langchain4j.model.chat.request.ChatRequest lcRequest =
+                            dev.langchain4j.model.chat.request.ChatRequest.builder()
+                                    .messages(lcMessages)
+                                    .toolSpecifications(toolSpecs)
+                                    .build();
+                    dev.langchain4j.model.chat.response.ChatResponse lcResponse = lcModel.doChat(lcRequest);
+
+                    String text = lcResponse.aiMessage().text() != null ? lcResponse.aiMessage().text() : "";
+                    dev.langchain4j.model.output.FinishReason lcFinish = lcResponse.finishReason();
+                    String finishReason = null;
+                    if (lcFinish != null) {
+                        finishReason = switch (lcFinish) {
+                            case STOP -> "stop";
+                            case LENGTH -> "length";
+                            case TOOL_EXECUTION -> "tool_calls";
+                            case CONTENT_FILTER -> "content_filter";
+                            default -> lcFinish.toString().toLowerCase();
+                        };
+                    }
+
+                    // Extract tool execution requests
+                    List<dev.langchain4j.agent.tool.ToolExecutionRequest> execRequests =
+                            lcResponse.aiMessage().toolExecutionRequests();
+                    if (execRequests != null) {
+                        for (dev.langchain4j.agent.tool.ToolExecutionRequest req : execRequests) {
+                            Map<String, Object> tc = new HashMap<>();
+                            tc.put("id", req.id() != null ? req.id() : java.util.UUID.randomUUID().toString());
+                            tc.put("name", req.name());
+                            tc.put("arguments", req.arguments());
+                            toolCalls.add(tc);
+                        }
+                    }
+                    // If no text, append tool calls JSON for compat with rest of loop
+                    if (text.isBlank() && !toolCalls.isEmpty()) {
+                        text = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(toolCalls);
+                    }
+                    iterResp = LlmResponse.full(text, null, finishReason);
+                } else {
+                    // ── Legacy LlmService path ──
+                    final String capturedSystem = (!capturedMessages.isEmpty() && "system".equals(capturedMessages.get(0).getRole()))
+                            ? capturedMessages.get(0).getContent() : null;
+                    List<Node.Message> convMessages = capturedMessages.size() > 1 && capturedSystem != null
+                            ? capturedMessages.subList(1, capturedMessages.size())
+                            : capturedMessages;
+                    CompletableFuture<LlmResponse> llmFuture = CompletableFuture.supplyAsync(() ->
+                            llmService.chat(capturedModel, capturedSystem,
+                                    toolExecutionService.buildMessagesForToolCall(convMessages), capturedChatConfig, iterUsage));
+                    int perCallTimeout = 600;
+                    if (node != null && node.getData() != null && node.getData().getTimeoutSeconds() != null) {
+                        perCallTimeout = Math.min(node.getData().getTimeoutSeconds(), 3600);
+                    }
+                    iterResp = llmFuture.orTimeout(perCallTimeout, TimeUnit.SECONDS).join();
+                    if (toolCalls.isEmpty()) {
+                        toolCalls = toolExecutionService.parseToolCalls(iterResp.text());
+                    }
                 }
-                iterResp = llmFuture.orTimeout(perCallTimeout, TimeUnit.SECONDS).join();
             } catch (CompletionException e) {
                 if (e.getCause() instanceof TimeoutException) {
                     log.error("LLM agent loop call timed out after 120s at iteration {}", iterationCount);
                 }
                 throw e;
+            } catch (Exception e) {
+                log.error("LLM call failed at iteration {}: {}", iterationCount, e.getMessage());
+                throw new RuntimeException(e);
             }
             lastResponse = iterResp.text();
             if (iterResp.reasoning() != null) {
@@ -411,7 +494,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 break;
             }
 
-            List<Map<String, Object>> toolCalls = toolExecutionService.parseToolCalls(lastResponse);
+            // If we already parsed toolCalls from LangChain4j path, skip text parsing
             if (toolCalls.isEmpty()) {
                 long iterDuration = System.currentTimeMillis() - iterationStartTime;
                 if (webSocketHandler != null) {
@@ -1108,5 +1191,61 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private String escapeJson(String value) {
         if (value == null) return "";
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private dev.langchain4j.agent.tool.ToolSpecification buildToolSpecification(com.agent.orchestrator.model.Tool toolDef) {
+        dev.langchain4j.agent.tool.ToolSpecification.Builder builder =
+                dev.langchain4j.agent.tool.ToolSpecification.builder()
+                        .name(toolDef.getName())
+                        .description(toolDef.getDescription() != null ? toolDef.getDescription() : "");
+        String inputSchema = toolDef.getInputSchema();
+        if (inputSchema != null && !inputSchema.isBlank()) {
+            try {
+                com.fasterxml.jackson.databind.JsonNode schemaNode = new com.fasterxml.jackson.databind.ObjectMapper().readTree(inputSchema);
+                JsonNode properties = schemaNode.path("properties");
+                JsonNode requiredArr = schemaNode.path("required");
+                if (properties.isObject() && !properties.isEmpty()) {
+                    dev.langchain4j.model.chat.request.json.JsonObjectSchema.Builder paramsBuilder =
+                            dev.langchain4j.model.chat.request.json.JsonObjectSchema.builder();
+                    properties.fieldNames().forEachRemaining(name -> {
+                        JsonNode prop = properties.get(name);
+                        String type = prop.path("type").asText("string");
+                        String desc = prop.path("description").asText("");
+                        paramsBuilder.addProperty(name, toJsonSchemaElement(type, desc));
+                    });
+                    if (requiredArr.isArray()) {
+                        List<String> required = new ArrayList<>();
+                        requiredArr.forEach(n -> required.add(n.asText()));
+                        paramsBuilder.required(required);
+                    }
+                    builder.parameters(paramsBuilder.build());
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse tool schema for {}: {}", toolDef.getName(), e.getMessage());
+            }
+        }
+        return builder.build();
+    }
+
+    private dev.langchain4j.model.chat.request.json.JsonSchemaElement toJsonSchemaElement(String type, String description) {
+        switch (type) {
+            case "string":
+                return description != null && !description.isBlank()
+                        ? dev.langchain4j.model.chat.request.json.JsonStringSchema.builder().description(description).build()
+                        : dev.langchain4j.model.chat.request.json.JsonStringSchema.builder().build();
+            case "integer":
+            case "number":
+                return description != null && !description.isBlank()
+                        ? dev.langchain4j.model.chat.request.json.JsonIntegerSchema.builder().description(description).build()
+                        : dev.langchain4j.model.chat.request.json.JsonIntegerSchema.builder().build();
+            case "boolean":
+                return description != null && !description.isBlank()
+                        ? dev.langchain4j.model.chat.request.json.JsonBooleanSchema.builder().description(description).build()
+                        : dev.langchain4j.model.chat.request.json.JsonBooleanSchema.builder().build();
+            case "array":
+                return dev.langchain4j.model.chat.request.json.JsonArraySchema.builder().description(description).build();
+            default:
+                return dev.langchain4j.model.chat.request.json.JsonStringSchema.builder().description(description).build();
+        }
     }
 }

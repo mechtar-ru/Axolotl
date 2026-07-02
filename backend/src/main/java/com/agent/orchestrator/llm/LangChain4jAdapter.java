@@ -67,7 +67,12 @@ public class LangChain4jAdapter implements ChatLanguageModel {
         def.put("name", spec.name());
         def.put("description", spec.description() != null ? spec.description() : "");
         if (spec.parameters() != null) {
-            def.put("input_schema", spec.parameters().toString());
+            Map<String, Object> schema = new HashMap<>();
+            schema.put("type", "object");
+            Map<String, Object> props = new HashMap<>();
+            props.put("_raw", Map.of("type", "string", "description", spec.parameters().toString()));
+            schema.put("properties", props);
+            def.put("input_schema", schema);
         }
         return def;
     }
