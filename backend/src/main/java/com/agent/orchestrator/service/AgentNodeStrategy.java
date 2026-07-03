@@ -8,6 +8,7 @@ import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmUsage;
+import com.agent.orchestrator.llm.ModelPrompts;
 import com.agent.orchestrator.llm.StreamingResult;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.Edge;
@@ -59,6 +60,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private final MagicContextRetriever mcRetriever;
     private final FlutterScaffoldHelper flutterScaffoldHelper;
     private final FixPassOrchestrator fixPassOrchestrator;
+    private final ModelPrompts modelPrompts;
     private final Executor plannerExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
@@ -76,7 +78,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                               MagicContextIndexer mcIndexer,
                               MagicContextRetriever mcRetriever,
                               FlutterScaffoldHelper flutterScaffoldHelper,
-                              FixPassOrchestrator fixPassOrchestrator) {
+                              FixPassOrchestrator fixPassOrchestrator,
+                              ModelPrompts modelPrompts) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -93,6 +96,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         this.mcRetriever = mcRetriever;
         this.flutterScaffoldHelper = flutterScaffoldHelper;
         this.fixPassOrchestrator = fixPassOrchestrator;
+        this.modelPrompts = modelPrompts;
     }
 
     @PreDestroy
@@ -286,7 +290,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                     systemPrompt = buildPrepPrompt(node, schemaId);
                     break;
                 default:
-                    systemPrompt = "You are a coding agent. Implement the requested features.";
+                    systemPrompt = modelPrompts.getPrompt(resolvedModel);
                     break;
             }
         }

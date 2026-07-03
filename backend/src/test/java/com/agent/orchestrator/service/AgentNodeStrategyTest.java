@@ -4,6 +4,7 @@ import com.agent.orchestrator.context.ContextAssembler;
 import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
+import com.agent.orchestrator.llm.ModelPrompts;
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.Node;
 import com.agent.orchestrator.model.WorkflowSchema;
@@ -76,7 +77,8 @@ class AgentNodeStrategyTest {
                 mcIndexer,
                 mcRetriever,
                 flutterScaffoldHelper,
-                fixPassOrchestrator);
+                fixPassOrchestrator,
+                mock(ModelPrompts.class));
 
         node = new Node();
         node.setId("n1");
