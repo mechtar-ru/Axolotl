@@ -119,6 +119,20 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         // Clear stale file changes from any previous run of this node
         stateManager.clearFileChanges(schemaId, node.getId());
 
+        // Ensure enabledTools is set from config if not already
+        if (node.getData() != null && (node.getData().getEnabledTools() == null || node.getData().getEnabledTools().isEmpty())) {
+            Map<String, Object> cfg = node.getData().getConfig();
+            if (cfg != null) {
+                Object tools = cfg.get("enabledTools");
+                if (tools == null) tools = cfg.get("tools");
+                if (tools instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<String> toolList = (List<String>) tools;
+                    node.getData().setEnabledTools(new ArrayList<>(toolList));
+                }
+            }
+        }
+
         boolean useTools = node.getData() != null && node.getData().getEnabledTools() != null
                 && !node.getData().getEnabledTools().isEmpty();
 
@@ -401,7 +415,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             List<Map<String, Object>> toolCalls = new ArrayList<>();
 
             try {
-                boolean useLc4j = lcModel != null && !toolSpecs.isEmpty();
+                boolean useLc4j = lcModel != null && !toolSpecs.isEmpty()
+                        && nodeConfig != null && Boolean.TRUE.equals(nodeConfig.get("useLangChain4j"));
                 log.info("Agent loop iteration {}: useLc4j={} lcModel={} toolSpecs={}", iterationCount, useLc4j, lcModel != null, toolSpecs.size());
                 if (useLc4j) {
                     // ── LangChain4j path (structured tool specs) ──
