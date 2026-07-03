@@ -110,6 +110,10 @@ public class ToolExecutorImpl implements ToolExecutor {
             {"type":"object","properties":{"command":{"type":"string","description":"The command to execute"},"cwd":{"type":"string","description":"Working directory (optional)"},"timeout":{"type":"integer","description":"Timeout in seconds (default 30)"}},"required":["command"]}
             """, ToolCategory.EXECUTION));
 
+        registerTool(new Tool("edit", "Edit File", "Search-and-replace edit on a file. Finds oldString and replaces with newString. If requireExactMatch is false, falls back to fuzzy matching (trim whitespace, partial match).", """
+            {"type":"object","properties":{"filePath":{"type":"string","description":"Path to the file to edit"},"oldString":{"type":"string","description":"Text to search for"},"newString":{"type":"string","description":"Replacement text"},"requireExactMatch":{"type":"boolean","description":"If true, require exact match. If false, try fuzzy matching."}},"required":["filePath","oldString","newString"]}
+            """, ToolCategory.FILE_SYSTEM));
+
         registerTool(new Tool("memory_read", "Memory Read", "Query from memory store", """
             {"type":"object","properties":{"query":{"type":"string","description":"Search query"},"limit":{"type":"number","description":"Max results"}},"required":["query"]}
             """, ToolCategory.MEMORY));
@@ -180,6 +184,7 @@ public class ToolExecutorImpl implements ToolExecutor {
             handlers.put("web_search", handlerService::handleWebSearch);
             handlers.put("web_fetch", handlerService::handleWebFetch);
             handlers.put("rlm_predict", handlerService::handleRlmPredict);
+            handlers.put("edit", handlerService::handleEdit);
             handlers.put("grep", handlerService::handleGrep);
             handlers.put("git", handlerService::handleGit);
             handlers.put("memory_search", handlerService::handleMemorySearch);

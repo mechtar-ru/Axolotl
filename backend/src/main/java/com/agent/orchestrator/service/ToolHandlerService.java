@@ -1027,4 +1027,117 @@ public class ToolHandlerService {
             return ToolResult.error("Planner call failed: " + e.getMessage());
         }
     }
+
+    /**
+     * Search-and-replace edit on a file with optional fuzzy matching.
+     * Parameters: filePath, oldString, newString, requireExactMatch (optional, default false).
+     */
+    public ToolResult handleEdit(Map<String, Object> params, ToolPermission permission) {
+        String filePath = (String) params.get("filePath");
+        if (filePath == null) filePath = (String) params.get("path");
+        String oldString = (String) params.get("oldString");
+        String newString = (String) params.get("newString");
+        boolean requireExact = Boolean.TRUE.equals(params.get("requireExactMatch"));
+
+        if (filePath == null || oldString == null || newString == null) {
+            return ToolResult.error("Missing required params: filePath, oldString, newString");
+        }
+        if (oldString.isEmpty()) {
+            return ToolResult.error("oldString cannot be empty");
+        }
+
+        try {
+            String content = java.nio.file.Files.readString(java.nio.file.Path.of(filePath));
+
+            // Try exact match first
+            int idx = content.indexOf(oldString);
+            boolean found = idx >= 0;
+
+            // If not found and fuzzy matching is allowed
+            if (!found && !requireExact) {
+                // Normalize both sides: trim, collapse whitespace
+                String searchNormalized = normalizeWhitespace(oldString);
+                String contentNormalized = normalizeWhitespace(content);
+
+                idx = contentNormalized.indexOf(searchNormalized);
+                if (idx >= 0) {
+                    // Found in normalized form — need to find the actual position in original content
+                    // Count chars from start to the match position in normalized
+                    int pos = findMappedPosition(content, contentNormalized, idx);
+                    if (pos >= 0) {
+                        // Use the original oldString's length approximation
+                        String actual = content.substring(pos, Math.min(pos + oldString.length() * 2, content.length()));
+                        // Find the actual matching text
+                        String bestMatch = findBestMatch(actual, oldString);
+                        if (bestMatch != null) {
+                            oldString = bestMatch;
+                            idx = pos;
+                            found = true;
+                            log.info("Fuzzy match found: '{}' at position {}", oldString, idx);
+                        }
+                    }
+                }
+            }
+
+            if (!found) {
+                return ToolResult.error("oldString not found in file" + (requireExact ? "" : " (even with fuzzy matching)"));
+            }
+
+            String newContent = content.substring(0, idx) + newString + content.substring(idx + oldString.length());
+            java.nio.file.Files.writeString(java.nio.file.Path.of(filePath), newContent);
+
+            return ToolResult.ok("Applied edit at position " + idx + ": replaced " + oldString.length()
+                    + " chars with " + newString.length() + " chars");
+        } catch (IOException e) {
+            return ToolResult.error("Failed to edit file: " + e.getMessage());
+        } catch (Exception e) {
+            return ToolResult.error("Edit failed: " + e.getMessage());
+        }
+    }
+
+    private String normalizeWhitespace(String s) {
+        return s.replace("\r\n", "\n").replace("\r", "\n").trim()
+                .replaceAll("\\s+", " ").replaceAll(" ?\n ?", "\n");
+    }
+
+    private int findMappedPosition(String original, String normalized, int normalizedIdx) {
+        // Walk both strings to find the character position in original that maps to normalizedIdx in normalized
+        int normPos = 0;
+        int origPos = 0;
+        while (normPos < normalizedIdx && origPos < original.length()) {
+            char nc = normalized.charAt(normPos);
+            char oc = original.charAt(origPos);
+            if (nc == oc) {
+                normPos++;
+                origPos++;
+            } else if (oc == '\r') {
+                origPos++; // skip \r in original
+            } else if (Character.isWhitespace(oc) && Character.isWhitespace(nc)) {
+                // Both are whitespace but different — advance both
+                normPos++;
+                origPos++;
+            } else if (Character.isWhitespace(oc)) {
+                origPos++; // skip extra whitespace in original
+            } else if (Character.isWhitespace(nc)) {
+                normPos++; // skip extra whitespace in normalized
+            } else {
+                return -1; // mismatch
+            }
+        }
+        if (normPos >= normalizedIdx) return origPos;
+        return -1;
+    }
+
+    private String findBestMatch(String haystack, String needle) {
+        // Try exact substring first
+        int idx = haystack.indexOf(needle);
+        if (idx >= 0) return haystack.substring(idx, idx + needle.length());
+
+        // Try trimmed needle
+        String trimmed = needle.trim();
+        idx = haystack.indexOf(trimmed);
+        if (idx >= 0) return haystack.substring(idx, idx + trimmed.length());
+
+        return null;
+    }
 }
