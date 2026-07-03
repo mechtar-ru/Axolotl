@@ -575,15 +575,36 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 toolsInThisIteration++;
             }
 
-            // H42: Trim message history to prevent unbounded growth
-            int MAX_MESSAGES = 20;
-            if (messages.size() > MAX_MESSAGES) {
+            // Compact message history to prevent unbounded growth
+            // Uses Magic Context for summarization when available
+            int COMPACT_THRESHOLD = 18;
+            int KEEP_RECENT = 5;
+            if (messages.size() > COMPACT_THRESHOLD) {
                 List<Node.Message> systemMsg = List.of(messages.get(0));
-                List<Node.Message> recentMessages = messages.subList(messages.size() - (MAX_MESSAGES - 1), messages.size());
-                List<Node.Message> trimmed = new ArrayList<>();
-                trimmed.addAll(systemMsg);
-                trimmed.addAll(recentMessages);
-                messages = trimmed;
+                List<Node.Message> oldMessages = messages.subList(1, messages.size() - KEEP_RECENT);
+                List<Node.Message> recentMessages = messages.subList(messages.size() - KEEP_RECENT, messages.size());
+
+                // Summarize old messages via LLM
+                String origSystemText = !messages.isEmpty() && "system".equals(messages.get(0).getRole())
+                        ? messages.get(0).getContent() : "";
+                String compactSummary = compactConversation(schemaId, node.getId(), model, origSystemText, oldMessages);
+                if (compactSummary != null && !compactSummary.isBlank()) {
+                    // Store in Magic Context if available
+                    storeInMagicContext(schemaId, node.getId(), compactSummary);
+                    // Add summary as system message
+                    messages = new ArrayList<>();
+                    messages.addAll(systemMsg);
+                    messages.add(new Node.Message("system", "[Context summary of previous conversation turns]\n" + compactSummary));
+                    messages.addAll(recentMessages);
+                    log.info("Compacted {} old messages into summary ({} chars)", oldMessages.size(), compactSummary.length());
+                } else {
+                    // Fallback: keep system + last KEEP_RECENT messages
+                    List<Node.Message> trimmed = new ArrayList<>();
+                    trimmed.addAll(systemMsg);
+                    trimmed.addAll(recentMessages);
+                    messages = trimmed;
+                    log.info("Trimmed messages to {} (compaction produced no summary)", messages.size());
+                }
             }
 
             long iterDuration = System.currentTimeMillis() - iterationStartTime;
@@ -1211,6 +1232,53 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Compact old conversation messages into a summary using the LLM.
+     * Returns the summary text, or null if compaction failed.
+     */
+    private String compactConversation(String schemaId, String nodeId, String model,
+                                        String systemPrompt, List<Node.Message> oldMessages) {
+        try {
+            StringBuilder conversationText = new StringBuilder();
+            for (Node.Message msg : oldMessages) {
+                String role = msg.getRole() != null ? msg.getRole() : "unknown";
+                String content = msg.getContent() != null ? msg.getContent() : "";
+                if (content.length() > 500) content = content.substring(0, 500) + "...";
+                conversationText.append("[").append(role).append("]\n").append(content).append("\n\n");
+            }
+
+            String compactPrompt = "Summarize the following conversation turns into a brief context paragraph. "
+                + "Keep all key facts, decisions, and results. Omit verbatim code blocks.\n\n"
+                + conversationText.toString();
+
+            LlmResponse resp = llmService.chat(model, null, compactPrompt, null);
+            if (resp != null && resp.text() != null && !resp.text().isBlank()
+                    && !resp.text().startsWith("Error:") && !resp.text().startsWith("Provider not found")) {
+                return resp.text().trim();
+            }
+        } catch (Exception e) {
+            log.warn("Conversation compaction failed: {}", e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Store a summary in Magic Context for future retrieval.
+     */
+    private void storeInMagicContext(String schemaId, String nodeId, String summary) {
+        if (summary == null || summary.isBlank()) return;
+        try {
+            if (mcIndexer != null && mcIndexer.isAvailable()) {
+                mcIndexer.indexNodeOutput(schemaId, nodeId, "agent", summary,
+                        schemaRepository.findById(schemaId) != null
+                                ? schemaRepository.findById(schemaId).getName() : "",
+                        "compaction-summary");
+            }
+        } catch (Exception e) {
+            log.warn("Failed to store compaction summary in Magic Context: {}", e.getMessage());
+        }
     }
 
     private String escapeJson(String value) {
