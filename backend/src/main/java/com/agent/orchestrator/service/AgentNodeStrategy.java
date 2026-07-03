@@ -8,6 +8,7 @@ import com.agent.orchestrator.graph.repository.Neo4jSchemaRepository;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.LlmResponse;
 import com.agent.orchestrator.llm.LlmUsage;
+import com.agent.orchestrator.llm.StreamingResult;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.Edge;
 import com.agent.orchestrator.model.ExecutionMode;
@@ -418,74 +419,36 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 boolean useLc4j = lcModel != null && !toolSpecs.isEmpty()
                         && nodeConfig != null && Boolean.TRUE.equals(nodeConfig.get("useLangChain4j"));
                 log.info("Agent loop iteration {}: useLc4j={} lcModel={} toolSpecs={}", iterationCount, useLc4j, lcModel != null, toolSpecs.size());
+                String finishReason = null;
+                String reasoning = null;
                 if (useLc4j) {
-                    // ── LangChain4j path (structured tool specs) ──
+                    // ── AI SDK-style streaming path with structured tool calls ──
                     String systemText = (!capturedMessages.isEmpty() && "system".equals(capturedMessages.get(0).getRole()))
                             ? capturedMessages.get(0).getContent() : "";
-                    List<dev.langchain4j.data.message.ChatMessage> lcMessages = new ArrayList<>();
-                    if (!systemText.isBlank()) {
-                        lcMessages.add(dev.langchain4j.data.message.SystemMessage.from(systemText));
-                    }
-                    for (int i = (systemText.isBlank() ? 0 : 1); i < capturedMessages.size(); i++) {
-                        Node.Message m = capturedMessages.get(i);
-                        if ("user".equals(m.getRole())) {
-                            String userContent = m.getContent() != null ? m.getContent() : "";
-                            if (!userContent.isBlank()) {
-                                lcMessages.add(dev.langchain4j.data.message.UserMessage.from(userContent));
-                            }
-                        } else if ("assistant".equals(m.getRole())) {
-                            String content = m.getContent() != null ? m.getContent() : "";
-                            lcMessages.add(dev.langchain4j.data.message.AiMessage.from(content));
-                        } else if ("tool".equals(m.getRole())) {
-                            lcMessages.add(dev.langchain4j.data.message.ToolExecutionResultMessage.from(UUID.randomUUID().toString(), "tool", m.getContent()));
-                        }
+                    String userPrompt = buildUserPrompt(capturedMessages, systemText);
+                    Map<String, Object> streamConfig = capturedChatConfig;
+
+                    // Call streaming with tool call extraction
+                    StringBuilder streamText = new StringBuilder();
+                    StreamingResult streamResult = llmService.streamingChatWithToolCalls(
+                            capturedModel, systemText, userPrompt, streamConfig,
+                            token -> { streamText.append(token); }
+                    );
+
+                    String text = streamResult.text();
+                    finishReason = streamResult.finishReason();
+                    reasoning = streamResult.reasoning();
+
+                    // Tool calls from streaming result
+                    if (streamResult.hasToolCalls()) {
+                        toolCalls.addAll(streamResult.toolCalls());
                     }
 
-                    dev.langchain4j.model.chat.request.ChatRequest lcRequest =
-                            dev.langchain4j.model.chat.request.ChatRequest.builder()
-                                    .messages(lcMessages)
-                                    .toolSpecifications(toolSpecs)
-                                    .build();
-                    dev.langchain4j.model.chat.response.ChatResponse lcResponse = lcModel.doChat(lcRequest);
-
-                    String text = lcResponse.aiMessage().text() != null ? lcResponse.aiMessage().text() : "";
-                    dev.langchain4j.model.output.FinishReason lcFinish = lcResponse.finishReason();
-                    String finishReason = null;
-                    if (lcFinish != null) {
-                        finishReason = switch (lcFinish) {
-                            case STOP -> "stop";
-                            case LENGTH -> "length";
-                            case TOOL_EXECUTION -> "tool_calls";
-                            case CONTENT_FILTER -> "content_filter";
-                            default -> lcFinish.toString().toLowerCase();
-                        };
+                    // Fallback: try parsing tool calls from text
+                    if (toolCalls.isEmpty() && !text.isBlank()) {
+                        toolCalls = toolExecutionService.parseToolCalls(text);
                     }
 
-                    // Extract tool execution requests
-                    List<dev.langchain4j.agent.tool.ToolExecutionRequest> execRequests =
-                            lcResponse.aiMessage().toolExecutionRequests();
-                    if (execRequests != null) {
-                        for (dev.langchain4j.agent.tool.ToolExecutionRequest req : execRequests) {
-                            Map<String, Object> tc = new HashMap<>();
-                            tc.put("id", req.id() != null ? req.id() : java.util.UUID.randomUUID().toString());
-                            tc.put("name", req.name());
-                            // Parse arguments from JSON string to Map
-                            String argsStr = req.arguments();
-                            if (argsStr != null && !argsStr.isBlank()) {
-                                try {
-                                    @SuppressWarnings("unchecked")
-                                    Map<String, Object> parsedArgs = new com.fasterxml.jackson.databind.ObjectMapper().readValue(argsStr, Map.class);
-                                    tc.put("arguments", parsedArgs);
-                                } catch (Exception e) {
-                                    tc.put("arguments", argsStr);
-                                }
-                            } else {
-                                tc.put("arguments", Map.of());
-                            }
-                            toolCalls.add(tc);
-                        }
-                    }
-                    // If no text, append tool calls JSON for compat with rest of loop
                     if (text.isBlank() && !toolCalls.isEmpty()) {
                         text = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(toolCalls);
                     }
@@ -1235,6 +1198,18 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         }
         sb.append("]");
         sb.append("}");
+        return sb.toString();
+    }
+
+    private String buildUserPrompt(List<Node.Message> messages, String systemText) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = (systemText == null || systemText.isBlank() ? 0 : 1); i < messages.size(); i++) {
+            Node.Message m = messages.get(i);
+            if ("user".equals(m.getRole()) && m.getContent() != null && !m.getContent().isBlank()) {
+                if (sb.length() > 0) sb.append("\n");
+                sb.append(m.getContent());
+            }
+        }
         return sb.toString();
     }
 

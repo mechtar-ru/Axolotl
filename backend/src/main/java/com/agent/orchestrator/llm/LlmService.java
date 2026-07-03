@@ -251,6 +251,84 @@ public class LlmService {
     }
 
     /**
+     * AI SDK-style streaming LLM call with tool call extraction.
+     * Streams tokens via onToken callback, returns structured tool calls and finish reason.
+     * Uses the LangChain4j adapter for structured tool call parsing when available.
+     */
+    public StreamingResult streamingChatWithToolCalls(String model, String systemPrompt, String userPrompt,
+                                                       Map<String, Object> config,
+                                                       java.util.function.Consumer<String> onToken) {
+        StringBuilder textBuilder = new StringBuilder();
+        List<Map<String, Object>> toolCalls = new ArrayList<>();
+        String[] finishReason = {null};
+        String[] reasoning = {null};
+        int[] totalTokens = {0};
+
+        try {
+            // Try LangChain4j path first for structured tool calls
+            String providerName = resolveProvider(model);
+            LlmProvider provider = providers.get(providerName);
+            if (provider != null) {
+                String strippedModel = stripProviderPrefix(model);
+                LlmResponse response = circuitBreaker.call(providerName,
+                        () -> provider.streamingChat(strippedModel, systemPrompt, userPrompt, config, onToken, null));
+
+                if (response != null) {
+                    String text = response.text() != null ? response.text() : "";
+                    textBuilder.append(text);
+                    finishReason[0] = response.finishReason();
+                    reasoning[0] = response.reasoning();
+
+                    // Parse tool calls from text only if finish_reason indicates tools
+                    if ("tool_calls".equals(finishReason[0]) || text.contains("tool_calls") || text.contains("\"function\"")) {
+                        try {
+                            // Try JSON array parsing (from LangChain4j or structured format)
+                            int start = text.indexOf('[');
+                            int end = text.lastIndexOf(']');
+                            if (start >= 0 && end > start) {
+                                String json = text.substring(start, end + 1);
+                                com.fasterxml.jackson.databind.JsonNode arr = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+                                if (arr.isArray()) {
+                                    for (com.fasterxml.jackson.databind.JsonNode tc : arr) {
+                                        Map<String, Object> tcMap = new HashMap<>();
+                                        tcMap.put("id", tc.path("id").asText(""));
+                                        tcMap.put("name", tc.path("function").path("name").asText(""));
+                                        String argsStr = tc.path("function").path("arguments").asText("{}");
+                                        try {
+                                            tcMap.put("arguments", new com.fasterxml.jackson.databind.ObjectMapper().readValue(argsStr, Map.class));
+                                        } catch (Exception e) {
+                                            tcMap.put("arguments", argsStr);
+                                        }
+                                        toolCalls.add(tcMap);
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.debug("Could not parse structured tool calls from text, falling back to legacy parser");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Streaming with tool calls failed for {}: {}", model, e.getMessage());
+            log.debug("Streaming error detail", e);
+        } catch (Throwable t) {
+            log.error("Streaming with tool calls fatal error for {}: {}", model, t.getMessage());
+        }
+
+        StreamingResult result = new StreamingResult(
+            textBuilder.toString(),
+            toolCalls,
+            finishReason[0],
+            reasoning[0],
+            totalTokens[0]
+        );
+        log.info("StreamingResult: textLen={} toolCalls={} finishReason={}", 
+            result.text().length(), result.toolCalls().size(), result.finishReason());
+        return result;
+    }
+
+    /**
      * Build the ordered model chain: [primary] + [fallbackModels from config].
      */
     @SuppressWarnings("unchecked")

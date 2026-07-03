@@ -203,9 +203,10 @@ public final class OpenAiChatClient {
      * forward content tokens to the consumer, and return LlmResponse.
      */
     static LlmResponse parseSseResponse(java.io.InputStream inputStream,
-                                          Consumer<String> onToken) throws Exception {
+                                           Consumer<String> onToken) throws Exception {
         StringBuilder contentBuilder = new StringBuilder();
         StringBuilder reasoningBuilder = new StringBuilder();
+        String[] finishReasonHolder = {null};
         boolean lastLineWasDone = false;
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(inputStream))) {
@@ -221,6 +222,12 @@ public final class OpenAiChatClient {
 
                 try {
                     JsonNode node = MAPPER.readTree(data);
+
+                    // Capture finish_reason from the chunk (present on last non-DONE chunk)
+                    JsonNode frNode = node.at("/choices/0/finish_reason");
+                    if (!frNode.isMissingNode() && !frNode.isNull()) {
+                        finishReasonHolder[0] = frNode.asText();
+                    }
 
                     String reasoning = node.at("/choices/0/delta/reasoning_content").asText("");
                     if (reasoning.isEmpty()) {
@@ -253,11 +260,12 @@ public final class OpenAiChatClient {
 
         String text = contentBuilder.toString();
         String reasoning = reasoningBuilder.length() > 0 ? reasoningBuilder.toString() : null;
+        String finishReason = finishReasonHolder[0];
 
         if (reasoning != null && !reasoning.isBlank()) {
-            return LlmResponse.full(text, reasoning, null);
+            return LlmResponse.full(text, reasoning, finishReason);
         }
-        return LlmResponse.textOnly(text);
+        return finishReason != null ? LlmResponse.full(text, null, finishReason) : LlmResponse.textOnly(text);
     }
 
     /**
