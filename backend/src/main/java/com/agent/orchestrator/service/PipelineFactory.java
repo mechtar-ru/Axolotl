@@ -121,6 +121,9 @@ public final class PipelineFactory {
         agent.setSystemPrompt("Execute the plan for: " + description);
         agent.setPositionX(1450);
         agent.setPositionY(200);
+        Map<String, Object> agentConfig = new HashMap<>();
+        agentConfig.put("tools", List.of("file_read", "file_write", "bash", "grep", "directory_read"));
+        agent.setConfig(agentConfig);
         stages.add(agent);
 
         Stage verifier = new Stage();
@@ -258,6 +261,7 @@ public final class PipelineFactory {
                 "Application description: " + description);
         Map<String, Object> agentConfig = new HashMap<>();
         agentConfig.put("agentType", "code-agent");
+        agentConfig.put("tools", List.of("file_read", "file_write", "bash", "grep", "directory_read"));
         agent.setConfig(agentConfig);
         agent.setPositionX(50 + xSpacing * 5);
         agent.setPositionY(yCenter);
@@ -581,6 +585,18 @@ public final class PipelineFactory {
             // Copy config into stage config
             if (data.getConfig() != null) {
                 stage.setConfig(new HashMap<>(data.getConfig()));
+            }
+
+            // Ensure agent nodes have default tools
+            if ("agent".equals(node.getType())) {
+                Map<String, Object> cfg = stage.getConfig();
+                if (cfg == null) {
+                    cfg = new HashMap<>();
+                    stage.setConfig(cfg);
+                }
+                if (cfg.get("tools") == null && cfg.get("enabledTools") == null) {
+                    cfg.put("tools", List.of("file_read", "file_write", "bash", "grep", "directory_read"));
+                }
             }
 
             // Set dependencies from edge adjacency
