@@ -1,35 +1,7 @@
-import sys
-import json
-from pathlib import Path
+```python
+import subprocess
+import shlex
 
-class DataReceiver:
-    def __init__(self, base_path: Path):
-        self.base_path = base_path
-
-    def receive_data(self) -> dict:
-        files = {
-            "readme": self.base_path / "README.md",
-            "pipeline_report": self.base_path / "pipeline-report.md",
-        }
-        data = {}
-        for key, path in files.items():
-            if path.exists():
-                data[key] = path.read_text()
-            else:
-                data[key] = None
-        return data
-
-def main():
-    receiver = DataReceiver(Path(__file__).parent.resolve())
-    data = receiver.receive_data()
-    print("Source: Receive")
-    print("Data received:")
-    for key, content in data.items():
-        if content is not None:
-            print(f"\n=== {key.upper()} ===")
-            print(content.strip()[:200])
-        else:
-            print(f"{key} not found")
-
-if __name__ == "__main__":
-    main()
+command = "find /Users/evgenijtihomirov/git/Axolotl/snake -type f -not -path '*/\.*' -not -path '*/build/*' -not -path '*/android/*' -not -path '*/ios/*' -not -path '*/web/*' -not -path '*/macos/*' -not -path '*/linux/*' -not -path '*/windows/*' -not -path '*/node_modules/*' | head -100"
+subprocess.run(command, shell=True, check=True)
+```

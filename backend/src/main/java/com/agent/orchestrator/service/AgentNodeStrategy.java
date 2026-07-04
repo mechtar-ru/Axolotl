@@ -511,6 +511,18 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 }
                 if (iterationCount >= minIterations) {
                     log.info("Agent iteration {} produced no tool calls; minIterations={} reached, breaking", iterationCount, minIterations);
+                    // Auto-save: extract code blocks from model's text response and write as files
+                    String responseText = lastResponse;
+                    if (responseText != null && !responseText.isBlank()) {
+                        try {
+                            int saved = autoSaveCodeBlocks(schemaId, node.getId(), responseText, currentSchema);
+                            if (saved > 0) {
+                                log.info("Auto-saved {} code block(s) from model response", saved);
+                            }
+                        } catch (Exception e) {
+                            log.warn("Auto-save failed: {}", e.getMessage());
+                        }
+                    }
                     break;
                 }
                 log.info("Agent iteration {} produced no tool calls; below minIterations={}, continuing", iterationCount, minIterations);
@@ -651,6 +663,17 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
             List<Map<String, String>> writtenFiles = collectWrittenFiles(schemaId, node.getId());
             if (!writtenFiles.isEmpty()) {
                 stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), writtenFiles);
+            }
+            // Auto-save code blocks from model response if no files were written via tools
+            if (writtenFiles.isEmpty() && finalResponse != null) {
+                try {
+                    int saved = autoSaveCodeBlocks(schemaId, node.getId(), finalResponse, currentSchema);
+                    if (saved > 0) {
+                        log.info("Auto-saved {} code block(s) at end of agent execution", saved);
+                    }
+                } catch (Exception e) {
+                    log.warn("End-of-execution auto-save failed: {}", e.getMessage());
+                }
             }
         }
 
@@ -1283,6 +1306,98 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         } catch (Exception e) {
             log.warn("Failed to store compaction summary in Magic Context: {}", e.getMessage());
         }
+    }
+
+    /**
+     * Auto-save code blocks from model's text response as files.
+     * Used when model generates code but doesn't call file_write.
+     * Returns number of files saved.
+     */
+    private int autoSaveCodeBlocks(String schemaId, String nodeId, String text, WorkflowSchema schema) {
+        if (text == null || text.isBlank()) return 0;
+        String targetPath = schema != null ? schema.getTargetPath() : null;
+        if (targetPath == null) {
+            log.debug("No targetPath for auto-save, skipping");
+            return 0;
+        }
+
+        int saved = 0;
+        // Match ```lang\n...\n``` code blocks
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+            "```(\\w*)\\s*\\n?(.*?)```",
+            java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher matcher = pattern.matcher(text);
+
+        while (matcher.find()) {
+            String lang = matcher.group(1).trim().toLowerCase();
+            String code = matcher.group(2).trim();
+            if (code.isEmpty()) continue;
+
+            // Try to find file path: a line before the code block like "snake/snake.py" or path comment inside
+            String filePath = extractFilePath(text, matcher.start(), lang, targetPath);
+            if (filePath == null) continue;
+
+            // Resolve path
+            java.nio.file.Path fullPath = java.nio.file.Path.of(targetPath, filePath).normalize();
+
+            try {
+                java.nio.file.Files.createDirectories(fullPath.getParent());
+                java.nio.file.Files.writeString(fullPath, code);
+                log.info("Auto-saved {} ({} bytes) from code block", fullPath, code.length());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Auto-saved " + filePath + " (" + code.length() + " bytes)", nodeId);
+                }
+                saved++;
+            } catch (Exception e) {
+                log.warn("Failed to auto-save {}: {}", fullPath, e.getMessage());
+            }
+        }
+        return saved;
+    }
+
+    /**
+     * Extract file path from context around a code block.
+     * Checks: preceding text for path patterns, or falls back to lang-based name.
+     */
+    private String extractFilePath(String text, int blockStart, String lang, String targetPath) {
+        // Look for "path:" or "file:" or "filename:" in the 5 lines before the code block
+        String before = text.substring(Math.max(0, blockStart - 300), blockStart);
+        String[] lines = before.split("\n");
+        for (String line : lines) {
+            String trimmed = line.trim().toLowerCase();
+            // Match: snake/snake.py, /path/to/file, filename: file.py
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(?:^|\\b)(?:path|file|filename|save)\\s*[:=]?\\s*['\"]?([a-zA-Z0-9_/.\\-]+\\.[a-zA-Z0-9]+)['\"]?"
+            ).matcher(trimmed);
+            if (m.find()) {
+                return m.group(1);
+            }
+        }
+        // Look for comment with path inside the first line of the code
+        // Fallback: generate from language
+        if (!lang.isEmpty()) {
+            String ext = switch (lang) {
+                case "python", "py" -> ".py";
+                case "dart" -> ".dart";
+                case "java" -> ".java";
+                case "typescript", "ts" -> ".ts";
+                case "javascript", "js" -> ".js";
+                case "html" -> ".html";
+                case "css" -> ".css";
+                case "yaml", "yml" -> ".yml";
+                case "json" -> ".json";
+                case "xml" -> ".xml";
+                case "go" -> ".go";
+                case "rust", "rs" -> ".rs";
+                case "shell", "bash", "sh" -> ".sh";
+                case "sql" -> ".sql";
+                case "markdown", "md" -> ".md";
+                default -> "." + lang;
+            };
+            return "generated_" + java.util.UUID.randomUUID().toString().substring(0, 8) + ext;
+        }
+        return null;
     }
 
     private String escapeJson(String value) {
