@@ -665,9 +665,10 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                 stateManager.getGeneratedFilesRegistry().put(schemaId + ":" + node.getId(), writtenFiles);
             }
             // Auto-save code blocks from model response if no files were written via tools
-            if (writtenFiles.isEmpty() && finalResponse != null) {
+            String fullText = fullResponse.length() > 0 ? fullResponse.toString() : finalResponse;
+            if (writtenFiles.isEmpty() && fullText != null && !fullText.isBlank()) {
                 try {
-                    int saved = autoSaveCodeBlocks(schemaId, node.getId(), finalResponse, currentSchema);
+                    int saved = autoSaveCodeBlocks(schemaId, node.getId(), fullText, currentSchema);
                     if (saved > 0) {
                         log.info("Auto-saved {} code block(s) at end of agent execution", saved);
                     }

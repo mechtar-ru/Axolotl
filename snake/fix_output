@@ -1,7 +1,2 @@
-```python
-import subprocess
-import shlex
-
-command = "find /Users/evgenijtihomirov/git/Axolotl/snake -type f -not -path '*/\.*' -not -path '*/build/*' -not -path '*/android/*' -not -path '*/ios/*' -not -path '*/web/*' -not -path '*/macos/*' -not -path '*/linux/*' -not -path '*/windows/*' -not -path '*/node_modules/*' | head -100"
-subprocess.run(command, shell=True, check=True)
-```
+def solve():
+    pass
