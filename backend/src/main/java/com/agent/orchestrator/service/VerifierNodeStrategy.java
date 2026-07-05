@@ -591,10 +591,23 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
      * Call LLM to fix code based on verification errors, then write the fix back.
      */
     private String runRewriteFix(String model, String schemaId, Node node, String currentContent, String errors) {
-        String fixPrompt = "The following code has issues that need to be fixed.\\n\\n"
-                + "Original code:\\n" + currentContent + "\\n\\n"
-                + "Errors found:\\n" + errors + "\\n\\n"
-                + "Fix the issues and return ONLY the corrected code. Do NOT include any explanations, markdown fences, or extra text.";
+        WorkflowSchema ws = schemaRepository.findById(schemaId);
+        boolean hasFilePlan = currentContent != null && currentContent.contains("FILE:");
+
+        String fixPrompt;
+        if (hasFilePlan) {
+            fixPrompt = "The project plan specifies these files to create:\\n\\n"
+                    + currentContent + "\\n\\n"
+                    + "Generate COMPLETE working code for ALL files. "
+                    + "For each file, output a fenced code block:\\n"
+                    + "```path/to/file.ext\\n...code...\\n```\\n\\n"
+                    + "Make each file complete and runnable. Do NOT skip any file.";
+        } else {
+            fixPrompt = "The following code has issues that need to be fixed.\\n\\n"
+                    + "Original code:\\n" + currentContent + "\\n\\n"
+                    + "Errors found:\\n" + errors + "\\n\\n"
+                    + "Fix the issues and return ONLY the corrected code. Do NOT include any explanations, markdown fences, or extra text.";
+        }
 
         LlmResponse fixedResp = llmService.chat(model, null, fixPrompt, null);
         String fixedCode = fixedResp.text();
@@ -603,45 +616,87 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         }
         if (fixedCode == null || fixedCode.isBlank()) return currentContent;
 
-        // Clean up the response (remove markdown fences if present)
-        String cleaned = fixedCode.trim();
-        if (cleaned.startsWith("```")) {
-            cleaned = cleaned.replaceFirst("^```\\\\w*\\\\n?", "").replaceFirst("\\\\n?```$", "").trim();
+        // Try to write files from code blocks
+        int filesWritten = writeGeneratedFiles(fixedCode, ws, schemaId, node);
+        if (filesWritten > 0) {
+            log.info("Verifier generated {} file(s) from code blocks", filesWritten);
+            return "Generated " + filesWritten + " file(s)";
         }
 
-        // Write the fixed content directly to the schema target path
+        // Legacy: single file write
+        String cleaned = fixedCode.trim();
+        if (cleaned.startsWith("```")) {
+            cleaned = cleaned.replaceFirst("^```\\w*\\n?", "").replaceFirst("\\n?```$", "").trim();
+        }
+        writeSingleFile(cleaned, ws, schemaId, node);
+        return cleaned;
+    }
+
+    /**
+     * Write multiple files from ```path\n...\n``` code blocks in the response.
+     */
+    private int writeGeneratedFiles(String response, WorkflowSchema ws, String schemaId, Node node) {
+        if (response == null || response.isBlank() || ws == null || ws.getTargetPath() == null) return 0;
+        String targetPath = ws.getTargetPath();
+        int count = 0;
+
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+            "```([^\\n]+)\\n?(.*?)```", java.util.regex.Pattern.DOTALL);
+        java.util.regex.Matcher matcher = pattern.matcher(response);
+
+        while (matcher.find()) {
+            String filePath = matcher.group(1).trim();
+            String code = matcher.group(2).trim();
+            if (code.isEmpty() || filePath.isEmpty() || !filePath.contains(".")) continue;
+
+            try {
+                java.nio.file.Path fullPath = java.nio.file.Path.of(targetPath, filePath).normalize();
+                java.nio.file.Files.createDirectories(fullPath.getParent());
+                java.nio.file.Files.writeString(fullPath, code);
+                log.info("Verifier generated: {} ({} bytes)", fullPath, code.length());
+                if (webSocketHandler != null) {
+                    webSocketHandler.sendLog(schemaId, "info",
+                            "Generated: " + filePath + " (" + code.length() + " bytes)", node.getId());
+                }
+                count++;
+            } catch (Exception e) {
+                log.warn("Failed to write {}: {}", filePath, e.getMessage());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Legacy: write a single file.
+     */
+    private void writeSingleFile(String content, WorkflowSchema ws, String schemaId, Node node) {
+        if (content == null || content.isBlank() || ws == null || ws.getTargetPath() == null) return;
+        String targetPath = ws.getTargetPath();
         try {
-            WorkflowSchema ws = schemaRepository.findById(schemaId);
-            if (ws != null && ws.getTargetPath() != null) {
-                String targetPath = ws.getTargetPath();
-                // Try to determine relative file path from generated files registry
-                String relativeFilePath = "fix_output";
+            String relativeFilePath = extractFilePathFromInput(ws);
+            if (relativeFilePath == null) {
                 String registryKey = schemaId + ":" + node.getId();
                 String registeredPath = stateManager.getOutputFileRegistry().get(registryKey);
                 if (registeredPath != null) {
-                    Path registered = Path.of(registeredPath);
+                    java.nio.file.Path registered = java.nio.file.Path.of(registeredPath);
                     if (registered.isAbsolute()) {
-                        Path target = Path.of(targetPath);
-                        try {
-                            relativeFilePath = target.relativize(registered).toString();
-                        } catch (Exception e) {
-                            relativeFilePath = registered.getFileName().toString();
-                        }
+                        java.nio.file.Path target = java.nio.file.Path.of(targetPath);
+                        relativeFilePath = target.relativize(registered).toString();
                     } else {
                         relativeFilePath = registeredPath;
                     }
                 }
-                java.nio.file.Files.writeString(java.nio.file.Path.of(targetPath, relativeFilePath), cleaned);
-                log.info("Wrote fixed file: {}/{}", targetPath, relativeFilePath);
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Fixed code written to: " + targetPath + "/" + relativeFilePath, node.getId());
-                }
+            }
+            if (relativeFilePath == null) relativeFilePath = "fix_output";
+            java.nio.file.Files.writeString(java.nio.file.Path.of(targetPath, relativeFilePath), content);
+            log.info("Wrote fixed file: {}/{}", targetPath, relativeFilePath);
+            if (webSocketHandler != null) {
+                webSocketHandler.sendLog(schemaId, "info",
+                        "Fixed code written to: " + targetPath + "/" + relativeFilePath, node.getId());
             }
         } catch (IOException e) {
             log.error("Failed to write fixed file: {}", e.getMessage(), e);
         }
-        return cleaned;
     }
 
     /**
@@ -713,5 +768,45 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             }
         }
         return count;
+    }
+
+    /**
+     * Extract a file path from the source node's input data.
+     * Looks for patterns like "snake/snake.py" or "write to path/file.py".
+     */
+    private String extractFilePathFromInput(WorkflowSchema ws) {
+        if (ws == null || ws.getNodes() == null) return null;
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+            "(?:write\\s+(?:to\\s+)?|save\\s+(?:as\\s+)?|create\\s+)?([a-zA-Z0-9_./-]+\\.[a-zA-Z0-9]+)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+        for (Node node : ws.getNodes()) {
+            if (node.getData() != null) {
+                String sourceData = node.getData().getSourceData();
+                if (sourceData != null && !sourceData.isBlank()) {
+                    java.util.regex.Matcher m = pattern.matcher(sourceData);
+                    if (m.find()) {
+                        String path = m.group(1).trim();
+                        // Only return if it looks like a valid file path (has extension)
+                        if (path.contains(".") && !path.startsWith("fix_")) {
+                            log.info("Extracted file path from source data: {}", path);
+                            return path;
+                        }
+                    }
+                }
+                // Also check system prompt
+                String systemPrompt = node.getData().getSystemPrompt();
+                if (systemPrompt != null && !systemPrompt.isBlank()) {
+                    java.util.regex.Matcher m = pattern.matcher(systemPrompt);
+                    if (m.find()) {
+                        String path = m.group(1).trim();
+                        if (path.contains(".") && !path.startsWith("fix_")) {
+                            log.info("Extracted file path from system prompt: {}", path);
+                            return path;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
     }
 }
