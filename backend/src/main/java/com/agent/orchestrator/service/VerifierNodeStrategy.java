@@ -42,15 +42,17 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
     private final ExecutionStateManager stateManager;
     private final ReasoningCapture reasoningCapture;
     private final ObjectMapper objectMapper;
+    private final CodeBlockSaver codeBlockSaver;
 
     public VerifierNodeStrategy(ExecutionUtilityService utilityService,
-                                AgentNodeStrategy agentStrategy,
-                                LlmService llmService,
-                                ExecutionWebSocketHandler webSocketHandler,
-                                Neo4jSchemaRepository schemaRepository,
-                                ExecutionStateManager stateManager,
-                                ReasoningCapture reasoningCapture,
-                                ObjectMapper objectMapper) {
+                                  AgentNodeStrategy agentStrategy,
+                                  LlmService llmService,
+                                  ExecutionWebSocketHandler webSocketHandler,
+                                  Neo4jSchemaRepository schemaRepository,
+                                  ExecutionStateManager stateManager,
+                                  ReasoningCapture reasoningCapture,
+                                  ObjectMapper objectMapper,
+                                  CodeBlockSaver codeBlockSaver) {
         this.utilityService = utilityService;
         this.agentStrategy = agentStrategy;
         this.llmService = llmService;
@@ -59,6 +61,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         this.stateManager = stateManager;
         this.reasoningCapture = reasoningCapture;
         this.objectMapper = objectMapper;
+        this.codeBlockSaver = codeBlockSaver;
     }
 
     @Override
@@ -616,11 +619,12 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         }
         if (fixedCode == null || fixedCode.isBlank()) return currentContent;
 
-        // Try to write files from code blocks
-        int filesWritten = writeGeneratedFiles(fixedCode, ws, schemaId, node);
-        if (filesWritten > 0) {
-            log.info("Verifier generated {} file(s) from code blocks", filesWritten);
-            return "Generated " + filesWritten + " file(s)";
+        // Try to write files from code blocks via shared utility
+        String targetPath = ws != null ? ws.getTargetPath() : null;
+        List<String> savedFiles = codeBlockSaver.saveCodeBlocks(fixedCode, targetPath, schemaId, node.getId());
+        if (!savedFiles.isEmpty()) {
+            log.info("Verifier generated {} file(s) from code blocks", savedFiles.size());
+            return "Generated " + savedFiles.size() + " file(s)";
         }
 
         // Legacy: single file write
@@ -633,41 +637,7 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
     }
 
     /**
-     * Write multiple files from ```path\n...\n``` code blocks in the response.
-     */
-    private int writeGeneratedFiles(String response, WorkflowSchema ws, String schemaId, Node node) {
-        if (response == null || response.isBlank() || ws == null || ws.getTargetPath() == null) return 0;
-        String targetPath = ws.getTargetPath();
-        int count = 0;
-
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-            "```([^\\n]+)\\n?(.*?)```", java.util.regex.Pattern.DOTALL);
-        java.util.regex.Matcher matcher = pattern.matcher(response);
-
-        while (matcher.find()) {
-            String filePath = matcher.group(1).trim();
-            String code = matcher.group(2).trim();
-            if (code.isEmpty() || filePath.isEmpty() || !filePath.contains(".")) continue;
-
-            try {
-                java.nio.file.Path fullPath = java.nio.file.Path.of(targetPath, filePath).normalize();
-                java.nio.file.Files.createDirectories(fullPath.getParent());
-                java.nio.file.Files.writeString(fullPath, code);
-                log.info("Verifier generated: {} ({} bytes)", fullPath, code.length());
-                if (webSocketHandler != null) {
-                    webSocketHandler.sendLog(schemaId, "info",
-                            "Generated: " + filePath + " (" + code.length() + " bytes)", node.getId());
-                }
-                count++;
-            } catch (Exception e) {
-                log.warn("Failed to write {}: {}", filePath, e.getMessage());
-            }
-        }
-        return count;
-    }
-
-    /**
-     * Legacy: write a single file.
+     * Legacy: write a single file (fallback when no code blocks detected).
      */
     private void writeSingleFile(String content, WorkflowSchema ws, String schemaId, Node node) {
         if (content == null || content.isBlank() || ws == null || ws.getTargetPath() == null) return;

@@ -179,64 +179,55 @@ public class NodeRouter {
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
                 for (int attempt = 1; attempt <= Math.max(1, autoRetry + 1); attempt++) {
                     try {
-                        switch (nodeType) {
-                            case "agent":
+                        // First try the strategy registry (agent, verifier, review, output, schemabuilder, draft, ...)
+                        NodeExecutionStrategy strategy = strategyRegistry.get(nodeType);
+                        if (strategy != null) {
+                            if ("agent".equals(nodeType) && mode != ExecutionMode.EXECUTE) {
+                                // DRY_RUN and ANALYZE bypass the strategy interface
                                 if (mode == ExecutionMode.DRY_RUN) {
                                     return agentStrategy.simulateAgentNode(node, schemaId);
-                                } else if (mode == ExecutionMode.ANALYZE) {
-                                    return agentStrategy.analyzeAgentNode(node, schemaId);
                                 } else {
-                                    return agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel, cancelFlag);
+                                    return agentStrategy.analyzeAgentNode(node, schemaId);
                                 }
+                            }
+                            Map<String, Object> strategyResult = strategy.executeNode(node, null, null, null, null,
+                                    Map.of("model", resolvedModel), schemaId);
+                            NodeOutputValidator.ValidationResult vr = outputValidator.validate(nodeType, strategyResult, node);
+                            if (!vr.isValid() && webSocketHandler != null) {
+                                webSocketHandler.sendLog(schemaId, "warning",
+                                        "Output validation: " + String.join("; ", vr.getIssues()), node.getId());
+                            }
+                            return (String) strategyResult.getOrDefault("result", "");
+                        }
 
+                        // Fallback: inline handlers for node types without registered strategies
+                        // TODO: migrate these to NodeExecutionStrategy implementations
+                        switch (nodeType) {
                             case "output":
                                 return outputReportingService.executeOutputNode(node, schemaId, mode);
-
                             case "command":
                                 return utilityService.executeCommandNode(node, schemaId);
-
                             case "filewrite":
                                 return utilityService.executeFileWriteNode(node, schemaId);
-
                             case "source":
                                 return utilityService.handleSourceNode(node, schemaId);
-
                             case "condition":
                                 return handleConditionNode(node, schemaId);
-
                             case "transform":
                                 return handleTransformNode(node, schemaId);
-
                             case "loop":
                                 return handleLoopNode(node, schemaId, cancelFlag);
-
                             case "memory":
                                 return handleMemoryNode(node, schemaId);
-
                             case "guardrail":
                                 return handleGuardrailNode(node, schemaId);
-
                             case "human":
                                 return handleHumanNode(node, schemaId, cancelFlag);
-
                             case "fallback":
                                 return handleFallbackNode(node, schemaId);
-
                             case "subagent":
                                 return utilityService.executeSubagentNode(node, schemaId, cancelFlag, mode);
-
                             default:
-                                NodeExecutionStrategy strategy = strategyRegistry.get(nodeType);
-                                if (strategy != null) {
-                                    Map<String, Object> strategyResult = strategy.executeNode(node, null, null, null, null,
-                                            Map.of("model", resolvedModel), schemaId);
-                                    NodeOutputValidator.ValidationResult vr = outputValidator.validate(nodeType, strategyResult, node);
-                                    if (!vr.isValid() && webSocketHandler != null) {
-                                        webSocketHandler.sendLog(schemaId, "warning",
-                                                "Output validation: " + String.join("; ", vr.getIssues()), node.getId());
-                                    }
-                                    return (String) strategyResult.getOrDefault("result", "");
-                                }
                                 log.warn("Unknown node type: {}", nodeType);
                                 return "Неизвестный тип узла: " + nodeType;
                         }

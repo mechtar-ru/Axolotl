@@ -46,7 +46,8 @@ class VerifierNodeStrategyTest {
         strategy = new VerifierNodeStrategy(utilityService, agentStrategy, llmService,
                 webSocketHandler, schemaRepository, stateManager,
                 null, // ReasoningCapture
-                new ObjectMapper());
+                new ObjectMapper(),
+                mock(CodeBlockSaver.class));
 
         node = new Node();
         node.setId("v1");

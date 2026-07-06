@@ -47,14 +47,13 @@ public class SchemaBuilderNodeStrategy implements NodeExecutionStrategy {
     private static final String SCHEMA_BUILDER_SYSTEM_PROMPT = """
             You are a workflow architect. Given an analysis/result text, design an Axolotl workflow schema.
 
-            CRITICAL PATH RULES:
-            - If input mentions "backend-next" or "frontend-next" or "-next", you MUST use these exact paths:
-              * /backend-next/ NOT /backend/
-              * /Users/evgenijtihomirov/git/Axolotl/Axolotl/backend-next/ NOT /Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/
-              * Use FULL paths starting with /Users/evgenijtihomirov/git/Axolotl/Axolotl/...
+            PATH RULES:
+            - Use relative paths (e.g., "targetPath/lib/main.dart") unless the input specifies an absolute path.
+            - All generated files must be within the schema's target path.
 
-            For generated schemas, ALWAYS set model to "minimax-max" (powerful) or "minimax-m2.5-free" (simple).
-            Avoid using openai models unless explicitly requested.
+            MODEL RULES:
+            - Set model to the schema's defaultModel if provided.
+            - Otherwise, prefer "deepseek-v4-flash-free" for free usage.
 
             Respond ONLY with valid JSON, no markdown fences:
             {

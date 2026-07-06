@@ -1,0 +1,1 @@
+{"command": "cd /tmp && cat > /tmp/snake_check.py << 'PYEOF'\\nimport pygame\\nimport sys\\nimport random\\n\\n# Initialize Pygame\\npygame.init()\\n..."}

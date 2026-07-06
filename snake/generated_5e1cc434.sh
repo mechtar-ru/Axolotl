@@ -1,0 +1,6 @@
+python3 << 'PYEOF'
+code = """
+...
+"""
+...
+PYEOF

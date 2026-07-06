@@ -1,0 +1,1 @@
+cd /tmp && python3 -m py_compile snake_check.py 2>&1; echo "EXIT_CODE=$?"
