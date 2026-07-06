@@ -411,13 +411,9 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
             verifierData.setUserPrompt(verificationPrompt);
             verifierData.setSystemPrompt("Ты — верификатор. Проверяй сгенерированный код и возвращай структурированный JSON с результатами проверок.");
             node.setData(verifierData);
-            node.setType("agent"); // Temporarily treat as agent for tool execution
 
-            // Execute via tool agent path
+            // Execute via tool agent path (setType not needed — executeToolAgentNode doesn't check it)
             currentResult = agentStrategy.executeToolAgentNode(node, schemaId, resolvedModel, null);
-
-            // Restore verifier type
-            node.setType("verifier");
 
             // Parse result
             String errors = parseVerifierResult(currentResult, rewriteRetries, allCheckResults);
