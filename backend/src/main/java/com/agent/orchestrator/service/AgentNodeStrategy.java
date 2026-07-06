@@ -61,6 +61,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
     private final FlutterScaffoldHelper flutterScaffoldHelper;
     private final FixPassOrchestrator fixPassOrchestrator;
     private final ModelPrompts modelPrompts;
+    private final AgentPostProcessor agentPostProcessor;
     private final Executor plannerExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public AgentNodeStrategy(ExecutionUtilityService utilityService,
@@ -79,7 +80,8 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
                               MagicContextRetriever mcRetriever,
                               FlutterScaffoldHelper flutterScaffoldHelper,
                               FixPassOrchestrator fixPassOrchestrator,
-                              ModelPrompts modelPrompts) {
+                              ModelPrompts modelPrompts,
+                              AgentPostProcessor agentPostProcessor) {
         this.utilityService = utilityService;
         this.llmService = llmService;
         this.webSocketHandler = webSocketHandler;
@@ -97,6 +99,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         this.flutterScaffoldHelper = flutterScaffoldHelper;
         this.fixPassOrchestrator = fixPassOrchestrator;
         this.modelPrompts = modelPrompts;
+        this.agentPostProcessor = agentPostProcessor;
     }
 
     @PreDestroy
@@ -679,7 +682,7 @@ public class AgentNodeStrategy implements NodeExecutionStrategy {
         }
 
         // ── 4. Post-processing (file changes, build check, FLUTTER deps) ──
-        finalResponse = postProcessToolAgent(node, currentSchema, schemaId, finalResponse);
+        finalResponse = agentPostProcessor.postProcessToolAgent(node, currentSchema, schemaId, finalResponse);
 
         return finalResponse;
     }

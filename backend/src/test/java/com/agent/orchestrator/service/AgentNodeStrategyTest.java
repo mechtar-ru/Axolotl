@@ -48,6 +48,7 @@ class AgentNodeStrategyTest {
     @Mock MagicContextRetriever mcRetriever;
     @Mock FlutterScaffoldHelper flutterScaffoldHelper;
     @Mock FixPassOrchestrator fixPassOrchestrator;
+    @Mock AgentPostProcessor agentPostProcessor;
 
     AgentNodeStrategy strategy;
 
@@ -66,6 +67,10 @@ class AgentNodeStrategyTest {
         when(mcRetriever.isAvailable()).thenReturn(false);
         when(mcRetriever.retrieveRelevantContext(anyString(), anyString())).thenReturn("");
 
+        // AgentPostProcessor returns the input unchanged by default
+        when(agentPostProcessor.postProcessToolAgent(any(), any(), anyString(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(3, String.class));
+
         strategy = new AgentNodeStrategy(utilityService, llmService, webSocketHandler,
                 memPalaceClient, toolExecutor, schemaRepository,
                 projectContextBuilder,
@@ -78,7 +83,8 @@ class AgentNodeStrategyTest {
                 mcRetriever,
                 flutterScaffoldHelper,
                 fixPassOrchestrator,
-                mock(ModelPrompts.class));
+                mock(ModelPrompts.class),
+                agentPostProcessor);
 
         node = new Node();
         node.setId("n1");
@@ -329,10 +335,8 @@ class AgentNodeStrategyTest {
         String result = strategy.executeToolAgentNode(toolNode, "schema-1", "resolved-model", null);
 
         assertNotNull(result);
-        assertTrue(result.contains("Expected at least 3 file(s)"));
-        assertTrue(result.contains("[WARNING]"));
-        verify(webSocketHandler).sendLog(eq("schema-1"), eq("warning"),
-                eq("Expected 3 file(s), created 1"), eq("n2"));
+        // Expected file count warning is now handled by AgentPostProcessor
+        verify(agentPostProcessor).postProcessToolAgent(eq(toolNode), any(), eq("schema-1"), anyString());
     }
 
     @Test
