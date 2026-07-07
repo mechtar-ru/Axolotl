@@ -156,13 +156,13 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         List<Map<String, Object>> allCheckResults = new ArrayList<>();
         checkFileWriteCalls(predResults, inputContent, schemaId, node.getId(), allCheckResults, predNameToId);
 
-        // ── Step 4: Detect project type ──
+        // ── Step 5: Detect project type ──
         ProjectInfo projectInfo = detectProjectType(schemaId);
 
-        // ── Step 5: Install Flutter dependencies if needed ──
+        // ── Step 6: Install Flutter dependencies if needed ──
         runFlutterPubGet(projectInfo.projectType, projectInfo.targetPath);
 
-        // ── Step 6: Main verifier loop ──
+        // ── Step 7: Main verifier loop ──
         VerifierLoopResult loopResult = runVerifierLoop(model, schemaId, node, resolvedModel,
                 inputContent, allCheckResults, premortemPredictions,
                 projectInfo.projectType, projectInfo.targetPath,
@@ -348,7 +348,83 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
     }
 
     /**
-     * Inner class holding project type and target path.
+     * Step 4: Compile-check generated code files (Python imports, syntax).
+     */
+    /**
+     * Run execution checks on all .py files in the target directory.
+     * Called after the verifier generates/fixes code files.
+     */
+    private void runCodeExecutionCheckOnPath(String targetPath, String schemaId, String nodeId) {
+        if (!isPythonAvailable() || targetPath == null) return;
+
+        java.nio.file.Path dir = java.nio.file.Path.of(targetPath);
+        if (!java.nio.file.Files.exists(dir)) return;
+
+        try {
+            java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(dir);
+            files.filter(f -> f.toString().endsWith(".py")).forEach(fullPath -> {
+                try {
+                    String code = java.nio.file.Files.readString(fullPath);
+
+                    // 1. Syntax check
+                    String escapedPath = fullPath.toString().replace("'", "'\\''");
+                    ProcessBuilder pb = new ProcessBuilder("python3", "-c",
+                            "import py_compile; py_compile.compile('" + escapedPath + "', doraise=True)");
+                    Process proc = pb.start();
+                    boolean finished = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                    if (finished && proc.exitValue() != 0) {
+                        String errOutput = new String(proc.getInputStream().readAllBytes());
+                        log.warn("Syntax error in {}: {}", fullPath.getFileName(), errOutput.replace('\n', ' ').trim());
+                    } else if (!finished) {
+                        log.warn("Syntax check timed out for {}", fullPath.getFileName());
+                    }
+
+                    // 2. Import check
+                    StringBuilder importBlock = new StringBuilder();
+                    for (String line : code.split("\n")) {
+                        String t = line.trim();
+                        if (t.startsWith("import ") || t.startsWith("from ")) {
+                            importBlock.append(t).append("\n");
+                        } else if (!t.startsWith("#") && !t.isEmpty() && !t.startsWith("import ") && !t.startsWith("from ")) {
+                            break;
+                        }
+                    }
+                    if (!importBlock.isEmpty()) {
+                        pb = new ProcessBuilder("python3", "-c", importBlock.toString());
+                        proc = pb.start();
+                        finished = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                        if (finished && proc.exitValue() != 0) {
+                            String errOutput = new String(proc.getInputStream().readAllBytes());
+                            log.warn("Import error in {}: {}", fullPath.getFileName(), errOutput.replace('\n', ' ').trim());
+                        }
+                    }
+
+                    log.info("Exec check passed: {}", fullPath.getFileName());
+                } catch (Exception e) {
+                    log.warn("Exec check failed for {}: {}", fullPath.getFileName(), e.getMessage());
+                }
+            });
+            files.close();
+        } catch (Exception e) {
+            log.warn("Failed to list files in {}: {}", targetPath, e.getMessage());
+        }
+    }
+
+    /**
+     * Quick check if python3 is available in the execution environment.
+     */
+    private boolean isPythonAvailable() {
+        try {
+            Process proc = new ProcessBuilder("which", "python3").start();
+            boolean finished = proc.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
+            return finished && proc.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Inner class for project type detection results.
      */
     private static class ProjectInfo {
         final String projectType;
@@ -657,6 +733,10 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         List<String> savedFiles = codeBlockSaver.saveCodeBlocks(fixedCode, targetPath, schemaId, node.getId());
         if (!savedFiles.isEmpty()) {
             log.info("Verifier generated {} file(s) from code blocks", savedFiles.size());
+                // Run execution check on generated files
+                if (isPythonAvailable() && targetPath != null) {
+                    runCodeExecutionCheckOnPath(targetPath, schemaId, node.getId());
+                }
             return "Generated " + savedFiles.size() + " file(s)";
         }
 

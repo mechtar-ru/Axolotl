@@ -1,107 +1,104 @@
-#!/usr/bin/env python3
-"""Snake game built with Axolotl pipeline (Ollama qwen2.5-coder:14b)."""
 import pygame
 import sys
-import random
 
+# Initialize Pygame
 pygame.init()
 
-WIDTH, HEIGHT = 600, 600
-BLOCK_SIZE = 20
-SPEED = 10
+# Define constants
+width, height = 640, 480
+screen = pygame.display.set_mode((width, height))
+pygame.display.set_caption('Snake Game')
+clock = pygame.time.Clock()
 
+# Define colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
-BLUE = (0, 0, 0)
 
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Snake Game")
-clock = pygame.time.Clock()
-font = pygame.font.SysFont(None, 36)
+# Define game variables
+snake_size = 10
+snake_speed = 15
+font_style = pygame.font.SysFont("bahnschrift", 25)
+score_font = pygame.font.SysFont("comicsansms", 35)
 
-def draw_snake(snake):
-    for seg in snake:
-        pygame.draw.rect(screen, GREEN, (seg[0], seg[1], BLOCK_SIZE, BLOCK_SIZE))
+def our_snake(snake_size, snake_list):
+    for x in snake_list:
+        pygame.draw.rect(screen, GREEN, [x[0], x[1], snake_size, snake_size])
 
-def draw_food(pos):
-    pygame.draw.rect(screen, RED, (pos[0], pos[1], BLOCK_SIZE, BLOCK_SIZE))
+def message(msg, color):
+    mesg = font_style.render(msg, True, color)
+    screen.blit(mesg, [width / 6, height / 3])
 
-def show_score(score):
-    text = font.render(f"Score: {score}", True, WHITE)
-    screen.blit(text, (10, 10))
+def main_game():
+    game_over = False
+    game_close = False
 
-def game_over_screen(score):
-    screen.fill(BLACK)
-    msg1 = font.render(f"Game Over! Score: {score}", True, RED)
-    msg2 = font.render("Press R to restart or Q to quit", True, WHITE)
-    screen.blit(msg1, (WIDTH // 2 - msg1.get_width() // 2, HEIGHT // 2 - 40))
-    screen.blit(msg2, (WIDTH // 2 - msg2.get_width() // 2, HEIGHT // 2))
-    pygame.display.update()
-    while True:
+    x1 = width / 2
+    y1 = height / 2
+
+    x1_change = 0       
+    y1_change = 0
+
+    snake_List = []
+    Length_of_snake = 1
+
+    while not game_over:
+
+        while game_close == True:
+            screen.fill(BLACK)
+            message("You Lost! Press Q-Quit or C-Play Again", RED)
+            pygame.display.update()
+
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_q:
+                        game_over = True
+                        game_close = False
+                    if event.key == pygame.K_c:
+                        main_game()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
+                game_over = True
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q:
-                    pygame.quit(); sys.exit()
-                if event.key == pygame.K_r:
-                    return
+                if event.key == pygame.K_LEFT:
+                    x1_change = -snake_size
+                    y1_change = 0
+                elif event.key == pygame.K_RIGHT:
+                    x1_change = snake_size
+                    y1_change = 0
+                elif event.key == pygame.K_UP:
+                    y1_change = -snake_size
+                    x1_change = 0
+                elif event.key == pygame.K_DOWN:
+                    y1_change = snake_size
+                    x1_change = 0
 
-def game_loop():
-    x, y = WIDTH // 2, HEIGHT // 2
-    dx, dy = BLOCK_SIZE, 0
-    snake = [[x, y]]
-    food = [random.randrange(0, WIDTH, BLOCK_SIZE),
-            random.randrange(0, HEIGHT, BLOCK_SIZE)]
-    score = 0
-    running = True
-
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit(); sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT and dx == 0:
-                    dx, dy = -BLOCK_SIZE, 0
-                elif event.key == pygame.K_RIGHT and dx == 0:
-                    dx, dy = BLOCK_SIZE, 0
-                elif event.key == pygame.K_UP and dy == 0:
-                    dx, dy = 0, -BLOCK_SIZE
-                elif event.key == pygame.K_DOWN and dy == 0:
-                    dx, dy = 0, BLOCK_SIZE
-
-        x += dx
-        y += dy
-
-        # Wall collision
-        if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
-            game_over_screen(score)
-            return
-
-        head = [x, y]
-        snake.append(head)
-
-        # Self collision
-        if head in snake[:-1]:
-            game_over_screen(score)
-            return
-
-        # Food collision
-        if x == food[0] and y == food[1]:
-            score += 1
-            food = [random.randrange(0, WIDTH, BLOCK_SIZE),
-                    random.randrange(0, HEIGHT, BLOCK_SIZE)]
-        else:
-            snake.pop(0)
-
+        if x1 >= width or x1 < 0 or y1 >= height or y1 < 0:
+            game_close = True
+        x1 += x1_change
+        y1 += y1_change
         screen.fill(BLACK)
-        draw_food(food)
-        draw_snake(snake)
-        show_score(score)
-        pygame.display.update()
-        clock.tick(SPEED)
+        pygame.draw.rect(screen, RED, [x1, y1, snake_size, snake_size])
+        snake_Head = []
+        snake_Head.append(x1)
+        snake_Head.append(y1)
+        snake_List.append(snake_Head)
+        if len(snake_List) > Length_of_snake:
+            del snake_List[0]
 
-while True:
-    game_loop()
+        for x in snake_List[:-1]:
+            if x == snake_Head:
+                game_close = True
+
+        our_snake(snake_size, snake_List)
+
+        pygame.display.update()
+
+        clock.tick(snake_speed)
+
+    pygame.quit()
+    sys.exit()
+
+main_game()

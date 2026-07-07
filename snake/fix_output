@@ -17,17 +17,16 @@ blue = (50, 153, 213)
 dis_width = 800
 dis_height = 600
 
-# Create display
+# Create the display
 dis = pygame.display.set_mode((dis_width, dis_height))
 pygame.display.set_caption('Snake Game by Edureka')
 
-# Set clock
+# Set the clock
 clock = pygame.time.Clock()
 
 snake_block = 10
 snake_speed = 30
 
-# Define fonts
 font_style = pygame.font.SysFont(None, 50)
 score_font = pygame.font.SysFont(None, 35)
 
@@ -46,7 +45,7 @@ def gameLoop():
     x1 = dis_width / 2
     y1 = dis_height / 2
 
-    x1_change = 0
+    x1_change = 0       
     y1_change = 0
 
     snake_List = []

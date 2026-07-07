@@ -3,6 +3,8 @@
 ## Project Structure
 
 ```
+__pycache__/
+__pycache__/snake.cpython-314.pyc
 fix_output
 generated_0275f0c4.py
 generated_04910dc8.py
@@ -15,10 +17,13 @@ generated_43802eeb.py
 generated_4d224859.json
 generated_4fcce47f.json
 generated_57143a6e.py
+generated_5b0e4a5c.json
 generated_5e1cc434.sh
 generated_66ad72d4.py
+generated_72c761b5.json
 generated_7c4c0613.json
 generated_7c6bfa07.json
+generated_7f959eb2.json
 generated_83720576.json
 generated_88637622.py
 generated_906fe334.json
@@ -29,9 +34,12 @@ generated_a94d76d0.json
 generated_a9767351.json
 generated_a9e13045.sh
 generated_aebe3dd9.py
+generated_b13a8b42.json
 generated_b1a6b223.py
 generated_b5744edf.py
 generated_b9d95d79.json
+generated_c6031323.json
+generated_d7ac6d52.json
 generated_d8d481ea.json
 generated_db70d880.py
 generated_dcb2f099.json
@@ -43,6 +51,7 @@ generated_f598b9ac.py
 generated_f6db1283.json
 generated_f8380450.py
 generated_fa1dd38f.py
+snake.py
 ```
 
 ---
