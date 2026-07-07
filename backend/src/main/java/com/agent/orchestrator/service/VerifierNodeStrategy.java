@@ -296,16 +296,53 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                 }
             }
         }
-        if (!predResults.isEmpty() && fileWriteCount == 0 && !inputContent.isBlank()) {
+        // Also check if the expected file path (from source data) was written
+        String expectedPath = null;
+        if (fileWriteCount > 0) {
+            WorkflowSchema ws = schemaRepository.findById(schemaId);
+            if (ws != null) {
+                expectedPath = codeBlockSaver.extractFilePathFromNodeData(ws);
+            }
+        }
+
+        boolean missingExpectedFile = expectedPath != null && fileWriteCount > 0;
+        if (missingExpectedFile) {
+            // Check if expectedPath was among written files
+            boolean foundExpected = false;
+            for (String predName : predResults.keySet()) {
+                String actualNodeId = predNameToId.getOrDefault(predName, predName);
+                Map<String, String> changes = stateManager.getFileChanges(schemaId, actualNodeId);
+                if (changes != null) {
+                    for (String path : changes.keySet()) {
+                        if (path.contains(expectedPath) || expectedPath.contains(path)) {
+                            foundExpected = true;
+                            break;
+                        }
+                    }
+                }
+                if (foundExpected) break;
+            }
+            missingExpectedFile = !foundExpected;
+        }
+
+        boolean failCheck = (!predResults.isEmpty() && fileWriteCount == 0 && !inputContent.isBlank())
+                || missingExpectedFile;
+
+        if (failCheck) {
             Map<String, Object> noFileCheck = new HashMap<>();
             noFileCheck.put("name", "file_write_calls");
             noFileCheck.put("passed", false);
-            noFileCheck.put("error", "Upstream agent made 0 file_write calls — no files were generated");
-            noFileCheck.put("fileCount", 0);
+            noFileCheck.put("error", missingExpectedFile
+                    ? "Expected file '" + expectedPath + "' was not created"
+                    : "Upstream agent made 0 file_write calls — no files were generated");
+            noFileCheck.put("fileCount", fileWriteCount);
             allCheckResults.add(noFileCheck);
             if (webSocketHandler != null) {
                 webSocketHandler.sendLog(schemaId, "warning",
-                        "Zero file_write calls detected from upstream agent — no files generated", nodeId);
+                        missingExpectedFile
+                                ? "Expected file '" + expectedPath + "' was not created"
+                                : "Zero file_write calls detected from upstream agent — no files generated",
+                        nodeId);
             }
         }
     }
