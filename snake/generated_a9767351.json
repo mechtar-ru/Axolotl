@@ -1,9 +1,0 @@
-{
-  "status": "PASS" или "FAIL",
-  "checks": [
-    {"name": "syntax", "passed": true/false},
-    {"name": "required_patterns", "passed": true/false, "found": [...], "missing": [...]},
-    {"name": "test_command", "passed": true/false, "error": "..."}
-  ],
-  "summary": "Описание результата"
-}

@@ -126,16 +126,41 @@ public class PipelineStageExecutionService {
             }
             CompletableFuture<Void> allDone = CompletableFuture.allOf(futures);
             try {
-                allDone.orTimeout(30, TimeUnit.MINUTES).join();
-            } catch (CompletionException e) {
-                if (e.getCause() instanceof TimeoutException) {
-                    log.error("Pipeline stage execution timed out after 30 minutes");
+                // Poll with short timeout so we can respond promptly to cancellation
+                long deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(30);
+                while (!allDone.isDone()) {
+                    try {
+                        allDone.get(1, TimeUnit.SECONDS);
+                    } catch (TimeoutException e) {
+                        // Check if deadline exceeded
+                        if (System.nanoTime() > deadline) {
+                            log.error("Pipeline stage execution timed out after 30 minutes");
+                            for (CompletableFuture<Void> f : futures) {
+                                if (f != null && !f.isDone()) f.cancel(true);
+                            }
+                            break;
+                        }
+                        // Check if cancelled
+                        if (cancelFlag.get()) {
+                            for (CompletableFuture<Void> f : futures) {
+                                if (f != null && !f.isDone()) f.cancel(true);
+                            }
+                            break;
+                        }
+                    }
                 }
-                // Cancel all raw futures on any failure — not just timeout
+                // If allDone completed exceptionally (stage failed), observe the exception
+                if (allDone.isCompletedExceptionally()) {
+                    allDone.get();  // throws ExecutionException, caught by outer catch
+                }
+            } catch (CancellationException e) {
+                log.info("Pipeline stage execution cancelled for schema {}", schema.getId());
+            } catch (Exception e) {
+                log.error("Pipeline stage execution failed: {}", e.getMessage(), e);
                 for (CompletableFuture<Void> f : futures) {
                     if (f != null && !f.isDone()) f.cancel(true);
                 }
-                throw e;
+                throw new RuntimeException(e);   // rethrow so PipelineServiceImpl.whenComplete detects the failure
             }
 
             if (levelFailed.get()) {

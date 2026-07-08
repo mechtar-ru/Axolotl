@@ -16,6 +16,9 @@ public class PipelineStatusManager {
 
     private static final Logger log = LoggerFactory.getLogger(PipelineStatusManager.class);
 
+    /** Max schemas with stored stage results before eviction. */
+    private static final int MAX_STAGE_RESULT_SCHEMAS = 50;
+
     private final ConcurrentHashMap<String, CompletableFuture<?>> runningPipelines = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
@@ -93,11 +96,18 @@ public class PipelineStatusManager {
     public void putStageResult(String schemaId, String stageId, String output) {
         stageResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
                 .put(stageId, output);
+        // Evict oldest schemas if map exceeds max entries
+        if (stageResults.size() > MAX_STAGE_RESULT_SCHEMAS) {
+            String eldest = stageResults.keySet().stream().findFirst().orElse(null);
+            if (eldest != null) stageResults.remove(eldest);
+            log.warn("stageResults exceeded {} schemas, evicted oldest entry", MAX_STAGE_RESULT_SCHEMAS);
+        }
     }
 
     /** Remove a completed future from running pipelines (without cancelling). */
     public void removeFuture(String schemaId) {
         runningPipelines.remove(schemaId);
+        stageResults.remove(schemaId);
     }
 
     /** Remove the cancel flag for a schema (keeps stage results intact for post-run inspection). */

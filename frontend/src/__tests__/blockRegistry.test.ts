@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { BLOCK_REGISTRY, getBlockByType, getBlockLabels } from '@/blockRegistry'
 
 describe('blockRegistry', () => {
-  it('has all 7 block definitions', () => {
-    expect(BLOCK_REGISTRY).toHaveLength(7)
+  it('has all 10 block definitions', () => {
+    expect(BLOCK_REGISTRY).toHaveLength(10)
     const types = BLOCK_REGISTRY.map(b => b.type)
     expect(types).toContain('source')
     expect(types).toContain('draft')
@@ -12,6 +12,9 @@ describe('blockRegistry', () => {
     expect(types).toContain('verifier')
     expect(types).toContain('memory')
     expect(types).toContain('output')
+    expect(types).toContain('planner')
+    expect(types).toContain('prep')
+    expect(types).toContain('doc-agent')
   })
 
   it('has required fields on every definition', () => {
@@ -55,6 +58,6 @@ describe('blockRegistry', () => {
     expect(labels.output).toBe('Act')
     expect(labels.draft).toBe('Draft')
     expect(labels.memory).toBe('Remember')
-    expect(Object.keys(labels)).toHaveLength(7)
+    expect(Object.keys(labels)).toHaveLength(10)
   })
 })

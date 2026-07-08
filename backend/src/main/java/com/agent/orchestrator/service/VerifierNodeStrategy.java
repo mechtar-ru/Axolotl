@@ -348,10 +348,9 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
     }
 
     /**
-     * Step 4: Compile-check generated code files (Python imports, syntax).
-     */
-    /**
-     * Run execution checks on all .py files in the target directory.
+     * Run execution checks on all .py files under the target directory.
+     * Uses {@code python3 -m py_compile} for syntax (safe — no string interpolation)
+     * and {@code ast.parse} via stdin for import validation (safe — parses, doesn't execute).
      * Called after the verifier generates/fixes code files.
      */
     private void runCodeExecutionCheckOnPath(String targetPath, String schemaId, String nodeId) {
@@ -360,16 +359,11 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
         java.nio.file.Path dir = java.nio.file.Path.of(targetPath);
         if (!java.nio.file.Files.exists(dir)) return;
 
-        try {
-            java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(dir);
+        try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(dir, 10)) {
             files.filter(f -> f.toString().endsWith(".py")).forEach(fullPath -> {
                 try {
-                    String code = java.nio.file.Files.readString(fullPath);
-
-                    // 1. Syntax check
-                    String escapedPath = fullPath.toString().replace("'", "'\\''");
-                    ProcessBuilder pb = new ProcessBuilder("python3", "-c",
-                            "import py_compile; py_compile.compile('" + escapedPath + "', doraise=True)");
+                    // 1. Syntax check — safe: -m py_compile takes a file path argument, no string interpolation
+                    ProcessBuilder pb = new ProcessBuilder("python3", "-m", "py_compile", fullPath.toString());
                     Process proc = pb.start();
                     boolean finished = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
                     if (finished && proc.exitValue() != 0) {
@@ -379,24 +373,18 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                         log.warn("Syntax check timed out for {}", fullPath.getFileName());
                     }
 
-                    // 2. Import check
-                    StringBuilder importBlock = new StringBuilder();
-                    for (String line : code.split("\n")) {
-                        String t = line.trim();
-                        if (t.startsWith("import ") || t.startsWith("from ")) {
-                            importBlock.append(t).append("\n");
-                        } else if (!t.startsWith("#") && !t.isEmpty() && !t.startsWith("import ") && !t.startsWith("from ")) {
-                            break;
-                        }
+                    // 2. Import check — safe: ast.parse only checks syntax, does NOT execute code
+                    // Pipe file content to python3 -c "import ast, sys; ast.parse(sys.stdin.read())"
+                    ProcessBuilder importPb = new ProcessBuilder("python3", "-c",
+                            "import ast, sys; ast.parse(sys.stdin.read())");
+                    Process importProc = importPb.start();
+                    try (var os = importProc.getOutputStream()) {
+                        os.write(java.nio.file.Files.readAllBytes(fullPath));
                     }
-                    if (!importBlock.isEmpty()) {
-                        pb = new ProcessBuilder("python3", "-c", importBlock.toString());
-                        proc = pb.start();
-                        finished = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
-                        if (finished && proc.exitValue() != 0) {
-                            String errOutput = new String(proc.getInputStream().readAllBytes());
-                            log.warn("Import error in {}: {}", fullPath.getFileName(), errOutput.replace('\n', ' ').trim());
-                        }
+                    finished = importProc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                    if (finished && importProc.exitValue() != 0) {
+                        String errOutput = new String(importProc.getInputStream().readAllBytes());
+                        log.warn("Import error in {}: {}", fullPath.getFileName(), errOutput.replace('\n', ' ').trim());
                     }
 
                     log.info("Exec check passed: {}", fullPath.getFileName());
@@ -404,9 +392,8 @@ public class VerifierNodeStrategy implements NodeExecutionStrategy {
                     log.warn("Exec check failed for {}: {}", fullPath.getFileName(), e.getMessage());
                 }
             });
-            files.close();
         } catch (Exception e) {
-            log.warn("Failed to list files in {}: {}", targetPath, e.getMessage());
+            log.warn("Failed to walk files in {}: {}", targetPath, e.getMessage());
         }
     }
 

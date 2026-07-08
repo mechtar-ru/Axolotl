@@ -1,96 +1,86 @@
 ---
 session: ses_1cee
-updated: 2026-06-08T17:45:07.917Z
+updated: 2026-06-17T10:32:21.186Z
 ---
 
 # Session Summary
 
 ## Goal
-Implement Plan 49 (EIOS Gap Fix premortem fixes) — specifically FIX 4 (ExecutionUtilityService decomposition) and FIX 5 (PipelineService decomposition) — to improve code maintainability, reduce god components, and enhance error handling across the execution engine.
+git pull then run a fresh premortem on the full Axolotl codebase, producing a prioritized findings report with fix recommendations.
 
 ## Constraints & Preferences
-- Use SLF4J with LoggerFactory for all logging
-- Config-specific fields must save into NodeData.config Map, not top-level
-- Per-node timeout default 60 seconds
-- 290+ backend tests must pass
-- No breaking changes to public APIs
-- Plan 49 FIX 4 & 5 fully completed, moved to done/
+- Premortem must be thorough: scan backend + frontend, error handling, race conditions, architectural drift, security, test gaps
+- Prioritized with severity: CRITICAL / HIGH / MEDIUM / LOW + fix recommendations
+- Previous premortems in `.premortem-history.md` — avoid duplicating already-tracked items unless new or reopened
 
 ## Progress
 ### Done
-- [x] **FIX 1** (per-node timeout): `CompletableFuture.supplyAsync().get(timeoutSecs, SECONDS)` wrapping retry loop, reading `NodeData.timeoutSeconds` (default 60s)
-- [x] **FIX 2** (ErrorCategory enum): Created `ErrorCategory` with `fromException()`/`fromToolResult()` mappers, overloaded `sendError()`/`sendLog()` in `ExecutionWebSocketHandler`
-- [x] **FIX 3** (ExecutionStateReconciler): `@PostConstruct` + `@Scheduled(fixedRate=300000)` marking orphaned "running" runs as `RECONCILED_FAILED` with cascading cleanup
-- [x] **FIX 4** (ExecutionUtilityService decomposition):
-  - `ToolCallParser.java` — 4-layer tool call parsing with fallback chain
-  - `NodeCommandExecutor.java` — bash/grep file commands
-  - `NodeSourceHandler.java` — text/file/URL/project source resolution with 1MB limit
-  - `NodeFileWriter.java` — sandbox-aware `file_write` with directory auto-creation
-  - Updated `ExecutionUtilityService` to delegate, removed 230+ lines of implementation code
-  - Updated `NodeRouter` wiring (9 locations)
-- [x] **FIX 5** (PipelineService decomposition):
-  - `PipelineBuilder.java` — creates stages from pipeline.stages, expands TDD stages
-  - `PipelineStatusManager.java` — owns 4 in-memory ConcurrentHashMaps (runningPipelines, pipelineStageOutputs, pipelineApprovals, staleApprovals)
-  - `DiffService.java` — `computeSimpleDiff()` and `computeDiffPayloads()` for diff review workflow
-  - Updated `PipelineService` constructor, removed 397 lines dead code, delegated to extracted services
-  - Updated `PipelineServiceTest` with `DiffService` mock
-- [x] **FIX 6** (dead code removal): Removed `transientOnly` skip-logic from `shouldSkipNode()` and all callers
-- [x] **Plan 49 moved to done/** and committed with full test suite passing (290/290 backend tests)
-- [x] **CHANGELOG updated**: Added [Unreleased] section documenting all Plan 49 additions
-- [x] **Committed & pushed**: `c64a59c2` to `release/0.4.0` (23 files, +2335/-831 lines)
+- [x] `git pull --rebase` — large merge from remote (754 files changed, 35K insertions, 6K deletions)
+- [x] Surveyed new code: 8 new backend services (`SchemaExecutionService`, `PipelineStageExecutionService`, `PipelineStageRunner`, `SafeProcess`, `FixPassOrchestrator`, `ToolExecutionService`, `MagicContextIndexer`, `MagicContextRetriever`, `StartupRecoveryService`, `BuildToolHandler`, `FlutterScaffoldHelper`, `OutputReportingService`, `ToolHandlerService`, `SessionController`), `.premortem-history.md` already exists with PRISM findings tracked
+- [x] Plans 48–55 moved to `.ideas/approved/done/`
+- [x] Backend `mvn compile` — SUCCESS (no errors)
+- [x] Frontend `vue-tsc --noEmit` — SUCCESS (zero errors)
+- [x] Backend `mvn test` — **1 test failure**: `ExecutionUtilityServiceTest.evaluateCondition_withVariableComparison` (expected true but was false)
+- [x] Frontend `vitest run` — **3 test files failed, 24 tests failed** — all due to missing `useSettingsStore` mock after remote pull added `useSettingsStore()` calls to `SchemaPropertiesPanel.vue` and `QuickStartDialog.vue`
+- [x] Found `.dart_tool/` directory created inside `backend/` (stray Flutter execution in wrong CWD)
 
 ### In Progress
-- [ ] None — Plan 49 fully complete
+- [ ] Fixing frontend test failures (mock `useSettingsStore` in SchemaPropertiesPanel.test.ts + QuickStartDialog.test.ts)
+- [ ] Fixing backend test failure (ExecutionUtilityServiceTest evaluateCondition)
+- [ ] Compiling full premortem findings report
 
 ### Blocked
 - (none)
 
 ## Key Decisions
-- **DiffService extraction**: Moved `computeSimpleDiff()` and inline diff payload building from PipelineService into dedicated `DiffService.java` for single responsibility
-- **PipelineStatusManager real instance in tests**: Used real instance (not mock) with `new CompletableFuture<>()` for "already running" state simulation instead of `runAsync()` to avoid executor lifecycle issues
-- **All services use constructor injection**: Spring auto-wires dependencies; tests manually pass mocks to constructors
-- **Kept FIX 5 DiffService separate from FIX 4 extraction work**: User explicitly requested "write a DiffService" after FIX 4 was done, treated as FIX 5 completion
+- **Frontend test fix strategy**: Mock `useSettingsStore` with `vi.mock` (consistent with existing pattern in both test files) rather than refactoring the components or adding `createPinia()` to test setup — minimizes diff
+- **Backend test fix**: Investigate `evaluateCondition_withVariableComparison` assertion (expected `true` vs actual `false`) — likely a condition parsing regression from remote changes
 
 ## Next Steps
-1. **Numeric-order resume** (per standing directive): Move to `.ideas/approved/implementing/` plan 44 (LLM Thoughts frontend Batches 5-6) — thought-bubble icon with slide-out panel, never inline in live feed
-2. **Alternative**: User may have new directive to override — check for active goal change
-3. **If plan 44**: Frontend `ReasoningCapture` display component, integrate with `StudioView`, write E2E tests
-4. **Git**: Branch is `release/0.4.0` on local; all tests pass, CI/CD not active on this branch (only on `main`, `feature/**`, `v*`)
+1. Fix `SchemaPropertiesPanel.test.ts` — add `vi.mock('@/stores/settingsStore', ...)` before imports
+2. Fix `QuickStartDialog.test.ts` — add same settingsStore mock
+3. Fix `ExecutionUtilityServiceTest.evaluateCondition_withVariableComparison` — debug condition evaluation
+4. Re-run both test suites to verify fixes
+5. Deep-scan new services: `SchemaExecutionService` (693L), `PipelineStageExecutionService` (683L), `PipelineStageRunner` (327L), `FixPassOrchestrator`, `SafeProcess`, `MagicContextIndexer`, `MagicContextRetriever` — check for: unbounded executors, silent catch blocks, missing null guards, Virtual Thread + synchronized incompatibility, stray `.dart_tool/` cleanup
+6. Check integration points: are new services wired into existing controllers/DI? Are there unused services or missing `@Service`/`@Component`?
+7. Compile full premortem findings report in structured format with severity, description, and concrete fix recommendations
 
 ## Critical Context
-- **Plan 49 structure**: 7 phases total (Phases 1-3 were prior work: file_write aliases, zero-tool detection, model fallback + retry). Phases 4-6 completed in recent sessions (Android/iOS build, endpoint health check, cross-session context). Phases 1-6 all now in done/. User explicitly requested "write a DiffService" as the 7th work item, completed.
-- **Service extraction pattern**: Each extracted service focuses on one responsibility:
-  - `ToolCallParser` — parsing only, handles 4-layer fallback (strict Jackson → lenient → per-object extraction → regex)
-  - `NodeCommandExecutor` — bash/grep only
-  - `NodeSourceHandler` — input resolution only (text, file, URL, project directory)
-  - `NodeFileWriter` — file write sandbox enforcement only
-  - `PipelineBuilder` — stage creation from pipeline definition only
-  - `PipelineStatusManager` — in-memory state maps only (no persistence logic)
-  - `DiffService` — diff computation and payload building only
-- **Test coverage**: Plan 49 added 29 new tests across 3 test classes (FIX 1-3 phase); Phase 4+ work had 14 tests for PipelineService integration. All 290+ backend tests pass.
-- **NoUncheckedIndexedAccess**: Frontend tsconfig enforces explicit null guards on array access — no non-null assertions.
-- **Staging & commit discipline**: Excluded `thoughts/ledgers/` to keep history clean; only staged relevant service files + tests + CHANGELOG.
+- `.premortem-history.md` already exists (207 lines) tracking ~63 items, latest assessment 2026-06-17 — need to update rather than create from scratch
+- New services summary:
+  - `SchemaExecutionService` (693L) — wraps schema execution with metrics timing
+  - `PipelineStageExecutionService` (683L) — stage-level execution orchestration
+  - `PipelineStageRunner` (327L) — runs individual pipeline stages
+  - `SafeProcess` (89L) — process execution with timeout + stdout/stderr drain
+  - `FixPassOrchestrator` (138L) — auto-fix for Flutter projects (dart analyze → LLM fix → retry x3)
+  - `MagicContextIndexer` (101L) — async node output indexing, single-thread daemon executor, 10K char limit
+  - `MagicContextRetriever` (183L) — RAG search before node execution, falls back to empty string
+  - `StartupRecoveryService` (80L) — marks stale runs as failed on boot
+  - `ToolExecutionService` (185L) — tool execution extracted from ExecutionUtilityService
+  - `ToolHandlerService` — new tool handler registry
+  - `BuildToolHandler` — build tool integration (dart/gradlew)
+  - `FlutterScaffoldHelper` — Flutter scaffold generation
+  - `OutputReportingService` — structured output reporting
+  - `SessionController` (187L) — multi-session planning endpoint
+- `backend/.dart_tool/` directory (stale artifact — Flutter was run in wrong CWD) — should be gitignored or cleaned
 
 ## File Operations
 ### Read
-- `CHANGELOG.md` (30-line header, v0.4.0 section, checked for Unreleased placement)
-- `PipelineService.java` (lines 23-1275, constructor, diff review path 890-920, static computeSimpleDiff removed)
-- `PipelineServiceTest.java` (lines 25-50, setUp with constructor call, mock injection)
-- `ExecutionStateManager.java` (lines 1-40, PendingDiff record structure)
-- `SchemaService.java` (lines 595-640, handleDiffsApprove/Reject methods for context)
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/CHANGELOG.md` (PRISM Phase 3 entry added)
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/test/java/com/agent/orchestrator/service/ExecutionUtilityServiceTest.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/frontend/src/components/studio/__tests__/QuickStartDialog.test.ts`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/frontend/src/components/studio/__tests__/SchemaPropertiesPanel.test.ts`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/SchemaExecutionService.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/PipelineStageExecutionService.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/PipelineStageRunner.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/SafeProcess.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/FixPassOrchestrator.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/ToolExecutionService.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/MagicContextIndexer.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/MagicContextRetriever.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/service/StartupRecoveryService.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/backend/src/main/java/com/agent/orchestrator/controller/SessionController.java`
+- `/Users/evgenijtihomirov/git/Axolotl/Axolotl/.premortem-history.md`
 
 ### Modified
-- **Created** (`??`):
-  - `backend/src/main/java/com/agent/orchestrator/service/DiffService.java` — 62 lines (constructor-injected @Service, `computeSimpleDiff()`, `computeDiffPayloads()`)
-  - Plus 9 other new services from FIX 4 & 5 (committed in c64a59c2)
-  - Plus 2 test files (ErrorCategoryTest, ExecutionStateReconcilerTest)
-  - `.ideas/approved/done/49-premortem-fix-plan.md` — moved from implementing/
-
-- **Modified** (`M`):
-  - `CHANGELOG.md` — added [Unreleased] section (5 Added bullets, 1 Removed bullet)
-  - `PipelineService.java` — added `DiffService diffService` field, updated constructor, replaced inline diff building with `diffService.computeDiffPayloads()`, removed `computeSimpleDiff()` static method (45 lines deleted)
-  - `PipelineServiceTest.java` — added `@Mock DiffService diffService`, updated constructor call with diffService parameter
-  - Plus 8 modified files from FIX 4 wiring (committed in c64a59c2)
-
-### NOT staged (excluded from commit)
-- `thoughts/ledgers/CONTINUITY_ses_1cee.md` (tracked but not relevant to this plan; left unstaged)
+- (none yet — test fixes pending)

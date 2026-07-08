@@ -129,20 +129,35 @@ public class ExecutionUtilityService {
                         .allowHostAccess(HostAccess.NONE)
                         .build()) {
                     org.graalvm.polyglot.Value bindings = ctx.getBindings("js");
-                    context.forEach(bindings::putMember);
+                    context.forEach((key, value) -> {
+                        // Convert Java Number types to double so JS comparison operators work
+                        if (value instanceof Number) {
+                            bindings.putMember(key, ((Number) value).doubleValue());
+                        } else {
+                            bindings.putMember(key, value);
+                        }
+                    });
                     org.graalvm.polyglot.Value result = ctx.eval("js", "Boolean(" + expression + ")");
                     return result.asBoolean();
                 }
             });
-            return future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+            return future.get(30, java.util.concurrent.TimeUnit.SECONDS);
         } catch (java.util.concurrent.TimeoutException e) {
-            log.warn("JS condition evaluation timed out after 5s: {}", expression);
+            log.warn("JS condition evaluation timed out after 30s: {}", expression);
             return false;
         } catch (Exception e) {
             log.error("Failed to evaluate condition '{}': {}", expression, e.getMessage(), e);
             return false;
         } finally {
             exec.shutdownNow();
+            try {
+                if (!exec.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                    log.warn("Condition evaluation executor did not terminate within 5s");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                exec.shutdownNow();
+            }
         }
     }
 

@@ -36,8 +36,6 @@ public class SchemaExecutionService {
     private final MetricsService metricsService;
     private final ObjectMapper mapper;
 
-    private final Map<String, List<ExecutionRun>> executionRuns = new ConcurrentHashMap<>();
-    private final Map<String, ExecutionRun> pausedRuns = new ConcurrentHashMap<>();
     private final List<ExecutionRecord> executionHistory = Collections.synchronizedList(new ArrayList<>());
     private final Object executionHistoryLock = new Object();
     private static final int MAX_HISTORY = 100;
@@ -566,7 +564,7 @@ public class SchemaExecutionService {
     }
 
     void computeSkippedNodes(WorkflowSchema schema, Map<String, String> conditionResults) {
-        // package-private — used by test accessor only; logic is the same as original private method
+        computeSkippedNodesInternal(schema, conditionResults);
     }
 
     Set<String> computeSkippedNodesInternal(WorkflowSchema schema, Map<String, String> conditionResults) {

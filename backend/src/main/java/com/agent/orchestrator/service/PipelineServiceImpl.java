@@ -6,6 +6,7 @@ import com.agent.orchestrator.repository.ExecutionRepository;
 import com.agent.orchestrator.websocket.ExecutionWebSocketHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -207,5 +208,10 @@ public class PipelineServiceImpl implements PipelineService {
     @Override
     public boolean isPipelineRunning(String schemaId) {
         return statusManager.isPipelineRunning(schemaId);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        pipelineExecutor.shutdownNow();
     }
 }

@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import com.agent.orchestrator.llm.LlmUsage;
@@ -13,6 +15,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 public class ExecutionStateManager {
+
+    private static final Logger log = LoggerFactory.getLogger(ExecutionStateManager.class);
 
     public static class PendingDiff {
         public final String filePath;
@@ -32,6 +36,9 @@ public class ExecutionStateManager {
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
     private final Map<String, String> outputFileRegistry = new ConcurrentHashMap<>();
     private final Map<String, Object> generatedFilesRegistry = new ConcurrentHashMap<>();
+
+    /** Max entries in generatedFilesRegistry before eviction warning and cleanup. */
+    private static final int MAX_GENERATED_FILES = 1000;
     private final Map<String, String> schemaRunIds = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> fileChanges = new ConcurrentHashMap<>();
     private final Map<String, List<PendingDiff>> pendingDiffRegistry = new ConcurrentHashMap<>();
@@ -106,6 +113,13 @@ public class ExecutionStateManager {
 
     public void putGeneratedFile(String key, Object value) {
         generatedFilesRegistry.put(key, value);
+        if (generatedFilesRegistry.size() > MAX_GENERATED_FILES) {
+            log.warn("generatedFilesRegistry exceeded {} entries (size={}), clearing oldest entries",
+                    MAX_GENERATED_FILES, generatedFilesRegistry.size());
+            // Remove first 25% of entries to bring it back under threshold
+            int toRemove = generatedFilesRegistry.size() - (MAX_GENERATED_FILES / 2);
+            generatedFilesRegistry.keySet().stream().limit(toRemove).forEach(k -> generatedFilesRegistry.remove(k));
+        }
     }
 
     public void recordFileChange(String schemaId, String nodeId, String path, String action) {

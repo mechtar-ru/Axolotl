@@ -1,5 +1,7 @@
 package com.agent.orchestrator.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -9,6 +11,8 @@ import java.util.regex.*;
 
 @Service
 public class PluginService {
+
+    private static final Logger log = LoggerFactory.getLogger(PluginService.class);
 
     private final Map<String, PluginInfo> registry = new ConcurrentHashMap<>();
     private final Map<String, Process> processes = new ConcurrentHashMap<>();
@@ -32,7 +36,7 @@ public class PluginService {
             throw new IllegalArgumentException("Manager not in whitelist: " + manager);
         }
 
-        String installCommand = buildInstallCommand(name, manager);
+        List<String> installCommand = buildInstallCommand(name, manager);
         String output = runCommand(installCommand, 120);
         String version = parseVersion(output);
 
@@ -60,7 +64,8 @@ public class PluginService {
         }
 
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", startCommand);
+            String[] cmd = startCommand.split(" ");
+            ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
@@ -71,9 +76,13 @@ public class PluginService {
 
             CompletableFuture.runAsync(() -> {
                 try {
-                    process.waitFor();
+                    if (!process.waitFor(60, TimeUnit.SECONDS)) {
+                        process.destroyForcibly();
+                        log.warn("Plugin {} process timed out after 60s, forcibly killed", name);
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                    process.destroyForcibly();
                 } finally {
                     info.setStatus("stopped");
                     info.setPid(null);
@@ -111,18 +120,18 @@ public class PluginService {
         return PLUGIN_PORTS.get(name);
     }
 
-    private String buildInstallCommand(String name, String manager) {
+    private List<String> buildInstallCommand(String name, String manager) {
         return switch (manager) {
-            case "pip" -> "pip install " + name;
-            case "npm" -> "npm install -g " + name;
-            case "opm" -> "opm install " + name;
+            case "pip" -> List.of("pip", "install", name);
+            case "npm" -> List.of("npm", "install", "-g", name);
+            case "opm" -> List.of("opm", "install", name);
             default -> throw new IllegalArgumentException("Unknown manager: " + manager);
         };
     }
 
-    private String runCommand(String command, int timeoutSeconds) {
+    private String runCommand(List<String> command, int timeoutSeconds) {
         try {
-            ProcessBuilder pb = new ProcessBuilder("bash", "-c", command);
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
             Process process = pb.start();
 

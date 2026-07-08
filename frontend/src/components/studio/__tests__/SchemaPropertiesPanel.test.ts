@@ -33,6 +33,19 @@ vi.mock('@/stores/schemaStore', () => ({
   })),
 }))
 
+// Mock the settings store
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: vi.fn(() => ({
+    projectsFolder: '/Users/test/projects',
+    providersLoaded: true,
+    fetchProviders: vi.fn(),
+    getAllModelOptions: vi.fn(() => [
+      { value: 'gpt-4', label: 'gpt-4' },
+      { value: 'deepseek-v4-flash-free', label: 'deepseek-v4-flash-free' },
+    ]),
+  })),
+}))
+
 // Mock the canvas store
 vi.mock('@/stores/useCanvasStore', () => ({
   useCanvasStore: vi.fn(() => ({

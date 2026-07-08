@@ -1,1 +1,0 @@
-cd /tmp && cat > /tmp/snake_check.py << 'PYEOF'...PYEOF\npython3 -m py_compile /tmp/snake_check.py 2>&1

@@ -13,6 +13,18 @@ const mockGetSchema = vi.hoisted(() => ({
   edges: [],
 }))
 
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: vi.fn(() => ({
+    projectsFolder: '/Users/test/projects',
+    providersLoaded: true,
+    fetchProviders: vi.fn().mockResolvedValue(undefined),
+    getAllModelOptions: vi.fn(() => [
+      { value: 'gpt-4', label: 'gpt-4' },
+      { value: 'deepseek-v4-flash-free', label: 'deepseek-v4-flash-free' },
+    ]),
+  })),
+}))
+
 vi.mock('@/services/api', () => ({
   appApi: {
     createApp: vi.fn().mockResolvedValue({ id: 'new-app-id', name: 'New App' }),
@@ -130,7 +142,7 @@ describe('QuickStartDialog', () => {
     const emitted = (wrapper.emitted('add-to-canvas')![0] as any[])[0] as any
     const receiveNode = emitted.nodes.find((n: any) => n.id === 'receive-1')
     expect(receiveNode.data.sourceData).toBe('Build a Sokoban game in Python')
-    expect(receiveNode.data.sourceType).toBe('text')
+    expect(receiveNode.data.config?.sourceType).toBe('text')
   })
 
   it('passes description to Verify node validationCriteria', async () => {
@@ -144,7 +156,7 @@ describe('QuickStartDialog', () => {
 
     const emitted = (wrapper.emitted('add-to-canvas')![0] as any[])[0] as any
     const verifyNode = emitted.nodes.find((n: any) => n.id === 'verify-1')
-    expect(verifyNode.data.validationCriteria).toBe('Build a Sokoban game in Python')
+    expect(verifyNode.data.config?.validationCriteria).toBe('Build a Sokoban game in Python')
   })
 
   it('creates new app in create mode before applying pipeline', async () => {
@@ -182,6 +194,7 @@ describe('QuickStartDialog', () => {
 
   it('shows error section on schema update failure', async () => {
     vi.mocked(schemaApi.updateSchema).mockRejectedValueOnce({
+      isAxiosError: true,
       response: { data: { error: 'Backend error' } },
     })
 
@@ -231,7 +244,7 @@ describe('QuickStartDialog', () => {
 
     // Verify presets don't contain pipeline language
     const options = Array.from(presetSelect!.options).map(o => o.text)
-    expect(options).toContain('Emotion Diary')
+    expect(options).toContain('EIOS (Flutter)')
     expect(options).toContain('Chat Bot')
     expect(options).toContain('Content Generator')
     expect(options).toContain('Sokoban Game')

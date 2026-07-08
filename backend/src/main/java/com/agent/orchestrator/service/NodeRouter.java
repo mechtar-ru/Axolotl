@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -240,13 +242,10 @@ public class NodeRouter {
                                 webSocketHandler.sendLog(schemaId, "warning",
                                         "Retry " + attempt + "/" + autoRetry + " after: " + execEx.getMessage(), node.getId());
                             }
-                            try {
-                                Thread.sleep(waitMs);
-                            } catch (InterruptedException ie) {
+                            // parkNanos doesn't pin virtual threads like Thread.sleep does
+                            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(waitMs));
+                            if (Thread.interrupted()) {
                                 Thread.currentThread().interrupt();
-                                throw new RuntimeException("Retry interrupted", ie);
-                            }
-                            if (Thread.currentThread().isInterrupted()) {
                                 log.warn("Node execution interrupted during retry wait");
                                 break;
                             }
