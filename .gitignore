@@ -77,3 +77,4 @@ eios/
 
 # Snake pipeline test artifacts
 snake/generated_*
+projects/

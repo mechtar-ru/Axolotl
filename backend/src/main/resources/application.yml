@@ -47,7 +47,7 @@ axolotl:
       draft-node:
         enabled: ${AXOLOTL_FEATURE_DRAFT_NODE:true}
   apps:
-    base-path: ${AXOLOTL_APPS_PATH:.}
+    base-path: ${AXOLOTL_APPS_PATH:projects}
   jwt:
     secret: ${AXOLOTL_JWT_SECRET:axolotl-secret-key-must-be-at-least-32-chars-long-for-hs256}
   llm:
