@@ -36,6 +36,7 @@ public class PluginRegistry implements AutoCloseable {
     private final PluginConfig config;
     private final ToolExecutor toolExecutor;
     private final String projectRoot;
+    private com.agent.orchestrator.service.NodeRouter nodeRouter;
 
     /** Active bridges: plugin name → PluginBridge */
     private final Map<String, PluginBridge> bridges = new ConcurrentHashMap<>();
@@ -53,7 +54,12 @@ public class PluginRegistry implements AutoCloseable {
         this.config = config;
         this.toolExecutor = toolExecutor;
         this.projectRoot = projectRoot;
+        this.nodeRouter = null; // set after injection
         validateProjectRoot();
+    }
+
+    public void setNodeRouter(com.agent.orchestrator.service.NodeRouter nodeRouter) {
+        this.nodeRouter = nodeRouter;
     }
 
     /**
@@ -395,8 +401,8 @@ public class PluginRegistry implements AutoCloseable {
      * Stub — will query ExecutionStateManager in production implementation.
      */
     private boolean isAnyExecutionRunning() {
-        // TODO: Query ExecutionStateManager or NodeRouter for active executions
-        return false; // Stub — prevents crash-path unregister from removing tools mid-execution
+        if (nodeRouter == null) return false;
+        return nodeRouter.isAnyExecutionRunning();
     }
 
     // ─── Shutdown ───

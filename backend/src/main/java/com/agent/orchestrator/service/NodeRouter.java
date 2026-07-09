@@ -114,6 +114,12 @@ public class NodeRouter {
         ((ExecutorService) nodeExecutor).shutdownNow();
     }
 
+    public boolean isAnyExecutionRunning() {
+        synchronized (runningExecutions) {
+            return !runningExecutions.isEmpty();
+        }
+    }
+
     public void executeNode(Node node, String schemaId, AtomicBoolean cancelFlag,
                             ExecutionMode mode, String resolvedModel) {
         String nodeExecutionId = null;

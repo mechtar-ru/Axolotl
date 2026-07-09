@@ -32,6 +32,7 @@ public class PluginLifecycleManager {
 
     private final ToolExecutor toolExecutor;
     private final AppConfig appConfig;
+    private final org.springframework.context.ApplicationContext applicationContext;
 
     @Value("${axolotl.plugins.enabled:true}")
     private boolean pluginEnabled;
@@ -75,9 +76,11 @@ public class PluginLifecycleManager {
         return t;
     });
 
-    public PluginLifecycleManager(ToolExecutor toolExecutor, AppConfig appConfig) {
+    public PluginLifecycleManager(ToolExecutor toolExecutor, AppConfig appConfig,
+                                    org.springframework.context.ApplicationContext applicationContext) {
         this.toolExecutor = toolExecutor;
         this.appConfig = appConfig;
+        this.applicationContext = applicationContext;
         this.projectRoot = appConfig.getBasePath();
 
         // Register JVM shutdown hook to kill Bun subprocesses even on abrupt termination
@@ -119,6 +122,12 @@ public class PluginLifecycleManager {
         // Initialize plugins (bounded by startupTimeoutMs per plugin)
         try {
             registry = new PluginRegistry(config, toolExecutor, projectRoot);
+            try {
+                var nr = applicationContext.getBean(com.agent.orchestrator.service.NodeRouter.class);
+                registry.setNodeRouter(nr);
+            } catch (Exception e) {
+                log.debug("NodeRouter not yet available for PluginRegistry wiring");
+            }
             registry.initialize();
             log.info("Plugin system initialized with {} plugin(s)", registry.getPluginCount());
         } catch (Exception e) {
