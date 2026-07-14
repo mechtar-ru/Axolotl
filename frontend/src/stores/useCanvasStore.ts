@@ -13,14 +13,33 @@ export const useCanvasStore = defineStore('canvas', () => {
   const currentSchema = ref<WorkflowSchema | null>(null);
   const loading = ref(false);
 
+  // ─── Performance settings ──────────────────────────────────────────
+  const virtualizationEnabled = ref(true)
+  const virtualizationMargin = ref(0.5)
+  const autoSaveDebounceMs = ref(2000)
+
+  function setVirtualizationEnabled(enabled: boolean) {
+    virtualizationEnabled.value = enabled
+  }
+
+  function setVirtualizationMargin(margin: number) {
+    virtualizationMargin.value = Math.max(0, margin)
+  }
+
+  function setAutoSaveDebounceMs(ms: number) {
+    autoSaveDebounceMs.value = Math.max(500, ms)
+  }
+
   // ─── Dirty-flag auto-save state ──────────────────────────────────
   const isDirty = ref(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   let isFlushing = false
+  let flushAbortController: AbortController | null = null
+  let loadAbortController: AbortController | null = null
 
   /**
    * Mark the schema as having unsaved changes.
-   * Updates `currentSchema` in-memory immediately, starts a 2s debounce
+   * Updates `currentSchema` in-memory immediately, starts a debounce
    * timer to persist to backend. Callers should NOT call updateSchema()
    * directly for normal edits — use markDirty() instead.
    */
@@ -28,7 +47,7 @@ export const useCanvasStore = defineStore('canvas', () => {
     currentSchema.value = schema
     isDirty.value = true
     if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(flushSave, 2000)
+    saveTimer = setTimeout(flushSave, autoSaveDebounceMs.value)
   }
 
   /**
@@ -44,8 +63,15 @@ export const useCanvasStore = defineStore('canvas', () => {
     if (!isDirty.value || !currentSchema.value || isFlushing) return
     isFlushing = true
 
+    flushAbortController = new AbortController()
+    const { signal } = flushAbortController
+
     try {
-      const updated = await schemaApi.updateSchema(currentSchema.value.id, currentSchema.value)
+      const updated = await schemaApi.updateSchema(currentSchema.value.id, currentSchema.value, {
+        signal: flushAbortController.signal
+      })
+      // Check if aborted during await
+      if (flushAbortController.signal.aborted) return
       // Sync returned data back so we stay consistent with backend
       const idx = schemas.value.findIndex(s => s.id === currentSchema.value!.id)
       if (idx !== -1) {
@@ -54,28 +80,40 @@ export const useCanvasStore = defineStore('canvas', () => {
       currentSchema.value = updated
       isDirty.value = false
     } catch (err) {
+      if (flushAbortController.signal.aborted) return
       toastError('Failed to save schema: ' + ((err as Error).message || err))
       isDirty.value = true
       throw err
     } finally {
       isFlushing = false
+      flushAbortController = null
     }
   }
 
   // ─── Schema CRUD ─────────────────────────────────────────────────
 
   async function loadSchemas() {
+    // Abort any in-flight load
+    if (loadAbortController) {
+      loadAbortController.abort()
+    }
+    loadAbortController = new AbortController()
     loading.value = true;
     try {
-      const data = await schemaApi.getSchemas();
+      const data = await schemaApi.getSchemas({ signal: loadAbortController.signal });
       schemas.value = data;
       if (schemas.value.length > 0 && !currentSchema.value) {
         currentSchema.value = schemas.value[0]!;
       }
     } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        console.log('[canvasStore] loadSchemas aborted');
+        return
+      }
       toastError('Failed to load schemas: ' + ((err as Error).message || err))
     } finally {
       loading.value = false;
+      loadAbortController = null
     }
   }
 
@@ -131,16 +169,21 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   async function deleteSchema(id: string) {
     try {
+      // Abort any in-flight flushSave for this schema before deleting
+      if (flushAbortController) {
+        flushAbortController.abort()
+        flushAbortController = null
+      }
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
       await schemaApi.deleteSchema(id);
       schemas.value = schemas.value.filter(s => s.id !== id);
       if (currentSchema.value?.id === id) {
         currentSchema.value = schemas.value[0] || null;
       }
       isDirty.value = false
-      if (saveTimer) {
-        clearTimeout(saveTimer)
-        saveTimer = null
-      }
     } catch (err) {
       toastError('Failed to delete schema: ' + ((err as Error).message || err))
       throw err;
@@ -232,6 +275,9 @@ export const useCanvasStore = defineStore('canvas', () => {
 
   /**
    * Dispose of canvas state — clears currentSchema and any pending save.
+   * Aborts in-flight flushSave to prevent race conditions.
+   * Clears debounce timer on unmount.
+   * Aborts in-flight schema loads to prevent race conditions.
    */
   function dispose() {
     initializedId = null
@@ -240,6 +286,14 @@ export const useCanvasStore = defineStore('canvas', () => {
       clearTimeout(saveTimer)
       saveTimer = null
     }
+    if (flushAbortController) {
+      flushAbortController.abort()
+      flushAbortController = null
+    }
+    if (loadAbortController) {
+      loadAbortController.abort()
+      loadAbortController = null
+    }
   }
 
   // ─── Canvas helpers ──────────────────────────────────────────
@@ -247,18 +301,20 @@ export const useCanvasStore = defineStore('canvas', () => {
   function addNode(node: FlowNode) {
     if (!currentSchema.value) return
     // Pre-fill schema default model for new nodes (existing nodes unchanged)
-    if (!node.data?.config?.model && currentSchema.value.defaultModel) {
-      node = {
-        ...node,
+    // Clone node deeply to avoid shared config references
+    let newNode = { ...node, data: { ...node.data } } as FlowNode
+    if (!newNode.data.config?.model && currentSchema.value.defaultModel) {
+      newNode = {
+        ...newNode,
         data: {
-          ...node.data,
-          config: { ...node.data?.config, model: currentSchema.value.defaultModel },
+          ...newNode.data,
+          config: { ...newNode.data?.config, model: currentSchema.value.defaultModel },
         },
       } as FlowNode
     }
     currentSchema.value = {
       ...currentSchema.value,
-      nodes: [...(currentSchema.value.nodes || []), node],
+      nodes: [...(currentSchema.value.nodes || []), newNode],
     }
     markDirty(currentSchema.value)
   }
@@ -310,6 +366,8 @@ export const useCanvasStore = defineStore('canvas', () => {
     isDirty,
     markDirty,
     flushSave,
+    // Performance settings
+    autoSaveDebounceMs,
     // Schema CRUD
     loadSchemas,
     createSchema,

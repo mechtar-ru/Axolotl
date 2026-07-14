@@ -36,6 +36,7 @@ spring:
 axolotl:
   features:
     webhook:
+      url: ${AXOLOTL_WEBHOOK_URL:}
       enabled: ${AXOLOTL_FEATURE_WEBHOOK:false}
     graph-query:
       enabled: ${AXOLOTL_FEATURE_GRAPH_QUERY:true}
@@ -93,6 +94,9 @@ axolotl:
     # Comma-separated list of npm packages to load as plugins
     # e.g.: @cortexkit/opencode-magic-context
     list: "@cortexkit/opencode-magic-context"
+
+  cors:
+    allowed-origin-patterns: ${AXOLOTL_CORS_ALLOWED_ORIGINS:*}
 
 # OpenAPI / Swagger
 springdoc:

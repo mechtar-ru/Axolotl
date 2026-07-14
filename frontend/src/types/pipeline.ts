@@ -33,7 +33,7 @@ export interface Pipeline {
 }
 
 export interface StageResult {
-  [stageId: string]: string
+  [stageId: string]: string | { durationMs?: number; status?: string }
 }
 
 export interface PipelineStatus {

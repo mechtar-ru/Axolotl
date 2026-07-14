@@ -62,8 +62,8 @@
 
   /* Text */
   --text-primary: #eee;
-  --text-secondary: #aaa;
-  --text-muted: #666;
+  --text-secondary: #bbb;
+  --text-muted: #999;
   --text-inverse: #fff;
 
   /* Accent */
@@ -158,7 +158,7 @@
 
   --text-primary: #1a1a2e;
   --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
+  --text-muted: #757575;
   --text-inverse: #fff;
 
   --accent: #6c63ff;

@@ -1,5 +1,6 @@
 package com.agent.orchestrator.controller;
 
+import com.agent.orchestrator.model.ExecutionRun;
 import com.agent.orchestrator.llm.LlmService;
 import com.agent.orchestrator.llm.MemPalaceClient;
 import com.agent.orchestrator.model.WorkflowSchema;
@@ -16,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,5 +176,29 @@ class AgentControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status").value("ok"))
             .andExpect(jsonPath("$.message").value("Feedback received and review node resumed"));
+    }
+
+    @Test
+    void getLatestRun_returnsLatestExecutionRun() throws Exception {
+        ExecutionRun run = new ExecutionRun();
+        run.setId("run-latest");
+        run.setSchemaId("schema-1");
+        run.setStatus("completed");
+        run.setStartedAt(Instant.now());
+        when(schemaService.getLatestRun("schema-1")).thenReturn(run);
+
+        mockMvc.perform(get("/api/schemas/schema-1/runs/latest"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value("run-latest"))
+            .andExpect(jsonPath("$.schemaId").value("schema-1"))
+            .andExpect(jsonPath("$.status").value("completed"));
+    }
+
+    @Test
+    void getLatestRun_notFound_returnsNotFound() throws Exception {
+        when(schemaService.getLatestRun("schema-1")).thenReturn(null);
+
+        mockMvc.perform(get("/api/schemas/schema-1/runs/latest"))
+            .andExpect(status().isNotFound());
     }
 }

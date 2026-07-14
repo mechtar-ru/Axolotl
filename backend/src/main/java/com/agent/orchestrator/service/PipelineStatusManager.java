@@ -11,6 +11,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Manages pipeline execution state including running futures, cancel flags, stage results,
+ * and resume state. Includes TTL-based eviction to prevent unbounded memory growth.
+ */
 @Service
 public class PipelineStatusManager {
 
@@ -18,12 +22,25 @@ public class PipelineStatusManager {
 
     /** Max schemas with stored stage results before eviction. */
     private static final int MAX_STAGE_RESULT_SCHEMAS = 50;
+    /** TTL for stage results: 24 hours after last update. */
+    private static final long STAGE_RESULT_TTL_MS = 86400000;
 
     private final ConcurrentHashMap<String, CompletableFuture<?>> runningPipelines = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, AtomicBoolean> cancelFlags = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, ConcurrentHashMap<String, String>> stageResults = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, TimedEntry>> stageResults = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> pipelineResumeState = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> pipelineResumeTimestamps = new ConcurrentHashMap<>();
+
+    /** Entry with timestamp for TTL-based eviction. */
+    private static class TimedEntry {
+        final String value;
+        final long updatedAt;
+
+        TimedEntry(String value) {
+            this.value = value;
+            this.updatedAt = System.currentTimeMillis();
+        }
+    }
 
     /** Returns an unmodifiable view. Callers cannot mutate internal state. */
     public Map<String, CompletableFuture<?>> getRunningPipelines() {
@@ -37,7 +54,14 @@ public class PipelineStatusManager {
 
     /** Returns an unmodifiable view. Callers cannot mutate internal state. */
     public Map<String, Map<String, String>> getStageResults() {
-        return Collections.unmodifiableMap(stageResults);
+        // Return a snapshot without timestamps
+        Map<String, Map<String, String>> snapshot = new ConcurrentHashMap<>();
+        stageResults.forEach((schemaId, inner) -> {
+            Map<String, String> copy = new ConcurrentHashMap<>();
+            inner.forEach((stageId, entry) -> copy.put(stageId, entry.value));
+            snapshot.put(schemaId, copy);
+        });
+        return Collections.unmodifiableMap(snapshot);
     }
 
     /** Returns an unmodifiable view. Callers cannot mutate internal state. */
@@ -54,8 +78,11 @@ public class PipelineStatusManager {
 
     /** Returns the stage results for a schema, or empty map if none. */
     public Map<String, String> getStageResults(String schemaId) {
-        ConcurrentHashMap<String, String> results = stageResults.get(schemaId);
-        return results != null ? Collections.unmodifiableMap(results) : Collections.emptyMap();
+        ConcurrentHashMap<String, TimedEntry> results = stageResults.get(schemaId);
+        if (results == null) return Collections.emptyMap();
+        Map<String, String> copy = new ConcurrentHashMap<>();
+        results.forEach((stageId, entry) -> copy.put(stageId, entry.value));
+        return Collections.unmodifiableMap(copy);
     }
 
     public boolean isPipelineRunning(String schemaId) {
@@ -95,7 +122,7 @@ public class PipelineStatusManager {
     /** Store a single stage result, creating the inner map if absent. */
     public void putStageResult(String schemaId, String stageId, String output) {
         stageResults.computeIfAbsent(schemaId, k -> new ConcurrentHashMap<>())
-                .put(stageId, output);
+                .put(stageId, new TimedEntry(output));
         // Evict oldest schemas if map exceeds max entries
         if (stageResults.size() > MAX_STAGE_RESULT_SCHEMAS) {
             String eldest = stageResults.keySet().stream().findFirst().orElse(null);
@@ -128,6 +155,7 @@ public class PipelineStatusManager {
 
     /** Consume and remove resume state, returning the stored index. */
     public Integer consumeResumeState(String schemaId) {
+        pipelineResumeTimestamps.remove(schemaId);
         return pipelineResumeState.remove(schemaId);
     }
 
@@ -138,17 +166,23 @@ public class PipelineStatusManager {
 
     /**
      * Periodically clean stale pipeline resume state and stage results.
-     * Runs every hour and removes entries older than 24 hours.
+     * Runs every hour and removes entries older than TTL.
      */
     @Scheduled(fixedRate = 3600000)
     public void cleanupStaleState() {
-        long cutoff = System.currentTimeMillis() - 86400000; // 24 hours
+        long cutoff = System.currentTimeMillis() - STAGE_RESULT_TTL_MS;
+        
+        // Clean resume timestamps
         pipelineResumeTimestamps.entrySet().removeIf(e -> e.getValue() < cutoff);
-        // Sync pipelineResumeState with cleaned timestamps
         pipelineResumeState.keySet().removeIf(k -> !pipelineResumeTimestamps.containsKey(k));
-        // Also clean stageResults — remove entries whose schema has no resume state
-        stageResults.entrySet().removeIf(e -> {
-            return !pipelineResumeState.containsKey(e.getKey());
+
+        // Clean stage results by TTL
+        long now = System.currentTimeMillis();
+        stageResults.forEach((schemaId, inner) -> {
+            inner.entrySet().removeIf(e -> (now - e.getValue().updatedAt) > STAGE_RESULT_TTL_MS);
+            if (inner.isEmpty()) stageResults.remove(schemaId);
         });
+
+        log.debug("Pipeline status cleanup complete: {} schemas with stage results", stageResults.size());
     }
 }

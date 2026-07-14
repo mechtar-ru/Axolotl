@@ -74,6 +74,8 @@ public interface SchemaService {
 
     ExecutionRun getPausedRun(String schemaId);
 
+    ExecutionRun getLatestRun(String schemaId);
+
     void resumeExecution(String schemaId);
 
     void resumeExecution(String schemaId, WorkflowSchema schema);

@@ -1,12 +1,12 @@
 <template>
-  <div v-if="visible" class="review-overlay">
-    <div class="review-modal">
+  <div v-if="visible" class="review-overlay" @click.self="emit('close')" @keydown.esc="emit('close')" role="dialog" aria-modal="true" aria-labelledby="review-title">
+    <div ref="modal" class="review-modal">
       <div class="review-header">
-        <span v-if="draftMode" class="review-title">Draft Review — Review artifacts before implementation</span>
-        <span v-else-if="reviewType === 'design'" class="review-title">Design Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
-        <span v-else class="review-title">Plan Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
-        <button class="close-btn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        <span v-if="draftMode" class="review-title" id="review-title">Draft Review — Review artifacts before implementation</span>
+        <span v-else-if="reviewType === 'design'" class="review-title" id="review-title">Design Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
+        <span v-else class="review-title" id="review-title">Plan Review — Iteration {{ iteration }} of {{ maxIterLabel }} ({{ modeLabel }})</span>
+        <button class="close-btn" @click="emit('close')" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
 
@@ -139,7 +139,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
+
+const modal = ref<HTMLDivElement | null>(null);
 import DraftApprovalPanel, { type DraftArtifact } from './DraftApprovalPanel.vue';
 import DiffViewer from '@/components/shared/DiffViewer.vue';
 
@@ -198,6 +200,7 @@ const emit = defineEmits<{
   (e: 'suggest', payload: { feedback: string[]; history: FeedbackItem[] }): void;
   (e: 'edit'): void;
   (e: 'reject'): void;
+  (e: 'close'): void;
 }>();
 
 const editing = ref(false);
@@ -246,16 +249,58 @@ watch(() => props.rewrittenPlan, (val) => {
 });
 
 watch(() => props.visible, (v) => {
-  if (v) {
-    editing.value = false;
-    editedPlan.value = props.rewrittenPlan;
-    feedbackText.value = '';
-    feedbackItems.value = [];
-    showRejectConfirm.value = false;
-    diffOpen.value = false;
-    questionAnswers.value = {};
-  }
-});
+    if (v) {
+      editing.value = false;
+      editedPlan.value = props.rewrittenPlan;
+      feedbackText.value = '';
+      // Sync local feedbackItems with parent's feedbackHistory
+      feedbackItems.value = props.feedbackHistory.map(f => f.text);
+      showRejectConfirm.value = false;
+      diffOpen.value = false;
+      questionAnswers.value = {};
+    }
+  });
+
+  // Focus trap for accessibility
+  let lastFocusedElement: HTMLElement | null = null;
+  const handleTabKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const focusableElements = modal.value?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusableElements?.length) return;
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    if (!firstElement || !lastElement) return;
+    if (e.shiftKey && document.activeElement === firstElement) {
+      e.preventDefault();
+      lastElement.focus();
+    } else if (!e.shiftKey && document.activeElement === lastElement) {
+      e.preventDefault();
+      firstElement.focus();
+    }
+  };
+
+  onMounted(() => {
+    if (props.visible) {
+      lastFocusedElement = document.activeElement as HTMLElement;
+      document.addEventListener('keydown', handleTabKey);
+      // Focus the first focusable element
+      nextTick(() => {
+        const firstFocusable = modal.value?.querySelector<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        firstFocusable?.focus();
+      });
+    }
+  });
+
+  onBeforeUnmount(() => {
+    document.removeEventListener('keydown', handleTabKey);
+    if (lastFocusedElement) {
+      lastFocusedElement.focus();
+    }
+  });
 
 function severityClass(severity: string): string {
   switch (severity.toUpperCase()) {

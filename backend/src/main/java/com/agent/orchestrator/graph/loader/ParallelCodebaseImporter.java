@@ -63,6 +63,11 @@ public class ParallelCodebaseImporter {
         this.executor = Executors.newFixedThreadPool(PARALLELISM);
     }
 
+    @PreDestroy
+    public void shutdown() {
+        executor.shutdownNow();
+    }
+
     /**
      * Expose the class registry for other components that need direct access.
      */
@@ -115,7 +120,9 @@ public class ParallelCodebaseImporter {
             futures.add(future);
         }
 
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                .orTimeout(5, TimeUnit.MINUTES)
+                .join();
 
         createDependencies();
 
@@ -398,9 +405,4 @@ public class ParallelCodebaseImporter {
     }
 
     public record ParsedFileResult(int classes, int methods, int fields) {}
-
-    @PreDestroy
-    public void shutdown() {
-        executor.shutdown();
-    }
 }

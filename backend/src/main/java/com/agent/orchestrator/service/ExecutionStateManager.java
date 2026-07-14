@@ -5,13 +5,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import com.agent.orchestrator.llm.LlmUsage;
+import jakarta.annotation.PreDestroy;
+
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Manages the in-memory execution state for NodeExecutor.
  * Centralizes all ConcurrentHashMap access patterns for execution results,
  * condition results, file registries, and run tracking.
+ * Includes TTL-based eviction to prevent unbounded memory growth.
  */
 @Component
 public class ExecutionStateManager {
@@ -32,17 +39,98 @@ public class ExecutionStateManager {
         }
     }
 
+    /** Entry with timestamp for TTL-based eviction. */
+    private static class TimedEntry<V> {
+        final V value;
+        final long timestamp;
+
+        TimedEntry(V value) {
+            this.value = value;
+            this.timestamp = System.currentTimeMillis();
+        }
+    }
+
     private final Map<String, Map<String, String>> nodeResults = new ConcurrentHashMap<>();
     private final Map<String, String> conditionResults = new ConcurrentHashMap<>();
     private final Map<String, String> outputFileRegistry = new ConcurrentHashMap<>();
-    private final Map<String, Object> generatedFilesRegistry = new ConcurrentHashMap<>();
+    private final Map<String, TimedEntry<Object>> generatedFilesRegistry = new ConcurrentHashMap<>();
 
-    /** Max entries in generatedFilesRegistry before eviction warning and cleanup. */
+    /** Max entries in generatedFilesRegistry before eviction. */
     private static final int MAX_GENERATED_FILES = 1000;
+    /** TTL for generated files (24 hours). */
+    private static final long GENERATED_FILE_TTL_MS = TimeUnit.HOURS.toMillis(24);
+    /** TTL for node results (24 hours). */
+    private static final long NODE_RESULT_TTL_MS = TimeUnit.HOURS.toMillis(24);
+    /** TTL for condition results (1 hour). */
+    private static final long CONDITION_RESULT_TTL_MS = TimeUnit.HOURS.toMillis(1);
+
     private final Map<String, String> schemaRunIds = new ConcurrentHashMap<>();
     private final Map<String, Map<String, String>> fileChanges = new ConcurrentHashMap<>();
     private final Map<String, List<PendingDiff>> pendingDiffRegistry = new ConcurrentHashMap<>();
     private final Map<String, LlmUsage> nodeTokenUsage = new ConcurrentHashMap<>();
+
+    /** Background scheduler for TTL cleanup. */
+    private final ScheduledExecutorService cleanupScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "execution-state-cleanup");
+        t.setDaemon(true);
+        return t;
+    });
+
+    public ExecutionStateManager() {
+        // Run cleanup every hour
+        cleanupScheduler.scheduleAtFixedRate(this::evictExpiredEntries, 1, 1, TimeUnit.HOURS);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        cleanupScheduler.shutdownNow();
+    }
+
+    private void evictExpiredEntries() {
+        long now = System.currentTimeMillis();
+        int evicted = 0;
+
+        // Evict expired generated files
+        evicted += evictExpired(generatedFilesRegistry, GENERATED_FILE_TTL_MS, now);
+        
+        // Evict expired node results
+        for (Map<String, String> schemaResults : nodeResults.values()) {
+            evicted += evictExpired(schemaResults, NODE_RESULT_TTL_MS, now);
+        }
+        
+        // Evict expired condition results
+        evicted += evictExpired(conditionResults, CONDITION_RESULT_TTL_MS, now);
+
+        if (evicted > 0) {
+            log.debug("ExecutionStateManager: evicted {} expired entries", evicted);
+        }
+
+        // Hard limit on generated files
+        if (generatedFilesRegistry.size() > MAX_GENERATED_FILES) {
+            int toRemove = generatedFilesRegistry.size() - MAX_GENERATED_FILES / 2;
+            generatedFilesRegistry.keySet().stream().limit(toRemove).forEach(generatedFilesRegistry::remove);
+            log.warn("generatedFilesRegistry exceeded {} entries, removed {}", MAX_GENERATED_FILES, toRemove);
+        }
+    }
+
+    private <K, V> int evictExpired(Map<K, V> map, long ttlMs, long now) {
+        if (map instanceof ConcurrentHashMap) {
+            int count = 0;
+            for (Iterator<Map.Entry<K, V>> it = map.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<K, V> entry = it.next();
+                V value = entry.getValue();
+                if (value instanceof TimedEntry) {
+                    TimedEntry<?> timed = (TimedEntry<?>) value;
+                    if (now - timed.timestamp > ttlMs) {
+                        it.remove();
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+        return 0;
+    }
 
     /**
      * Record per-node token usage.
@@ -75,7 +163,10 @@ public class ExecutionStateManager {
     }
 
     public Map<String, Object> getGeneratedFilesRegistry() {
-        return generatedFilesRegistry;
+        // Return unwrapped values for backward compatibility
+        Map<String, Object> unwrapped = new HashMap<>();
+        generatedFilesRegistry.forEach((k, v) -> unwrapped.put(k, v.value));
+        return unwrapped;
     }
 
     public void setCurrentRunId(String schemaId, String runId) {
@@ -112,14 +203,7 @@ public class ExecutionStateManager {
     }
 
     public void putGeneratedFile(String key, Object value) {
-        generatedFilesRegistry.put(key, value);
-        if (generatedFilesRegistry.size() > MAX_GENERATED_FILES) {
-            log.warn("generatedFilesRegistry exceeded {} entries (size={}), clearing oldest entries",
-                    MAX_GENERATED_FILES, generatedFilesRegistry.size());
-            // Remove first 25% of entries to bring it back under threshold
-            int toRemove = generatedFilesRegistry.size() - (MAX_GENERATED_FILES / 2);
-            generatedFilesRegistry.keySet().stream().limit(toRemove).forEach(k -> generatedFilesRegistry.remove(k));
-        }
+        generatedFilesRegistry.put(key, new TimedEntry<>(value));
     }
 
     public void recordFileChange(String schemaId, String nodeId, String path, String action) {

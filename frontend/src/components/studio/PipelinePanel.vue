@@ -29,6 +29,21 @@ function getStageTag(stageId: string): string | null {
   return null
 }
 
+function getTddRelatedStages(stageId: string): { id: string; name: string; type: string }[] {
+  const related: { id: string; name: string; type: string }[] = []
+  const baseName = stageId.replace(/^(test-|verify-test-|impl-)/, '')
+  
+  for (const stage of stages.value) {
+    if (stage.id === stageId) continue
+    const stageBase = stage.id.replace(/^(test-|verify-test-|impl-)/, '')
+    if (stageBase === baseName) {
+      related.push({ id: stage.id, name: stage.name, type: getStageTag(stage.id) || 'Unknown' })
+    }
+  }
+  
+  return related
+}
+
 const stageLevels = computed(() => {
   if (!stages.value.length) return []
   const deps = new Map<string, Set<string>>()
@@ -57,13 +72,21 @@ const stageLevels = computed(() => {
       <h3>Pipeline</h3>
     </div>
 
-    <template v-if="pipeline && pipeline.stages && pipeline.stages.length > 0">
+    <template v-if="!pipeline">
+      <div class="skeleton-stage">
+        <div class="skeleton-line" style="width: 60%"></div>
+        <div class="skeleton-line" style="width: 40%"></div>
+        <div class="skeleton-line" style="width: 50%"></div>
+      </div>
+    </template>
+
+    <template v-else-if="pipeline && pipeline.stages && pipeline.stages.length > 0">
       <div class="pipeline-info">
         <span class="pipeline-name">{{ pipeline.name }}</span>
         <span v-if="pipeline.tddEnabled" class="tdd-badge">TDD</span>
       </div>
 
-      <div class="stages-flow">
+      <div class="stages-flow" aria-live="polite" aria-atomic="true">
         <div v-for="(level, li) in stageLevels" :key="li" class="stage-level">
           <div class="level-label">Level {{ li }}</div>
           <div class="level-stages">
@@ -95,11 +118,32 @@ const stageLevels = computed(() => {
                 <div class="stage-type">{{ stage.nodeType }}</div>
                 <div v-if="getStageTag(stage.id)" class="stage-tag" :class="'tag-' + getStageTag(stage.id)!.toLowerCase().replace(' ', '-')">{{ getStageTag(stage.id) }}</div>
                 <div class="stage-model" v-if="stage.model">Model: {{ stage.model }}</div>
+                <div class="stage-duration" v-if="stage.id in pipelineStore.pipelineStatus.stageResults && typeof pipelineStore.pipelineStatus.stageResults[stage.id] === 'object' && (pipelineStore.pipelineStatus.stageResults[stage.id] as any)?.durationMs">
+                  {{ ((pipelineStore.pipelineStatus.stageResults[stage.id] as any).durationMs / 1000).toFixed(1) }}s
+                </div>
+                <div v-if="getTddRelatedStages(stage.id).length > 0" class="tdd-links">
+                  <span class="tdd-label">TDD:</span>
+                  <span 
+                    v-for="related in getTddRelatedStages(stage.id)" 
+                    :key="related.id" 
+                    class="tdd-link"
+                    @click.stop="$emit('select-stage', related.id)"
+                    title="Go to {{ related.name }}"
+                  >
+                    {{ related.type }}: {{ related.name }}
+                  </span>
+                </div>
               </div>
-              <div class="stage-status completed" v-if="stage.id in pipelineStore.pipelineStatus.stageResults">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <div class="stage-status" v-if="stage.id in pipelineStore.pipelineStatus.stageResults">
+                <svg v-if="typeof pipelineStore.pipelineStatus.stageResults[stage.id] === 'object' && (pipelineStore.pipelineStatus.stageResults[stage.id] as any)?.status === 'completed'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
+                <button v-else-if="typeof pipelineStore.pipelineStatus.stageResults[stage.id] === 'object' && (pipelineStore.pipelineStatus.stageResults[stage.id] as any)?.status === 'failed'" class="stage-retry-btn" @click.stop title="Retry this stage">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                </button>
               </div>
             </div>
           </div>
@@ -280,11 +324,73 @@ const stageLevels = computed(() => {
   align-items: center;
 }
 
+.stage-duration {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.stage-retry-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  cursor: pointer;
+  color: var(--error);
+  transition: background 0.15s;
+}
+.stage-retry-btn:hover {
+  background: color-mix(in srgb, var(--error) 15%, transparent);
+}
+
+.tdd-link {
+  font-size: 10px;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  margin-top: 2px;
+  display: inline-block;
+}
+.tdd-link:hover {
+  color: var(--accent-hover);
+}
+
 .level-arrow {
   display: flex;
   align-items: center;
   color: var(--text-muted);
   opacity: 0.5;
   padding: 2px 0;
+}
+
+@media (max-width: 768px) {
+  .stage-card {
+    min-width: 120px;
+    padding: 8px 10px;
+  }
+  .pipeline-panel {
+    padding: 8px;
+  }
+}
+
+/* ── Pipeline loading skeleton ── */
+.skeleton-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+}
+.skeleton-line {
+  height: 14px;
+  border-radius: 6px;
+  background: var(--border-color);
+  animation: pipeline-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes pipeline-shimmer {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
 }
 </style>

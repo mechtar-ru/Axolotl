@@ -230,6 +230,13 @@ public class AgentController {
         return schemaService.findExecutionRuns(id);
     }
 
+    @GetMapping("/schemas/{id}/runs/latest")
+    public ResponseEntity<ExecutionRun> getLatestRun(@PathVariable String id) {
+        ExecutionRun run = schemaService.getLatestRun(id);
+        if (run == null) return ResponseEntity.notFound().build();
+        return ResponseEntity.ok(run);
+    }
+
     @GetMapping("/schemas/{id}/runs/paused")
     public ResponseEntity<ExecutionRun> getPausedRun(@PathVariable String id) {
         ExecutionRun run = schemaService.getPausedRun(id);

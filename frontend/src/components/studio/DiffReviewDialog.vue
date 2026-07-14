@@ -1,9 +1,14 @@
 <template>
-  <div v-if="visible" class="diff-overlay">
+  <div v-if="visible" class="diff-overlay" @click.self="!processing && emit('close')" @keydown.esc="emit('close')" role="dialog" aria-modal="true" aria-labelledby="diff-title">
     <div class="diff-modal">
       <div class="diff-header">
-        <span class="diff-title">File Changes Review</span>
+        <span id="diff-title" class="diff-title">File Changes Review</span>
         <span class="diff-subtitle">{{ diffs.length }} file(s) modified — review each change below</span>
+        <button class="close-btn" @click="emit('close')" :disabled="processing" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+            <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
 
       <div class="diff-body">
@@ -15,6 +20,14 @@
             </span>
           </div>
           <pre class="diff-content"><code>{{ d.diff }}</code></pre>
+          <div class="diff-file-actions">
+            <button class="btn-file-reject" :disabled="processing" @click="rejectFile(idx)">
+              Reject
+            </button>
+            <button class="btn-file-approve" :disabled="processing" @click="approveFile(idx)">
+              Approve
+            </button>
+          </div>
         </div>
       </div>
 
@@ -33,7 +46,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { api } from '@/services/api';
 
 interface DiffItem {
   filePath: string;
@@ -58,10 +72,11 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
+  (e: 'file-action', action: 'approve' | 'reject', fileIdx: number): void;
 }>();
 
 const processing = ref(false);
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8082/api';
+const focusedIdx = ref(0);
 
 function removedLines(diff: string): number {
   return (diff.match(/^-/gm) || []).length;
@@ -70,11 +85,41 @@ function addedLines(diff: string): number {
   return (diff.match(/^\+/gm) || []).length;
 }
 
+async function approveFile(idx: number) {
+  if (processing.value) return;
+  processing.value = true;
+  try {
+    await api.post(`/execution/${props.executionId}/approve-diffs`, null, {
+      params: { nodeId: props.nodeId, fileIdx: idx },
+    });
+  } catch (e) {
+    console.error('DiffReviewDialog: Approve file failed:', e);
+  } finally {
+    processing.value = false;
+  }
+  emit('file-action', 'approve', idx);
+}
+
+async function rejectFile(idx: number) {
+  if (processing.value) return;
+  processing.value = true;
+  try {
+    await api.post(`/execution/${props.executionId}/reject-diffs`, null, {
+      params: { nodeId: props.nodeId, fileIdx: idx },
+    });
+  } catch (e) {
+    console.error('DiffReviewDialog: Reject file failed:', e);
+  } finally {
+    processing.value = false;
+  }
+  emit('file-action', 'reject', idx);
+}
+
 async function handleApprove() {
   processing.value = true;
   try {
-    await fetch(`${API_BASE}/execution/${props.executionId}/approve-diffs?nodeId=${props.nodeId}`, {
-      method: 'POST',
+    await api.post(`/execution/${props.executionId}/approve-diffs`, null, {
+      params: { nodeId: props.nodeId },
     });
   } catch (e) {
     console.error('DiffReviewDialog: Approve diffs failed:', e);
@@ -86,8 +131,8 @@ async function handleApprove() {
 async function handleReject() {
   processing.value = true;
   try {
-    await fetch(`${API_BASE}/execution/${props.executionId}/reject-diffs?nodeId=${props.nodeId}`, {
-      method: 'POST',
+    await api.post(`/execution/${props.executionId}/reject-diffs`, null, {
+      params: { nodeId: props.nodeId },
     });
   } catch (e) {
     console.error('DiffReviewDialog: Reject diffs failed:', e);
@@ -95,6 +140,61 @@ async function handleReject() {
   processing.value = false;
   emit('close');
 }
+
+// Keyboard navigation between files
+function onKeyDown(e: KeyboardEvent) {
+  if (!props.visible || processing.value) {
+    // Allow escape even during processing
+    if (e.key === 'Escape') emit('close')
+    return
+  }
+  // Ctrl+A / Cmd+A: approve all
+  if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+    e.preventDefault()
+    handleApprove()
+    return
+  }
+  // Ctrl+R / Cmd+R: reject all
+  if ((e.metaKey || e.ctrlKey) && e.key === 'r') {
+    e.preventDefault()
+    handleReject()
+    return
+  }
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    focusedIdx.value = Math.min(focusedIdx.value + 1, props.diffs.length - 1);
+    nextTick(() => focusDiffEntry());
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    focusedIdx.value = Math.max(focusedIdx.value - 1, 0);
+    nextTick(() => focusDiffEntry());
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    // Quick approve on Enter
+    const idx = focusedIdx.value;
+    if (idx < props.diffs.length) {
+      approveFile(idx);
+    }
+  } else if (e.key === 'Backspace' || e.key === 'Delete') {
+    // Quick reject on Backspace/Delete
+    const idx = focusedIdx.value;
+    if (idx < props.diffs.length) {
+      rejectFile(idx);
+    }
+  }
+}
+
+function focusDiffEntry() {
+  const entries = document.querySelectorAll('.diff-entry');
+  entries[focusedIdx.value]?.querySelector('button')?.focus();
+}
+
+onMounted(() => {
+  document.addEventListener('keydown', onKeyDown);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', onKeyDown);
+});
 </script>
 
 <style scoped>
@@ -227,6 +327,30 @@ async function handleReject() {
 
 .btn-approve:disabled,
 .btn-reject:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.close-btn {
+  background: var(--bg-hover, rgba(255,255,255,0.05));
+  border: none;
+  color: var(--text-primary);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: var(--text-sm, 14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.close-btn:hover:not(:disabled) {
+  background: var(--bg-active, rgba(255,255,255,0.1));
+}
+
+.close-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

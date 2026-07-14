@@ -2,6 +2,8 @@ package com.agent.orchestrator.controller;
 
 import com.agent.orchestrator.config.JwtUtil;
 import com.agent.orchestrator.model.AppUser;
+import com.agent.orchestrator.model.RefreshToken;
+import com.agent.orchestrator.repository.RefreshTokenRepository;
 import com.agent.orchestrator.repository.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -6,6 +6,15 @@ import DashboardView from '../DashboardView.vue'
 import { schemaApi } from '../../services/api'
 import { appApi } from '../../services/api'
 
+// Mock localStorage to avoid localStorage issues in test environment
+const localStorageMock = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  removeItem: vi.fn(),
+  clear: vi.fn(),
+}
+Object.defineProperty(global, 'localStorage', { value: localStorageMock, writable: true })
+
 // Mock modules
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -38,17 +47,44 @@ vi.mock('@/components/app/TemplateCard.vue', () => ({
   },
 }))
 
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: vi.fn(() => ({
+    fetchProviders: vi.fn().mockResolvedValue(undefined),
+    getAllModelOptions: vi.fn(() => []),
+    providersLoaded: true,
+    loadProjectsFolder: vi.fn().mockResolvedValue(undefined),
+    projectsFolder: '',
+  })),
+}))
+
+vi.mock('@/stores/schemaStore', () => {
+  const state = { schemas: [] as any[] }
+  return {
+    useSchemaStore: vi.fn(() => ({
+      get schemas() { return state.schemas },
+      set schemas(v: any[]) { state.schemas = v },
+      loading: false,
+      loadSchemas: vi.fn(() => Promise.resolve()),
+    })),
+  }
+})
+
+const mockSchemas = [
+  { id: '1', name: 'Chat App', appType: 'CHAT', targetPath: '/Users/evgenijtihomirov/git/Axolotl/Chat App/', nodes: [], edges: [], description: '', version: '1.0' },
+  { id: '2', name: 'Custom Tool', appType: 'CUSTOM', nodes: [], edges: [], description: '', version: '1.0' },
+  { id: '3', name: 'Game Project', appType: 'GAME', targetPath: '/Users/evgenijtihomirov/git/Axolotl/Game/', nodes: [], edges: [], description: '', version: '1.0' },
+]
+
 describe('DashboardView', () => {
+  function setSchemas(schemas: any[]) {
+    const store = useSchemaStore()
+    ;(store as any).schemas = schemas
+  }
+
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
-
-    vi.mocked(schemaApi.getSchemas).mockResolvedValue([
-      { id: '1', name: 'Chat App', appType: 'CHAT', targetPath: '/Users/evgenijtihomirov/git/Axolotl/Chat App/', nodes: [], edges: [], description: '', version: '1.0' },
-      { id: '2', name: 'Custom Tool', appType: 'CUSTOM', nodes: [], edges: [], description: '', version: '1.0' },
-      { id: '3', name: 'Game Project', appType: 'GAME', targetPath: '/Users/evgenijtihomirov/git/Axolotl/Game/', nodes: [], edges: [], description: '', version: '1.0' },
-    ] as any)
-
+    vi.mocked(schemaApi.getSchemas).mockResolvedValue(mockSchemas)
     vi.mocked(appApi.checkTargetPath).mockResolvedValue({ exists: false, targetPath: '' })
   })
 
@@ -65,6 +101,7 @@ describe('DashboardView', () => {
   })
 
   it('renders all schemas as AppCards', async () => {
+    setSchemas(mockSchemas)
     const wrapper = mount(DashboardView)
     await flushPromises()
     await wrapper.vm.$nextTick()
@@ -73,6 +110,7 @@ describe('DashboardView', () => {
   })
 
   it('filters apps by search query', async () => {
+    setSchemas(mockSchemas)
     const wrapper = mount(DashboardView)
     await wrapper.vm.$nextTick()
 
@@ -86,6 +124,7 @@ describe('DashboardView', () => {
   })
 
   it('shows empty state when search matches nothing', async () => {
+    setSchemas(mockSchemas)
     const wrapper = mount(DashboardView)
     await wrapper.vm.$nextTick()
 
@@ -98,6 +137,7 @@ describe('DashboardView', () => {
   })
 
   it('shows empty state when no schemas exist', async () => {
+    setSchemas([])
     vi.mocked(schemaApi.getSchemas).mockResolvedValue([])
     const wrapper = mount(DashboardView)
     await wrapper.vm.$nextTick()
@@ -106,6 +146,7 @@ describe('DashboardView', () => {
   })
 
   it('marks generated apps with isGenerated=true and status=active', async () => {
+    setSchemas(mockSchemas)
     const wrapper = mount(DashboardView)
     await flushPromises()
     await wrapper.vm.$nextTick()
@@ -124,6 +165,7 @@ describe('DashboardView', () => {
   })
 
   it('renders templates section below apps', async () => {
+    setSchemas(mockSchemas)
     const wrapper = mount(DashboardView)
     await wrapper.vm.$nextTick()
     const appSection = wrapper.find('.apps-section')
@@ -135,6 +177,7 @@ describe('DashboardView', () => {
   })
 
   it('clears search query back to full list', async () => {
+    setSchemas(mockSchemas)
     const wrapper = mount(DashboardView)
     await wrapper.vm.$nextTick()
 

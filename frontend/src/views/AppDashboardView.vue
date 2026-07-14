@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onActivated, defineOptions } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { appApi, historyApi } from '@/services/api'
 import { useSchemaStore } from '@/stores/schemaStore'

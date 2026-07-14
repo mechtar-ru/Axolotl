@@ -75,6 +75,23 @@ const hasReviewNode = computed(() =>
   (currentSchema.value?.nodes || []).some(n => n.type === 'review')
 )
 
+// ─── Inline validation ─────────────────────────────────────────────
+const nameError = computed(() => {
+  const name = schemaName.value
+  if (!name || !name.trim()) return 'Schema name is required'
+  return null
+})
+const pathError = computed(() => {
+  const path = targetPath.value
+  if (path && !path.endsWith('/')) return 'Target path should end with /'
+  return null
+})
+const descError = computed(() => {
+  const desc = schemaDescription.value
+  if (desc && desc.length > 500) return 'Description too long (max 500 chars)'
+  return null
+})
+
 // ─── Actions ─────────────────────────────────────────────────────
 function updateName(value: string) {
   if (!currentSchema.value) return
@@ -187,8 +204,10 @@ function onFolderPicked(event: Event) {
           @input="updateName(($event.target as HTMLInputElement).value)"
           type="text"
           class="config-input"
+          :class="{ 'input-error': nameError }"
           placeholder="Schema name"
         />
+        <span v-if="nameError" class="inline-error">{{ nameError }}</span>
       </div>
 
       <!-- Description -->
@@ -198,9 +217,11 @@ function onFolderPicked(event: Event) {
           :value="schemaDescription"
           @input="updateDescription(($event.target as HTMLTextAreaElement).value)"
           class="config-textarea"
+          :class="{ 'input-error': descError }"
           placeholder="Schema description"
           rows="3"
         />
+        <span v-if="descError" class="inline-error">{{ descError }}</span>
       </div>
 
       <!-- Target Path -->
@@ -227,6 +248,7 @@ function onFolderPicked(event: Event) {
           />
         </div>
         <input ref="folderPickerRef" type="file" webkitdirectory style="display:none" @change="onFolderPicked" />
+        <span v-if="pathError" class="inline-error">{{ pathError }}</span>
       </div>
 
       <!-- Default Model -->
@@ -492,5 +514,15 @@ function onFolderPicked(event: Event) {
 
 .action-btn--accent:hover {
   opacity: 0.9;
+}
+
+.input-error {
+  border-color: var(--error) !important;
+}
+.inline-error {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--error);
 }
 </style>

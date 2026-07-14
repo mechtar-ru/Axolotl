@@ -11,7 +11,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -21,6 +23,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
 
 import static com.agent.orchestrator.llm.LlmResponse.textOnly;
 
@@ -137,14 +140,82 @@ public class CustomLlmProvider implements LlmProvider {
             if (prefix != null) {
                 for (CustomLlmEndpoint ep : endpoints) {
                     if (ep.getName().equalsIgnoreCase(prefix)) {
+                        if (!isSafeEndpoint(ep)) {
+                            log.warn("Blocked unsafe custom LLM endpoint: {} ({})", ep.getName(), ep.getBaseUrl());
+                            return null;
+                        }
                         return ep;
                     }
                 }
             }
         }
 
-        // Fallback: first enabled endpoint
-        return endpoints.get(0);
+        // Fallback: first enabled endpoint (also validate)
+        CustomLlmEndpoint fallback = endpoints.get(0);
+        if (!isSafeEndpoint(fallback)) {
+            log.warn("Blocked unsafe custom LLM endpoint (fallback): {} ({})", fallback.getName(), fallback.getBaseUrl());
+            return null;
+        }
+        return fallback;
+    }
+
+    /**
+     * Validate endpoint URL against SSRF - block localhost, private IPs, and internal ranges.
+     */
+    private boolean isSafeEndpoint(CustomLlmEndpoint endpoint) {
+        String baseUrl = endpoint.getBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) return false;
+
+        try {
+            URI uri = URI.create(baseUrl);
+            String host = uri.getHost();
+            if (host == null) return false;
+
+            // Block localhost and loopback
+            if ("localhost".equalsIgnoreCase(host) || host.startsWith("127.")) return false;
+
+            // Resolve and check IP ranges
+            InetAddress[] addresses = InetAddress.getAllByName(host);
+            for (InetAddress addr : addresses) {
+                byte[] ip = addr.getAddress();
+                if (ip == null) continue;
+
+                // IPv4 private ranges
+                if (ip.length == 4) {
+                    int firstOctet = ip[0] & 0xFF;
+                    int secondOctet = ip[1] & 0xFF;
+
+                    // 10.0.0.0/8
+                    if (firstOctet == 10) return false;
+                    // 172.16.0.0/12
+                    if (firstOctet == 172 && secondOctet >= 16 && secondOctet <= 31) return false;
+                    // 192.168.0.0/16
+                    if (firstOctet == 192 && secondOctet == 168) return false;
+                    // 169.254.0.0/16 (link-local)
+                    if (firstOctet == 169 && secondOctet == 254) return false;
+                    // 127.0.0.0/8 (loopback)
+                    if (firstOctet == 127) return false;
+                    // 0.0.0.0/8
+                    if (firstOctet == 0) return false;
+                }
+                // IPv6 unique local addresses (fc00::/7) and loopback (::1)
+                if (ip.length == 16) {
+                    // fc00::/7 - unique local
+                    if ((ip[0] & 0xFE) == 0xFC) return false;
+                    // ::1 - loopback
+                    if (addr.isLoopbackAddress()) return false;
+                    // fe80::/10 - link-local
+                    if ((ip[0] == (byte)0xFE && (ip[1] & 0xC0) == 0x80)) return false;
+                }
+            }
+            return true;
+        } catch (UnknownHostException e) {
+            log.warn("Could not resolve host for endpoint {}: {}", endpoint.getName(), e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.warn("Error validating endpoint {}: {}", endpoint.getName(), e.getMessage());
+            return false;
+        }
     }
 
     /**

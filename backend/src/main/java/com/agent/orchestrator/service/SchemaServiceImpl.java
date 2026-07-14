@@ -259,6 +259,11 @@ public class SchemaServiceImpl implements SchemaService {
     }
 
     @Override
+    public ExecutionRun getLatestRun(String schemaId) {
+        return executionService.getLatestRun(schemaId);
+    }
+
+    @Override
     public List<NodeExecution> getExecutionNodes(String runId) {
         return executionService.getExecutionNodes(runId);
     }

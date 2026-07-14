@@ -25,6 +25,9 @@ public class JwtUtil {
     @Value("${axolotl.jwt.expiration:86400000}")
     private long expirationMs; // 24h default
 
+    @Value("${axolotl.jwt.refresh-expiration:604800000}")
+    private long refreshExpirationMs; // 7 days default
+
     @jakarta.annotation.PostConstruct
     void init() {
         if (secret == null || secret.isBlank()) {
@@ -52,6 +55,17 @@ public class JwtUtil {
                 .compact();
     }
 
+    public String generateRefreshToken(String username) {
+        return Jwts.builder()
+                .subject(username)
+                .claim("type", "refresh")
+                .claim("jti", UUID.randomUUID().toString())
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + refreshExpirationMs))
+                .signWith(getSigningKey())
+                .compact();
+    }
+
     public Claims parseToken(String token) {
         return Jwts.parser()
                 .verifyWith(getSigningKey())
@@ -72,6 +86,15 @@ public class JwtUtil {
         try {
             parseToken(token);
             return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public boolean isRefreshToken(String token) {
+        try {
+            Claims claims = parseToken(token);
+            return "refresh".equals(claims.get("type", String.class));
         } catch (Exception e) {
             return false;
         }

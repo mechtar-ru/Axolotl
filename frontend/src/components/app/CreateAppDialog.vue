@@ -114,7 +114,7 @@ const bgColors: Record<string, string> = {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('cancel')">
+  <div class="modal-overlay" @click.self="emit('cancel')" role="dialog" aria-modal="true" aria-labelledby="create-app-title">
     <div class="modal create-dialog">
       <!-- Header -->
       <div class="dialog-header">
@@ -124,7 +124,7 @@ const bgColors: Record<string, string> = {
           </svg>
         </div>
         <div>
-          <h3>Create from "{{ template.name }}"</h3>
+          <h3 id="create-app-title">Create from "{{ template.name }}"</h3>
           <p class="dialog-subtitle">{{ template.description }}</p>
         </div>
       </div>

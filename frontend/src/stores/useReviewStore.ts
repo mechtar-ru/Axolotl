@@ -26,7 +26,12 @@ export const useReviewStore = defineStore('review', () => {
   const pendingReview = ref(false)
   const reviewData = ref<ReviewData | null>(null)
 
-  function handleReviewAwaitingApproval(data: ReviewData) {
+  async function handleReviewAwaitingApproval(data: ReviewData) {
+    // Deduplicate: ignore if same executionId and nodeId already pending
+    if (pendingReview.value && reviewData.value?.executionId === data.executionId && reviewData.value?.nodeId === data.nodeId) {
+      console.debug('[ReviewStore] Ignoring duplicate review awaiting approval', data.executionId, data.nodeId)
+      return
+    }
     reviewData.value = data
     pendingReview.value = true
   }
@@ -58,6 +63,26 @@ export const useReviewStore = defineStore('review', () => {
     }
   }
 
+  async function suggestReview(
+    executionId: string,
+    nodeId: string,
+    feedback: string[],
+    history: { text: string; applied: boolean }[]
+  ) {
+    try {
+      await api.post(`/execution/${executionId}/suggest`, {
+        nodeId,
+        feedback,
+        history,
+      })
+      pendingReview.value = false
+      reviewData.value = null
+    } catch (err) {
+      toastError('Failed to suggest review: ' + ((err as Error).message || err))
+      throw err
+    }
+  }
+
   return {
     pendingReview,
     reviewData,
@@ -65,5 +90,6 @@ export const useReviewStore = defineStore('review', () => {
     clearReview,
     approveReview,
     rejectReview,
+    suggestReview,
   }
 })

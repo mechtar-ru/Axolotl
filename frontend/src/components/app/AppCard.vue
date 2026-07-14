@@ -72,6 +72,41 @@ function handleOutsideClick(e: MouseEvent) {
   }
 }
 
+function onDropdownKeydown(e: KeyboardEvent) {
+  if (!dropdownOpen.value) return
+  
+  const items = dropdownRef.value?.querySelectorAll('[role="option"]')
+  if (!items?.length) return
+  
+  const itemArray = Array.from(items) as HTMLElement[]
+  // We know itemArray has at least one element due to the guard above
+  const activeIndex = itemArray.findIndex(el => el.classList.contains('active'))
+  let nextIndex = -1
+  
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    nextIndex = activeIndex < itemArray.length - 1 ? activeIndex + 1 : 0
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    nextIndex = activeIndex > 0 ? activeIndex - 1 : itemArray.length - 1
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    if (activeIndex >= 0) {
+      itemArray[activeIndex]?.click()
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    dropdownOpen.value = false
+    showNewInput.value = false
+    newGroupName.value = ''
+  }
+  
+  if (nextIndex >= 0) {
+    itemArray[nextIndex]?.focus()
+    itemArray[nextIndex]?.click()
+  }
+}
+
 onMounted(() => document.addEventListener('click', handleOutsideClick))
 onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
 
@@ -182,18 +217,20 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
       <span v-else-if="app.createdAt" class="app-date">Created {{ formatDate(app.createdAt) }}</span>
       <div class="card-actions" ref="dropdownRef">
         <div class="group-dropdown-wrapper">
-          <button class="action-btn group-btn" @click="toggleDropdown" title="Set project group">
+          <button class="action-btn group-btn" @click="toggleDropdown" title="Set project group" aria-haspopup="listbox" :aria-expanded="dropdownOpen" aria-label="Set project group">
             <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14">
               <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zm10-1a1 1 0 00-1 1v6a1 1 0 001 1h3a1 1 0 001-1v-6a1 1 0 00-1-1h-3z"/>
             </svg>
           </button>
-          <div v-if="dropdownOpen" class="group-dropdown" @click.stop>
+          <div v-if="dropdownOpen" class="group-dropdown" @click.stop role="listbox" aria-label="Project groups" @keydown="onDropdownKeydown">
             <div
               v-for="g in (props.groups || [])"
               :key="g"
               class="dropdown-item"
               :class="{ active: g === app.projectGroup }"
               @click="selectGroup(g)"
+              role="option"
+              :aria-selected="g === app.projectGroup"
             >{{ g }}</div>
             <div class="dropdown-divider"></div>
             <template v-if="!showNewInput">
@@ -237,7 +274,7 @@ function getStatusDotColor(status?: 'active' | 'idle'): string {
         <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
       </svg>
       <span class="path-text">{{ formatPath(app.targetPath) }}</span>
-      <span class="status-dot" :style="{ background: getStatusDotColor(app.status) }" :title="app.status === 'active' ? 'Active sessions' : 'Idle'"></span>
+      <span class="status-dot" :style="{ background: getStatusDotColor(app.status) }" :title="app.status === 'active' ? 'Active sessions' : 'Idle'" :aria-label="app.status === 'active' ? 'Active sessions' : 'Idle'"></span>
     </div>
   </div>
 </template>

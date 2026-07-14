@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -21,12 +22,15 @@ class PluginLifecycleManagerTest {
     @Mock
     private AppConfig appConfig;
 
+    @Mock
+    private ApplicationContext applicationContext;
+
     private PluginLifecycleManager manager;
 
     @BeforeEach
     void setUp() {
         when(appConfig.getBasePath()).thenReturn("/tmp/test");
-        manager = new PluginLifecycleManager(toolExecutor, appConfig);
+        manager = new PluginLifecycleManager(toolExecutor, appConfig, applicationContext);
 
         // @Value fields don't auto-inject in plain JUnit — set defaults manually
         ReflectionTestUtils.setField(manager, "bridgePath", "plugins/plugin-bridge.js");

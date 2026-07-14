@@ -1,5 +1,6 @@
 package com.agent.orchestrator.websocket;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -21,6 +22,17 @@ import java.util.concurrent.locks.ReentrantLock;
 public class ExecutionWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ExecutionWebSocketHandler.class);
+
+    // ── Incoming message types (client -> server) ──
+    private static final Set<String> VALID_INCOMING_TYPES = Set.of("ping", "subscribe", "unsubscribe", "ack");
+
+    // ── Outgoing message types (server -> client) ──
+    private static final Set<String> VALID_OUTGOING_TYPES = Set.of(
+            "progress", "result", "error", "complete", "paused", "metrics",
+            "nodeTime", "log", "token", "toolCall", "predictCall", "iteration",
+            "trajectoryComplete", "plan_updated", "wave", "step", "live_update",
+            "deps_needed", "diffs_needed", "state_replay", "pong"
+    );
 
     // ── Error categories ──
 
@@ -58,6 +70,55 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
             return TOOL_ERROR;
         }
     }
+    
+    // ── Message validation ──
+    
+    private boolean validateIncomingMessage(String payload) {
+        if (payload == null || payload.trim().isEmpty()) {
+            log.warn("Received empty WebSocket message");
+            return false;
+        }
+        try {
+            JsonNode node = objectMapper.readTree(payload);
+            if (!node.isObject()) {
+                log.warn("Received non-object WebSocket message: {}", payload);
+                return false;
+            }
+            JsonNode typeNode = node.get("type");
+            if (typeNode == null || !typeNode.isTextual()) {
+                log.warn("Received WebSocket message without valid 'type' field: {}", payload);
+                return false;
+            }
+            String type = typeNode.asText();
+            if (!VALID_INCOMING_TYPES.contains(type)) {
+                log.warn("Received unknown WebSocket message type: {}", type);
+                return false;
+            }
+            // Validate required fields per message type
+            return switch (type) {
+                case "ping" -> true; // No additional fields required
+                case "subscribe", "unsubscribe" -> node.has("schemaId") && node.get("schemaId").isTextual();
+                case "ack" -> node.has("messageId") && node.get("messageId").isTextual();
+                default -> true;
+            };
+        } catch (Exception e) {
+            log.warn("Failed to parse WebSocket message: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    private void sendErrorResponse(WebSocketSession session, String error, String errorCode) {
+        try {
+            Map<String, Object> msg = new LinkedHashMap<>();
+            msg.put("type", "error");
+            msg.put("error", error);
+            msg.put("errorCode", errorCode);
+            session.sendMessage(new TextMessage(toJson(msg)));
+        } catch (IOException e) {
+            log.error("Failed to send error response: {}", e.getMessage(), e);
+        }
+    }
+
     private static final ObjectMapper objectMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -111,6 +172,10 @@ public class ExecutionWebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
         String payload = message.getPayload();
+        if (!validateIncomingMessage(payload)) {
+            sendErrorResponse(session, "Invalid message format", "INVALID_MESSAGE");
+            return;
+        }
         if (payload != null && payload.contains("\"type\":\"ping\"")) {
             // Respond to heartbeat pings
             try {

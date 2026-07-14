@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onActivated, defineOptions } from 'vue'
+import { ref, computed, watch, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -13,7 +13,7 @@ import TemplateCard from '@/components/app/TemplateCard.vue'
 import ProjectsFolderPrompt from '@/components/settings/ProjectsFolderPrompt.vue'
 import { appApi, schemaApi } from '@/services/api'
 import { getTemplateById } from '@/templates'
-import type { WorkflowSchema } from '@/types'
+import type { WorkflowSchema, FlowNode, FlowEdge } from '@/types'
 
 defineOptions({ name: 'DashboardView' })
 
@@ -285,10 +285,10 @@ async function applyTemplateToSchema(schemaId: string, templateId: string): Prom
 
   schema.nodes = fullTemplate.defaultNodes.map(n => ({
     id: n.id,
-    type: n.type as any, // @ts-expect-error: improve typing — TemplateNode type differs
+    type: n.type as FlowNode['type'],
     name: n.name,
     position: { x: n.position.x, y: n.position.y },
-    data: { ...n.data } as any, // @ts-expect-error: improve typing
+    data: { ...n.data },
   }))
   schema.edges = fullTemplate.defaultEdges.map(e => ({
     id: e.id,
@@ -502,8 +502,7 @@ async function onDrop(e: DragEvent, targetGroup: string) {
     return
   }
   try {
-    const updatePayload: Record<string, any> = { projectGroup: targetGroup || '' }
-    await schemaApi.updateSchema(schemaId, updatePayload)
+    const updated = await schemaApi.updateSchema(schemaId, { ...currentSchema, projectGroup: targetGroup || '' })
     await loadGroups()
   } catch (e) {
     console.error('DashboardView: Failed to move schema:', e)
@@ -605,7 +604,7 @@ async function onImportFile(event: Event) {
 
     <!-- My Apps Grid -->
     <section class="apps-section">
-      <div class="apps-header">
+      <div class="apps-header" aria-live="polite" aria-atomic="true">
         <h2>My Apps</h2>
         <span class="app-count">{{ sortedFilteredApps.length }} apps</span>
       </div>
@@ -635,7 +634,14 @@ async function onImportFile(event: Event) {
           </button>
         </div>
       </div>
-      <div v-if="schemaStore.schemas.length === 0" class="empty-state">
+      <div v-if="schemaStore.loading" class="skeleton-grid">
+        <div v-for="i in 4" :key="i" class="skeleton-card">
+          <div class="skeleton-icon"></div>
+          <div class="skeleton-title"></div>
+          <div class="skeleton-text"></div>
+        </div>
+      </div>
+      <div v-else-if="schemaStore.schemas.length === 0" class="empty-state">
         <p>No apps yet. Create your first app!</p>
         <button class="empty-cta-btn" @click="showQuickStart = true">Quick Start</button>
       </div>
@@ -645,7 +651,7 @@ async function onImportFile(event: Event) {
       <template v-else>
         <!-- During search: flat results, no sections -->
         <template v-if="searchQuery.trim()">
-          <div class="apps-grid">
+          <div class="apps-grid" aria-live="assertive" aria-atomic="true">
             <AppCard
               v-for="app in filteredApps"
               :key="app.id"
@@ -1158,4 +1164,43 @@ select.input {
   margin-bottom: var(--space-2);
 }
 .subsection-header-row h3 { margin: 0; }
+
+/* Loading skeleton */
+@keyframes skeleton-shimmer {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+.skeleton-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.25rem;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+.skeleton-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--border-color);
+  margin-bottom: 0.75rem;
+}
+.skeleton-title {
+  width: 60%;
+  height: 16px;
+  background: var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+.skeleton-text {
+  width: 40%;
+  height: 12px;
+  background: var(--border-color);
+  border-radius: 4px;
+}
 </style>

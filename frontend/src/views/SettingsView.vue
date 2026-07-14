@@ -110,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onActivated, computed, defineOptions } from 'vue';
+import { ref, reactive, onMounted, onActivated, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useSettingsStore } from '@/stores/settingsStore';
 import ThemeToggle from '@/components/ui/ThemeToggle.vue';

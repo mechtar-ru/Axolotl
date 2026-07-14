@@ -80,12 +80,12 @@ onMounted(async () => {
 
 <template>
   <Teleport to="body">
-    <div class="sc-overlay" @click.self="emit('close')">
+    <div class="sc-overlay" @click.self="emit('close')" role="dialog" aria-modal="true" aria-labelledby="sc-title">
       <div class="sc-dialog">
         <!-- Header -->
         <div class="sc-header">
-          <h3 class="sc-title">New Session — Plan</h3>
-          <button class="sc-close" @click="emit('close')" title="Close">✕</button>
+          <h3 id="sc-title" class="sc-title">New Session — Plan</h3>
+          <button class="sc-close" @click="emit('close')" aria-label="Close">✕</button>
         </div>
 
         <!-- Chat messages -->

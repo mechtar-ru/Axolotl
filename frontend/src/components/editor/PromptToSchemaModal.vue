@@ -1,9 +1,9 @@
 <template>
-  <div v-if="visible" class="prompt-to-schema-overlay" @click.self="close">
-    <div class="prompt-to-schema-modal">
+  <div v-if="visible" class="prompt-to-schema-overlay" @click.self="close" @keydown.esc="close" role="dialog" aria-modal="true" aria-labelledby="prompt-to-schema-title">
+    <div class="prompt-to-schema-modal" @keydown.esc="close" @keydown.tab="onTab">
       <div class="modal-header">
-        <span>Generate Workflow from Prompt</span>
-        <button class="close-btn" @click="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        <span id="prompt-to-schema-title">Generate Workflow from Prompt</span>
+        <button class="close-btn" @click="close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
       <div class="modal-body">
         <textarea
@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { schemaApi } from '@/services/api'
 import { useRouter } from 'vue-router'
 import type { WorkflowSchema } from '@/types'
@@ -56,6 +56,9 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const modalBox = ref<HTMLElement | null>(null)
+let previousFocus: HTMLElement | null = null
+
 const prompt = ref('')
 const generating = ref(false)
 const error = ref<string | null>(null)
@@ -67,6 +70,10 @@ watch(() => props.visible, (v) => {
     error.value = null
     result.value = null
     generating.value = false
+    nextTick(() => {
+      const first = modalBox.value?.querySelector<HTMLElement>('textarea, button:not(:disabled)')
+      first?.focus()
+    })
   }
 })
 
@@ -74,6 +81,24 @@ function close() {
   emit('close')
 }
 
+// Focus trap - cycle focus within modal
+function onTab(e: KeyboardEvent) {
+  const focusableElements = modalBox.value?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  )
+  if (!focusableElements?.length) return
+  const firstElement = focusableElements[0]
+  const lastElement = focusableElements[focusableElements.length - 1]
+  if (!firstElement || !lastElement) return
+  if (e.shiftKey && document.activeElement === firstElement) {
+    e.preventDefault()
+    lastElement.focus()
+  } else if (!e.shiftKey && document.activeElement === lastElement) {
+    e.preventDefault()
+    firstElement.focus()
+  }
+}
+ 
 async function generate() {
   if (!prompt.value.trim()) return
   generating.value = true

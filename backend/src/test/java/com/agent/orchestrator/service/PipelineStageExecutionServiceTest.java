@@ -37,6 +37,7 @@ class PipelineStageExecutionServiceTest {
     @Mock PipelineStatusManager statusManager;
     @Mock PlanService planService;
     @Mock PipelineStageRunner stageRunner;
+    @Mock WebhookService webhookService;
 
     @Captor ArgumentCaptor<ExecutionRun> runCaptor;
 
@@ -53,7 +54,7 @@ class PipelineStageExecutionServiceTest {
         service = new PipelineStageExecutionService(
                 schemaRepository, nodeRouter, webSocketHandler,
                 executionRepository, stateManager, statusManager,
-                planService, stageRunner, new ObjectMapper());
+                planService, stageRunner, webhookService, new ObjectMapper());
 
         schema = new WorkflowSchema();
         schema.setId(SCHEMA_ID);

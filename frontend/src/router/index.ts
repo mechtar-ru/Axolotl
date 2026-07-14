@@ -46,7 +46,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from) => {
-  const token = sessionStorage.getItem('axolotl_token');
+  const token = localStorage.getItem('axolotl_token');
   if (to.meta.requiresAuth && !token) return { name: 'login' };
   if (to.name === 'login' && token) return { name: 'dashboard' };
 });

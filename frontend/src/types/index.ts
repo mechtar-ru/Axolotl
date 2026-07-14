@@ -28,7 +28,7 @@ export interface NodeData {
   sourceData?: string;
   sources?: SourceItem[];
   model?: string;
-  config?: Record<string, any>;
+  config?: NodeConfig;
   messages?: Message[];
   executorModel?: string;
   result?: string;
@@ -45,8 +45,70 @@ export interface NodeData {
   transforms?: TransformStep[];
   routes?: TransformRoute[];
   fallbackValue?: string;
+  // Source node specific fields
+  sourceType?: string;
+  sourceContent?: string;
+  // File/URL source fields
+  url?: string;
+  projectPath?: string;
+  // Agent/verifier specific fields
+  maxDepth?: number;
+  maxFiles?: number;
 }
 
+/** Typed configuration for node data, includes all block-specific config properties */
+export interface NodeConfig {
+  // General
+  autoRetryCount?: number;
+  fallbackModels?: string[];
+  timeoutSeconds?: number;
+  contextBudgetTokens?: number;
+  rewriteOnFail?: boolean;
+  maxRewriteRetries?: number;
+  stubDetection?: boolean;
+  description?: string;
+  model?: string;
+  executorModel?: string;
+  systemPrompt?: string;
+  prompt?: string;
+  expectedFileCount?: number;
+  maxDepth?: number;
+  maxFiles?: number;
+  // Agent config
+  tools?: string[];
+  // Verifier/review config
+  checks?: {
+    syntaxCheck?: boolean;
+    requiredPatterns?: string[];
+    testCommand?: string;
+    maxFileSizeKb?: number;
+    premortem?: boolean;
+    prism?: boolean;
+    postmortem?: boolean;
+  };
+  mode?: string;
+  maxIterations?: number;
+  maxAutoIterations?: number;
+  generatePlan?: boolean;
+  // Source node
+  sourceType?: string;
+  sourceContent?: string;
+  sourceData?: string;
+  filePath?: string;
+  url?: string;
+  projectPath?: string;
+  // Memory
+  memoryType?: string;
+  namespace?: string;
+  // Planner/Prep
+  agentType?: string;
+  // Draft
+  draftType?: string;
+  // Output
+  outputType?: 'log' | 'file' | 'memory';
+  generateReadme?: boolean;
+  generateArchitecture?: boolean;
+}
 export interface SourceItem {
   id: string;
   type: 'file' | 'database' | 'text';

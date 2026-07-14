@@ -183,20 +183,30 @@ async function fetchRuns() {
 async function fetchNodeStatuses() {
   const targets = visibleRuns.value.filter(r => !runNodeStatuses.value[r.id])
   if (targets.length === 0) return
-  const results = await Promise.allSettled(
-    targets.map(r => schemaApi.getRunNodes(props.schemaId, r.id))
-  )
-   for (let i = 0; i < targets.length; i++) {
-     const run = targets[i]!
-     const result = results[i]!
-     if (result.status === 'fulfilled') {
-       const nodeExecs = (result as PromiseFulfilledResult<NodeExecution[]>).value
-       runNodeStatuses.value[run.id] = nodeExecs.map(n => ({
-         nodeId: n.nodeId,
-         status: n.status
-       }))
-     }
-   }
+
+  // Concurrency limit for parallel requests
+  const CONCURRENCY_LIMIT = 3
+  const results: Array<PromiseSettledResult<NodeExecution[]>> = []
+
+  for (let i = 0; i < targets.length; i += CONCURRENCY_LIMIT) {
+    const batch = targets.slice(i, i + CONCURRENCY_LIMIT)
+    const batchResults = await Promise.allSettled(
+      batch.map(r => schemaApi.getRunNodes(props.schemaId, r.id))
+    )
+    results.push(...batchResults)
+  }
+
+  for (let i = 0; i < targets.length; i++) {
+    const run = targets[i]!
+    const result = results[i]!
+    if (result.status === 'fulfilled') {
+      const nodeExecs = (result as PromiseFulfilledResult<NodeExecution[]>).value
+      runNodeStatuses.value[run.id] = nodeExecs.map(n => ({
+        nodeId: n.nodeId,
+        status: n.status
+      }))
+    }
+  }
 }
 
 // ── Run expansion ──
@@ -345,8 +355,13 @@ onActivated(() => {
 
     <!-- Loading -->
     <div v-if="loading" class="tl-loading">
-      <div class="tl-spinner"/>
-      <p>Loading runs...</p>
+      <div class="tl-skeleton-card" v-for="i in 3" :key="i">
+        <div class="tl-skeleton-row">
+          <div class="tl-skeleton-dot"></div>
+          <div class="tl-skeleton-line" style="width: 40%"></div>
+          <div class="tl-skeleton-line" style="width: 20%"></div>
+        </div>
+      </div>
     </div>
 
     <!-- Empty state -->
@@ -367,7 +382,7 @@ onActivated(() => {
     </div>
 
     <!-- Run list -->
-    <div v-else class="tl-list">
+    <div v-else class="tl-list" aria-live="polite" aria-atomic="false">
       <div
         v-for="run in visibleRuns"
         :key="run.id"
@@ -479,7 +494,7 @@ onActivated(() => {
     </div>
 
     <!-- Live Events Bar -->
-    <div v-if="liveEventsCapped.length > 0" class="tl-live">
+    <div v-if="liveEventsCapped.length > 0" class="tl-live" aria-live="polite" aria-atomic="true">
       <div class="tl-live-header">
         <span class="tl-live-dot" />
         <span>Live Events</span>
@@ -903,5 +918,56 @@ onActivated(() => {
 .tl-live-list::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 3px;
+}
+
+/* ── Loading skeleton ── */
+.tl-skeleton-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+}
+.tl-skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tl-skeleton-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border-color);
+  animation: skimmer 1.5s ease-in-out infinite;
+}
+.tl-skeleton-line {
+  height: 12px;
+  border-radius: 4px;
+  background: var(--border-color);
+  animation: skimmer 1.5s ease-in-out infinite;
+}
+@keyframes skimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 768px) {
+  .tl-session {
+    max-width: 120px;
+  }
+  .tl-date, .tl-time {
+    display: none;
+  }
+  .tl-card-header {
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .tl-card-body {
+    padding: var(--space-2);
+  }
+  .tl-list {
+    padding: var(--space-2) var(--space-3);
+  }
 }
 </style>

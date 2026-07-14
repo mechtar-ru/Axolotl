@@ -32,6 +32,7 @@ public class PipelineStageExecutionService {
     private final PipelineStatusManager statusManager;
     private final PlanService planService;
     private final PipelineStageRunner stageRunner;
+    private final WebhookService webhookService;
     private final ExecutorService pipelineLevelExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ObjectMapper mapper;
 
@@ -43,6 +44,7 @@ public class PipelineStageExecutionService {
                                           PipelineStatusManager statusManager,
                                           PlanService planService,
                                           PipelineStageRunner stageRunner,
+                                          WebhookService webhookService,
                                           ObjectMapper mapper) {
         this.schemaRepository = schemaRepository;
         this.nodeRouter = nodeRouter;
@@ -52,7 +54,15 @@ public class PipelineStageExecutionService {
         this.statusManager = statusManager;
         this.planService = planService;
         this.stageRunner = stageRunner;
+        this.webhookService = webhookService;
         this.mapper = mapper;
+    }
+
+    /**
+     * Look up webhook URL from global config.
+     */
+    private String lookupWebhookUrl(WorkflowSchema schema) {
+        return webhookService.getWebhookUrl();
     }
 
     void clearStaleApprovals(String schemaId) {
@@ -192,6 +202,20 @@ public class PipelineStageExecutionService {
                 webSocketHandler.sendComplete(schema.getId(), 0, completedStages);
                 webSocketHandler.sendLiveUpdate(schema.getId(), "pipeline_completed",
                         Map.of("status", "completed", "stagesCompleted", completedStages));
+            }
+            // Send webhook notification on completion
+            if (webhookService != null) {
+                try {
+                    // Look up webhook URL from schema or global config
+                    String webhookUrl = lookupWebhookUrl(schema);
+                    if (webhookUrl != null && !webhookUrl.isBlank()) {
+                        webhookService.sendCompletionWebhook(schema.getId(),
+                                cancelFlag.get() ? "cancelled" : "completed", null,
+                                webhookUrl, Map.of("stagesCompleted", completedStages));
+                    }
+                } catch (Exception e) {
+                    log.debug("Webhook delivery failed: {}", e.getMessage());
+                }
             }
         }
 

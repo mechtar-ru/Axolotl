@@ -1,15 +1,21 @@
 <template>
   <Transition name="modal">
-    <div v-if="modelValue" class="app-modal-overlay" @click.self="close">
+    <div v-if="modelValue" class="app-modal-overlay" @click.self="close" role="dialog" aria-modal="true" :aria-labelledby="title ? 'modal-title' : undefined">
       <div
         ref="modalBox"
         class="app-modal-content"
         :class="{ 'app-modal-large': large }"
         @keydown.escape="close"
+        @keydown.tab="onTab"
       >
         <div v-if="title" class="app-modal-header">
-          <h3>{{ title }}</h3>
-          <button class="app-modal-close" @click="close" title="Close (Esc)">✕</button>
+          <h3 id="modal-title">{{ title }}</h3>
+          <button class="app-modal-close" @click="close" aria-label="Close (Esc)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
         <slot />
       </div>
@@ -46,12 +52,31 @@ function onKey(e: KeyboardEvent) {
   }
 }
 
+// Focus trap - cycle focus within modal
+function onTab(e: KeyboardEvent) {
+  if (!props.modelValue) return;
+  const focusableElements = modalBox.value?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (!focusableElements?.length) return;
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  if (!firstElement || !lastElement) return;
+  if (e.shiftKey && document.activeElement === firstElement) {
+    e.preventDefault();
+    lastElement.focus();
+  } else if (!e.shiftKey && document.activeElement === lastElement) {
+    e.preventDefault();
+    firstElement.focus();
+  }
+}
+
 watch(() => props.modelValue, (open) => {
   if (open) {
     previousFocus = document.activeElement as HTMLElement;
     nextTick(() => {
       const first = modalBox.value?.querySelector<HTMLElement>(
-        'input, textarea, select, button:not(.app-modal-close)'
+        'input, textarea, select, button:not([disabled])'
       );
       first?.focus();
     });
@@ -109,14 +134,22 @@ onUnmounted(() => {
   background: none;
   border: none;
   color: var(--text-secondary);
-  font-size: var(--text-lg);
   cursor: pointer;
   padding: var(--space-1);
   border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
 }
 .app-modal-close:hover {
   color: var(--text-primary);
   background: var(--bg-hover);
+}
+.app-modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .modal-enter-active,

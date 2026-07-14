@@ -1,6 +1,32 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { settingsApi, type ProviderInfo } from '../services/api'
+
+const PROVIDERS_CACHE_KEY = 'axolotl-providers-cache'
+const PROVIDERS_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
+
+function loadProvidersCache(): ProviderInfo[] | null {
+  try {
+    const stored = localStorage.getItem(PROVIDERS_CACHE_KEY)
+    if (!stored) return null
+    const { data, timestamp } = JSON.parse(stored)
+    if (Date.now() - timestamp > PROVIDERS_CACHE_TTL) return null
+    return data
+  } catch {
+    return null
+  }
+}
+
+function saveProvidersCache(providers: ProviderInfo[]) {
+  try {
+    localStorage.setItem(PROVIDERS_CACHE_KEY, JSON.stringify({
+      data: providers,
+      timestamp: Date.now()
+    }))
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 export const useSettingsStore = defineStore('settings', () => {
   const theme = ref<'light' | 'dark' | 'system'>('system')
@@ -40,9 +66,18 @@ export const useSettingsStore = defineStore('settings', () => {
   /** Pre-fetch provider info on app startup — populates model lists early */
   async function fetchProviders() {
     if (providersLoaded.value) return
+    
+    // Try to load from cache first
+    const cached = loadProvidersCache()
+    if (cached) {
+      providers.value = cached
+      providersLoaded.value = true
+    }
+    
     try {
       providers.value = await settingsApi.getProviders()
       providersLoaded.value = true
+      saveProvidersCache(providers.value)
     } catch {
       // Non-critical — providers will be fetched on Settings page too
     }
@@ -53,6 +88,7 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       providers.value = await settingsApi.getProviders()
       providersLoaded.value = true
+      saveProvidersCache(providers.value)
     } catch {
       // Silent failure
     }
@@ -109,6 +145,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Update local cache
     p.disabledModels = newDisabled.length > 0 ? newDisabled : undefined
+
+    // Invalidate cache so next access refetches fresh data
+    providersLoaded.value = false
   }
 
   // ──── Projects folder ────
@@ -133,11 +172,48 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  // ─── Providers cache ──────────────────────────────────────────────
+  const PROVIDERS_CACHE_KEY = 'axolotl_providers_cache'
+  const PROVIDERS_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+  function saveProvidersCache(providers: ProviderInfo[]) {
+    try {
+      const cache = {
+        data: providers,
+        timestamp: Date.now()
+      }
+      localStorage.setItem(PROVIDERS_CACHE_KEY, JSON.stringify(cache))
+    } catch {
+      // Ignore localStorage errors
+    }
+  }
+
+  function loadProvidersCache(): ProviderInfo[] | null {
+    try {
+      const raw = localStorage.getItem(PROVIDERS_CACHE_KEY)
+      if (!raw) return null
+      const cache = JSON.parse(raw)
+      if (Date.now() - cache.timestamp > PROVIDERS_CACHE_TTL) {
+        localStorage.removeItem(PROVIDERS_CACHE_KEY)
+        return null
+      }
+      return cache.data
+    } catch {
+      localStorage.removeItem(PROVIDERS_CACHE_KEY)
+      return null
+    }
+  }
+
+  function clearProvidersCache() {
+    localStorage.removeItem(PROVIDERS_CACHE_KEY)
+  }
+
   return {
     theme, isLoaded, providers, providersLoaded,
     projectsFolder, projectsFolderLoaded,
     initTheme, setTheme, fetchProviders, refreshProviders,
     getModelsForProvider, getAllModelOptions, setModelDisabled,
     loadProjectsFolder, saveProjectsFolder,
+    saveProvidersCache, loadProvidersCache, clearProvidersCache,
   }
 })

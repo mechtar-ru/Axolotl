@@ -1,12 +1,13 @@
 <template>
-  <div v-if="visible" class="prompt-modal-overlay" @click.self="close">
-    <div class="prompt-modal">
+  <div v-if="visible" class="prompt-modal-overlay" @click.self="close" role="dialog" aria-modal="true" aria-labelledby="prompt-editor-title">
+    <div ref="modalEl" class="prompt-modal" @keydown.esc="close" @keydown.tab="onTab">
       <div class="prompt-modal-header">
-        <span>Prompt Editor — {{ nodeName }}</span>
+        <span id="prompt-editor-title">Prompt Editor — {{ nodeName }}</span>
         <div class="prompt-modal-actions">
           <button class="template-btn" @click="showTemplates = !showTemplates">Templates</button>
-          <button class="close-btn" @click="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button class="close-btn" @click="close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
+      </div>
       </div>
 
       <div v-if="showTemplates" class="templates-panel">
@@ -16,7 +17,7 @@
           class="template-item"
           @click="insertTemplate(tpl.text)"
         >
-          <span v-html="tpl.emoji"></span> {{ tpl.name }}
+          <SvgIcon :svg="tpl.emoji" /> {{ tpl.name }}
         </button>
       </div>
 
@@ -40,11 +41,11 @@
             rows="14"
           />
         </div>
-        <div class="variables-hint">
+<div class="variables-hint">
           <span class="hint-label">Variables:</span>
-          <button class="var-btn" @click="insertVar('\{\{input\}\}')">&#123;&#123;input&#125;&#125;</button>
-          <button class="var-btn" @click="insertVar('\{\{prev_result\}\}')">&#123;&#123;prev_result&#125;&#125;</button>
-          <button class="var-btn" @click="insertVar('\{\{node:name\}\}')">&#123;&#123;node:...&#125;&#125;</button>
+          <button class="var-btn" @click="insertVar('{{input}}')" v-text="'{{input}}'"></button>
+          <button class="var-btn" @click="insertVar('{{prev_result}}')" v-text="'{{prev_result}}'"></button>
+          <button class="var-btn" @click="insertVar('{{node:name}}')" v-text="'{{node:...}}'"></button>
         </div>
       </div>
 
@@ -57,7 +58,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, nextTick } from 'vue';
 
 const templates = [
   { name: 'Analysis', emoji: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>', text: 'Analyze the following data and extract key points:\n\n{{input}}' },
@@ -86,13 +87,45 @@ const localPrompt = ref(props.userPrompt || '');
 const localSystemPrompt = ref(props.systemPrompt || '');
 const showTemplates = ref(false);
 const promptArea = ref<HTMLTextAreaElement | null>(null);
+const modalEl = ref<HTMLElement | null>(null);
+let previousFocus: HTMLElement | null = null;
 
 watch(() => props.visible, (v) => {
   if (v) {
     localPrompt.value = props.userPrompt || '';
     localSystemPrompt.value = props.systemPrompt || '';
+    previousFocus = document.activeElement as HTMLElement;
+    nextTick(() => {
+      modalEl.value?.querySelector<HTMLElement>('textarea, button:not([disabled])')?.focus();
+    });
+    document.addEventListener('keydown', onKey);
+  } else {
+    document.removeEventListener('keydown', onKey);
+    previousFocus?.focus();
   }
 });
+
+function onKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') close();
+}
+
+function onTab(e: KeyboardEvent) {
+  if (!props.visible) return;
+  const focusableElements = modalEl.value?.querySelectorAll<HTMLElement>(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (!focusableElements?.length) return;
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  if (!firstElement || !lastElement) return;
+  if (e.shiftKey && document.activeElement === firstElement) {
+    e.preventDefault();
+    lastElement.focus();
+  } else if (!e.shiftKey && document.activeElement === lastElement) {
+    e.preventDefault();
+    firstElement.focus();
+  }
+}
 
 function close() {
   emit('close');

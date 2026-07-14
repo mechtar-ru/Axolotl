@@ -5,17 +5,8 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import type { WorkflowSchema, FlowNode, FlowEdge } from '@/types'
 import { isAxiosError } from 'axios'
 
-interface PipelineNode {
-  id: string
-  type: string
-  position: { x: number; y: number }
-  data: Record<string, any>
-}
-interface PipelineEdge {
-  id: string
-  source: string
-  target: string
-}
+interface PipelineNode extends FlowNode {}
+interface PipelineEdge extends FlowEdge {}
 
 const props = defineProps<{
   visible: boolean
@@ -262,6 +253,16 @@ function findOllamaCoder(): string | undefined {
   const coder = modelOptions.value.find(m =>
     m.value.includes('qwen2.5-coder:14b') || m.value.includes('qwen2.5-coder:7b')
   )
+  // Fallback to first available Ollama model if no coder model found
+  if (!coder) {
+    const fallback = modelOptions.value.find(m =>
+      m.value.startsWith('ollama:') || m.value.startsWith('ollama/')
+    )
+    if (fallback) {
+      console.warn('[QuickStartDialog] No Ollama coder model found, falling back to:', fallback.value)
+      return fallback.value
+    }
+  }
   return coder?.value || undefined
 }
 
@@ -459,6 +460,22 @@ async function generate() {
         return
       }
       targetId = created.id
+    } else {
+      // Edit mode: check if target path still exists
+      try {
+        const schema = await schemaApi.getSchema(props.appId)
+        if (schema.targetPath) {
+          const pathCheck = await appApi.checkTargetPath(schema.targetPath, schema.appType || projectType.value)
+          if (!pathCheck.exists) {
+            error.value = `Target directory "${schema.targetPath}" no longer exists. Please choose a different path from the Dashboard.`
+            loading.value = false
+            return
+          }
+        }
+      } catch {
+        // If check fails, proceed but warn
+        console.warn('QuickStartDialog: Could not verify target path in edit mode')
+      }
     }
 
     // Fetch the current schema
@@ -488,12 +505,6 @@ async function generate() {
   }
 }
 
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && !loading.value) {
-    emit('close')
-  }
-}
-
 defineExpose({
   prompt,
   appName,
@@ -504,12 +515,11 @@ defineExpose({
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="visible" class="quickstart-overlay" @click.self="!loading && emit('close')" @keydown="handleKeydown">
+<Teleport to="body">
+    <div v-if="visible" class="quickstart-overlay" @click.self="!loading && emit('close')" @keydown.esc="!loading && emit('close')" role="dialog" aria-modal="true" aria-labelledby="quickstart-title">
       <div class="quickstart-dialog">
-        <!-- Header -->
         <div class="dialog-header">
-          <h2 class="dialog-title">Quick Start</h2>
+          <h2 class="dialog-title" id="quickstart-title">Quick Start</h2>
           <button class="close-btn" @click="emit('close')" :disabled="loading" aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
               <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
@@ -825,4 +835,14 @@ defineExpose({
   flex-shrink: 0;
   margin-top: 2px;
 }
-</style>
+
+@media (max-width: 768px) {
+  .quickstart-dialog {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .dialog-body {
+    padding: var(--space-4);
+  }
+}</style>

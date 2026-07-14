@@ -188,6 +188,11 @@ public class SchemaExecutionService {
         return executionRepository.getLatestRunBySchemaAndStatus(schemaId, "paused");
     }
 
+    @Transactional(readOnly = true)
+    public ExecutionRun getLatestRun(String schemaId) {
+        return executionRepository.getLatestRunBySchema(schemaId);
+    }
+
     public void resumeExecution(String schemaId) {
         pipelineService.resumePipeline(schemaId);
     }

@@ -1,8 +1,8 @@
 <template>
-  <div v-if="visible" class="template-gallery">
+  <div v-if="visible" class="template-gallery" role="dialog" aria-modal="true" aria-labelledby="gallery-title">
     <div class="gallery-header">
-      <span class="gallery-title">Schema Templates</span>
-      <button class="close-btn" @click="$emit('close')">✕</button>
+      <span id="gallery-title" class="gallery-title">Schema Templates</span>
+      <button class="close-btn" @click="$emit('close')" aria-label="Close">✕</button>
     </div>
 
     <div v-if="loading" class="gallery-loading">Loading templates...</div>

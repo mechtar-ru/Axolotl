@@ -12,7 +12,7 @@ export const api = axios.create({
 
 // Auto-attach JWT token to all requests
 api.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('axolotl_token');
+  const token = localStorage.getItem('axolotl_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -22,12 +22,16 @@ api.interceptors.request.use((config) => {
 /**
  * Decode JWT payload without verification (client-side).
  * Returns null for malformed tokens.
+ * Handles base64url encoding (JWT uses base64url, not standard base64).
  */
 function decodeJwt(token: string): Record<string, unknown> | null {
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return null;
-    return JSON.parse(atob(parts[1]!));
+    // JWT uses base64url: replace - with +, _ with /, and add padding if needed
+    const base64 = parts[1]!.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded));
   } catch {
     return null;
   }
@@ -36,29 +40,32 @@ function decodeJwt(token: string): Record<string, unknown> | null {
 /**
  * Check if the stored JWT is expired by decoding its exp claim.
  * Returns false if no token, malformed token, or token has no exp.
+ * Uses a 30-second clock skew tolerance to avoid false positives due to clock skew.
  */
 function isTokenExpired(): boolean {
-  const token = sessionStorage.getItem('axolotl_token');
+  const token = localStorage.getItem('axolotl_token');
   if (!token) return false;
   const payload = decodeJwt(token);
   if (!payload || typeof payload.exp !== 'number') return false;
-  return Date.now() >= payload.exp * 1000;
+  // 30-second clock skew tolerance to avoid false expiration due to client/server clock differences
+  const CLOCK_SKEW_TOLERANCE_MS = 30000;
+  return Date.now() + CLOCK_SKEW_TOLERANCE_MS >= payload.exp * 1000;
 }
 
 /**
  * Clear auth state and redirect to login page.
  */
 function clearAuthAndRedirect(): void {
-  sessionStorage.removeItem('axolotl_token');
-  sessionStorage.removeItem('axolotl_username');
-  sessionStorage.removeItem('axolotl_role');
+  localStorage.removeItem('axolotl_token');
+  localStorage.removeItem('axolotl_username');
+  localStorage.removeItem('axolotl_role');
   if (window.location.pathname !== '/login') {
     window.location.href = '/login';
   }
 }
 
 /**
- * On 401: always clear auth (real auth failure).
+ * On 401: try to refresh token first, then clear auth on failure.
  * On 403: only clear auth if the token is provably expired client-side.
  *   Spring Security returns 403 (not 401) for anonymous users hitting
  *   non-permitAll endpoints with an expired/stale token.  Clearing auth
@@ -67,12 +74,68 @@ function clearAuthAndRedirect(): void {
  *   tokens silently fail.  Checking exp client-side splits the difference.
  * On other errors: pass through.
  */
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (value: string) => void;
+  reject: (reason: Error) => void;
+}> = [];
+
+const processQueue = (error: Error | null, token: string | null = null) => {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) {
+      reject(error);
+    } else if (token) {
+      resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+const refreshToken = async (): Promise<string> => {
+  const refreshToken = localStorage.getItem('axolotl_refresh_token');
+  if (!refreshToken) throw new Error('No refresh token');
+
+  const response = await axios.post(
+    `${API_BASE_URL}/auth/refresh`,
+    { refreshToken },
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+
+  const { accessToken, refreshToken: newRefreshToken } = response.data;
+  localStorage.setItem('axolotl_token', accessToken);
+  localStorage.setItem('axolotl_refresh_token', newRefreshToken);
+  return accessToken;
+};
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const originalRequest = error.config;
     const status = error.response?.status;
-    if (status === 401) {
-      clearAuthAndRedirect();
+
+    if (status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const newToken = await refreshToken();
+          isRefreshing = false;
+          processQueue(null, newToken);
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          return api(originalRequest);
+        } catch (err: unknown) {
+          isRefreshing = false;
+          processQueue(err as Error, null);
+          clearAuthAndRedirect();
+          return Promise.reject(err);
+        }
+      }
+
+      // If already refreshing, queue the request
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      });
     } else if (status === 403 && isTokenExpired()) {
       clearAuthAndRedirect();
     }
@@ -82,8 +145,8 @@ api.interceptors.response.use(
 
 export const schemaApi = {
   // Схемы
-  async getSchemas(): Promise<WorkflowSchema[]> {
-    const response = await api.get('/schemas');
+  async getSchemas(options?: { signal?: AbortSignal }): Promise<WorkflowSchema[]> {
+    const response = await api.get('/schemas', options);
     return response.data;
   },
 
@@ -102,8 +165,8 @@ export const schemaApi = {
     return response.data;
   },
   
-  async updateSchema(id: string, schema: WorkflowSchema): Promise<WorkflowSchema> {
-    const response = await api.put(`/schemas/${id}`, schema);
+  async updateSchema(id: string, schema: WorkflowSchema, options?: { signal?: AbortSignal }): Promise<WorkflowSchema> {
+    const response = await api.put(`/schemas/${id}`, schema, options);
     return response.data;
   },
   

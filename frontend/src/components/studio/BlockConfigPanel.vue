@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useVueFlow } from '@vue-flow/core'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useCanvasStore } from '@/stores/useCanvasStore'
-import { settingsApi } from '@/services/api'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { personas } from '@/data/personas'
 import { getBlockByType } from '@/blockRegistry'
+import type { NodeConfig, FlowNode, FlowEdge } from '@/types'
 
 const props = defineProps<{
   blockId: string
@@ -17,6 +18,7 @@ const emit = defineEmits<{
 
 const schemaStore = useSchemaStore()
 const canvasStore = useCanvasStore()
+const settingsStore = useSettingsStore()
 const { nodes } = useVueFlow({ id: 'blueprint-flow' })
 
 // Look up the VueFlow node by blockId
@@ -83,7 +85,8 @@ const contextBudgetTokens = ref(0)
 // Draft type selector
 const draftType = ref('spec')
 
-const providerOptions = ref<{ value: string; label: string; group: string }[]>([])
+// Use settings store's model options (respects disabledModels, auto-invalidated on toggle)
+const providerOptions = computed(() => settingsStore.getAllModelOptions())
 
 const providerGroups = computed(() => {
   const groups: Record<string, { value: string; label: string }[]> = {}
@@ -93,42 +96,6 @@ const providerGroups = computed(() => {
   }
   return groups
 })
-
-onMounted(() => loadProviders())
-
-// Module-level cache: fetch providers once per 30s instead of on every block click
-let cachedProviders: { value: string; label: string; group: string }[] | null = null
-let providersLastFetch = 0
-const PROVIDERS_CACHE_TTL = 30000
-
-async function loadProviders() {
-  const now = Date.now()
-  if (cachedProviders && (now - providersLastFetch) < PROVIDERS_CACHE_TTL) {
-    providerOptions.value = cachedProviders
-    return
-  }
-  try {
-    const providers = await settingsApi.getProviders()
-    const opts: { value: string; label: string; group: string }[] = []
-    for (const p of providers) {
-      const group = p.name.charAt(0).toUpperCase() + p.name.slice(1)
-      if (p.models.length > 0) {
-        const disabled = p.disabledModels ?? []
-        for (const model of p.models) {
-          if (disabled.includes(model)) continue
-          opts.push({ value: model, label: model, group })
-        }
-      } else {
-        opts.push({ value: p.name, label: `${group} (default)`, group })
-      }
-    }
-    providerOptions.value = opts
-    cachedProviders = opts
-    providersLastFetch = Date.now()
-  } catch {
-    providerOptions.value = []
-  }
-}
 
 const requiredPatternsText = computed({
   get: () => requiredPatterns.value.join('\n'),
@@ -190,7 +157,7 @@ watch(() => props.blockId, () => {
   }
   blockLabel.value = (node.value.data?.label as string) || ''
   blockType.value = (node.value.type as string) || (node.value.data?.type as string) || 'agent'
-  const config = (node.value.data?.config as Record<string, any>) || {}
+  const config = (node.value.data?.config as NodeConfig) || {}
   blockDescription.value = (node.value.data?.description as string) || (config.description as string) || ''
   model.value = (node.value.data?.model as string) || (config.model as string) || 'local'
   executorModel.value = (node.value.data?.executorModel as string) || (config.executorModel as string) || ''
@@ -203,7 +170,7 @@ watch(() => props.blockId, () => {
     if (matched) selectedPersona.value = matched.id
   }
   // Verifier fields
-  const checks = config.checks as Record<string, any> | undefined
+  const checks = config.checks
   syntaxCheck.value = checks?.syntaxCheck ?? true
   requiredPatterns.value = (checks?.requiredPatterns as string[]) ?? []
   testCommand.value = checks?.testCommand ?? ''
@@ -220,23 +187,23 @@ watch(() => props.blockId, () => {
   // Draft type
   draftType.value = (config.draftType as string) || 'spec'
   // Review fields
-  reviewPremortem.value = checks?.premortem ?? true
-  reviewPrism.value = checks?.prism ?? false
-  reviewPostmortem.value = checks?.postmortem ?? false
-  reviewMode.value = config?.mode ?? 'manual'
-  reviewMaxIterations.value = config?.maxIterations ?? 3
-  reviewMaxAutoIterations.value = config?.maxAutoIterations ?? 3
-  reviewGeneratePlan.value = config?.generatePlan ?? true
+  reviewPremortem.value = config.checks?.premortem ?? true
+  reviewPrism.value = config.checks?.prism ?? false
+  reviewPostmortem.value = config.checks?.postmortem ?? false
+  reviewMode.value = config.mode ?? 'manual'
+  reviewMaxIterations.value = config.maxIterations ?? 3
+  reviewMaxAutoIterations.value = config.maxAutoIterations ?? 3
+  reviewGeneratePlan.value = config.generatePlan ?? true
   // Source type fields
-  const srcType = (node.value.data?.config as Record<string, any>)?.sourceType as string | undefined
+  const srcType = (node.value.data?.config as NodeConfig)?.sourceType as string | undefined
   sourceType.value = srcType || 'text'
-  sourceContent.value = (node.value.data?.config as Record<string, any>)?.sourceData as string
+  sourceContent.value = (node.value.data?.config as NodeConfig)?.sourceData as string
     || (node.value.data?.sourceData as string) || ''
-  filePath.value = (node.value.data?.config as Record<string, any>)?.filePath as string || ''
-  url.value = (node.value.data?.config as Record<string, any>)?.url as string || ''
-  projectPath.value = (node.value.data?.config as Record<string, any>)?.projectPath as string || ''
-  maxDepth.value = (node.value.data?.config as Record<string, any>)?.maxDepth as number || 4
-  maxFiles.value = (node.value.data?.config as Record<string, any>)?.maxFiles as number || 50
+  filePath.value = (node.value.data?.config as NodeConfig)?.filePath as string || ''
+  url.value = (node.value.data?.config as NodeConfig)?.url as string || ''
+  projectPath.value = (node.value.data?.config as NodeConfig)?.projectPath as string || ''
+  maxDepth.value = (node.value.data?.config as NodeConfig)?.maxDepth as number || 4
+  maxFiles.value = (node.value.data?.config as NodeConfig)?.maxFiles as number || 50
 }, { immediate: true })
 
 function browseFilePath() {
@@ -303,12 +270,13 @@ function saveConfig() {
   if (!node.value) return
 
   // Update VueFlow node data
+  const currentConfig = (node.value.data?.config || {}) as NodeConfig
   node.value.data = {
     ...node.value.data,
     label: blockLabel.value,
     executorModel: executorModel.value || undefined,
     config: {
-      ...((node.value.data?.config as Record<string, any>) || {}),
+      ...currentConfig,
       executorModel: executorModel.value || undefined,
       description: blockDescription.value,
       model: model.value,
@@ -323,7 +291,7 @@ function saveConfig() {
 
   // Source/receive block specific config
   if (blockType.value === 'source') {
-    const sourceConfigUpdates: Record<string, any> = {
+    const sourceConfigUpdates: Partial<NodeConfig> = {
       sourceType: sourceType.value,
       sourceData: sourceContent.value,
       filePath: filePath.value,
@@ -332,49 +300,52 @@ function saveConfig() {
       maxDepth: maxDepth.value,
       maxFiles: maxFiles.value,
     }
+    const currentConfig = (node.value.data?.config || {}) as NodeConfig
     Object.assign(node.value.data.config || {}, sourceConfigUpdates)
   }
 
   // Draft-specific config
   if (activePanels.value.has('draftType')) {
     if (!node.value.data.config) node.value.data.config = {}
-    ;(node.value.data.config as Record<string, any>).draftType = draftType.value
+    ;(node.value.data.config as NodeConfig).draftType = draftType.value
   }
 
   // Agent-specific config
   if (isAgentBlock.value) {
     if (!node.value.data.config) node.value.data.config = {}
     if (expectedFileCount.value != null && expectedFileCount.value > 0) {
-      ;(node.value.data.config as Record<string, any>).expectedFileCount = expectedFileCount.value
+      ;(node.value.data.config as NodeConfig).expectedFileCount = expectedFileCount.value
     } else {
-      delete (node.value.data.config as Record<string, any>).expectedFileCount
+      delete (node.value.data.config as NodeConfig).expectedFileCount
     }
   }
 
   // Pipeline resilience config (applies to any LLM-using node)
   if (activePanels.value.has('model')) {
     if (!node.value.data.config) node.value.data.config = {}
-    ;(node.value.data.config as Record<string, any>).autoRetryCount = autoRetryCount.value
-    ;(node.value.data.config as Record<string, any>).fallbackModels = fallbackModels.value
-    ;(node.value.data.config as Record<string, any>).timeoutSeconds = timeoutSeconds.value
-    ;(node.value.data.config as Record<string, any>).contextBudgetTokens = contextBudgetTokens.value
+    const config = node.value.data.config as NodeConfig
+    config.autoRetryCount = autoRetryCount.value
+    config.fallbackModels = fallbackModels.value
+    config.timeoutSeconds = timeoutSeconds.value
+    config.contextBudgetTokens = contextBudgetTokens.value
   }
 
   // Verifier-specific config
   if (activePanels.value.has('checks') && !isReview.value) {
     const checks = {
-      syntaxCheck: syntaxCheck.value,
-      requiredPatterns: requiredPatterns.value,
-      testCommand: testCommand.value,
-      maxFileSizeKb: maxFileSizeKb.value
-    }
-    // Merge checks into config
-    if (!node.value.data.config) node.value.data.config = {}
-    ;(node.value.data.config as Record<string, any>).checks = checks
-    // rewriteOnFail/maxRewriteRetries/stubDetection live at config top level (not in checks)
-    ;(node.value.data.config as Record<string, any>).rewriteOnFail = rewriteOnFail.value
-    ;(node.value.data.config as Record<string, any>).maxRewriteRetries = maxRewriteRetries.value
-    ;(node.value.data.config as Record<string, any>).stubDetection = stubDetection.value
+syntaxCheck: syntaxCheck.value,
+    requiredPatterns: requiredPatterns.value,
+    testCommand: testCommand.value,
+    maxFileSizeKb: maxFileSizeKb.value
+  }
+  // Merge checks into config
+  if (!node.value.data.config) node.value.data.config = {}
+  const config = node.value.data.config as NodeConfig
+  config.checks = checks
+  // rewriteOnFail/maxRewriteRetries/stubDetection live at config top level (not in checks)
+  config.rewriteOnFail = rewriteOnFail.value
+  config.maxRewriteRetries = maxRewriteRetries.value
+  config.stubDetection = stubDetection.value
   }
 
   // Review-specific config
@@ -385,35 +356,37 @@ function saveConfig() {
       postmortem: reviewPostmortem.value
     }
     if (!node.value.data.config) node.value.data.config = {}
-    ;(node.value.data.config as Record<string, any>).checks = checks
-    ;(node.value.data.config as Record<string, any>).mode = reviewMode.value
-    ;(node.value.data.config as Record<string, any>).maxIterations = reviewMaxIterations.value
-    ;(node.value.data.config as Record<string, any>).maxAutoIterations = reviewMaxAutoIterations.value
-    ;(node.value.data.config as Record<string, any>).generatePlan = reviewGeneratePlan.value
+    const config = node.value.data.config as NodeConfig
+    config.checks = checks
+    config.mode = reviewMode.value
+    config.maxIterations = reviewMaxIterations.value
+    config.maxAutoIterations = reviewMaxAutoIterations.value
+    config.generatePlan = reviewGeneratePlan.value
   }
 
   // Sync to schemaStore for persistence
-  if (canvasStore.currentSchema?.nodes) {
+if (canvasStore.currentSchema?.nodes) {
     const updatedNodes = canvasStore.currentSchema.nodes.map(n => {
       if (n.id !== props.blockId) return n
-    const baseData: Record<string, any> = {
-      ...(n.data || {}),
-      config: {
-        ...((n.data?.config as Record<string, any>) || {}),
-        description: blockDescription.value,
+      const currentConfig = (n.data?.config || {}) as NodeConfig
+      const baseData: Record<string, any> = {
+        ...n.data,
+        config: {
+          ...currentConfig,
+          description: blockDescription.value,
+          model: model.value,
+          systemPrompt: prompt.value,
+          autoRetryCount: autoRetryCount.value,
+          fallbackModels: fallbackModels.value,
+          timeoutSeconds: timeoutSeconds.value,
+          contextBudgetTokens: contextBudgetTokens.value,
+        },
+        // Top-level fields for backend NodeData deserialization
         model: model.value,
         systemPrompt: prompt.value,
-        autoRetryCount: autoRetryCount.value,
-        fallbackModels: fallbackModels.value,
-        timeoutSeconds: timeoutSeconds.value,
-        contextBudgetTokens: contextBudgetTokens.value,
-      },
-      // Top-level fields for backend NodeData deserialization
-      model: model.value,
-      systemPrompt: prompt.value,
-    }
+      }
       if (blockType.value === 'source') {
-        Object.assign(baseData.config || {}, {
+        const sourceConfig: Partial<NodeConfig> = {
           sourceType: sourceType.value,
           sourceData: sourceContent.value,
           filePath: filePath.value,
@@ -421,7 +394,8 @@ function saveConfig() {
           projectPath: projectPath.value,
           maxDepth: maxDepth.value,
           maxFiles: maxFiles.value,
-        })
+        }
+        Object.assign(baseData.config || {}, sourceConfig)
         baseData.sourceData = sourceContent.value
       }
       if (activePanels.value.has('checks') && !isReview.value) {
@@ -449,7 +423,7 @@ function saveConfig() {
           checks: {
             premortem: reviewPremortem.value,
             prism: reviewPrism.value,
-            postmortem: reviewPostmortem.value
+            postmortem: reviewPostmortem.value,
           },
           mode: reviewMode.value,
           maxIterations: reviewMaxIterations.value,
@@ -482,7 +456,7 @@ function handleKeydown(e: KeyboardEvent) {
   <div class="config-panel" @keydown="handleKeydown">
     <div class="panel-header">
       <h3>Configure Block</h3>
-      <button class="close-btn" @click="emit('close')">
+      <button class="close-btn" @click="emit('close')" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
           <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -548,7 +522,7 @@ function handleKeydown(e: KeyboardEvent) {
             placeholder=".ideas/002.md"
             @input="saveConfig"
           />
-          <button class="icon-btn" @click="browseFilePath" title="Browse">
+          <button class="icon-btn" @click="browseFilePath" aria-label="Browse">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>
@@ -571,7 +545,7 @@ function handleKeydown(e: KeyboardEvent) {
             placeholder="https://..."
             @input="saveConfig"
           />
-          <button class="icon-btn" @click="fetchUrlPreview" :disabled="fetching" title="Fetch preview">
+          <button class="icon-btn" @click="fetchUrlPreview" :disabled="fetching" aria-label="Fetch preview">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <circle cx="12" cy="12" r="10"/>
               <line x1="2" y1="12" x2="22" y2="12"/>
@@ -592,7 +566,7 @@ function handleKeydown(e: KeyboardEvent) {
             placeholder="/path/to/project"
             @input="saveConfig"
           />
-          <button class="icon-btn" @click="browseProjectDir" title="Browse">
+          <button class="icon-btn" @click="browseProjectDir" aria-label="Browse">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
             </svg>

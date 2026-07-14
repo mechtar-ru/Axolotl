@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from '@vue/test-utils'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 
 // Mock the API module
 vi.mock('@/services/api', () => ({
@@ -40,6 +41,17 @@ vi.mock('@/stores/useCanvasStore', () => ({
     },
     markDirty: vi.fn(),
     updateSchema: vi.fn(),
+    autoSaveDebounceMs: 2000,
+  })),
+}))
+
+// Mock the settings store
+vi.mock('@/stores/settingsStore', () => ({
+  useSettingsStore: vi.fn(() => ({
+    getAllModelOptions: vi.fn(() => [
+      { value: 'gpt-4', label: 'gpt-4', group: 'OpenAI' },
+      { value: 'llama3', label: 'llama3', group: 'Ollama' },
+    ]),
   })),
 }))
 
@@ -77,6 +89,7 @@ describe('BlockConfigPanel', () => {
   }
 
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 

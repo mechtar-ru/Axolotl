@@ -1,9 +1,9 @@
 <template>
-  <div v-if="visible" class="deps-overlay">
+  <div v-if="visible" class="deps-overlay" role="dialog" aria-modal="true" aria-labelledby="deps-title">
     <div class="deps-modal">
       <div class="deps-header">
-        <span class="deps-title">
-          {{ installing ? '╰┈➤ Installing dependencies...' : '⚠️ Missing Dependencies' }}
+        <span id="deps-title" class="deps-title">
+          {{ installing ? 'Installing dependencies...' : 'Missing Dependencies' }}
         </span>
       </div>
 
@@ -58,7 +58,6 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { api } from '@/services/api';
 
 const props = withDefaults(defineProps<{
   visible: boolean;
@@ -82,9 +81,11 @@ const emit = defineEmits<{
 
 const installing = ref(false);
 const done = ref(false);
+const cancelled = ref(false);
 const currentDep = ref('');
 const installResults = ref<Record<string, string>>({});
 const installError = ref('');
+let abortController: AbortController | null = null;
 
 function doneDep(dep: string): boolean {
   return installResults.value[dep] === 'ok';
@@ -99,18 +100,26 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8082/api';
 async function handleInstall() {
   installing.value = true;
   installError.value = '';
+  cancelled.value = false;
 
   for (const dep of props.deps) {
+    if (cancelled.value) break;
     currentDep.value = dep;
+    
+    abortController = new AbortController();
+    const timeoutId = setTimeout(() => abortController?.abort(), 30000); // 30s timeout per dep
+    
     try {
       const res = await fetch(`${API_BASE}/execution/${props.executionId}/install-deps`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: abortController.signal,
         body: JSON.stringify({
           deps: [dep],
           schemaId: props.schemaId,
         }),
       });
+      clearTimeout(timeoutId);
       const data = await res.json();
       if (data.status === 'ok') {
         installResults.value[dep] = 'ok';
@@ -120,18 +129,35 @@ async function handleInstall() {
         installError.value = `Failed to install ${dep}: ${msg}`;
       }
     } catch (e: any) {
-      installResults.value[dep] = 'error';
-      installError.value = `Failed to install ${dep}: ${e.message}`;
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        installResults.value[dep] = 'error';
+        installError.value = `Installation of ${dep} was cancelled`;
+      } else {
+        installResults.value[dep] = 'error';
+        installError.value = `Failed to install ${dep}: ${e.message}`;
+      }
     }
   }
 
   currentDep.value = '';
   installing.value = false;
   done.value = true;
+  cancelled.value = false;
+}
+
+function handleCancel() {
+  cancelled.value = true;
+  if (abortController) {
+    abortController.abort();
+  }
 }
 
 function handleClose() {
-  emit('close');
+  // Don't close if installing
+  if (!installing.value && !cancelled.value) {
+    emit('close');
+  }
 }
 </script>
 
@@ -310,5 +336,17 @@ function handleClose() {
   cursor: pointer;
   font-size: var(--text-sm, 14px);
   font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .deps-modal {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .deps-body {
+    padding: var(--space-3);
+  }
 }
 </style>

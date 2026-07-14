@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch, defineOptions } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, provide, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSchemaStore } from '@/stores/schemaStore'
 import { useCanvasStore } from '@/stores/useCanvasStore'
@@ -23,6 +23,13 @@ import ThoughtsPanel from '@/components/studio/ThoughtsPanel.vue'
 import PipelinePanel from '@/components/studio/PipelinePanel.vue'
 import type { ReviewData, ReviewFinding } from '@/stores/useReviewStore'
 import { useToast } from '@/composables/useToast'
+
+type FeedbackItem = {
+  text: string;
+  applied: boolean;
+}
+
+const reviewFeedbackHistory = ref<FeedbackItem[]>([])
 
 defineOptions({ name: 'StudioView' })
 
@@ -387,6 +394,33 @@ async function handleReviewReject() {
   }
 }
 
+async function handleReviewSuggest(payload: { feedback: string[]; history: FeedbackItem[] }) {
+  // Update feedback history with new feedback
+  for (const fb of payload.feedback) {
+    if (!reviewFeedbackHistory.value.some(f => f.text === fb && f.applied === false)) {
+      reviewFeedbackHistory.value.push({ text: fb, applied: false })
+    }
+  }
+  // Also merge history from the dialog
+  for (const h of payload.history) {
+    if (!reviewFeedbackHistory.value.some(f => f.text === h.text && f.applied === h.applied)) {
+      reviewFeedbackHistory.value.push(h)
+    }
+  }
+  // Emit suggest to resume execution with feedback
+  try {
+    await reviewStore.suggestReview(
+      currentExecutionId.value,
+      reviewNodeId.value,
+      payload.feedback,
+      payload.history
+    )
+  } catch (e) {
+    toast.error('Failed to suggest review: ' + ((e as Error).message || e))
+    executionError.value = 'Failed to suggest review'
+  }
+}
+
 async function handleResume() {
   try {
     await schemaApi.resumeSchema(appId.value)
@@ -425,8 +459,8 @@ async function handleRestart() {
         }
         if (data.progress !== undefined) {
           executionProgress.value = {
-            totalNodes: (data as any).totalNodes || 0,
-            completedNodes: (data as any).completedNodes || 0
+            totalNodes: Number((data as any).totalNodes) || 0,
+            completedNodes: Number((data as any).completedNodes) || 0
           }
         }
       },
@@ -533,89 +567,137 @@ onUnmounted(() => {
 })
 
 // Flush pending saves + disconnect WebSocket when navigating away
-onDeactivated(() => {
-  if (sessionGoalTimer) { clearTimeout(sessionGoalTimer); sessionGoalTimer = null }
-  try {
-    canvasStore.flushSave()  // ensure dirty edits reach backend
-  } catch (e) {
-    toast.error('Failed to save: ' + ((e as Error).message || e))
-  }
-  if (isRunning.value) {
-    disconnect()
-  }
-})
+  onDeactivated(() => {
+    if (sessionGoalTimer) { clearTimeout(sessionGoalTimer); sessionGoalTimer = null }
+    try {
+      canvasStore.flushSave()  // ensure dirty edits reach backend
+    } catch (e) {
+      toast.error('Failed to save: ' + ((e as Error).message || e))
+    }
+    if (isRunning.value) {
+      disconnect()
+    }
+    // Reset execution state to prevent stale UI when returning
+    isRunning.value = false
+    nodeResults.value = {}
+    nodeStatuses.value = {}
+    executionProgress.value = null
+    nodeStartTimes.clear()
+    stepCounter = 0
+    executionError.value = null
+  })
 
 // Refresh schema data when coming back to a cached session
-onActivated(async () => {
-  const currentId = route.params.id as string
-  if (!currentId) return
+  onActivated(async () => {
+    const currentId = route.params.id as string
+    if (!currentId) return
 
-  // Sync auth token from localStorage (may have been updated by addInitScript between navigations)
-  const storedToken = localStorage.getItem('axolotl_token')
-  if (storedToken && authStore.token !== storedToken) {
-    authStore.token = storedToken
-  }
-
-  const changed = currentId !== appId.value
-  appId.value = currentId
-
-  // Always re-fetch schema from backend to get latest persisted state
-  // This ensures any changes made via BlockConfigPanel (model select, prompt, etc.)
-  // are reflected even if the save was still in-flight when the user navigated away
-  try {
-    const fresh = await schemaApi.getSchema(currentId)
-    if (fresh) {
-      // Update both the schemas list and currentSchema
-      const idx = schemaStore.schemas.findIndex(s => s.id === currentId)
-      if (idx !== -1) {
-        schemaStore.schemas[idx] = fresh
-      } else {
-        schemaStore.schemas.push(fresh)
-      }
-      canvasStore.currentSchema = fresh
-      document.title = `${fresh.name} - Axolotl Studio`
+    // Sync auth token from localStorage (may have been updated by addInitScript between navigations)
+    const storedToken = localStorage.getItem('axolotl_token')
+    const currentToken = authStore.token // Pinia unwraps refs
+    if (storedToken && currentToken !== storedToken) {
+      authStore.token = storedToken
     }
-  } catch {
-    // Fallback: use cached data
-    const found = schemaStore.schemas.find(s => s.id === appId.value)
-    if (found) {
-      canvasStore.currentSchema = found
-      document.title = `${found.name} - Axolotl Studio`
-    } else {
-      // Schema not in cached store — try reloading from backend
-      await schemaStore.loadSchemas()
-      const reloaded = schemaStore.schemas.find(s => s.id === appId.value)
-      if (reloaded) {
-        canvasStore.currentSchema = reloaded
-        document.title = `${reloaded.name} - Axolotl Studio`
-      }
-    }
-  }
 
-  // Restore execution state from persisted backend data if an active/paused run exists
-  try {
-    const run = await schemaApi.getPausedRun(currentId)
-    if (run) {
-      const nodes = await schemaApi.getRunNodes(currentId, run.id)
-      if (nodes.length > 0) {
-        executionProgress.value = {
-          totalNodes: nodes.length,
-          completedNodes: nodes.filter(n => n.status === 'completed' || n.status === 'failed').length
+    const changed = currentId !== appId.value
+    appId.value = currentId
+
+    // Always re-fetch schema from backend to get latest persisted state
+    // This ensures any changes made via BlockConfigPanel (model select, prompt, etc.)
+    // are reflected even if the save was still in-flight when the user navigated away
+    try {
+      const fresh = await schemaApi.getSchema(currentId)
+      if (fresh) {
+        // Update both the schemas list and currentSchema
+        const idx = schemaStore.schemas.findIndex(s => s.id === currentId)
+        if (idx !== -1) {
+          schemaStore.schemas[idx] = fresh
+        } else {
+          schemaStore.schemas.push(fresh)
         }
-        for (const n of nodes) {
-          if (n.nodeId) {
-            nodeStatuses.value[n.nodeId] = n.status
-            if (n.outputSummary) {
-              nodeResults.value[n.nodeId] = n.outputSummary
+        canvasStore.currentSchema = fresh
+        document.title = `${fresh.name} - Axolotl Studio`
+      }
+    } catch {
+      // Fallback: use cached data
+    }
+
+    // Re-establish WebSocket connection if execution was running when we left
+    if (isRunning.value) {
+      console.log('[StudioView] Reconnecting WebSocket after activation for running execution')
+      await connectAsync(currentId, {
+        onDisconnect: () => {
+          if (isActive) {
+            setIsExecuting(false)
+          }
+        },
+        onProgress: (data) => {
+          if (!isActive) return
+          nodeStatuses.value[data.nodeId] = data.status
+          if (!nodeStartTimes.has(data.nodeId)) {
+            nodeStartTimes.set(data.nodeId, Date.now())
+          }
+          if (data.status === 'running') {
+            addStepEvent(data.nodeId, 'running')
+          }
+          if (data.progress !== undefined) {
+            executionProgress.value = {
+              totalNodes: (data as any).totalNodes || 0,
+              completedNodes: (data as any).completedNodes || 0
+            }
+          }
+        },
+        onResult: (data) => {
+          if (!isActive) return
+          nodeResults.value[data.nodeId] = data.result
+          addStepEvent(data.nodeId, 'completed')
+        },
+        onComplete: () => {
+          if (!isActive) return
+          setIsExecuting(false)
+          addStepEvent('__execution__', 'completed', 'Execution finished')
+          if (activeMode.value === 'timeline') {
+            activeMode.value = 'blueprint'
+          }
+        },
+        onError: (data) => {
+          if (!isActive) return
+          nodeStatuses.value[data.nodeId] = 'failed'
+          executionError.value = data.error
+          setIsExecuting(false)
+          addStepEvent(data.nodeId, 'failed', data.error)
+        },
+        onLiveUpdate: (data) => {
+          if (!isActive) return
+          // Handle live updates
+        },
+      })
+    }
+
+    // Restore execution state from persisted backend data if an active/paused run exists
+    try {
+      const run = await schemaApi.getPausedRun(currentId)
+      if (run) {
+        const nodes = await schemaApi.getRunNodes(currentId, run.id)
+        if (nodes.length > 0) {
+          executionProgress.value = {
+            totalNodes: nodes.length,
+            completedNodes: nodes.filter(n => n.status === 'completed' || n.status === 'failed').length
+          }
+          for (const n of nodes) {
+            if (n.nodeId) {
+              nodeStatuses.value[n.nodeId] = n.status
+              if (n.outputSummary) {
+                nodeResults.value[n.nodeId] = n.outputSummary
+              }
             }
           }
         }
       }
+    } catch {
+      // Not critical — ResumeBanner will show independently, or no active run exists
     }
-  } catch {
-    // Not critical — ResumeBanner will show independently, or no active run exists
-  }
-})
+  });
 
 // Session goal
 async function loadSessionGoal() {
@@ -760,9 +842,10 @@ function goToDashboard() {
       :iteration="reviewIteration"
       :max-iterations="3"
       :mode="reviewMode"
-      :feedback-history="[]"
+      :feedback-history="reviewFeedbackHistory"
       @approve="handleReviewApprove"
       @reject="handleReviewReject"
+      @suggest="handleReviewSuggest"
     />
 
     <DepsInstallDialog

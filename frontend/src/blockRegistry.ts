@@ -133,3 +133,50 @@ export function getBlockLabels(): Record<string, string> {
   }
   return map
 }
+
+/**
+ * Dynamic block registry for plugin/extension support.
+ * Allows runtime registration of custom blocks.
+ */
+import { ref, computed } from 'vue'
+
+export const dynamicBlockRegistry = ref<BlockDefinition[]>([])
+
+/**
+ * Register a new block dynamically at runtime.
+ * Useful for plugin systems or user-defined blocks.
+ */
+export function registerBlock(block: BlockDefinition): void {
+  // Remove existing block with same type if exists
+  const existingIndex = dynamicBlockRegistry.value.findIndex(b => b.type === block.type)
+  if (existingIndex >= 0) {
+    dynamicBlockRegistry.value.splice(existingIndex, 1)
+  }
+  dynamicBlockRegistry.value.push(block)
+}
+
+/**
+ * Unregister a block by type.
+ */
+export function unregisterBlock(type: string): void {
+  const idx = dynamicBlockRegistry.value.findIndex(b => b.type === type)
+  if (idx >= 0) {
+    dynamicBlockRegistry.value.splice(idx, 1)
+  }
+}
+
+/**
+ * Get all available blocks (static + dynamic).
+ * Dynamic blocks are checked first to allow overriding static blocks.
+ */
+export const allBlocks = computed(() => [
+  ...dynamicBlockRegistry.value,
+  ...BLOCK_REGISTRY,
+])
+
+/**
+ * Get a block by type from combined registry.
+ */
+export function getBlockByTypeAny(type: string): BlockDefinition | undefined {
+  return allBlocks.value.find(b => b.type === type)
+}
